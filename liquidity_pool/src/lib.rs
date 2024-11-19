@@ -7,11 +7,11 @@ multiversx_sc::derive_imports!();
 pub mod liq_math;
 pub use liq_math::*;
 pub mod contexts;
-pub mod events;
 pub mod liquidity;
 pub mod view;
 pub mod errors;
 pub use common_structs::*;
+pub use common_events::*;
 pub use common_tokens::*;
 
 pub mod liq_storage;
@@ -21,7 +21,7 @@ pub mod liq_utils;
 pub trait LiquidityPool:
     liq_storage::StorageModule
     + common_tokens::AccountTokenModule
-    + events::EventsModule
+    + common_events::EventsModule
     + liq_math::MathModule
     + liquidity::LiquidityModule
     + liq_utils::UtilsModule

@@ -158,21 +158,12 @@ where
             .original_result()
     }
 
-    pub fn lend_token(
+    pub fn borrowed_amount(
         self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, TokenIdentifier<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getLendToken")
-            .original_result()
-    }
-
-    pub fn borrow_token(
-        self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, TokenIdentifier<Env::Api>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("borrowToken")
+            .raw_call("getTotalBorrow")
             .original_result()
     }
 
@@ -182,15 +173,6 @@ where
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getPoolParams")
-            .original_result()
-    }
-
-    pub fn borrowed_amount(
-        self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getTotalBorrow")
             .original_result()
     }
 
@@ -239,15 +221,6 @@ where
             .original_result()
     }
 
-    pub fn debt_nft_token(
-        self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, TokenIdentifier<Env::Api>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getDebtNFT")
-            .original_result()
-    }
-
     pub fn account_positions(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValueEncoded<Env::Api, u64>> {
@@ -258,11 +231,11 @@ where
     }
 
     pub fn update_collateral_with_interest<
-        Arg0: ProxyArg<common_structs::DepositPosition<Env::Api>>,
+        Arg0: ProxyArg<common_structs::AccountPositon<Env::Api>>,
     >(
         self,
         deposit_position: Arg0,
-    ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::DepositPosition<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPositon<Env::Api>> {
         self.wrapped_tx
             .raw_call("updateCollateralWithInterest")
             .argument(&deposit_position)
@@ -270,11 +243,11 @@ where
     }
 
     pub fn update_borrows_with_debt<
-        Arg0: ProxyArg<common_structs::BorrowPosition<Env::Api>>,
+        Arg0: ProxyArg<common_structs::AccountPositon<Env::Api>>,
     >(
         self,
         borrow_position: Arg0,
-    ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::BorrowPosition<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPositon<Env::Api>> {
         self.wrapped_tx
             .raw_call("updateBorrowsWithDebt")
             .argument(&borrow_position)
@@ -282,11 +255,11 @@ where
     }
 
     pub fn add_collateral<
-        Arg0: ProxyArg<common_structs::DepositPosition<Env::Api>>,
+        Arg0: ProxyArg<common_structs::AccountPositon<Env::Api>>,
     >(
         self,
         deposit_position: Arg0,
-    ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::DepositPosition<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPositon<Env::Api>> {
         self.wrapped_tx
             .raw_call("addCollateral")
             .argument(&deposit_position)
@@ -296,13 +269,13 @@ where
     pub fn borrow<
         Arg0: ProxyArg<ManagedAddress<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
-        Arg2: ProxyArg<common_structs::BorrowPosition<Env::Api>>,
+        Arg2: ProxyArg<common_structs::AccountPositon<Env::Api>>,
     >(
         self,
         initial_caller: Arg0,
         borrow_amount: Arg1,
         existing_borrow_position: Arg2,
-    ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::BorrowPosition<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPositon<Env::Api>> {
         self.wrapped_tx
             .raw_call("borrow")
             .argument(&initial_caller)
@@ -311,34 +284,16 @@ where
             .original_result()
     }
 
-    pub fn borrow_bulk_nfts<
-        Arg0: ProxyArg<ManagedAddress<Env::Api>>,
-        Arg1: ProxyArg<BigUint<Env::Api>>,
-        Arg2: ProxyArg<ManagedVec<Env::Api, common_structs::BorrowPosition<Env::Api>>>,
-    >(
-        self,
-        initial_caller: Arg0,
-        borrow_amount: Arg1,
-        existing_borrow_positions: Arg2,
-    ) -> TxTypedCall<Env, From, To, (), Gas, ManagedVec<Env::Api, common_structs::BorrowPosition<Env::Api>>> {
-        self.wrapped_tx
-            .raw_call("borrowWithNFTs")
-            .argument(&initial_caller)
-            .argument(&borrow_amount)
-            .argument(&existing_borrow_positions)
-            .original_result()
-    }
-
     pub fn remove_collateral<
         Arg0: ProxyArg<ManagedAddress<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
-        Arg2: ProxyArg<common_structs::DepositPosition<Env::Api>>,
+        Arg2: ProxyArg<common_structs::AccountPositon<Env::Api>>,
     >(
         self,
         initial_caller: Arg0,
         amount: Arg1,
         deposit_position: Arg2,
-    ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::DepositPosition<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPositon<Env::Api>> {
         self.wrapped_tx
             .raw_call("remove_collateral")
             .argument(&initial_caller)
@@ -349,31 +304,16 @@ where
 
     pub fn repay<
         Arg0: ProxyArg<ManagedAddress<Env::Api>>,
-        Arg1: ProxyArg<common_structs::BorrowPosition<Env::Api>>,
+        Arg1: ProxyArg<common_structs::AccountPositon<Env::Api>>,
     >(
         self,
         initial_caller: Arg0,
         borrow_position: Arg1,
-    ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::BorrowPosition<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPositon<Env::Api>> {
         self.wrapped_tx
             .raw_call("repay")
             .argument(&initial_caller)
             .argument(&borrow_position)
-            .original_result()
-    }
-
-    pub fn repay_nfts<
-        Arg0: ProxyArg<ManagedAddress<Env::Api>>,
-        Arg1: ProxyArg<MultiValueEncoded<Env::Api, MultiValue2<EsdtTokenPayment<Env::Api>, common_structs::BorrowPosition<Env::Api>>>>,
-    >(
-        self,
-        initial_caller: Arg0,
-        borrow_positions: Arg1,
-    ) -> TxTypedCall<Env, From, To, (), Gas, MultiValueEncoded<Env::Api, MultiValue2<EsdtTokenPayment<Env::Api>, common_structs::BorrowPosition<Env::Api>>>> {
-        self.wrapped_tx
-            .raw_call("repayNFTs")
-            .argument(&initial_caller)
-            .argument(&borrow_positions)
             .original_result()
     }
 

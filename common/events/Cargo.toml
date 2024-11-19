@@ -1,0 +1,14 @@
+[package]
+name = "common-events"
+version = "0.0.0"
+authors = ["CostinCarabas <costin.carabas@gmail.com>"]
+edition = "2018"
+
+[lib]
+path = "src/events.rs"
+
+[dependencies.common-structs]
+path = "../structs"
+
+[dependencies.multiversx-sc]
+version = "0.54.0"

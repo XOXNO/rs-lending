@@ -29,6 +29,9 @@ path = "../common/checks"
 [dependencies.common-tokens]
 path = "../common/tokens"
 
+[dependencies.common-events]
+path = "../common/events"
+
 [dev-dependencies]
 num-bigint = "0.4.2"
 num-traits = "0.2"

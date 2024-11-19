@@ -60,13 +60,14 @@ pub trait LendingUtilsModule:
         &self,
         account_position: u64,
         token_id: TokenIdentifier,
-    ) -> DepositPosition<Self::Api> {
+    ) -> AccountPositon<Self::Api> {
         match self.deposit_positions(account_position).get(&token_id) {
             Some(dp) => {
                 self.deposit_positions(account_position).remove(&token_id);
                 dp
             }
-            None => DepositPosition::new(
+            None => AccountPositon::new(
+                AccountPositionType::Deposit,
                 token_id,
                 BigUint::zero(),
                 account_position,
@@ -80,10 +81,11 @@ pub trait LendingUtilsModule:
         &self,
         account_position: u64,
         token_id: TokenIdentifier,
-    ) -> BorrowPosition<Self::Api> {
+    ) -> AccountPositon<Self::Api> {
         match self.borrow_positions(account_position).get(&token_id) {
             Some(bp) => bp,
-            None => BorrowPosition::new(
+            None => AccountPositon::new(
+                AccountPositionType::Borrow,
                 token_id,
                 BigUint::zero(),
                 account_position,

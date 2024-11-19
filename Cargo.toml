@@ -7,6 +7,7 @@ members = [
     "common/structs",
     "common/checks",
     "common/tokens",
+    "common/events",
     "aggregator_mock",
     "aggregator_mock/meta"
 ]

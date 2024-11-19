@@ -5,7 +5,6 @@ multiversx_sc::derive_imports!();
 
 pub mod config;
 pub mod errors;
-pub mod events;
 pub mod factory;
 mod math;
 pub mod proxy_pool;
@@ -24,7 +23,7 @@ pub trait LendingPool:
     factory::FactoryModule
     + router::RouterModule
     + config::ConfigModule
-    + events::EventsModule
+    + common_events::EventsModule
     + common_checks::ChecksModule
     + common_tokens::AccountTokenModule
     + storage::LendingStorageModule
@@ -84,11 +83,10 @@ pub trait LendingPool:
             .returns(ReturnsResult)
             .sync_call();
 
-        self.update_deposit_position_event(
-            nft_account_nonce,
+        self.update_position_event(
             &collateral_amount, // Representing the amount of collateral added
             &return_deposit_position,
-            &initial_caller,
+            Some(&initial_caller),
         );
 
         self.deposit_positions(nft_account_nonce)
@@ -128,18 +126,17 @@ pub trait LendingPool:
         let mut dep_pos_map = self.deposit_positions(nft_account_nonce);
         match dep_pos_map.get(&withdraw_token_id) {
             Some(dp) => {
-                let deposit_position: DepositPosition<<Self as ContractBase>::Api> = self
+                let deposit_position: AccountPositon<Self::Api> = self
                     .tx()
                     .to(pool_address)
                     .typed(proxy_pool::LiquidityPoolProxy)
                     .remove_collateral(&initial_caller, &amount, dp)
                     .execute_on_dest_context();
 
-                self.update_deposit_position_event(
-                    nft_account_nonce,
+                self.update_position_event(
                     &amount, // Representing the amount of collateral removed
                     &deposit_position,
-                    &initial_caller,
+                    Some(&initial_caller),
                 );
 
                 if deposit_position.amount == 0 {
@@ -196,18 +193,17 @@ pub trait LendingPool:
             asset_to_borrow.clone(),
         );
 
-        let borrow_position: BorrowPosition<Self::Api> = self
+        let borrow_position: AccountPositon<Self::Api> = self
             .tx()
             .to(borrow_token_pool_address)
             .typed(proxy_pool::LiquidityPoolProxy)
             .borrow(&initial_caller, &amount, initial_borrow_position)
             .execute_on_dest_context();
 
-        self.update_borrow_position_event(
-            nft_account_nonce,
+        self.update_position_event(
             &amount, // Representing the amount of borrowed tokens
             &borrow_position,
-            &initial_caller,
+            Some(&initial_caller),
         );
 
         if borrow_position.amount == 0 {
@@ -250,7 +246,7 @@ pub trait LendingPool:
             .get(&repay_token_id)
         {
             Some(bp) => {
-                let borrow_position: BorrowPosition<Self::Api> = self
+                let borrow_position: AccountPositon<Self::Api> = self
                     .tx()
                     .to(asset_address)
                     .typed(proxy_pool::LiquidityPoolProxy)
@@ -258,11 +254,10 @@ pub trait LendingPool:
                     .with_esdt_transfer((repay_token_id.clone(), repay_nonce, repay_amount.clone()))
                     .execute_on_dest_context();
 
-                self.update_borrow_position_event(
-                    nft_account_nonce,
+                self.update_position_event(
                     &repay_amount, // Representing the amount of repayed tokens
                     &borrow_position,
-                    &initial_caller,
+                    Some(&initial_caller),
                 );
 
                 // Update BorrowPosition

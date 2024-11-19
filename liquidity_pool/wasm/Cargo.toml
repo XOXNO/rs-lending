@@ -5,7 +5,7 @@
 # ##########################################
 
 [package]
-name = "liquidity-pool-wasm"
+name = "liquidity_pool-wasm"
 version = "0.0.0"
 edition = "2018"
 publish = false

@@ -4,8 +4,7 @@ multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
 use crate::{
-    events, proxy_pool, storage, ERROR_ASSET_ALREADY_SUPPORTED, ERROR_INVALID_TICKER,
-    ERROR_NO_POOL_FOUND,
+    proxy_pool, storage, ERROR_ASSET_ALREADY_SUPPORTED, ERROR_INVALID_TICKER, ERROR_NO_POOL_FOUND,
 };
 
 use super::factory;
@@ -15,7 +14,7 @@ pub trait RouterModule:
     factory::FactoryModule
     + common_checks::ChecksModule
     + storage::LendingStorageModule
-    + events::EventsModule
+    + common_events::EventsModule
 {
     #[only_owner]
     #[endpoint(createLiquidityPool)]

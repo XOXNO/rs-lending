@@ -3,20 +3,17 @@ multiversx_sc::derive_imports!();
 
 use common_structs::*;
 
-use crate::contexts::base::StorageCache;
 use crate::errors::ERROR_INSUFFICIENT_LIQUIDITY;
 use crate::errors::ERROR_INVALID_ASSET;
 
-use super::liq_math;
-use super::liq_storage;
-use super::liq_utils;
-use super::view;
+use super::{contexts::base::StorageCache, liq_math, liq_storage, liq_utils, view};
+
 #[multiversx_sc::module]
 pub trait LiquidityModule:
     liq_storage::StorageModule
     + common_tokens::AccountTokenModule
     + liq_utils::UtilsModule
-    + crate::events::EventsModule
+    + common_events::EventsModule
     + liq_math::MathModule
     + view::ViewModule
     + price_aggregator_proxy::PriceAggregatorModule
@@ -27,8 +24,8 @@ pub trait LiquidityModule:
     #[endpoint(updateCollateralWithInterest)]
     fn update_collateral_with_interest(
         &self,
-        deposit_position: DepositPosition<Self::Api>,
-    ) -> DepositPosition<Self::Api> {
+        deposit_position: AccountPositon<Self::Api>,
+    ) -> AccountPositon<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
         self.internal_update_collateral_with_interest(deposit_position, &mut storage_cache)
     }
@@ -38,8 +35,8 @@ pub trait LiquidityModule:
     #[endpoint(updateBorrowsWithDebt)]
     fn update_borrows_with_debt(
         &self,
-        borrow_position: BorrowPosition<Self::Api>,
-    ) -> BorrowPosition<Self::Api> {
+        borrow_position: AccountPositon<Self::Api>,
+    ) -> AccountPositon<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
         self.internal_update_borrows_with_debt(borrow_position, &mut storage_cache)
     }
@@ -49,8 +46,8 @@ pub trait LiquidityModule:
     #[endpoint(addCollateral)]
     fn add_collateral(
         &self,
-        deposit_position: DepositPosition<Self::Api>,
-    ) -> DepositPosition<Self::Api> {
+        deposit_position: AccountPositon<Self::Api>,
+    ) -> AccountPositon<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
 
         let (deposit_asset, deposit_amount) = self.call_value().single_fungible_esdt();
@@ -71,7 +68,7 @@ pub trait LiquidityModule:
         let supply_index = self.supply_index().get();
         ret_deposit_position.amount += &deposit_amount;
         ret_deposit_position.round = storage_cache.round;
-        ret_deposit_position.initial_supply_index = supply_index.clone();
+        ret_deposit_position.initial_index = supply_index.clone();
 
         storage_cache.reserves_amount += &deposit_amount;
         storage_cache.supplied_amount += deposit_amount;
@@ -95,8 +92,8 @@ pub trait LiquidityModule:
         &self,
         initial_caller: &ManagedAddress,
         borrow_amount: &BigUint,
-        existing_borrow_position: BorrowPosition<Self::Api>,
-    ) -> BorrowPosition<Self::Api> {
+        existing_borrow_position: AccountPositon<Self::Api>,
+    ) -> AccountPositon<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
 
         let mut ret_borrow_position = existing_borrow_position.clone();
@@ -115,7 +112,7 @@ pub trait LiquidityModule:
         let borrow_index = self.borrow_index().get();
         ret_borrow_position.amount += borrow_amount;
         ret_borrow_position.round = storage_cache.round;
-        ret_borrow_position.initial_borrow_index = borrow_index.clone();
+        ret_borrow_position.initial_index = borrow_index.clone();
 
         storage_cache.borrowed_amount += borrow_amount;
 
@@ -143,8 +140,8 @@ pub trait LiquidityModule:
         &self,
         initial_caller: &ManagedAddress,
         amount: &BigUint,
-        mut deposit_position: DepositPosition<Self::Api>,
-    ) -> DepositPosition<Self::Api> {
+        mut deposit_position: AccountPositon<Self::Api>,
+    ) -> AccountPositon<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
 
         self.require_non_zero_address(initial_caller);
@@ -154,11 +151,8 @@ pub trait LiquidityModule:
 
         // Withdrawal amount = initial_deposit + Interest
         let supply_index = self.supply_index().get();
-        let withdrawal_amount = self.compute_withdrawal_amount(
-            amount,
-            &supply_index,
-            &deposit_position.initial_supply_index,
-        );
+        let withdrawal_amount =
+            self.compute_withdrawal_amount(amount, &supply_index, &deposit_position.initial_index);
 
         require!(
             &storage_cache.reserves_amount >= &withdrawal_amount,
@@ -200,8 +194,8 @@ pub trait LiquidityModule:
     fn repay(
         &self,
         initial_caller: ManagedAddress,
-        borrow_position: BorrowPosition<Self::Api>,
-    ) -> BorrowPosition<Self::Api> {
+        borrow_position: AccountPositon<Self::Api>,
+    ) -> AccountPositon<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
         let (received_asset, mut received_amount) = self.call_value().single_fungible_esdt();
 
@@ -214,10 +208,8 @@ pub trait LiquidityModule:
 
         self.update_interest_indexes(&mut storage_cache);
 
-        let accumulated_debt = self.get_debt_interest(
-            &borrow_position.amount,
-            &borrow_position.initial_borrow_index,
-        );
+        let accumulated_debt =
+            self.get_debt_interest(&borrow_position.amount, &borrow_position.initial_index);
 
         let mut ret_borrow_position = self.update_borrows_with_debt(borrow_position);
 

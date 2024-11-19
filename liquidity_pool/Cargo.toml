@@ -20,6 +20,9 @@ path = "../common/checks"
 [dependencies.common-tokens]
 path = "../common/tokens"
 
+[dependencies.common-events]
+path = "../common/events"
+
 [dependencies.price-aggregator-proxy]
 path = "../common/price-aggregator-proxy"
 

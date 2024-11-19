@@ -1,0 +1,8 @@
+[settings]
+main = "main"
+
+[contracts.main]
+name = "liquidity_pool"
+
+[[proxy]]
+path = "./lending_pool/src/proxy_pool.rs"

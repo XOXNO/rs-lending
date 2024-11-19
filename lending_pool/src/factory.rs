@@ -4,7 +4,7 @@ multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
 #[multiversx_sc::module]
-pub trait FactoryModule: crate::events::EventsModule {
+pub trait FactoryModule: common_events::EventsModule {
     fn create_pool(
         &self,
         base_asset: &TokenIdentifier,

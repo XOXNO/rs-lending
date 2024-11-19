@@ -10,7 +10,7 @@ pub trait UtilsModule:
     liq_math::MathModule
     + liq_storage::StorageModule
     + price_aggregator_proxy::PriceAggregatorModule
-    + crate::events::EventsModule
+    + common_events::EventsModule
     + view::ViewModule
 {
     fn update_borrow_index(&self, borrow_rate: &BigUint, delta_rounds: u64) {
@@ -75,9 +75,9 @@ pub trait UtilsModule:
 
     fn internal_update_collateral_with_interest(
         &self,
-        mut deposit_position: DepositPosition<Self::Api>,
+        mut deposit_position: AccountPositon<Self::Api>,
         storage_cache: &mut StorageCache<Self>,
-    ) -> DepositPosition<Self::Api> {
+    ) -> AccountPositon<Self::Api> {
         let supply_index = self.supply_index().get();
 
         self.update_interest_indexes(storage_cache);
@@ -85,45 +85,35 @@ pub trait UtilsModule:
         let accrued_interest = self.compute_interest(
             &deposit_position.amount,
             &supply_index,
-            &deposit_position.initial_supply_index,
+            &deposit_position.initial_index,
         );
 
         deposit_position.amount += &accrued_interest;
         deposit_position.round = storage_cache.round;
-        deposit_position.initial_supply_index = supply_index;
+        deposit_position.initial_index = supply_index;
 
-        self.add_accrued_interest_event(
-            deposit_position.owner_nonce,
-            &accrued_interest,
-            &deposit_position,
-        );
+        self.update_position_event(&accrued_interest, &deposit_position, None);
 
         deposit_position
     }
 
     fn internal_update_borrows_with_debt(
         &self,
-        mut borrow_position: BorrowPosition<Self::Api>,
+        mut borrow_position: AccountPositon<Self::Api>,
         storage_cache: &mut StorageCache<Self>,
-    ) -> BorrowPosition<Self::Api> {
+    ) -> AccountPositon<Self::Api> {
         let borrow_index = self.borrow_index().get();
 
         self.update_interest_indexes(storage_cache);
 
-        let accumulated_debt = self.get_debt_interest(
-            &borrow_position.amount,
-            &borrow_position.initial_borrow_index,
-        );
+        let accumulated_debt =
+            self.get_debt_interest(&borrow_position.amount, &borrow_position.initial_index);
 
         borrow_position.amount += &accumulated_debt;
         borrow_position.round = storage_cache.round;
-        borrow_position.initial_borrow_index = borrow_index;
+        borrow_position.initial_index = borrow_index;
 
-        self.add_debt_interest_event(
-            borrow_position.owner_nonce,
-            &accumulated_debt,
-            &borrow_position,
-        );
+        self.update_position_event(&accumulated_debt, &borrow_position, None);
 
         borrow_position
     }
@@ -131,7 +121,7 @@ pub trait UtilsModule:
     #[inline]
     fn is_full_repay(
         &self,
-        borrow_position: &BorrowPosition<Self::Api>,
+        borrow_position: &AccountPositon<Self::Api>,
         borrow_token_repaid: &BigUint,
     ) -> bool {
         &borrow_position.amount == borrow_token_repaid

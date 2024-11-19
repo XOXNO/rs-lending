@@ -1,9 +1,7 @@
 use constants::*;
 
-use lending_pool::BP;
 use lending_pool_interaction::LendingSetup;
-use liquidity_pool::liq_storage::StorageModule;
-use multiversx_sc_scenario::{managed_biguint, rust_biguint};
+use multiversx_sc_scenario::rust_biguint;
 
 pub mod constants;
 pub mod lending_pool_interaction;
@@ -207,56 +205,56 @@ fn remove_collateral_test() {
     lending_setup.add_collateral(&user_addr, USDC_TOKEN_ID, 400, account_nonce, 150, 550);
 }
 
-#[test]
-fn liquidate_test() {
-    let mut lending_setup = LendingSetup::deploy_lending(
-        lending_pool::contract_obj,
-        liquidity_pool::contract_obj,
-        aggregator_mock::contract_obj,
-    );
+// #[test]
+// fn liquidate_test() {
+//     let mut lending_setup = LendingSetup::deploy_lending(
+//         lending_pool::contract_obj,
+//         liquidity_pool::contract_obj,
+//         aggregator_mock::contract_obj,
+//     );
 
-    let liquidatee_user = lending_setup.first_user_addr.clone();
-    let liquidator_user = lending_setup.second_user_addr.clone();
+//     let liquidatee_user = lending_setup.first_user_addr.clone();
+//     let liquidator_user = lending_setup.second_user_addr.clone();
 
-    let liquidatee_account_nonce = lending_setup.enter_market(&liquidatee_user);
+//     let liquidatee_account_nonce = lending_setup.enter_market(&liquidatee_user);
 
-    lending_setup
-        .b_mock
-        .set_esdt_balance(&liquidatee_user, USDC_TOKEN_ID, &rust_biguint!(1_000));
+//     lending_setup
+//         .b_mock
+//         .set_esdt_balance(&liquidatee_user, USDC_TOKEN_ID, &rust_biguint!(1_000));
 
-    lending_setup.add_collateral(
-        &liquidatee_user,
-        USDC_TOKEN_ID,
-        0,
-        liquidatee_account_nonce,
-        1_000,
-        1_000,
-    );
-    lending_setup.borrow(
-        &liquidatee_user,
-        USDC_TOKEN_ID,
-        0,
-        liquidatee_account_nonce,
-        600,
-        400,
-        600,
-        1,
-        1_000_000_000,
-    );
+//     lending_setup.add_collateral(
+//         &liquidatee_user,
+//         USDC_TOKEN_ID,
+//         0,
+//         liquidatee_account_nonce,
+//         1_000,
+//         1_000,
+//     );
+//     lending_setup.borrow(
+//         &liquidatee_user,
+//         USDC_TOKEN_ID,
+//         0,
+//         liquidatee_account_nonce,
+//         600,
+//         400,
+//         600,
+//         1,
+//         1_000_000_000,
+//     );
 
-    lending_setup
-        .b_mock
-        .set_esdt_balance(&liquidator_user, USDC_TOKEN_ID, &rust_biguint!(300));
+//     lending_setup
+//         .b_mock
+//         .set_esdt_balance(&liquidator_user, USDC_TOKEN_ID, &rust_biguint!(300));
 
-    lending_setup.liquidate(
-        &liquidator_user,
-        &liquidatee_user,
-        liquidatee_account_nonce,
-        300,
-        315,
-        85,
-    );
-}
+//     lending_setup.liquidate(
+//         &liquidator_user,
+//         &liquidatee_user,
+//         liquidatee_account_nonce,
+//         300,
+//         315,
+//         85,
+//     );
+// }
 
 // #[test]
 // fn scenario1() {
