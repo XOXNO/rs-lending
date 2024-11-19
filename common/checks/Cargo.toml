@@ -1,0 +1,11 @@
+[package]
+name = "common-checks"
+version = "0.0.0"
+authors = [""]
+edition = "2018"
+
+[lib]
+path = "src/checks.rs"
+
+[dependencies.multiversx-sc]
+version = "0.54.0"

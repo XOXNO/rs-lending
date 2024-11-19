@@ -1,0 +1,27 @@
+[package]
+name = "liquidity-pool"
+version = "0.0.1"
+authors = ["you"]
+edition = "2018"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies.multiversx-sc]
+version = "0.54.0"
+
+[dependencies.common-structs]
+path = "../common/structs"
+
+[dependencies.common-checks]
+path = "../common/checks"
+
+[dependencies.common-tokens]
+path = "../common/tokens"
+
+[dependencies.price-aggregator-proxy]
+path = "../common/price-aggregator-proxy"
+
+[dev-dependencies.multiversx-sc-scenario]
+version = "0.54.0"

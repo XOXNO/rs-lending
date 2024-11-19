@@ -1,0 +1,27 @@
+[[bin]]
+name = "rust-interact"
+path = "src/interact.rs"
+
+[package]
+name = "rust-interact"
+version = "0.0.0"
+authors = ["you"]
+edition = "2021"
+publish = false
+
+[dependencies.aggregator-mock]
+path = ".."
+
+[dependencies.multiversx-sc-snippets]
+version = "0.39.2"
+
+[dependencies.multiversx-sc-scenario]
+version = "0.39.2"
+
+[dependencies.multiversx-chain-vm]
+version = "0.1.2"
+
+[dependencies.multiversx-sdk]
+version = "0.1.1"
+
+[workspace]

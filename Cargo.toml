@@ -1,0 +1,12 @@
+[workspace]
+members = [
+    "liquidity_pool",
+    "liquidity_pool/meta",
+    "lending_pool",
+    "lending_pool/meta",
+    "common/structs",
+    "common/checks",
+    "common/tokens",
+    "aggregator_mock",
+    "aggregator_mock/meta"
+]

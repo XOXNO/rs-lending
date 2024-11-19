@@ -1,0 +1,12 @@
+[package]
+name = "liquidity-pool-meta"
+version = "0.0.0"
+authors = ["you"]
+edition = "2018"
+publish = false
+
+[dependencies.liquidity-pool]
+path = ".."
+
+[dependencies.multiversx-sc-meta-lib]
+version = "0.54.0"

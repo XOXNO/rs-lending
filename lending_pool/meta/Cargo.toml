@@ -1,0 +1,12 @@
+[package]
+name = "lending-pool-meta"
+version = "0.0.0"
+authors = ["you"]
+edition = "2018"
+publish = false
+
+[dependencies.lending-pool]
+path = ".."
+
+[dependencies.multiversx-sc-meta-lib]
+version = "0.54.0"
