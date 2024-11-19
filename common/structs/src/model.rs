@@ -17,6 +17,24 @@ pub struct PoolParams<M: ManagedTypeApi> {
     pub reserve_factor: BigUint<M>,
 }
 
+// TODO: @mihaieremia deposit and borrow position can be same struct, with a type field
+// this could further simplify the events, sending same event for deposit/borrow update 
+pub enum AccountPositionType {
+    Deposit,
+    Borrow,
+}
+
+#[derive(NestedEncode, NestedDecode, TopEncode, TopDecode, TypeAbi, Clone)]
+pub struct AccountPositon<M: ManagedTypeApi> {
+    pub deposit_type: AccountPositionType,
+    pub account_nonce: u64,
+    pub token_id: TokenIdentifier<M>,
+    pub amount: BigUint<M>,
+    pub round: u64,
+    pub initial_index: BigUint<M>,
+}
+
+
 #[derive(NestedEncode, NestedDecode, TopEncode, TopDecode, TypeAbi, Clone)]
 pub struct DepositPosition<M: ManagedTypeApi> {
     pub token_id: TokenIdentifier<M>,
