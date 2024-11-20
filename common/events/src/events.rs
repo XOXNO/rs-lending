@@ -41,7 +41,7 @@ pub trait EventsModule {
     fn update_position_event(
         &self,
         #[indexed] amount: &BigUint,
-        #[indexed] position: &AccountPositon<Self::Api>,
+        #[indexed] position: &AccountPosition<Self::Api>,
         #[indexed] caller: Option<&ManagedAddress>, // When is none, then the position is updated by the protocol and the amount is the interest, either for borrow or supply
     );
 

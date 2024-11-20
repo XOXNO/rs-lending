@@ -74,9 +74,9 @@ pub trait UtilsModule:
 
     fn internal_update_collateral_with_interest(
         &self,
-        mut deposit_position: AccountPositon<Self::Api>,
+        mut deposit_position: AccountPosition<Self::Api>,
         storage_cache: &mut StorageCache<Self>,
-    ) -> AccountPositon<Self::Api> {
+    ) -> AccountPosition<Self::Api> {
         let supply_index = self.supply_index().get();
 
         self.update_interest_indexes(storage_cache);
@@ -98,9 +98,9 @@ pub trait UtilsModule:
 
     fn internal_update_borrows_with_debt(
         &self,
-        mut borrow_position: AccountPositon<Self::Api>,
+        mut borrow_position: AccountPosition<Self::Api>,
         storage_cache: &mut StorageCache<Self>,
-    ) -> AccountPositon<Self::Api> {
+    ) -> AccountPosition<Self::Api> {
         let borrow_index = self.borrow_index().get();
 
         self.update_interest_indexes(storage_cache);
@@ -120,7 +120,7 @@ pub trait UtilsModule:
     #[inline]
     fn is_full_repay(
         &self,
-        borrow_position: &AccountPositon<Self::Api>,
+        borrow_position: &AccountPosition<Self::Api>,
         borrow_token_repaid: &BigUint,
     ) -> bool {
         &borrow_position.amount == borrow_token_repaid

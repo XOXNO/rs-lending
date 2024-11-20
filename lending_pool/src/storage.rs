@@ -1,4 +1,4 @@
-use common_structs::AccountPositon;
+use common_structs::AccountPosition;
 
 multiversx_sc::imports!();
 
@@ -9,14 +9,14 @@ pub trait LendingStorageModule {
     fn deposit_positions(
         &self,
         owner_nonce: u64,
-    ) -> MapMapper<TokenIdentifier, AccountPositon<Self::Api>>;
+    ) -> MapMapper<TokenIdentifier, AccountPosition<Self::Api>>;
 
     #[view(getBorrowPositions)]
     #[storage_mapper("borrow_positions")]
     fn borrow_positions(
         &self,
         owner_nonce: u64,
-    ) -> MapMapper<TokenIdentifier, AccountPositon<Self::Api>>;
+    ) -> MapMapper<TokenIdentifier, AccountPosition<Self::Api>>;
 
     #[storage_mapper("pools_map")]
     fn pools_map(&self, token_id: &TokenIdentifier) -> SingleValueMapper<ManagedAddress>;

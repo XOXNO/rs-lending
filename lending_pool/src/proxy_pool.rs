@@ -222,11 +222,11 @@ where
     }
 
     pub fn update_collateral_with_interest<
-        Arg0: ProxyArg<common_structs::AccountPositon<Env::Api>>,
+        Arg0: ProxyArg<common_structs::AccountPosition<Env::Api>>,
     >(
         self,
         deposit_position: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::AccountPositon<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::AccountPosition<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("updatePositionInterest")
@@ -235,11 +235,11 @@ where
     }
 
     pub fn update_borrows_with_debt<
-        Arg0: ProxyArg<common_structs::AccountPositon<Env::Api>>,
+        Arg0: ProxyArg<common_structs::AccountPosition<Env::Api>>,
     >(
         self,
         borrow_position: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::AccountPositon<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::AccountPosition<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("updatePositionDebt")
@@ -248,11 +248,11 @@ where
     }
 
     pub fn supply<
-        Arg0: ProxyArg<common_structs::AccountPositon<Env::Api>>,
+        Arg0: ProxyArg<common_structs::AccountPosition<Env::Api>>,
     >(
         self,
         deposit_position: Arg0,
-    ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPositon<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPosition<Env::Api>> {
         self.wrapped_tx
             .raw_call("supply")
             .argument(&deposit_position)
@@ -262,13 +262,13 @@ where
     pub fn borrow<
         Arg0: ProxyArg<ManagedAddress<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
-        Arg2: ProxyArg<common_structs::AccountPositon<Env::Api>>,
+        Arg2: ProxyArg<common_structs::AccountPosition<Env::Api>>,
     >(
         self,
         initial_caller: Arg0,
         borrow_amount: Arg1,
         existing_borrow_position: Arg2,
-    ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPositon<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPosition<Env::Api>> {
         self.wrapped_tx
             .raw_call("borrow")
             .argument(&initial_caller)
@@ -280,7 +280,7 @@ where
     pub fn withdraw<
         Arg0: ProxyArg<ManagedAddress<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
-        Arg2: ProxyArg<common_structs::AccountPositon<Env::Api>>,
+        Arg2: ProxyArg<common_structs::AccountPosition<Env::Api>>,
         Arg3: ProxyArg<bool>,
     >(
         self,
@@ -288,7 +288,7 @@ where
         amount: Arg1,
         deposit_position: Arg2,
         is_liquidation: Arg3,
-    ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPositon<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPosition<Env::Api>> {
         self.wrapped_tx
             .raw_call("withdraw")
             .argument(&initial_caller)
@@ -300,12 +300,12 @@ where
 
     pub fn repay<
         Arg0: ProxyArg<ManagedAddress<Env::Api>>,
-        Arg1: ProxyArg<common_structs::AccountPositon<Env::Api>>,
+        Arg1: ProxyArg<common_structs::AccountPosition<Env::Api>>,
     >(
         self,
         initial_caller: Arg0,
         borrow_position: Arg1,
-    ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPositon<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPosition<Env::Api>> {
         self.wrapped_tx
             .raw_call("repay")
             .argument(&initial_caller)

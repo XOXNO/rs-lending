@@ -22,8 +22,8 @@ pub trait LiquidityModule:
     #[endpoint(updatePositionInterest)]
     fn update_collateral_with_interest(
         &self,
-        deposit_position: AccountPositon<Self::Api>,
-    ) -> AccountPositon<Self::Api> {
+        deposit_position: AccountPosition<Self::Api>,
+    ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
         self.internal_update_collateral_with_interest(deposit_position, &mut storage_cache)
     }
@@ -32,8 +32,8 @@ pub trait LiquidityModule:
     #[endpoint(updatePositionDebt)]
     fn update_borrows_with_debt(
         &self,
-        borrow_position: AccountPositon<Self::Api>,
-    ) -> AccountPositon<Self::Api> {
+        borrow_position: AccountPosition<Self::Api>,
+    ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
         self.internal_update_borrows_with_debt(borrow_position, &mut storage_cache)
     }
@@ -41,7 +41,7 @@ pub trait LiquidityModule:
     #[only_owner]
     #[payable("*")]
     #[endpoint(supply)]
-    fn supply(&self, deposit_position: AccountPositon<Self::Api>) -> AccountPositon<Self::Api> {
+    fn supply(&self, deposit_position: AccountPosition<Self::Api>) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
 
         let (deposit_asset, deposit_amount) = self.call_value().single_fungible_esdt();
@@ -86,8 +86,8 @@ pub trait LiquidityModule:
         &self,
         initial_caller: &ManagedAddress,
         borrow_amount: &BigUint,
-        existing_borrow_position: AccountPositon<Self::Api>,
-    ) -> AccountPositon<Self::Api> {
+        existing_borrow_position: AccountPosition<Self::Api>,
+    ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
 
         let mut ret_borrow_position = existing_borrow_position.clone();
@@ -134,9 +134,9 @@ pub trait LiquidityModule:
         &self,
         initial_caller: &ManagedAddress,
         amount: &BigUint,
-        mut deposit_position: AccountPositon<Self::Api>,
+        mut deposit_position: AccountPosition<Self::Api>,
         is_liquidation: bool,
-    ) -> AccountPositon<Self::Api> {
+    ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
 
         self.require_non_zero_address(initial_caller);
@@ -189,8 +189,8 @@ pub trait LiquidityModule:
     fn repay(
         &self,
         initial_caller: ManagedAddress,
-        borrow_position: AccountPositon<Self::Api>,
-    ) -> AccountPositon<Self::Api> {
+        borrow_position: AccountPosition<Self::Api>,
+    ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
         let (received_asset, mut received_amount) = self.call_value().single_fungible_esdt();
 

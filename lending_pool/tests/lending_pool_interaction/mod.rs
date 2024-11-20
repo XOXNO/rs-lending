@@ -1,6 +1,6 @@
 use lending_pool::AccountPositionType;
 use lending_pool::{
-    router::RouterModule, storage::LendingStorageModule, AccountPositon, AccountTokenModule,
+    router::RouterModule, storage::LendingStorageModule, AccountPosition, AccountTokenModule,
     LendingPool, BP,
 };
 use liquidity_pool::LiquidityPool;
@@ -244,7 +244,7 @@ where
                 0,
                 &rust_biguint!(add_amount),
                 |sc| {
-                    sc.supply(AccountPositon::new(
+                    sc.supply(AccountPosition::new(
                         AccountPositionType::Deposit,
                         managed_token_id!(token_id),
                         managed_biguint!(initial_amount),
@@ -298,7 +298,7 @@ where
                     sc.withdraw(
                         &managed_address!(&user_addr),
                         &managed_biguint!(remove_amount),
-                        AccountPositon::new(
+                        AccountPosition::new(
                             AccountPositionType::Deposit,
                             managed_token_id!(token_id),
                             managed_biguint!(initial_amount),
@@ -355,7 +355,7 @@ where
                     sc.borrow(
                         &managed_address!(&user_addr),
                         &managed_biguint!(borrow_amount),
-                        AccountPositon::new(
+                        AccountPosition::new(
                             AccountPositionType::Borrow,
                             managed_token_id!(token_id),
                             managed_biguint!(initial_amount),
@@ -423,7 +423,7 @@ where
                 |sc| {
                     sc.repay(
                         managed_address!(&user_addr),
-                        AccountPositon::new(
+                        AccountPosition::new(
                             AccountPositionType::Borrow,
                             managed_token_id!(token_id),
                             managed_biguint!(initial_amount),
@@ -490,7 +490,7 @@ where
 
                     sc.deposit_positions(liquidatee_nonce).insert(
                         managed_token_id!(USDC_TOKEN_ID),
-                        AccountPositon::new(
+                        AccountPosition::new(
                             AccountPositionType::Deposit,
                             managed_token_id!(USDC_TOKEN_ID),
                             managed_biguint!(1000),
@@ -502,7 +502,7 @@ where
 
                     sc.borrow_positions(liquidatee_nonce).insert(
                         managed_token_id!(USDC_TOKEN_ID),
-                        AccountPositon::new(
+                        AccountPosition::new(
                             AccountPositionType::Borrow,
                             managed_token_id!(USDC_TOKEN_ID),
                             managed_biguint!(600),

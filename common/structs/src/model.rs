@@ -24,7 +24,7 @@ pub enum AccountPositionType {
 }
 
 #[derive(NestedEncode, NestedDecode, TopEncode, TopDecode, TypeAbi, Clone)]
-pub struct AccountPositon<M: ManagedTypeApi> {
+pub struct AccountPosition<M: ManagedTypeApi> {
     pub deposit_type: AccountPositionType,
     pub account_nonce: u64,
     pub token_id: TokenIdentifier<M>,
@@ -33,7 +33,7 @@ pub struct AccountPositon<M: ManagedTypeApi> {
     pub initial_index: BigUint<M>,
 }
 
-impl<M: ManagedTypeApi> AccountPositon<M> {
+impl<M: ManagedTypeApi> AccountPosition<M> {
     pub fn new(
         deposit_type: AccountPositionType,
         token_id: TokenIdentifier<M>,
@@ -42,7 +42,7 @@ impl<M: ManagedTypeApi> AccountPositon<M> {
         round: u64,
         initial_index: BigUint<M>,
     ) -> Self {
-        AccountPositon {
+        AccountPosition {
             deposit_type,
             token_id,
             amount,

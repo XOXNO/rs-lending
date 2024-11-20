@@ -52,13 +52,13 @@ pub trait LendingUtilsModule: math::LendingMathModule + storage::LendingStorageM
         &self,
         account_position: u64,
         token_id: TokenIdentifier,
-    ) -> AccountPositon<Self::Api> {
+    ) -> AccountPosition<Self::Api> {
         match self.deposit_positions(account_position).get(&token_id) {
             Some(dp) => {
                 self.deposit_positions(account_position).remove(&token_id);
                 dp
             }
-            None => AccountPositon::new(
+            None => AccountPosition::new(
                 AccountPositionType::Deposit,
                 token_id,
                 BigUint::zero(),
@@ -73,10 +73,10 @@ pub trait LendingUtilsModule: math::LendingMathModule + storage::LendingStorageM
         &self,
         account_position: u64,
         token_id: TokenIdentifier,
-    ) -> AccountPositon<Self::Api> {
+    ) -> AccountPosition<Self::Api> {
         match self.borrow_positions(account_position).get(&token_id) {
             Some(bp) => bp,
-            None => AccountPositon::new(
+            None => AccountPosition::new(
                 AccountPositionType::Borrow,
                 token_id,
                 BigUint::zero(),
