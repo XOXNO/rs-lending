@@ -14,6 +14,7 @@ pub struct PoolParams<M: ManagedTypeApi> {
     pub r_slope2: BigUint<M>,
     pub u_optimal: BigUint<M>,
     pub reserve_factor: BigUint<M>,
+    pub protocol_liquidation_fee: BigUint<M>,
 }
 
 #[derive(NestedEncode, NestedDecode, TopEncode, TopDecode, TypeAbi, Clone)]

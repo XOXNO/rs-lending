@@ -25,8 +25,9 @@ pub trait RouterModule:
         r_slope2: BigUint,
         u_optimal: BigUint,
         reserve_factor: BigUint,
-        liq_bonus: BigUint,
-        ltv: BigUint,
+        ltv: &BigUint,
+        liq_bonus: &BigUint,
+        protocol_liquidation_fee: &BigUint,
     ) -> ManagedAddress {
         require!(
             !self.pools_map(&base_asset).is_empty(),
@@ -42,6 +43,7 @@ pub trait RouterModule:
             &r_slope2,
             &u_optimal,
             &reserve_factor,
+            &protocol_liquidation_fee,
         );
 
         self.require_non_zero_address(&address);
@@ -49,17 +51,21 @@ pub trait RouterModule:
         self.pools_map(&base_asset).set(address.clone());
         self.pools_allowed().insert(address.clone());
 
-        self.asset_loan_to_value(&base_asset).set(&ltv);
-        self.asset_liquidation_bonus(&base_asset).set(&liq_bonus);
+        self.set_asset_loan_to_value(&base_asset, ltv);
+        self.set_asset_liquidation_bonus(&base_asset, liq_bonus);
 
-        self.market_params_event(
+        self.create_market_params_event(
             &base_asset,
+            &r_max,
             &r_base,
             &r_slope1,
             &r_slope2,
             &u_optimal,
             &reserve_factor,
+            &protocol_liquidation_fee,
             &address,
+            &ltv,
+            &liq_bonus,
         );
         address
     }
@@ -68,19 +74,20 @@ pub trait RouterModule:
     #[endpoint(upgradeLiquidityPool)]
     fn upgrade_liquidity_pool(
         &self,
-        base_asset: TokenIdentifier,
+        base_asset: &TokenIdentifier,
         r_max: BigUint,
         r_base: BigUint,
         r_slope1: BigUint,
         r_slope2: BigUint,
         u_optimal: BigUint,
         reserve_factor: BigUint,
-        liquidation_threshold: BigUint,
+        ltv: &BigUint,
+        protocol_liquidation_fee: BigUint,
     ) {
-        require!(!self.pools_map(&base_asset).is_empty(), ERROR_NO_POOL_FOUND);
+        require!(!self.pools_map(base_asset).is_empty(), ERROR_NO_POOL_FOUND);
 
-        let pool_address = self.get_pool_address(&base_asset);
-        self.set_asset_loan_to_value(&base_asset, liquidation_threshold);
+        let pool_address = self.get_pool_address(base_asset);
+        self.set_asset_loan_to_value(base_asset, ltv);
         self.upgrade_pool(
             pool_address,
             r_max,
@@ -89,6 +96,7 @@ pub trait RouterModule:
             r_slope2,
             u_optimal,
             reserve_factor,
+            protocol_liquidation_fee,
         );
     }
 
@@ -100,14 +108,14 @@ pub trait RouterModule:
 
     #[only_owner]
     #[endpoint(setAssetLoanToValue)]
-    fn set_asset_loan_to_value(&self, asset: &TokenIdentifier, loan_to_value: BigUint) {
-        self.asset_loan_to_value(asset).set(&loan_to_value);
+    fn set_asset_loan_to_value(&self, asset: &TokenIdentifier, loan_to_value: &BigUint) {
+        self.asset_loan_to_value(asset).set(loan_to_value);
     }
 
     #[only_owner]
     #[endpoint(setAssetLiquidationBonus)]
-    fn set_asset_liquidation_bonus(&self, asset: &TokenIdentifier, liq_bonus: BigUint) {
-        self.asset_liquidation_bonus(asset).set(&liq_bonus);
+    fn set_asset_liquidation_bonus(&self, asset: &TokenIdentifier, liq_bonus: &BigUint) {
+        self.asset_liquidation_bonus(asset).set(liq_bonus);
     }
 
     #[view(getPoolAddress)]

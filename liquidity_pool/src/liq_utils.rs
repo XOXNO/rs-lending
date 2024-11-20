@@ -7,14 +7,15 @@ use common_structs::*;
 
 #[multiversx_sc::module]
 pub trait UtilsModule:
-    liq_math::MathModule
-    + liq_storage::StorageModule
-    + common_events::EventsModule
-    + view::ViewModule
+    liq_math::MathModule + liq_storage::StorageModule + common_events::EventsModule + view::ViewModule
 {
-    fn update_borrow_index(&self, borrow_rate: &BigUint, delta_rounds: u64) {
-        self.borrow_index()
-            .update(|new_index| *new_index += borrow_rate * delta_rounds);
+    fn update_borrow_index(
+        &self,
+        borrow_rate: &BigUint,
+        delta_rounds: u64,
+        storage_cache: &mut StorageCache<Self>,
+    ) {
+        storage_cache.borrow_index += borrow_rate * delta_rounds;
     }
 
     fn update_supply_index(
@@ -23,9 +24,7 @@ pub trait UtilsModule:
         storage_cache: &mut StorageCache<Self>,
     ) {
         if storage_cache.supplied_amount != BigUint::zero() {
-            self.supply_index().update(|new_index| {
-                *new_index += rewards_increase * BP / &storage_cache.supplied_amount
-            });
+            storage_cache.supply_index += rewards_increase * BP / &storage_cache.supplied_amount;
         }
     }
 
@@ -39,36 +38,30 @@ pub trait UtilsModule:
 
         let revenue = rewards_increase.clone() * &storage_cache.pool_params.reserve_factor / BP;
 
-        self.rewards_reserves().update(|rewards_reserves| {
-            *rewards_reserves += &revenue;
-        });
+        storage_cache.rewards_reserve += &revenue;
 
         rewards_increase - revenue
     }
 
-    fn update_index_last_used(&self, current_block_round: u64) {
-        self.borrow_index_last_update_round()
-            .set(current_block_round);
-    }
 
-    fn get_round_diff(&self, initial_round: u64) -> u64 {
-        let current_round = self.blockchain().get_block_round();
+    fn get_round_diff(&self, initial_round: u64, current_round: u64) -> u64 {
         require!(current_round >= initial_round, "Invalid round");
 
         current_round - initial_round
     }
 
     fn update_interest_indexes(&self, storage_cache: &mut StorageCache<Self>) {
-        let borrow_index_last_update_round = self.borrow_index_last_update_round().get();
-        let delta_rounds = self.get_round_diff(borrow_index_last_update_round);
+        let borrow_index_last_update_round = storage_cache.borrow_index_last_update_round;
+        let delta_rounds = self.get_round_diff(borrow_index_last_update_round, storage_cache.round);
 
         if delta_rounds > 0 {
             let borrow_rate = self.get_borrow_rate();
 
-            self.update_borrow_index(&borrow_rate, delta_rounds);
+            self.update_borrow_index(&borrow_rate, delta_rounds, storage_cache);
             let rewards = self.update_rewards_reserves(&borrow_rate, delta_rounds, storage_cache);
             self.update_supply_index(rewards, storage_cache);
-            self.update_index_last_used(storage_cache.round);
+            // Update the last used round
+            storage_cache.borrow_index_last_update_round = storage_cache.round;
         }
     }
 
@@ -77,19 +70,17 @@ pub trait UtilsModule:
         mut deposit_position: AccountPosition<Self::Api>,
         storage_cache: &mut StorageCache<Self>,
     ) -> AccountPosition<Self::Api> {
-        let supply_index = self.supply_index().get();
-
         self.update_interest_indexes(storage_cache);
 
         let accrued_interest = self.compute_interest(
             &deposit_position.amount,
-            &supply_index,
+            &storage_cache.supply_index,
             &deposit_position.initial_index,
         );
 
         deposit_position.amount += &accrued_interest;
         deposit_position.round = storage_cache.round;
-        deposit_position.initial_index = supply_index;
+        deposit_position.initial_index = storage_cache.supply_index.clone();
 
         self.update_position_event(&accrued_interest, &deposit_position, None);
 
@@ -101,8 +92,6 @@ pub trait UtilsModule:
         mut borrow_position: AccountPosition<Self::Api>,
         storage_cache: &mut StorageCache<Self>,
     ) -> AccountPosition<Self::Api> {
-        let borrow_index = self.borrow_index().get();
-
         self.update_interest_indexes(storage_cache);
 
         let accumulated_debt =
@@ -110,7 +99,7 @@ pub trait UtilsModule:
 
         borrow_position.amount += &accumulated_debt;
         borrow_position.round = storage_cache.round;
-        borrow_position.initial_index = borrow_index;
+        borrow_position.initial_index = storage_cache.borrow_index.clone();
 
         self.update_position_event(&accumulated_debt, &borrow_position, None);
 

@@ -6,16 +6,33 @@ pub use common_structs::*;
 
 #[multiversx_sc::module]
 pub trait EventsModule {
-    #[event("market_params")]
-    fn market_params_event(
+    #[event("create_market_params")]
+    fn create_market_params_event(
         &self,
         #[indexed] base_asset: &TokenIdentifier,
+        #[indexed] r_max: &BigUint,
         #[indexed] r_base: &BigUint,
         #[indexed] r_slope1: &BigUint,
         #[indexed] r_slope2: &BigUint,
         #[indexed] u_optimal: &BigUint,
         #[indexed] reserve_factor: &BigUint,
-        // #[indexed] liquidation_threshold: &BigUint,
+        #[indexed] protocol_liquidation_fee: &BigUint,
+        #[indexed] market_address: &ManagedAddress,
+        #[indexed] ltv: &BigUint,
+        #[indexed] liquidation_bonus: &BigUint,
+    );
+
+    #[event("market_params")]
+    fn market_params_event(
+        &self,
+        #[indexed] base_asset: &TokenIdentifier,
+        #[indexed] r_max: &BigUint,
+        #[indexed] r_base: &BigUint,
+        #[indexed] r_slope1: &BigUint,
+        #[indexed] r_slope2: &BigUint,
+        #[indexed] u_optimal: &BigUint,
+        #[indexed] reserve_factor: &BigUint,
+        #[indexed] protocol_liquidation_fee: &BigUint,
         #[indexed] market_address: &ManagedAddress,
     );
 
@@ -28,6 +45,7 @@ pub trait EventsModule {
         #[indexed] reserves: &BigUint,
         #[indexed] supplied_amount: &BigUint,
         #[indexed] borrowed_amount: &BigUint,
+        #[indexed] rewards_reserve: &BigUint,
     );
 
     // This can come from few actions and from both the protocol internal actions and the user actions:

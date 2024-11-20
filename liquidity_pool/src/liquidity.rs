@@ -59,21 +59,21 @@ pub trait LiquidityModule:
                 self.internal_update_collateral_with_interest(deposit_position, &mut storage_cache);
         }
 
-        let supply_index = self.supply_index().get();
         ret_deposit_position.amount += &deposit_amount;
         ret_deposit_position.round = storage_cache.round;
-        ret_deposit_position.initial_index = supply_index.clone();
+        ret_deposit_position.initial_index = storage_cache.supply_index.clone();
 
         storage_cache.reserves_amount += &deposit_amount;
         storage_cache.supplied_amount += deposit_amount;
 
         self.update_market_state_event(
             storage_cache.round,
-            &supply_index,
-            &self.borrow_index().get(),
+            &storage_cache.supply_index,
+            &storage_cache.borrow_index,
             &storage_cache.reserves_amount,
             &storage_cache.supplied_amount,
             &storage_cache.borrowed_amount,
+            &storage_cache.rewards_reserve,
         );
 
         ret_deposit_position
@@ -103,10 +103,9 @@ pub trait LiquidityModule:
                 .internal_update_borrows_with_debt(existing_borrow_position, &mut storage_cache);
         }
 
-        let borrow_index = self.borrow_index().get();
         ret_borrow_position.amount += borrow_amount;
         ret_borrow_position.round = storage_cache.round;
-        ret_borrow_position.initial_index = borrow_index.clone();
+        ret_borrow_position.initial_index = storage_cache.borrow_index.clone();
 
         storage_cache.borrowed_amount += borrow_amount;
 
@@ -117,11 +116,12 @@ pub trait LiquidityModule:
 
         self.update_market_state_event(
             storage_cache.round,
-            &self.supply_index().get(),
-            &borrow_index,
+            &storage_cache.supply_index,
+            &storage_cache.borrow_index,
             &storage_cache.reserves_amount,
             &storage_cache.supplied_amount,
             &storage_cache.borrowed_amount,
+            &storage_cache.rewards_reserve,
         );
 
         ret_borrow_position
@@ -145,9 +145,11 @@ pub trait LiquidityModule:
         self.update_interest_indexes(&mut storage_cache);
 
         // Withdrawal amount = initial_deposit + Interest
-        let supply_index = self.supply_index().get();
-        let withdrawal_amount =
-            self.compute_withdrawal_amount(amount, &supply_index, &deposit_position.initial_index);
+        let withdrawal_amount = self.compute_withdrawal_amount(
+            amount,
+            &storage_cache.supply_index,
+            &deposit_position.initial_index,
+        );
 
         require!(
             &storage_cache.reserves_amount >= &withdrawal_amount,
@@ -165,20 +167,37 @@ pub trait LiquidityModule:
 
         deposit_position.amount -= amount;
 
-        self.send().direct_esdt(
-            initial_caller,
-            &storage_cache.pool_asset,
-            0,
-            &withdrawal_amount,
-        );
+        if !is_liquidation {
+            self.send().direct_esdt(
+                initial_caller,
+                &storage_cache.pool_asset,
+                0,
+                &withdrawal_amount,
+            );
+        } else {
+            let params = self.pool_params().get();
+            let protocol_liquidation_fee = params.protocol_liquidation_fee;
+            let liquidation_fee = &withdrawal_amount * &protocol_liquidation_fee / BP;
+            let amount_after_fee = &withdrawal_amount - &liquidation_fee;
+
+            storage_cache.rewards_reserve += &liquidation_fee;
+
+            self.send().direct_esdt(
+                initial_caller,
+                &storage_cache.pool_asset,
+                0,
+                &amount_after_fee,
+            );
+        }
 
         self.update_market_state_event(
             storage_cache.round,
-            &supply_index,
-            &self.borrow_index().get(),
+            &storage_cache.supply_index,
+            &storage_cache.borrow_index,
             &storage_cache.reserves_amount,
             &storage_cache.supplied_amount,
             &storage_cache.borrowed_amount,
+            &storage_cache.rewards_reserve,
         );
         deposit_position
     }

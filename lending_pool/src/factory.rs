@@ -14,6 +14,7 @@ pub trait FactoryModule: common_events::EventsModule {
         r_slope2: &BigUint,
         u_optimal: &BigUint,
         reserve_factor: &BigUint,
+        protocol_liquidation_fee: &BigUint,
     ) -> ManagedAddress {
         require!(
             !self.liq_pool_template_address().is_empty(),
@@ -31,6 +32,7 @@ pub trait FactoryModule: common_events::EventsModule {
                 r_slope2,
                 u_optimal,
                 reserve_factor,
+                protocol_liquidation_fee,
             )
             .from_source(self.liq_pool_template_address().get())
             .code_metadata(CodeMetadata::UPGRADEABLE)
@@ -49,6 +51,7 @@ pub trait FactoryModule: common_events::EventsModule {
         r_slope2: BigUint,
         u_optimal: BigUint,
         reserve_factor: BigUint,
+        protocol_liquidation_fee: BigUint,
     ) {
         require!(
             !self.liq_pool_template_address().is_empty(),
@@ -57,7 +60,15 @@ pub trait FactoryModule: common_events::EventsModule {
         self.tx()
             .to(lp_address)
             .typed(proxy_pool::LiquidityPoolProxy)
-            .upgrade(r_max, r_base, r_slope1, r_slope2, u_optimal, reserve_factor)
+            .upgrade(
+                r_max,
+                r_base,
+                r_slope1,
+                r_slope2,
+                u_optimal,
+                reserve_factor,
+                protocol_liquidation_fee,
+            )
             .from_source(self.liq_pool_template_address().get())
             .code_metadata(CodeMetadata::UPGRADEABLE)
             .upgrade_async_call_and_exit();

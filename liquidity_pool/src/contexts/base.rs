@@ -11,9 +11,13 @@ where
     pub supplied_amount: BigUint<C::Api>,
     pub reserves_amount: BigUint<C::Api>,
     pub borrowed_amount: BigUint<C::Api>,
+    pub rewards_reserve: BigUint<C::Api>,
     pub round: u64,
     pub pool_asset: TokenIdentifier<C::Api>,
     pub pool_params: PoolParams<C::Api>,
+    pub borrow_index: BigUint<C::Api>,
+    pub supply_index: BigUint<C::Api>,
+    pub borrow_index_last_update_round: u64,
 }
 
 impl<'a, C> StorageCache<'a, C>
@@ -22,13 +26,16 @@ where
 {
     pub fn new(sc_ref: &'a C) -> Self {
         StorageCache {
-           
             supplied_amount: sc_ref.supplied_amount().get(),
             reserves_amount: sc_ref.reserves().get(),
             borrowed_amount: sc_ref.borrowed_amount().get(),
+            rewards_reserve: sc_ref.rewards_reserves().get(),
             round: sc_ref.blockchain().get_block_round(),
             pool_asset: sc_ref.pool_asset().get(),
             pool_params: sc_ref.pool_params().get(),
+            borrow_index: sc_ref.borrow_index().get(),
+            supply_index: sc_ref.supply_index().get(),
+            borrow_index_last_update_round: sc_ref.borrow_index_last_update_round().get(),
             sc_ref,
         }
     }
@@ -43,5 +50,11 @@ where
         self.sc_ref.supplied_amount().set(&self.supplied_amount);
         self.sc_ref.reserves().set(&self.reserves_amount);
         self.sc_ref.borrowed_amount().set(&self.borrowed_amount);
+        self.sc_ref.rewards_reserves().set(&self.rewards_reserve);
+        self.sc_ref.borrow_index().set(&self.borrow_index);
+        self.sc_ref.supply_index().set(&self.supply_index);
+        self.sc_ref
+            .borrow_index_last_update_round()
+            .set(&self.borrow_index_last_update_round);
     }
 }
