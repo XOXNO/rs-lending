@@ -53,7 +53,7 @@ pub trait LendingPool:
         self.account_positions()
             .insert(nft_token_payment.token_nonce);
 
-        self.new_account_event(&caller, nft_token_payment.token_nonce);
+        self.create_account_event(&caller, nft_token_payment.token_nonce);
         nft_token_payment
     }
 

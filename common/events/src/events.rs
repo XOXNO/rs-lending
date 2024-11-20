@@ -22,7 +22,7 @@ pub trait EventsModule {
         #[indexed] liquidation_bonus: &BigUint,
     );
 
-    #[event("market_params")]
+    #[event("update_market_params")]
     fn market_params_event(
         &self,
         #[indexed] base_asset: &TokenIdentifier,
@@ -63,6 +63,6 @@ pub trait EventsModule {
         #[indexed] caller: Option<&ManagedAddress>, // When is none, then the position is updated by the protocol and the amount is the interest, either for borrow or supply
     );
 
-    #[event("new_account")]
-    fn new_account_event(&self, #[indexed] account_address: &ManagedAddress, #[indexed] nonce: u64);
+    #[event("create_account")]
+    fn create_account_event(&self, #[indexed] account_address: &ManagedAddress, #[indexed] nonce: u64);
 }
