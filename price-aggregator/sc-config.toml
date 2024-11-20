@@ -1,0 +1,8 @@
+[settings]
+main = "main"
+
+[contracts.main]
+name = "price-aggregator"
+
+[[proxy]]
+path = "../lending_pool/src/proxy_price_aggregator.rs"

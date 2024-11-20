@@ -13,7 +13,6 @@ use multiversx_sc_scenario::{
     imports::{BlockchainStateWrapper, ContractObjWrapper},
     managed_address, managed_biguint, managed_token_id, rust_biguint, DebugApi,
 };
-use price_aggregator_proxy::PriceAggregatorModule;
 
 use crate::{
     constants::{
@@ -149,7 +148,7 @@ where
                         .insert(managed_address!(&liquidity_pool_egld_wrapper.address_ref()));
 
                     sc.set_asset_liquidation_bonus(
-                        managed_token_id!(EGLD_TOKEN_ID),
+                        &managed_token_id!(EGLD_TOKEN_ID),
                         managed_biguint!(BP / 20),
                     );
                 },
@@ -189,7 +188,7 @@ where
                 &self.lending_pool_wrapper,
                 &rust_biguint!(0),
                 |sc| {
-                    let result = sc.enter_market();
+                    let result = sc.enter();
                     account_nonce = result.token_nonce;
                     assert!(account_nonce != 0, "Account nonce didn't change");
                     assert!(
@@ -245,7 +244,7 @@ where
                 0,
                 &rust_biguint!(add_amount),
                 |sc| {
-                    sc.add_collateral(AccountPositon::new(
+                    sc.supply(AccountPositon::new(
                         AccountPositionType::Deposit,
                         managed_token_id!(token_id),
                         managed_biguint!(initial_amount),
@@ -296,7 +295,7 @@ where
                 owner_nonce,
                 &rust_biguint!(0),
                 |sc| {
-                    sc.remove_collateral(
+                    sc.withdraw(
                         &managed_address!(&user_addr),
                         &managed_biguint!(remove_amount),
                         AccountPositon::new(
@@ -307,6 +306,7 @@ where
                             round,
                             managed_biguint!(initial_supply_index),
                         ),
+                        false,
                     );
                 },
             )
@@ -516,7 +516,7 @@ where
                     sc.liquidate(
                         liquidatee_nonce,
                         threshold,
-                        managed_token_id!(USDC_TOKEN_ID),
+                        &managed_token_id!(USDC_TOKEN_ID),
                     );
                 },
             )

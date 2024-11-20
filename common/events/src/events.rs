@@ -6,8 +6,8 @@ pub use common_structs::*;
 
 #[multiversx_sc::module]
 pub trait EventsModule {
-    #[event("add_new_market")]
-    fn add_new_market_event(
+    #[event("market_params")]
+    fn market_params_event(
         &self,
         #[indexed] base_asset: &TokenIdentifier,
         #[indexed] r_base: &BigUint,
@@ -15,20 +15,7 @@ pub trait EventsModule {
         #[indexed] r_slope2: &BigUint,
         #[indexed] u_optimal: &BigUint,
         #[indexed] reserve_factor: &BigUint,
-        #[indexed] liquidation_threshold: &BigUint,
-        #[indexed] market_address: &ManagedAddress,
-    );
-
-    #[event("upgrade_market")]
-    fn upgrade_market_event(
-        &self,
-        #[indexed] base_asset: &TokenIdentifier,
-        #[indexed] r_base: &BigUint,
-        #[indexed] r_slope1: &BigUint,
-        #[indexed] r_slope2: &BigUint,
-        #[indexed] u_optimal: &BigUint,
-        #[indexed] reserve_factor: &BigUint,
-        #[indexed] liquidation_threshold: &BigUint,
+        // #[indexed] liquidation_threshold: &BigUint,
         #[indexed] market_address: &ManagedAddress,
     );
 
@@ -48,7 +35,7 @@ pub trait EventsModule {
     // 2. Remove collateral -> amount represents the collateral removed
     // 3. Borrow -> amount represents the new borrow amount
     // 4. Repay -> amount represents the amount repaid
-    // 5. Accrued interest -> amount represents the interest accrued for bororw or supply, based on the position
+    // 5. Accrued interest -> amount represents the interest accrued for bororw or supply, based on the position, no caller
     // 6. Liquidation -> amount represents the liquidation amount
     #[event("update_position")]
     fn update_position_event(

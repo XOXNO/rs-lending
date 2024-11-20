@@ -11,6 +11,7 @@ pub trait LendingMathModule {
         liquidation_threshold: &BigUint,
     ) -> BigUint {
         let allowed_collateral_in_dollars = collateral_value_in_dollars * liquidation_threshold;
+
         let health_factor = &allowed_collateral_in_dollars / borrowed_value_in_dollars;
 
         health_factor / BP

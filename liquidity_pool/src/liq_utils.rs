@@ -9,7 +9,6 @@ use common_structs::*;
 pub trait UtilsModule:
     liq_math::MathModule
     + liq_storage::StorageModule
-    + price_aggregator_proxy::PriceAggregatorModule
     + common_events::EventsModule
     + view::ViewModule
 {

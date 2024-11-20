@@ -54,23 +54,23 @@ where
     >(
         self,
         asset: Arg0,
-        r_base: Arg1,
-        r_slope1: Arg2,
-        r_slope2: Arg3,
-        u_optimal: Arg4,
-        reserve_factor: Arg5,
-        liquidation_threshold: Arg6,
+        r_max: Arg1,
+        r_base: Arg2,
+        r_slope1: Arg3,
+        r_slope2: Arg4,
+        u_optimal: Arg5,
+        reserve_factor: Arg6,
     ) -> TxTypedDeploy<Env, From, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_deploy()
             .argument(&asset)
+            .argument(&r_max)
             .argument(&r_base)
             .argument(&r_slope1)
             .argument(&r_slope2)
             .argument(&u_optimal)
             .argument(&reserve_factor)
-            .argument(&liquidation_threshold)
             .original_result()
     }
 }
@@ -93,22 +93,22 @@ where
         Arg5: ProxyArg<BigUint<Env::Api>>,
     >(
         self,
-        r_base: Arg0,
-        r_slope1: Arg1,
-        r_slope2: Arg2,
-        u_optimal: Arg3,
-        reserve_factor: Arg4,
-        liquidation_threshold: Arg5,
+        r_max: Arg0,
+        r_base: Arg1,
+        r_slope1: Arg2,
+        r_slope2: Arg3,
+        u_optimal: Arg4,
+        reserve_factor: Arg5,
     ) -> TxTypedUpgrade<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_upgrade()
+            .argument(&r_max)
             .argument(&r_base)
             .argument(&r_slope1)
             .argument(&r_slope2)
             .argument(&u_optimal)
             .argument(&reserve_factor)
-            .argument(&liquidation_threshold)
             .original_result()
     }
 }
@@ -176,15 +176,6 @@ where
             .original_result()
     }
 
-    pub fn liquidation_threshold(
-        self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getLiquidationThreshold")
-            .original_result()
-    }
-
     pub fn borrow_index(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
@@ -235,9 +226,10 @@ where
     >(
         self,
         deposit_position: Arg0,
-    ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPositon<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::AccountPositon<Env::Api>> {
         self.wrapped_tx
-            .raw_call("updateCollateralWithInterest")
+            .payment(NotPayable)
+            .raw_call("updatePositionInterest")
             .argument(&deposit_position)
             .original_result()
     }
@@ -247,21 +239,22 @@ where
     >(
         self,
         borrow_position: Arg0,
-    ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPositon<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::AccountPositon<Env::Api>> {
         self.wrapped_tx
-            .raw_call("updateBorrowsWithDebt")
+            .payment(NotPayable)
+            .raw_call("updatePositionDebt")
             .argument(&borrow_position)
             .original_result()
     }
 
-    pub fn add_collateral<
+    pub fn supply<
         Arg0: ProxyArg<common_structs::AccountPositon<Env::Api>>,
     >(
         self,
         deposit_position: Arg0,
     ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPositon<Env::Api>> {
         self.wrapped_tx
-            .raw_call("addCollateral")
+            .raw_call("supply")
             .argument(&deposit_position)
             .original_result()
     }
@@ -284,21 +277,24 @@ where
             .original_result()
     }
 
-    pub fn remove_collateral<
+    pub fn withdraw<
         Arg0: ProxyArg<ManagedAddress<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
         Arg2: ProxyArg<common_structs::AccountPositon<Env::Api>>,
+        Arg3: ProxyArg<bool>,
     >(
         self,
         initial_caller: Arg0,
         amount: Arg1,
         deposit_position: Arg2,
+        is_liquidation: Arg3,
     ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPositon<Env::Api>> {
         self.wrapped_tx
-            .raw_call("remove_collateral")
+            .raw_call("withdraw")
             .argument(&initial_caller)
             .argument(&amount)
             .argument(&deposit_position)
+            .argument(&is_liquidation)
             .original_result()
     }
 
@@ -314,22 +310,6 @@ where
             .raw_call("repay")
             .argument(&initial_caller)
             .argument(&borrow_position)
-            .original_result()
-    }
-
-    pub fn send_tokens<
-        Arg0: ProxyArg<ManagedAddress<Env::Api>>,
-        Arg1: ProxyArg<BigUint<Env::Api>>,
-    >(
-        self,
-        initial_caller: Arg0,
-        payment_amount: Arg1,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("sendTokens")
-            .argument(&initial_caller)
-            .argument(&payment_amount)
             .original_result()
     }
 
@@ -382,28 +362,6 @@ where
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getBorrowRate")
-            .original_result()
-    }
-
-    pub fn set_price_aggregator_address<
-        Arg0: ProxyArg<ManagedAddress<Env::Api>>,
-    >(
-        self,
-        address: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("setPriceAggregatorAddress")
-            .argument(&address)
-            .original_result()
-    }
-
-    pub fn price_aggregator_address(
-        self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getAggregatorAddress")
             .original_result()
     }
 }

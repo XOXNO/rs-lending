@@ -8,6 +8,7 @@ pub const MAX_THRESHOLD: u64 = BP / 2;
 
 #[derive(TopEncode, TopDecode, TypeAbi)]
 pub struct PoolParams<M: ManagedTypeApi> {
+    pub r_max: BigUint<M>,
     pub r_base: BigUint<M>,
     pub r_slope1: BigUint<M>,
     pub r_slope2: BigUint<M>,
@@ -15,10 +16,9 @@ pub struct PoolParams<M: ManagedTypeApi> {
     pub reserve_factor: BigUint<M>,
 }
 
-// TODO: @mihaieremia deposit and borrow position can be same struct, with a type field
-// this could further simplify the events, sending same event for deposit/borrow update 
 #[derive(NestedEncode, NestedDecode, TopEncode, TopDecode, TypeAbi, Clone)]
 pub enum AccountPositionType {
+    None,
     Deposit,
     Borrow,
 }

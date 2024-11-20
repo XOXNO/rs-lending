@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           26
+// Endpoints:                           22
 // Async Callback (empty):               1
-// Total number of exported functions:  29
+// Total number of exported functions:  25
 
 #![no_std]
 
@@ -26,26 +26,22 @@ multiversx_sc_wasm_adapter::endpoints! {
         getRewardsReserves => rewards_reserves
         getTotalBorrow => borrowed_amount
         getPoolParams => pool_params
-        getLiquidationThreshold => liquidation_threshold
         getBorrowIndex => borrow_index
         getSupplyIndex => supply_index
         borrowIndexLastUpdateRound => borrow_index_last_update_round
         getAccountToken => account_token
         getAccountPositions => account_positions
-        updateCollateralWithInterest => update_collateral_with_interest
-        updateBorrowsWithDebt => update_borrows_with_debt
-        addCollateral => add_collateral
+        updatePositionInterest => update_collateral_with_interest
+        updatePositionDebt => update_borrows_with_debt
+        supply => supply
         borrow => borrow
-        remove_collateral => remove_collateral
+        withdraw => withdraw
         repay => repay
-        sendTokens => send_tokens
         getCapitalUtilisation => get_capital_utilisation
         getTotalCapital => get_total_capital
         getDebtInterest => get_debt_interest
         getDepositRate => get_deposit_rate
         getBorrowRate => get_borrow_rate
-        setPriceAggregatorAddress => set_price_aggregator_address
-        getAggregatorAddress => price_aggregator_address
     )
 }
 

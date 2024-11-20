@@ -2,44 +2,37 @@ multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
 use crate::{
-    math, storage, ERROR_ASSET_NOT_SUPPORTED, ERROR_EGLD_PRICE_FETCH, ERROR_LOAN_TO_VALUE_ZERO,
-    ERROR_NO_COLLATERAL_TOKEN, ERROR_NO_LIQUIDATION_BONUS, ERROR_NO_LOAN_TO_VALUE,
-    ERROR_TOKEN_PRICE_FETCH, ERROR_TOKEN_TICKER_FETCH,
+    math, storage, ERROR_ASSET_NOT_SUPPORTED, ERROR_LOAN_TO_VALUE_ZERO, ERROR_NO_COLLATERAL_TOKEN,
+    ERROR_NO_LIQUIDATION_BONUS, ERROR_NO_LOAN_TO_VALUE, ERROR_PRICE_AGGREGATOR_NOT_SET,
+    ERROR_TOKEN_TICKER_FETCH,
 };
 
+use crate::proxy_price_aggregator::{PriceAggregatorProxy, PriceFeed};
 use common_structs::*;
-use price_aggregator_proxy::AggregatorResult;
 
 const TOKEN_ID_SUFFIX_LEN: usize = 7; // "dash" + 6 random bytes
 const DOLLAR_TICKER: &[u8] = b"USD";
 
 #[multiversx_sc::module]
-pub trait LendingUtilsModule:
-    math::LendingMathModule
-    + storage::LendingStorageModule
-    + price_aggregator_proxy::PriceAggregatorModule
-{
-    fn get_token_price_data(&self, token_id: &TokenIdentifier) -> AggregatorResult<Self::Api> {
+pub trait LendingUtilsModule: math::LendingMathModule + storage::LendingStorageModule {
+    fn get_token_price_data(&self, token_id: &TokenIdentifier) -> PriceFeed<Self::Api> {
         let from_ticker = self.get_token_ticker(token_id);
-        let result = self
-            .get_full_result_for_pair(from_ticker, ManagedBuffer::new_from_bytes(DOLLAR_TICKER));
+        let price_aggregator_address = self.price_aggregator_address();
 
-        match result {
-            Some(r) => r,
-            None => sc_panic!(ERROR_TOKEN_PRICE_FETCH),
-        }
-    }
-
-    fn get_egld_price_data(&self) -> AggregatorResult<Self::Api> {
-        let result = self.get_full_result_for_pair(
-            ManagedBuffer::new_from_bytes(EgldOrEsdtTokenIdentifier::EGLD_REPRESENTATION),
-            ManagedBuffer::new_from_bytes(DOLLAR_TICKER),
+        require!(
+            !price_aggregator_address.is_empty(),
+            ERROR_PRICE_AGGREGATOR_NOT_SET
         );
 
-        match result {
-            Some(r) => r,
-            None => sc_panic!(ERROR_EGLD_PRICE_FETCH),
-        }
+        let result = self
+            .tx()
+            .to(self.price_aggregator_address().get())
+            .typed(PriceAggregatorProxy)
+            .latest_price_feed(from_ticker, ManagedBuffer::new_from_bytes(DOLLAR_TICKER))
+            .returns(ReturnsResult)
+            .sync_call_readonly();
+
+        result
     }
 
     fn get_token_ticker(&self, token_id: &TokenIdentifier) -> ManagedBuffer {
@@ -55,7 +48,6 @@ pub trait LendingUtilsModule:
         }
     }
 
-    // Returns the collateral position for the user or a new DepositPosition if the user didn't add collateral previously
     fn get_existing_or_new_deposit_position_for_token(
         &self,
         account_position: u64,
@@ -100,9 +92,9 @@ pub trait LendingUtilsModule:
     fn get_collateral_amount_for_token(
         &self,
         account_position: u64,
-        token_id: TokenIdentifier,
+        token_id: &TokenIdentifier,
     ) -> BigUint {
-        match self.deposit_positions(account_position).get(&token_id) {
+        match self.deposit_positions(account_position).get(token_id) {
             Some(dp) => dp.amount,
             None => BigUint::zero(),
         }
@@ -178,27 +170,20 @@ pub trait LendingUtilsModule:
     fn compute_amount_in_tokens(
         &self,
         liquidatee_account_nonce: u64,
-        token_to_liquidate: TokenIdentifier,
-        amount_to_return_to_liquidator_in_dollars: BigUint,
+        token_to_liquidate: &TokenIdentifier, // collateral token of the debt position
+        amount_to_return_to_liquidator_in_dollars: BigUint, // amount to return to the liquidator with bonus
     ) -> BigUint {
         require!(
             self.deposit_positions(liquidatee_account_nonce)
-                .contains_key(&token_to_liquidate),
+                .contains_key(token_to_liquidate),
             ERROR_NO_COLLATERAL_TOKEN
         );
 
-        let token_data = self.get_token_price_data(&token_to_liquidate);
+        // Take the USD price of the token that the liquidator will receive
+        let token_data = self.get_token_price_data(token_to_liquidate);
+        // Convert the amount to return to the liquidator with bonus to the token amount
         (&amount_to_return_to_liquidator_in_dollars * BP / &token_data.price)
             * BigUint::from(10u64).pow(token_data.decimals as u32)
             / BP
-    }
-
-    fn caller_from_option_or_sender(
-        &self,
-        caller: OptionalValue<ManagedAddress>,
-    ) -> ManagedAddress {
-        caller
-            .into_option()
-            .unwrap_or_else(|| self.blockchain().get_caller())
     }
 }

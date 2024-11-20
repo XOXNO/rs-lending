@@ -5,9 +5,10 @@
 ////////////////////////////////////////////////////
 
 // Init:                                 1
-// Endpoints:                           29
+// Upgrade:                              1
+// Endpoints:                           27
 // Async Callback:                       1
-// Total number of exported functions:  31
+// Total number of exported functions:  30
 
 #![no_std]
 
@@ -18,14 +19,15 @@ multiversx_sc_wasm_adapter::endpoints! {
     lending_pool
     (
         init => init
-        enterMarket => enter_market
-        addCollateral => add_collateral
-        removeCollateral => remove_collateral
+        upgrade => upgrade
+        enter => enter
+        supply => supply
+        withdraw => withdraw
         borrow => borrow
         repay => repay
         liquidate => liquidate
-        updateCollateralWithInterest => update_collateral_with_interest
-        updateBorrowsWithDebt => update_borrows_with_debt
+        updatePositionInterest => update_collateral_with_interest
+        updatePositionDebt => update_borrows_with_debt
         getLiqPoolTemplateAddress => liq_pool_template_address
         createLiquidityPool => create_liquidity_pool
         upgradeLiquidityPool => upgrade_liquidity_pool
@@ -45,8 +47,6 @@ multiversx_sc_wasm_adapter::endpoints! {
         getTotalCollateralAvailable => get_total_collateral_in_dollars
         getWeightedCollateralInDollars => get_weighted_collateral_in_dollars
         getTotalBorrowInDollars => get_total_borrow_in_dollars
-        setPriceAggregatorAddress => set_price_aggregator_address
-        getAggregatorAddress => price_aggregator_address
     )
 }
 

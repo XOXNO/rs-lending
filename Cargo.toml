@@ -9,5 +9,7 @@ members = [
     "common/tokens",
     "common/events",
     "aggregator_mock",
-    "aggregator_mock/meta"
+    "aggregator_mock/meta",
+    "price-aggregator",
+    "price-aggregator/meta"
 ]

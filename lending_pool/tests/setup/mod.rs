@@ -1,4 +1,4 @@
-use multiversx_sc::{storage::mappers::StorageTokenWrapper, types::Address};
+use multiversx_sc::types::Address;
 use multiversx_sc_scenario::{
     imports::{BlockchainStateWrapper, ContractObjWrapper},
     managed_address, managed_biguint, managed_buffer, managed_token_id, rust_biguint, DebugApi,

@@ -23,8 +23,6 @@ path = "../common/tokens"
 [dependencies.common-events]
 path = "../common/events"
 
-[dependencies.price-aggregator-proxy]
-path = "../common/price-aggregator-proxy"
 
 [dev-dependencies.multiversx-sc-scenario]
 version = "0.54.0"

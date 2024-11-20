@@ -16,12 +16,10 @@ pub trait LiquidityModule:
     + common_events::EventsModule
     + liq_math::MathModule
     + view::ViewModule
-    + price_aggregator_proxy::PriceAggregatorModule
     + common_checks::ChecksModule
 {
     #[only_owner]
-    #[payable("*")]
-    #[endpoint(updateCollateralWithInterest)]
+    #[endpoint(updatePositionInterest)]
     fn update_collateral_with_interest(
         &self,
         deposit_position: AccountPositon<Self::Api>,
@@ -31,8 +29,7 @@ pub trait LiquidityModule:
     }
 
     #[only_owner]
-    #[payable("*")]
-    #[endpoint(updateBorrowsWithDebt)]
+    #[endpoint(updatePositionDebt)]
     fn update_borrows_with_debt(
         &self,
         borrow_position: AccountPositon<Self::Api>,
@@ -43,11 +40,8 @@ pub trait LiquidityModule:
 
     #[only_owner]
     #[payable("*")]
-    #[endpoint(addCollateral)]
-    fn add_collateral(
-        &self,
-        deposit_position: AccountPositon<Self::Api>,
-    ) -> AccountPositon<Self::Api> {
+    #[endpoint(supply)]
+    fn supply(&self, deposit_position: AccountPositon<Self::Api>) -> AccountPositon<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
 
         let (deposit_asset, deposit_amount) = self.call_value().single_fungible_esdt();
@@ -87,7 +81,7 @@ pub trait LiquidityModule:
 
     #[only_owner]
     #[payable("*")]
-    #[endpoint]
+    #[endpoint(borrow)]
     fn borrow(
         &self,
         initial_caller: &ManagedAddress,
@@ -135,12 +129,13 @@ pub trait LiquidityModule:
 
     #[only_owner]
     #[payable("*")]
-    #[endpoint]
-    fn remove_collateral(
+    #[endpoint(withdraw)]
+    fn withdraw(
         &self,
         initial_caller: &ManagedAddress,
         amount: &BigUint,
         mut deposit_position: AccountPositon<Self::Api>,
+        is_liquidation: bool,
     ) -> AccountPositon<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
 
@@ -190,7 +185,7 @@ pub trait LiquidityModule:
 
     #[only_owner]
     #[payable("*")]
-    #[endpoint]
+    #[endpoint(repay)]
     fn repay(
         &self,
         initial_caller: ManagedAddress,
@@ -235,18 +230,5 @@ pub trait LiquidityModule:
         storage_cache.reserves_amount += &received_amount;
 
         ret_borrow_position
-    }
-
-    #[only_owner]
-    #[endpoint(sendTokens)]
-    fn send_tokens(&self, initial_caller: ManagedAddress, payment_amount: BigUint) {
-        let storage_cache = StorageCache::new(self);
-
-        self.send().direct_esdt(
-            &initial_caller,
-            &storage_cache.pool_asset,
-            0,
-            &payment_amount,
-        );
     }
 }

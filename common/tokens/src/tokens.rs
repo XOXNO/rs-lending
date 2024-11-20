@@ -20,9 +20,9 @@ pub trait AccountTokenModule {
         );
     }
 
-    fn lending_account_token_valid(&self, account_token_id: TokenIdentifier) {
+    fn lending_account_token_valid(&self, account_token_id: &TokenIdentifier) {
         require!(
-            account_token_id == self.account_token().get_token_id(),
+            account_token_id == &self.account_token().get_token_id(),
             "Account token not valid!"
         );
     }

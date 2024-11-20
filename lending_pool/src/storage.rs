@@ -32,4 +32,7 @@ pub trait LendingStorageModule {
     #[view(getAssetLiquidationBonus)]
     #[storage_mapper("asset_liquidation_bonus")]
     fn asset_liquidation_bonus(&self, asset: &TokenIdentifier) -> SingleValueMapper<BigUint>;
+
+    #[storage_mapper("price_aggregator_address")]
+    fn price_aggregator_address(&self) -> SingleValueMapper<ManagedAddress>;
 }

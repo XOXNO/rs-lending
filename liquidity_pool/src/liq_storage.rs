@@ -29,10 +29,6 @@ pub trait StorageModule {
     #[storage_mapper("pool_params")]
     fn pool_params(&self) -> SingleValueMapper<PoolParams<Self::Api>>;
 
-    #[view(getLiquidationThreshold)]
-    #[storage_mapper("liquidation_threshold")]
-    fn liquidation_threshold(&self) -> SingleValueMapper<BigUint>;
-
     #[view(getBorrowIndex)]
     #[storage_mapper("borrow_index")]
     fn borrow_index(&self) -> SingleValueMapper<BigUint>;
