@@ -52,6 +52,8 @@ where
         Arg5: ProxyArg<BigUint<Env::Api>>,
         Arg6: ProxyArg<BigUint<Env::Api>>,
         Arg7: ProxyArg<BigUint<Env::Api>>,
+        Arg8: ProxyArg<BigUint<Env::Api>>,
+        Arg9: ProxyArg<BigUint<Env::Api>>,
     >(
         self,
         asset: Arg0,
@@ -62,6 +64,8 @@ where
         u_optimal: Arg5,
         reserve_factor: Arg6,
         protocol_liquidation_fee: Arg7,
+        borrow_cap: Arg8,
+        supply_cap: Arg9,
     ) -> TxTypedDeploy<Env, From, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
@@ -74,6 +78,8 @@ where
             .argument(&u_optimal)
             .argument(&reserve_factor)
             .argument(&protocol_liquidation_fee)
+            .argument(&borrow_cap)
+            .argument(&supply_cap)
             .original_result()
     }
 }
@@ -95,6 +101,8 @@ where
         Arg4: ProxyArg<BigUint<Env::Api>>,
         Arg5: ProxyArg<BigUint<Env::Api>>,
         Arg6: ProxyArg<BigUint<Env::Api>>,
+        Arg7: ProxyArg<BigUint<Env::Api>>,
+        Arg8: ProxyArg<BigUint<Env::Api>>,
     >(
         self,
         r_max: Arg0,
@@ -104,6 +112,8 @@ where
         u_optimal: Arg4,
         reserve_factor: Arg5,
         protocol_liquidation_fee: Arg6,
+        borrow_cap: Arg7,
+        supply_cap: Arg8,
     ) -> TxTypedUpgrade<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
@@ -115,6 +125,8 @@ where
             .argument(&u_optimal)
             .argument(&reserve_factor)
             .argument(&protocol_liquidation_fee)
+            .argument(&borrow_cap)
+            .argument(&supply_cap)
             .original_result()
     }
 }

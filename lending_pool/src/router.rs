@@ -28,6 +28,8 @@ pub trait RouterModule:
         ltv: &BigUint,
         liq_bonus: &BigUint,
         protocol_liquidation_fee: &BigUint,
+        borrow_cap: &BigUint,
+        supply_cap: &BigUint,
     ) -> ManagedAddress {
         require!(
             !self.pools_map(&base_asset).is_empty(),
@@ -44,6 +46,8 @@ pub trait RouterModule:
             &u_optimal,
             &reserve_factor,
             &protocol_liquidation_fee,
+            &borrow_cap,
+            &supply_cap,
         );
 
         self.require_non_zero_address(&address);
@@ -66,6 +70,8 @@ pub trait RouterModule:
             &address,
             &ltv,
             &liq_bonus,
+            &borrow_cap,
+            &supply_cap,
         );
         address
     }
@@ -83,6 +89,8 @@ pub trait RouterModule:
         reserve_factor: BigUint,
         ltv: &BigUint,
         protocol_liquidation_fee: BigUint,
+        borrow_cap: BigUint,
+        supply_cap: BigUint,
     ) {
         require!(!self.pools_map(base_asset).is_empty(), ERROR_NO_POOL_FOUND);
 
@@ -97,6 +105,8 @@ pub trait RouterModule:
             u_optimal,
             reserve_factor,
             protocol_liquidation_fee,
+            borrow_cap,
+            supply_cap,
         );
     }
 

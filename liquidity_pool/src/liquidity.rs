@@ -2,9 +2,7 @@ multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
 use common_structs::*;
-
-use crate::errors::ERROR_INSUFFICIENT_LIQUIDITY;
-use crate::errors::ERROR_INVALID_ASSET;
+use crate::errors::*;
 
 use super::{contexts::base::StorageCache, liq_math, liq_storage, liq_utils, view};
 
@@ -47,6 +45,16 @@ pub trait LiquidityModule:
         let (deposit_asset, deposit_amount) = self.call_value().single_fungible_esdt();
         let mut ret_deposit_position = deposit_position.clone();
 
+        let params = self.pool_params().get();
+        let supply_cap = params.supply_cap;
+
+        if supply_cap != 0 {
+            require!(
+                &storage_cache.supplied_amount + &deposit_amount <= supply_cap,
+                ERROR_SUPPLY_CAP_REACHED
+            );
+        }
+
         require!(
             deposit_asset == storage_cache.pool_asset,
             ERROR_INVALID_ASSET
@@ -61,7 +69,7 @@ pub trait LiquidityModule:
 
         ret_deposit_position.amount += &deposit_amount;
         ret_deposit_position.round = storage_cache.round;
-        ret_deposit_position.initial_index = storage_cache.supply_index.clone();
+        ret_deposit_position.index = storage_cache.supply_index.clone();
 
         storage_cache.reserves_amount += &deposit_amount;
         storage_cache.supplied_amount += deposit_amount;
@@ -89,15 +97,26 @@ pub trait LiquidityModule:
         existing_borrow_position: AccountPosition<Self::Api>,
     ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
+        let params = self.pool_params().get();
+        let borrow_cap = params.borrow_cap;
+
+        if borrow_cap != 0 {
+            require!(
+                &storage_cache.borrowed_amount + borrow_amount <= borrow_cap,
+                ERROR_BORROW_CAP_REACHED
+            );
+        }
 
         let mut ret_borrow_position = existing_borrow_position.clone();
         self.require_non_zero_address(initial_caller);
+
         require!(
             &storage_cache.reserves_amount >= borrow_amount,
             ERROR_INSUFFICIENT_LIQUIDITY
         );
 
         self.update_interest_indexes(&mut storage_cache);
+
         if ret_borrow_position.amount != 0 {
             ret_borrow_position = self
                 .internal_update_borrows_with_debt(existing_borrow_position, &mut storage_cache);
@@ -105,7 +124,7 @@ pub trait LiquidityModule:
 
         ret_borrow_position.amount += borrow_amount;
         ret_borrow_position.round = storage_cache.round;
-        ret_borrow_position.initial_index = storage_cache.borrow_index.clone();
+        ret_borrow_position.index = storage_cache.borrow_index.clone();
 
         storage_cache.borrowed_amount += borrow_amount;
 
@@ -148,7 +167,7 @@ pub trait LiquidityModule:
         let withdrawal_amount = self.compute_withdrawal_amount(
             amount,
             &storage_cache.supply_index,
-            &deposit_position.initial_index,
+            &deposit_position.index,
         );
 
         require!(
@@ -223,7 +242,7 @@ pub trait LiquidityModule:
         self.update_interest_indexes(&mut storage_cache);
 
         let accumulated_debt =
-            self.get_debt_interest(&borrow_position.amount, &borrow_position.initial_index);
+            self.get_debt_interest(&borrow_position.amount, &borrow_position.index);
 
         let mut ret_borrow_position = self.update_borrows_with_debt(borrow_position);
 
@@ -250,4 +269,16 @@ pub trait LiquidityModule:
 
         ret_borrow_position
     }
+
+    // #[only_owner]
+    // #[payable("*")]
+    // #[endpoint(repay)]
+    // fn repay(
+    //     &self,
+    //     initial_caller: ManagedAddress,
+    //     contract_address: ManagedAddress,
+    //     args:
+    // ) {
+
+    // }
 }

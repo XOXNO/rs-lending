@@ -1,7 +1,7 @@
 #![no_std]
 
 multiversx_sc::imports!();
-multiversx_sc::derive_imports!();
+
 pub use common_structs::*;
 
 #[multiversx_sc::module]
@@ -18,6 +18,8 @@ pub trait EventsModule {
         #[indexed] reserve_factor: &BigUint,
         #[indexed] protocol_liquidation_fee: &BigUint,
         #[indexed] market_address: &ManagedAddress,
+        #[indexed] borrow_cap: &BigUint,
+        #[indexed] supply_cap: &BigUint,
         #[indexed] ltv: &BigUint,
         #[indexed] liquidation_bonus: &BigUint,
     );
@@ -34,6 +36,8 @@ pub trait EventsModule {
         #[indexed] reserve_factor: &BigUint,
         #[indexed] protocol_liquidation_fee: &BigUint,
         #[indexed] market_address: &ManagedAddress,
+        #[indexed] borrow_cap: &BigUint,
+        #[indexed] supply_cap: &BigUint,
     );
 
     #[event("update_market_state")]
@@ -64,5 +68,9 @@ pub trait EventsModule {
     );
 
     #[event("create_account")]
-    fn create_account_event(&self, #[indexed] account_address: &ManagedAddress, #[indexed] nonce: u64);
+    fn create_account_event(
+        &self,
+        #[indexed] account_address: &ManagedAddress,
+        #[indexed] nonce: u64,
+    );
 }

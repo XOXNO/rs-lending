@@ -49,6 +49,7 @@ pub trait ViewModule: liq_math::MathModule + liq_storage::StorageModule {
         let capital_utilisation = self.get_capital_utilisation();
 
         self.compute_borrow_rate(
+            &pool_params.r_max,
             &pool_params.r_base,
             &pool_params.r_slope1,
             &pool_params.r_slope2,

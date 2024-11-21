@@ -6,6 +6,7 @@ multiversx_sc::imports!();
 pub trait MathModule {
     fn compute_borrow_rate(
         &self,
+        r_max: &BigUint,
         r_base: &BigUint,
         r_slope1: &BigUint,
         r_slope2: &BigUint,
@@ -20,8 +21,13 @@ pub trait MathModule {
         } else {
             let denominator = &bp - u_optimal;
             let numerator = &(u_current - u_optimal) * r_slope2;
-            (r_base + r_slope1) + numerator / denominator
-            // TODO: Add a r_max = teh maximum APY that can be hit for borrowing and in case the math is over this hard code this max value
+            let result = (r_base + r_slope1) + numerator / denominator;
+
+            if &result > r_max {
+                r_max.clone()
+            } else {
+                result
+            }
         }
     }
 
@@ -72,16 +78,5 @@ pub trait MathModule {
         let bp = BigUint::from(BP);
 
         (current_supply_index - initial_supply_index) * amount / bp
-    }
-
-    fn compute_borrowable_amount(
-        &self,
-        total_collateral: &BigUint,
-        loan_to_value: &BigUint,
-        decimals: u8,
-    ) -> BigUint {
-        let bp = BigUint::from(BP);
-
-        ((total_collateral * loan_to_value) / bp) / BigUint::from(10u64).pow(decimals as u32)
     }
 }

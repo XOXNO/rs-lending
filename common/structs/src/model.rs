@@ -15,6 +15,8 @@ pub struct PoolParams<M: ManagedTypeApi> {
     pub u_optimal: BigUint<M>,
     pub reserve_factor: BigUint<M>,
     pub protocol_liquidation_fee: BigUint<M>,
+    pub borrow_cap: BigUint<M>,
+    pub supply_cap: BigUint<M>,
 }
 
 #[derive(NestedEncode, NestedDecode, TopEncode, TopDecode, TypeAbi, Clone)]
@@ -31,7 +33,7 @@ pub struct AccountPosition<M: ManagedTypeApi> {
     pub token_id: TokenIdentifier<M>,
     pub amount: BigUint<M>,
     pub round: u64,
-    pub initial_index: BigUint<M>,
+    pub index: BigUint<M>,
 }
 
 impl<M: ManagedTypeApi> AccountPosition<M> {
@@ -41,7 +43,7 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
         amount: BigUint<M>,
         account_nonce: u64,
         round: u64,
-        initial_index: BigUint<M>,
+        index: BigUint<M>,
     ) -> Self {
         AccountPosition {
             deposit_type,
@@ -49,7 +51,7 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
             amount,
             account_nonce,
             round,
-            initial_index,
+            index,
         }
     }
 }

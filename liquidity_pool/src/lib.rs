@@ -38,6 +38,8 @@ pub trait LiquidityPool:
         u_optimal: &BigUint,
         reserve_factor: &BigUint,
         protocol_liquidation_fee: &BigUint,
+        borrow_cap: &BigUint,
+        supply_cap: &BigUint,
     ) {
         self.pool_asset().set(asset);
         self.pool_params().set(&PoolParams {
@@ -48,6 +50,8 @@ pub trait LiquidityPool:
             u_optimal: u_optimal.clone(),
             reserve_factor: reserve_factor.clone(),
             protocol_liquidation_fee: protocol_liquidation_fee.clone(),
+            borrow_cap: borrow_cap.clone(),
+            supply_cap: supply_cap.clone(),
         });
         self.borrow_index().set(BigUint::from(BP));
         self.supply_index().set(BigUint::from(BP));
@@ -65,6 +69,8 @@ pub trait LiquidityPool:
         u_optimal: BigUint,
         reserve_factor: BigUint,
         protocol_liquidation_fee: BigUint,
+        borrow_cap: BigUint,
+        supply_cap: BigUint,
     ) {
         self.pool_params().set(&PoolParams {
             r_max: r_max.clone(),
@@ -74,6 +80,8 @@ pub trait LiquidityPool:
             u_optimal: u_optimal.clone(),
             reserve_factor: reserve_factor.clone(),
             protocol_liquidation_fee: protocol_liquidation_fee.clone(),
+            borrow_cap: borrow_cap.clone(),
+            supply_cap: supply_cap.clone(),
         });
 
         self.market_params_event(
@@ -86,6 +94,8 @@ pub trait LiquidityPool:
             &reserve_factor,
             &protocol_liquidation_fee,
             &self.blockchain().get_sc_address(),
+            &borrow_cap,
+            &supply_cap,
         );
     }
 }

@@ -15,6 +15,8 @@ pub trait FactoryModule: common_events::EventsModule {
         u_optimal: &BigUint,
         reserve_factor: &BigUint,
         protocol_liquidation_fee: &BigUint,
+        borrow_cap: &BigUint,
+        supply_cap: &BigUint,
     ) -> ManagedAddress {
         require!(
             !self.liq_pool_template_address().is_empty(),
@@ -33,6 +35,8 @@ pub trait FactoryModule: common_events::EventsModule {
                 u_optimal,
                 reserve_factor,
                 protocol_liquidation_fee,
+                borrow_cap,
+                supply_cap,
             )
             .from_source(self.liq_pool_template_address().get())
             .code_metadata(CodeMetadata::UPGRADEABLE)
@@ -52,6 +56,8 @@ pub trait FactoryModule: common_events::EventsModule {
         u_optimal: BigUint,
         reserve_factor: BigUint,
         protocol_liquidation_fee: BigUint,
+        borrow_cap: BigUint,
+        supply_cap: BigUint,
     ) {
         require!(
             !self.liq_pool_template_address().is_empty(),
@@ -68,6 +74,8 @@ pub trait FactoryModule: common_events::EventsModule {
                 u_optimal,
                 reserve_factor,
                 protocol_liquidation_fee,
+                borrow_cap,
+                supply_cap,
             )
             .from_source(self.liq_pool_template_address().get())
             .code_metadata(CodeMetadata::UPGRADEABLE)
