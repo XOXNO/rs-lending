@@ -1,8 +1,8 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
-use common_structs::*;
 use crate::errors::*;
+use common_structs::*;
 
 use super::{contexts::base::StorageCache, liq_math, liq_storage, liq_utils, view};
 
@@ -266,6 +266,16 @@ pub trait LiquidityModule:
         storage_cache.borrowed_amount -= amount_without_interest;
 
         storage_cache.reserves_amount += &received_amount;
+
+        self.update_market_state_event(
+            storage_cache.round,
+            &storage_cache.supply_index,
+            &storage_cache.borrow_index,
+            &storage_cache.reserves_amount,
+            &storage_cache.supplied_amount,
+            &storage_cache.borrowed_amount,
+            &storage_cache.rewards_reserve,
+        );
 
         ret_borrow_position
     }
