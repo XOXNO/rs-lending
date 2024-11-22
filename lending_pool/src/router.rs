@@ -133,14 +133,26 @@ pub trait RouterModule:
             );
         }
         self.asset_loan_to_value(asset).set(loan_to_value);
-        self.update_asset_params_event(asset, loan_to_value, UpdateAssetParamsType::LTV);
+        let pool_address = self.get_pool_address(asset);
+        self.update_asset_params_event(
+            &pool_address,
+            asset,
+            loan_to_value,
+            UpdateAssetParamsType::LTV,
+        );
     }
 
     #[only_owner]
     #[endpoint(setAssetLiquidationBonus)]
     fn set_asset_liquidation_bonus(&self, asset: &TokenIdentifier, liq_bonus: &BigUint) {
         self.asset_liquidation_bonus(asset).set(liq_bonus);
-        self.update_asset_params_event(asset, liq_bonus, UpdateAssetParamsType::LiquidationBonus);
+        let pool_address = self.get_pool_address(asset);
+        self.update_asset_params_event(
+            &pool_address,
+            asset,
+            liq_bonus,
+            UpdateAssetParamsType::LiquidationBonus,
+        );
     }
 
     #[only_owner]
@@ -158,8 +170,9 @@ pub trait RouterModule:
 
         self.asset_liquidation_threshold(asset)
             .set(liquidation_threshold);
-
+        let pool_address = self.get_pool_address(asset);
         self.update_asset_params_event(
+            &pool_address,
             asset,
             liquidation_threshold,
             UpdateAssetParamsType::LiquidationThreshold,

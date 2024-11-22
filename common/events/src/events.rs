@@ -78,6 +78,7 @@ pub trait EventsModule {
     #[event("update_asset_params")]
     fn update_asset_params_event(
         &self,
+        #[indexed] pool_address: &ManagedAddress,
         #[indexed] asset: &TokenIdentifier,
         #[indexed] value: &BigUint,
         #[indexed] field: UpdateAssetParamsType,
