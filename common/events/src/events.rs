@@ -22,6 +22,7 @@ pub trait EventsModule {
         #[indexed] supply_cap: &BigUint,
         #[indexed] ltv: &BigUint,
         #[indexed] liquidation_bonus: &BigUint,
+        #[indexed] liquidation_threshold: &BigUint,
     );
 
     #[event("update_market_params")]
@@ -72,5 +73,13 @@ pub trait EventsModule {
         &self,
         #[indexed] account_address: &ManagedAddress,
         #[indexed] nonce: u64,
+    );
+
+    #[event("update_asset_params")]
+    fn update_asset_params_event(
+        &self,
+        #[indexed] asset: &TokenIdentifier,
+        #[indexed] value: &BigUint,
+        #[indexed] field: UpdateAssetParamsType,
     );
 }

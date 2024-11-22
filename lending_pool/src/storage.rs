@@ -29,6 +29,10 @@ pub trait LendingStorageModule {
     #[storage_mapper("asset_loan_to_value")]
     fn asset_loan_to_value(&self, asset: &TokenIdentifier) -> SingleValueMapper<BigUint>;
 
+    #[view(getAssetLiquidationThreshold)]
+    #[storage_mapper("asset_liquidation_threshold")]
+    fn asset_liquidation_threshold(&self, asset: &TokenIdentifier) -> SingleValueMapper<BigUint>;
+
     #[view(getAssetLiquidationBonus)]
     #[storage_mapper("asset_liquidation_bonus")]
     fn asset_liquidation_bonus(&self, asset: &TokenIdentifier) -> SingleValueMapper<BigUint>;

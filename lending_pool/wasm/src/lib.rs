@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           27
+// Endpoints:                           29
 // Async Callback:                       1
-// Total number of exported functions:  30
+// Total number of exported functions:  32
 
 #![no_std]
 
@@ -20,7 +20,6 @@ multiversx_sc_wasm_adapter::endpoints! {
     (
         init => init
         upgrade => upgrade
-        enter => enter
         supply => supply
         withdraw => withdraw
         borrow => borrow
@@ -34,6 +33,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         setAggregator => set_aggregator
         setAssetLoanToValue => set_asset_loan_to_value
         setAssetLiquidationBonus => set_asset_liquidation_bonus
+        setAssetLiquidationThreshold => set_asset_liquidation_threshold
         getPoolAddress => get_pool_address
         registerAccountToken => register_account_token
         getAccountToken => account_token
@@ -42,10 +42,12 @@ multiversx_sc_wasm_adapter::endpoints! {
         getBorrowPositions => borrow_positions
         getPoolAllowed => pools_allowed
         getAssetLoanToValue => asset_loan_to_value
+        getAssetLiquidationThreshold => asset_liquidation_threshold
         getAssetLiquidationBonus => asset_liquidation_bonus
         getCollateralAmountForToken => get_collateral_amount_for_token
         getTotalCollateralAvailable => get_total_collateral_in_dollars
-        getWeightedCollateralInDollars => get_weighted_collateral_in_dollars
+        getLiquidationCollateralAvailable => get_liquidation_collateral_available
+        getLtvCollateralInDollars => get_ltv_collateral_in_dollars
         getTotalBorrowInDollars => get_total_borrow_in_dollars
     )
 }

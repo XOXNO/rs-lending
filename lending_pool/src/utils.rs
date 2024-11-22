@@ -3,8 +3,8 @@ multiversx_sc::derive_imports!();
 
 use crate::{
     math, storage, ERROR_ASSET_NOT_SUPPORTED, ERROR_LOAN_TO_VALUE_ZERO, ERROR_NO_COLLATERAL_TOKEN,
-    ERROR_NO_LIQUIDATION_BONUS, ERROR_NO_LOAN_TO_VALUE, ERROR_PRICE_AGGREGATOR_NOT_SET,
-    ERROR_TOKEN_TICKER_FETCH,
+    ERROR_NO_LIQUIDATION_BONUS, ERROR_NO_LIQUIDATION_THRESHOLD, ERROR_NO_LOAN_TO_VALUE,
+    ERROR_PRICE_AGGREGATOR_NOT_SET, ERROR_TOKEN_TICKER_FETCH,
 };
 
 use crate::proxy_price_aggregator::{PriceAggregatorProxy, PriceFeed};
@@ -51,16 +51,16 @@ pub trait LendingUtilsModule: math::LendingMathModule + storage::LendingStorageM
     fn get_existing_or_new_deposit_position_for_token(
         &self,
         account_position: u64,
-        token_id: TokenIdentifier,
+        token_id: &TokenIdentifier,
     ) -> AccountPosition<Self::Api> {
-        match self.deposit_positions(account_position).get(&token_id) {
+        match self.deposit_positions(account_position).get(token_id) {
             Some(dp) => {
-                self.deposit_positions(account_position).remove(&token_id);
+                self.deposit_positions(account_position).remove(token_id);
                 dp
             }
             None => AccountPosition::new(
                 AccountPositionType::Deposit,
-                token_id,
+                token_id.clone(),
                 BigUint::zero(),
                 account_position,
                 self.blockchain().get_block_round(),
@@ -114,9 +114,28 @@ pub trait LendingUtilsModule: math::LendingMathModule + storage::LendingStorageM
         deposited_amount_in_dollars
     }
 
+    #[view(getLiquidationCollateralAvailable)]
+    fn get_liquidation_collateral_available(&self, account_nonce: u64) -> BigUint {
+        let mut weighted_liquidation_threshold_sum = BigUint::zero();
+        let deposit_positions = self.deposit_positions(account_nonce);
+
+        // Single iteration for both calculations
+        for dp in deposit_positions.values() {
+            let token_liquidation_threshold =
+                self.get_liquidation_threshold_exists_and_non_zero(&dp.token_id);
+            let dp_data = self.get_token_price_data(&dp.token_id);
+            let position_value_in_dollars = dp.amount.clone() * dp_data.price;
+
+            weighted_liquidation_threshold_sum +=
+                &position_value_in_dollars * &token_liquidation_threshold;
+        }
+
+        weighted_liquidation_threshold_sum
+    }
+
     #[inline]
-    #[view(getWeightedCollateralInDollars)]
-    fn get_weighted_collateral_in_dollars(&self, account_position: u64) -> BigUint {
+    #[view(getLtvCollateralInDollars)]
+    fn get_ltv_collateral_in_dollars(&self, account_position: u64) -> BigUint {
         let mut weighted_collateral_in_dollars = BigUint::zero();
         let deposit_positions = self.deposit_positions(account_position);
 
@@ -163,6 +182,59 @@ pub trait LendingUtilsModule: math::LendingMathModule + storage::LendingStorageM
         loan_to_value
     }
 
+    fn get_liquidation_threshold_exists_and_non_zero(&self, token_id: &TokenIdentifier) -> BigUint {
+        require!(
+            !self.asset_liquidation_threshold(token_id).is_empty(),
+            ERROR_NO_LIQUIDATION_THRESHOLD
+        );
+
+        self.asset_liquidation_threshold(token_id).get()
+    }
+
+    fn calculate_dynamic_liquidation_bonus(
+        &self,
+        health_factor: &BigUint,
+        initial_bonus: BigUint,
+    ) -> BigUint {
+        // Example: If health factor is 0.95 (95%), position is slightly unhealthy
+        // If health factor is 0.5 (50%), position is very unhealthy
+
+        // BP - health_factor gives us how far below 1.0 the HF is
+        // HF 0.95 -> 1.0 - 0.95 = 0.05 (5% below healthy)
+        // HF 0.50 -> 1.0 - 0.50 = 0.50 (50% below healthy)
+        let bp = BigUint::from(BP);
+        let health_factor_impact = (&bp - health_factor).mul(2u64);
+
+        // Max bonus increase is 30% (3000 basis points)
+        let max_bonus_increase = BigUint::from(MAX_BONUS);
+
+        // Calculate bonus increase based on how unhealthy the position is
+        // More unhealthy = bigger bonus to incentivize quick liquidation
+        let bonus_increase = BigUint::min(
+            &health_factor_impact * &initial_bonus / bp,
+            max_bonus_increase,
+        );
+
+        initial_bonus + bonus_increase
+    }
+
+    fn calculate_liquidation_amount(
+        &self,
+        health_factor: &BigUint,
+        total_debt: &BigUint,
+    ) -> BigUint {
+        // Only liquidate enough to bring position back to health
+        let bp = BigUint::from(BP);
+        let target_health_factor = &bp + &(&bp / &BigUint::from(5u32)); // 120%
+
+        let required_debt_reduction = (total_debt * &(&target_health_factor - health_factor)) / &bp;
+
+        BigUint::min(
+            required_debt_reduction,
+            total_debt * &BigUint::from(MAX_THRESHOLD) / &bp,
+        )
+    }
+
     fn require_asset_supported(&self, asset: &TokenIdentifier) {
         require!(!self.pools_map(asset).is_empty(), ERROR_ASSET_NOT_SUPPORTED);
     }
@@ -185,5 +257,27 @@ pub trait LendingUtilsModule: math::LendingMathModule + storage::LendingStorageM
         (&amount_to_return_to_liquidator_in_dollars * BP / &token_data.price)
             * BigUint::from(10u64).pow(token_data.decimals as u32)
             / BP
+    }
+
+    fn calculate_single_asset_liquidation_amount(
+        &self,
+        health_factor: &BigUint,
+        total_debt: &BigUint,
+        token_to_liquidate: &TokenIdentifier,
+        feed: &PriceFeed<Self::Api>,
+        liquidatee_account_nonce: u64,
+    ) -> BigUint {
+        let full_liquidation_amount = self.calculate_liquidation_amount(health_factor, total_debt);
+
+        // Get the available collateral value for this specific asset
+        let deposit_position = self
+            .deposit_positions(liquidatee_account_nonce)
+            .get(token_to_liquidate)
+            .unwrap_or_else(|| sc_panic!(ERROR_NO_COLLATERAL_TOKEN));
+
+        let available_collateral_value = &deposit_position.amount * &feed.price;
+
+        // Take the minimum between what we need and what's available
+        BigUint::min(full_liquidation_amount, available_collateral_value)
     }
 }

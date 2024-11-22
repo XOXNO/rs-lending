@@ -4,6 +4,7 @@ multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
 pub const BP: u64 = 1_000_000_000; // Represents 100%
+pub const MAX_BONUS: u64 = 300_000_000; // Represents 30% basis points
 pub const MAX_THRESHOLD: u64 = BP / 2;
 
 #[derive(TopEncode, TopDecode, TypeAbi)]
@@ -17,6 +18,14 @@ pub struct PoolParams<M: ManagedTypeApi> {
     pub protocol_liquidation_fee: BigUint<M>,
     pub borrow_cap: BigUint<M>,
     pub supply_cap: BigUint<M>,
+}
+
+#[derive(NestedEncode, NestedDecode, TopEncode, TopDecode, TypeAbi, Clone)]
+pub enum UpdateAssetParamsType {
+    None,
+    LTV,
+    LiquidationBonus,
+    LiquidationThreshold,
 }
 
 #[derive(NestedEncode, NestedDecode, TopEncode, TopDecode, TypeAbi, Clone)]
@@ -54,4 +63,20 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
             index,
         }
     }
+}
+
+#[derive(ManagedVecItem, NestedEncode, NestedDecode, TopEncode, TopDecode, TypeAbi, Clone)]
+pub struct AssetCategory<M: ManagedTypeApi> {
+    pub id: u64,
+    pub ltv: BigUint<M>,
+    pub liquidation_threshold: BigUint<M>,
+    pub liquidation_bonus: BigUint<M>,
+    pub tokens: ManagedVec<M, AssetCategoryToken<M>>,
+}
+
+#[derive(ManagedVecItem, NestedEncode, NestedDecode, TopEncode, TopDecode, TypeAbi, Clone)]
+pub struct AssetCategoryToken<M: ManagedTypeApi> {
+    pub token_id: TokenIdentifier<M>,
+    pub can_borrow: bool,
+    pub can_supply: bool,
 }
