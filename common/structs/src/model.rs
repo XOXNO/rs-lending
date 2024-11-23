@@ -124,3 +124,12 @@ pub struct NftAccountAttributes {
     pub is_isolated: bool,
     pub e_mode_category: u8,
 }
+
+#[derive(
+    ManagedVecItem, TopDecode, TopEncode, NestedDecode, NestedEncode, TypeAbi, Clone, PartialEq, Eq, Debug,
+)]
+pub struct EgldOrEsdtTokenPaymentNew<M: ManagedTypeApi> {
+    pub token_identifier: EgldOrEsdtTokenIdentifier<M>,
+    pub token_nonce: u64,
+    pub amount: BigUint<M>,
+}

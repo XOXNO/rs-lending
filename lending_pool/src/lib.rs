@@ -71,7 +71,7 @@ pub trait LendingPool:
     #[payable("*")]
     #[endpoint(supply)]
     fn supply(&self, e_mode_category: OptionalValue<u8>) {
-        let payments = self.call_value().multi_esdt();
+        let payments = self.get_multi_payments();
         let payments_len = payments.len();
 
         require!(
@@ -80,7 +80,7 @@ pub trait LendingPool:
         );
 
         let account_nonce;
-        let collateral_payment = payments[payments_len - 1].clone();
+        let collateral_payment = payments.get(payments_len - 1).clone();
         let initial_caller = self.blockchain().get_caller();
 
         let mut asset_info = self
@@ -90,22 +90,22 @@ pub trait LendingPool:
         let nft_attributes;
 
         if payments_len == 2 {
-            let [account_token, _] = payments;
+            let account_token = payments.get(0);
             account_nonce = account_token.token_nonce;
-
+            let token_identifier = account_token.token_identifier.into_esdt_option().unwrap();
             self.lending_account_in_the_market(account_nonce);
-            self.lending_account_token_valid(&account_token.token_identifier);
+            self.lending_account_token_valid(&token_identifier);
 
             let data = self.blockchain().get_esdt_token_data(
                 &self.blockchain().get_sc_address(),
-                &account_token.token_identifier,
+                &token_identifier,
                 account_nonce,
             );
             nft_attributes = data.decode_attributes::<NftAccountAttributes>();
             // Return NFT to owner
             self.send().direct_esdt(
                 &initial_caller,
-                &account_token.token_identifier,
+                &token_identifier,
                 account_nonce,
                 &account_token.amount,
             );
@@ -187,7 +187,11 @@ pub trait LendingPool:
             .to(pool_address)
             .typed(proxy_pool::LiquidityPoolProxy)
             .supply(deposit_position)
-            .esdt(collateral_payment.clone())
+            .payment(EgldOrEsdtTokenPayment::new(
+                collateral_payment.token_identifier.clone(),
+                collateral_payment.token_nonce,
+                collateral_payment.amount.clone(),
+            ))
             .returns(ReturnsResult)
             .sync_call();
 
@@ -233,7 +237,6 @@ pub trait LendingPool:
                 .nft_burn(account_token.token_nonce, &account_token.amount);
             self.account_positions()
                 .swap_remove(&account_token.token_nonce);
-            // TODO: Add event for account exit
         } else {
             // Return NFT to owner
             self.tx()

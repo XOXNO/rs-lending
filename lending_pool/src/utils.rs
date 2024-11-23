@@ -9,6 +9,8 @@ use crate::{
 use common_structs::*;
 use liquidity_pool::errors::{ERROR_BORROW_CAP_REACHED, ERROR_SUPPLY_CAP_REACHED};
 
+pub const EGELD_IDENTIFIER: &str = "EGLD-000000";
+
 #[multiversx_sc::module]
 pub trait LendingUtilsModule:
     math::LendingMathModule
@@ -221,5 +223,32 @@ pub trait LendingUtilsModule:
                 ERROR_SUPPLY_CAP_REACHED
             );
         }
+    }
+
+    fn get_multi_payments(&self) -> ManagedVec<EgldOrEsdtTokenPaymentNew<Self::Api>> {
+        let payments = self.call_value().all_esdt_transfers();
+
+        let mut valid_payments = ManagedVec::new();
+        for i in 0..payments.len() {
+            let payment = payments.get(i);
+            // EGLD sent as multi-esdt payment
+            if payment.token_identifier.clone().into_managed_buffer()
+                == ManagedBuffer::from(EGELD_IDENTIFIER)
+            {
+                valid_payments.push(EgldOrEsdtTokenPaymentNew {
+                    token_identifier: EgldOrEsdtTokenIdentifier::egld(),
+                    token_nonce: 0,
+                    amount: payment.amount,
+                });
+            } else {
+                valid_payments.push(EgldOrEsdtTokenPaymentNew {
+                    token_identifier: EgldOrEsdtTokenIdentifier::esdt(payment.token_identifier),
+                    token_nonce: payment.token_nonce,
+                    amount: payment.amount,
+                });
+            }
+        }
+
+        valid_payments
     }
 }
