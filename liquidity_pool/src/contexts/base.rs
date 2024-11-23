@@ -13,7 +13,7 @@ where
     pub borrowed_amount: BigUint<C::Api>,
     pub rewards_reserve: BigUint<C::Api>,
     pub round: u64,
-    pub pool_asset: TokenIdentifier<C::Api>,
+    pub pool_asset: EgldOrEsdtTokenIdentifier<C::Api>,
     pub pool_params: PoolParams<C::Api>,
     pub borrow_index: BigUint<C::Api>,
     pub supply_index: BigUint<C::Api>,

@@ -45,16 +45,6 @@ pub trait LiquidityModule:
         let (deposit_asset, deposit_amount) = self.call_value().single_fungible_esdt();
         let mut ret_deposit_position = deposit_position.clone();
 
-        let params = self.pool_params().get();
-        let supply_cap = params.supply_cap;
-
-        if supply_cap != 0 {
-            require!(
-                &storage_cache.supplied_amount + &deposit_amount <= supply_cap,
-                ERROR_SUPPLY_CAP_REACHED
-            );
-        }
-
         require!(
             deposit_asset == storage_cache.pool_asset,
             ERROR_INVALID_ASSET
@@ -97,15 +87,6 @@ pub trait LiquidityModule:
         existing_borrow_position: AccountPosition<Self::Api>,
     ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
-        let params = self.pool_params().get();
-        let borrow_cap = params.borrow_cap;
-
-        if borrow_cap != 0 {
-            require!(
-                &storage_cache.borrowed_amount + borrow_amount <= borrow_cap,
-                ERROR_BORROW_CAP_REACHED
-            );
-        }
 
         let mut ret_borrow_position = existing_borrow_position.clone();
         self.require_non_zero_address(initial_caller);
@@ -130,8 +111,14 @@ pub trait LiquidityModule:
 
         storage_cache.reserves_amount -= borrow_amount;
 
-        self.send()
-            .direct_esdt(initial_caller, &storage_cache.pool_asset, 0, borrow_amount);
+        self.tx()
+            .to(initial_caller)
+            .payment(EgldOrEsdtTokenPayment::new(
+                storage_cache.pool_asset.clone(),
+                0,
+                borrow_amount.clone(),
+            ))
+            .transfer();
 
         self.update_market_state_event(
             storage_cache.round,
@@ -155,6 +142,7 @@ pub trait LiquidityModule:
         amount: &BigUint,
         mut deposit_position: AccountPosition<Self::Api>,
         is_liquidation: bool,
+        protocol_liquidation_fee: &BigUint,
     ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
 
@@ -187,26 +175,28 @@ pub trait LiquidityModule:
         deposit_position.amount -= amount;
 
         if !is_liquidation {
-            self.send().direct_esdt(
-                initial_caller,
-                &storage_cache.pool_asset,
-                0,
-                &withdrawal_amount,
-            );
+            self.tx()
+                .to(initial_caller)
+                .payment(EgldOrEsdtTokenPayment::new(
+                    storage_cache.pool_asset.clone(),
+                    0,
+                    withdrawal_amount.clone(),
+                ))
+                .transfer();
         } else {
-            let params = self.pool_params().get();
-            let protocol_liquidation_fee = params.protocol_liquidation_fee;
-            let liquidation_fee = &withdrawal_amount * &protocol_liquidation_fee / BP;
+            let liquidation_fee = &withdrawal_amount * protocol_liquidation_fee / BP;
             let amount_after_fee = &withdrawal_amount - &liquidation_fee;
 
             storage_cache.rewards_reserve += &liquidation_fee;
 
-            self.send().direct_esdt(
-                initial_caller,
-                &storage_cache.pool_asset,
-                0,
-                &amount_after_fee,
-            );
+            self.tx()
+                .to(initial_caller)
+                .payment(EgldOrEsdtTokenPayment::new(
+                    storage_cache.pool_asset.clone(),
+                    0,
+                    amount_after_fee,
+                ))
+                .transfer();
         }
 
         self.update_market_state_event(

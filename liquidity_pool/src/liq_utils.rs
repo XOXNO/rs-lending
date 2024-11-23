@@ -43,7 +43,6 @@ pub trait UtilsModule:
         rewards_increase - revenue
     }
 
-
     fn get_round_diff(&self, initial_round: u64, current_round: u64) -> u64 {
         require!(current_round >= initial_round, "Invalid round");
 
@@ -82,7 +81,7 @@ pub trait UtilsModule:
         deposit_position.round = storage_cache.round;
         deposit_position.index = storage_cache.supply_index.clone();
 
-        self.update_position_event(&accrued_interest, &deposit_position, None);
+        self.update_position_event(&accrued_interest, &deposit_position, None, None);
 
         deposit_position
     }
@@ -101,7 +100,7 @@ pub trait UtilsModule:
         borrow_position.round = storage_cache.round;
         borrow_position.index = storage_cache.borrow_index.clone();
 
-        self.update_position_event(&accumulated_debt, &borrow_position, None);
+        self.update_position_event(&accumulated_debt, &borrow_position, None, None);
 
         borrow_position
     }
