@@ -1,3 +1,4 @@
+use common_events::{AssetConfig, EModeAssetConfig, EModeCategory};
 use common_structs::AccountPosition;
 
 multiversx_sc::imports!();
@@ -9,34 +10,60 @@ pub trait LendingStorageModule {
     fn deposit_positions(
         &self,
         owner_nonce: u64,
-    ) -> MapMapper<TokenIdentifier, AccountPosition<Self::Api>>;
+    ) -> MapMapper<EgldOrEsdtTokenIdentifier, AccountPosition<Self::Api>>;
 
     #[view(getBorrowPositions)]
     #[storage_mapper("borrow_positions")]
     fn borrow_positions(
         &self,
         owner_nonce: u64,
-    ) -> MapMapper<TokenIdentifier, AccountPosition<Self::Api>>;
+    ) -> MapMapper<EgldOrEsdtTokenIdentifier, AccountPosition<Self::Api>>;
 
+    #[view(getPoolsMap)]
     #[storage_mapper("pools_map")]
-    fn pools_map(&self, token_id: &TokenIdentifier) -> SingleValueMapper<ManagedAddress>;
+    fn pools_map(&self, token_id: &EgldOrEsdtTokenIdentifier) -> SingleValueMapper<ManagedAddress>;
 
     #[view(getPoolAllowed)]
     #[storage_mapper("pool_allowed")]
     fn pools_allowed(&self) -> UnorderedSetMapper<ManagedAddress>;
 
-    #[view(getAssetLoanToValue)]
-    #[storage_mapper("asset_loan_to_value")]
-    fn asset_loan_to_value(&self, asset: &TokenIdentifier) -> SingleValueMapper<BigUint>;
-
-    #[view(getAssetLiquidationThreshold)]
-    #[storage_mapper("asset_liquidation_threshold")]
-    fn asset_liquidation_threshold(&self, asset: &TokenIdentifier) -> SingleValueMapper<BigUint>;
-
-    #[view(getAssetLiquidationBonus)]
-    #[storage_mapper("asset_liquidation_bonus")]
-    fn asset_liquidation_bonus(&self, asset: &TokenIdentifier) -> SingleValueMapper<BigUint>;
-
+    #[view(getPriceAggregatorAddress)]
     #[storage_mapper("price_aggregator_address")]
     fn price_aggregator_address(&self) -> SingleValueMapper<ManagedAddress>;
+
+    ///////
+    // Asset config
+    ///////
+    // Get the config for a given asset
+    // Contains the latest parameters for a given asset
+    // Used to check if an asset is supported, what the liquidation threshold is, etc.
+    #[view(getAssetConfig)]
+    #[storage_mapper("asset_config")]
+    fn asset_config(&self, asset: &EgldOrEsdtTokenIdentifier) -> SingleValueMapper<AssetConfig<Self::Api>>;
+
+    #[view(lastEModeCategoryId)]
+    #[storage_mapper("last_e_mode_category_id")]
+    fn last_e_mode_category_id(&self) -> SingleValueMapper<u8>;
+
+    // Get all e-mode categories
+    // E-mode categories are used to group assets into categories with different risk parameters
+    #[view(getEModes)]
+    #[storage_mapper("e_mode_category")]
+    fn e_mode_category(&self) -> MapMapper<u8, EModeCategory<Self::Api>>;
+
+    // Get the e-mode categories for a given asset
+    // One asset can have multiple e-mode categories
+    #[view(getAssetEModes)]
+    #[storage_mapper("asset_e_modes")]
+    fn asset_e_modes(&self, asset: &EgldOrEsdtTokenIdentifier) -> UnorderedSetMapper<u8>;
+
+    // Get all assets for a given e-mode category
+    // Get the config for a given asset in a given e-mode category such as can be used as collateral or can be borrowed
+    #[view(getEModesAssets)]
+    #[storage_mapper("e_mode_assets")]
+    fn e_mode_assets(&self, id: u8) -> MapMapper<EgldOrEsdtTokenIdentifier, EModeAssetConfig>;
+
+    // Debt in USD for isolated assets
+    #[storage_mapper("isolated_asset_debt_usd")]
+    fn isolated_asset_debt_usd(&self, token_id: &EgldOrEsdtTokenIdentifier) -> SingleValueMapper<BigUint>;
 }

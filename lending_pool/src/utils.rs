@@ -2,56 +2,25 @@ multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
 use crate::{
-    math, storage, ERROR_ASSET_NOT_SUPPORTED, ERROR_LOAN_TO_VALUE_ZERO, ERROR_NO_COLLATERAL_TOKEN,
-    ERROR_NO_LIQUIDATION_BONUS, ERROR_NO_LIQUIDATION_THRESHOLD, ERROR_NO_LOAN_TO_VALUE,
-    ERROR_PRICE_AGGREGATOR_NOT_SET, ERROR_TOKEN_TICKER_FETCH,
+    math, oracle, proxy_pool, proxy_price_aggregator::PriceFeed, storage,
+    ERROR_ASSET_NOT_SUPPORTED, ERROR_DEBT_CEILING_REACHED, ERROR_MIX_ISOLATED_COLLATERAL,
 };
 
-use crate::proxy_price_aggregator::{PriceAggregatorProxy, PriceFeed};
 use common_structs::*;
-
-const TOKEN_ID_SUFFIX_LEN: usize = 7; // "dash" + 6 random bytes
-const DOLLAR_TICKER: &[u8] = b"USD";
+use liquidity_pool::errors::{ERROR_BORROW_CAP_REACHED, ERROR_SUPPLY_CAP_REACHED};
 
 #[multiversx_sc::module]
-pub trait LendingUtilsModule: math::LendingMathModule + storage::LendingStorageModule {
-    fn get_token_price_data(&self, token_id: &TokenIdentifier) -> PriceFeed<Self::Api> {
-        let from_ticker = self.get_token_ticker(token_id);
-        let price_aggregator_address = self.price_aggregator_address();
-
-        require!(
-            !price_aggregator_address.is_empty(),
-            ERROR_PRICE_AGGREGATOR_NOT_SET
-        );
-
-        let result = self
-            .tx()
-            .to(self.price_aggregator_address().get())
-            .typed(PriceAggregatorProxy)
-            .latest_price_feed(from_ticker, ManagedBuffer::new_from_bytes(DOLLAR_TICKER))
-            .returns(ReturnsResult)
-            .sync_call_readonly();
-
-        result
-    }
-
-    fn get_token_ticker(&self, token_id: &TokenIdentifier) -> ManagedBuffer {
-        let as_buffer = token_id.clone().into_managed_buffer();
-        let ticker_start_index = 0;
-        let ticker_end_index = as_buffer.len() - TOKEN_ID_SUFFIX_LEN;
-
-        let result = as_buffer.copy_slice(ticker_start_index, ticker_end_index);
-
-        match result {
-            Some(r) => r,
-            None => sc_panic!(ERROR_TOKEN_TICKER_FETCH),
-        }
-    }
-
+pub trait LendingUtilsModule:
+    math::LendingMathModule
+    + storage::LendingStorageModule
+    + oracle::OracleModule
+    + common_events::EventsModule
+{
     fn get_existing_or_new_deposit_position_for_token(
         &self,
         account_position: u64,
-        token_id: &TokenIdentifier,
+        asset_config: &AssetConfig<Self::Api>,
+        token_id: &EgldOrEsdtTokenIdentifier,
     ) -> AccountPosition<Self::Api> {
         match self.deposit_positions(account_position).get(token_id) {
             Some(dp) => {
@@ -65,6 +34,10 @@ pub trait LendingUtilsModule: math::LendingMathModule + storage::LendingStorageM
                 account_position,
                 self.blockchain().get_block_round(),
                 BigUint::from(BP),
+                // Save the current market parameters
+                asset_config.ltv.clone(),
+                asset_config.liquidation_threshold.clone(),
+                asset_config.liquidation_bonus.clone(),
             ),
         }
     }
@@ -72,7 +45,8 @@ pub trait LendingUtilsModule: math::LendingMathModule + storage::LendingStorageM
     fn get_existing_or_new_borrow_position_for_token(
         &self,
         account_position: u64,
-        token_id: TokenIdentifier,
+        asset_config: &AssetConfig<Self::Api>,
+        token_id: EgldOrEsdtTokenIdentifier,
     ) -> AccountPosition<Self::Api> {
         match self.borrow_positions(account_position).get(&token_id) {
             Some(bp) => bp,
@@ -83,30 +57,21 @@ pub trait LendingUtilsModule: math::LendingMathModule + storage::LendingStorageM
                 account_position,
                 self.blockchain().get_block_round(),
                 BigUint::from(BP),
+                // Save the current market parameters
+                asset_config.ltv.clone(),
+                asset_config.liquidation_threshold.clone(),
+                asset_config.liquidation_bonus.clone(),
             ),
         }
     }
 
-    #[inline]
-    #[view(getCollateralAmountForToken)]
-    fn get_collateral_amount_for_token(
+    fn get_total_collateral_in_dollars_vec(
         &self,
-        account_position: u64,
-        token_id: &TokenIdentifier,
+        positions: &ManagedVec<AccountPosition<Self::Api>>,
     ) -> BigUint {
-        match self.deposit_positions(account_position).get(token_id) {
-            Some(dp) => dp.amount,
-            None => BigUint::zero(),
-        }
-    }
-
-    #[inline]
-    #[view(getTotalCollateralAvailable)]
-    fn get_total_collateral_in_dollars(&self, account_position: u64) -> BigUint {
         let mut deposited_amount_in_dollars = BigUint::zero();
-        let deposit_positions = self.deposit_positions(account_position);
 
-        for dp in deposit_positions.values() {
+        for dp in positions {
             let dp_data = self.get_token_price_data(&dp.token_id);
             deposited_amount_in_dollars += dp.amount * dp_data.price;
         }
@@ -114,48 +79,29 @@ pub trait LendingUtilsModule: math::LendingMathModule + storage::LendingStorageM
         deposited_amount_in_dollars
     }
 
-    #[view(getLiquidationCollateralAvailable)]
-    fn get_liquidation_collateral_available(&self, account_nonce: u64) -> BigUint {
-        let mut weighted_liquidation_threshold_sum = BigUint::zero();
-        let deposit_positions = self.deposit_positions(account_nonce);
-
-        // Single iteration for both calculations
-        for dp in deposit_positions.values() {
-            let token_liquidation_threshold =
-                self.get_liquidation_threshold_exists_and_non_zero(&dp.token_id);
-            let dp_data = self.get_token_price_data(&dp.token_id);
-            let position_value_in_dollars = dp.amount.clone() * dp_data.price;
-
-            weighted_liquidation_threshold_sum +=
-                &position_value_in_dollars * &token_liquidation_threshold;
-        }
-
-        weighted_liquidation_threshold_sum
-    }
-
-    #[inline]
-    #[view(getLtvCollateralInDollars)]
-    fn get_ltv_collateral_in_dollars(&self, account_position: u64) -> BigUint {
+    fn get_ltv_collateral_in_dollars_vec(
+        &self,
+        positions: &ManagedVec<AccountPosition<Self::Api>>,
+    ) -> BigUint {
         let mut weighted_collateral_in_dollars = BigUint::zero();
-        let deposit_positions = self.deposit_positions(account_position);
 
-        for dp in deposit_positions.values() {
-            let token_ltv = self.get_loan_to_value_exists_and_non_zero(&dp.token_id);
+        for dp in positions {
             let dp_data = self.get_token_price_data(&dp.token_id);
             let position_value_in_dollars = dp.amount.clone() * dp_data.price;
             weighted_collateral_in_dollars +=
-                position_value_in_dollars * token_ltv / BigUint::from(BP);
+                position_value_in_dollars * &dp.entry_ltv / BigUint::from(BP);
         }
 
         weighted_collateral_in_dollars
     }
 
-    #[view(getTotalBorrowInDollars)]
-    fn get_total_borrow_in_dollars(&self, account_position: u64) -> BigUint {
+    fn get_total_borrow_in_dollars_vec(
+        &self,
+        positions: &ManagedVec<AccountPosition<Self::Api>>,
+    ) -> BigUint {
         let mut total_borrow_in_dollars = BigUint::zero();
-        let borrow_positions = self.borrow_positions(account_position);
 
-        for bp in borrow_positions.values() {
+        for bp in positions {
             let bp_data = self.get_token_price_data(&bp.token_id);
             total_borrow_in_dollars += bp.amount * bp_data.price;
         }
@@ -163,121 +109,117 @@ pub trait LendingUtilsModule: math::LendingMathModule + storage::LendingStorageM
         total_borrow_in_dollars
     }
 
-    fn get_liquidation_bonus_non_zero(&self, token_id: &TokenIdentifier) -> BigUint {
-        let liq_bonus = self.asset_liquidation_bonus(token_id).get();
-        require!(liq_bonus > 0, ERROR_NO_LIQUIDATION_BONUS);
-
-        liq_bonus
-    }
-
-    fn get_loan_to_value_exists_and_non_zero(&self, token_id: &TokenIdentifier) -> BigUint {
-        require!(
-            !self.asset_loan_to_value(token_id).is_empty(),
-            ERROR_NO_LOAN_TO_VALUE
-        );
-
-        let loan_to_value = self.asset_loan_to_value(token_id).get();
-        require!(loan_to_value > 0, ERROR_LOAN_TO_VALUE_ZERO);
-
-        loan_to_value
-    }
-
-    fn get_liquidation_threshold_exists_and_non_zero(&self, token_id: &TokenIdentifier) -> BigUint {
-        require!(
-            !self.asset_liquidation_threshold(token_id).is_empty(),
-            ERROR_NO_LIQUIDATION_THRESHOLD
-        );
-
-        self.asset_liquidation_threshold(token_id).get()
-    }
-
-    fn calculate_dynamic_liquidation_bonus(
+    fn validate_isolated_debt_ceiling(
         &self,
-        health_factor: &BigUint,
-        initial_bonus: BigUint,
-    ) -> BigUint {
-        // Example: If health factor is 0.95 (95%), position is slightly unhealthy
-        // If health factor is 0.5 (50%), position is very unhealthy
+        asset_config: &AssetConfig<Self::Api>,
+        token_id: &EgldOrEsdtTokenIdentifier,
+        borrow_amount: &BigUint,
+        price_data: &PriceFeed<Self::Api>,
+    ) {
+        let current_debt = self.isolated_asset_debt_usd(token_id).get();
+        let new_debt_amount = borrow_amount * &price_data.price;
+        let total_debt = current_debt + new_debt_amount;
 
-        // BP - health_factor gives us how far below 1.0 the HF is
-        // HF 0.95 -> 1.0 - 0.95 = 0.05 (5% below healthy)
-        // HF 0.50 -> 1.0 - 0.50 = 0.50 (50% below healthy)
-        let bp = BigUint::from(BP);
-        let health_factor_impact = (&bp - health_factor).mul(2u64);
-
-        // Max bonus increase is 30% (3000 basis points)
-        let max_bonus_increase = BigUint::from(MAX_BONUS);
-
-        // Calculate bonus increase based on how unhealthy the position is
-        // More unhealthy = bigger bonus to incentivize quick liquidation
-        let bonus_increase = BigUint::min(
-            &health_factor_impact * &initial_bonus / bp,
-            max_bonus_increase,
+        require!(
+            total_debt <= asset_config.debt_ceiling_usd,
+            ERROR_DEBT_CEILING_REACHED
         );
-
-        initial_bonus + bonus_increase
     }
 
-    fn calculate_liquidation_amount(
+    fn update_isolated_debt_usd(
         &self,
-        health_factor: &BigUint,
-        total_debt: &BigUint,
-    ) -> BigUint {
-        // Only liquidate enough to bring position back to health
-        let bp = BigUint::from(BP);
-        let target_health_factor = &bp + &(&bp / &BigUint::from(5u32)); // 120%
+        token_id: &EgldOrEsdtTokenIdentifier,
+        amount_to_borrow_in_dollars: &BigUint,
+        is_increase: bool,
+    ) {
+        let map = self.isolated_asset_debt_usd(token_id);
 
-        let required_debt_reduction = (total_debt * &(&target_health_factor - health_factor)) / &bp;
+        if is_increase {
+            map.update(|debt| *debt += amount_to_borrow_in_dollars);
+        } else {
+            map.update(|debt| *debt -= amount_to_borrow_in_dollars);
+        }
 
-        BigUint::min(
-            required_debt_reduction,
-            total_debt * &BigUint::from(MAX_THRESHOLD) / &bp,
-        )
+        self.update_debt_ceiling_event(token_id, map.get());
     }
 
-    fn require_asset_supported(&self, asset: &TokenIdentifier) {
+    fn require_asset_supported(&self, asset: &EgldOrEsdtTokenIdentifier) {
         require!(!self.pools_map(asset).is_empty(), ERROR_ASSET_NOT_SUPPORTED);
     }
 
-    fn compute_amount_in_tokens(
+    fn validate_isolated_collateral(
         &self,
-        liquidatee_account_nonce: u64,
-        token_to_liquidate: &TokenIdentifier, // collateral token of the debt position
-        amount_to_return_to_liquidator_in_dollars: BigUint, // amount to return to the liquidator with bonus
-    ) -> BigUint {
+        account_nonce: u64,
+        asset_to_deposit: &EgldOrEsdtTokenIdentifier,
+    ) {
+        let deposit_positions = self.deposit_positions(account_nonce);
         require!(
-            self.deposit_positions(liquidatee_account_nonce)
-                .contains_key(token_to_liquidate),
-            ERROR_NO_COLLATERAL_TOKEN
+            deposit_positions.is_empty()
+                || (deposit_positions.len() == 1
+                    && deposit_positions.contains_key(asset_to_deposit)),
+            ERROR_MIX_ISOLATED_COLLATERAL
         );
-
-        // Take the USD price of the token that the liquidator will receive
-        let token_data = self.get_token_price_data(token_to_liquidate);
-        // Convert the amount to return to the liquidator with bonus to the token amount
-        (&amount_to_return_to_liquidator_in_dollars * BP / &token_data.price)
-            * BigUint::from(10u64).pow(token_data.decimals as u32)
-            / BP
     }
 
-    fn calculate_single_asset_liquidation_amount(
+    fn get_account_attributes(
         &self,
-        health_factor: &BigUint,
-        total_debt: &BigUint,
-        token_to_liquidate: &TokenIdentifier,
-        feed: &PriceFeed<Self::Api>,
-        liquidatee_account_nonce: u64,
-    ) -> BigUint {
-        let full_liquidation_amount = self.calculate_liquidation_amount(health_factor, total_debt);
+        account_nonce: u64,
+        token_id: &TokenIdentifier<Self::Api>,
+    ) -> NftAccountAttributes {
+        let data = self.blockchain().get_esdt_token_data(
+            &self.blockchain().get_sc_address(),
+            token_id,
+            account_nonce,
+        );
 
-        // Get the available collateral value for this specific asset
-        let deposit_position = self
-            .deposit_positions(liquidatee_account_nonce)
-            .get(token_to_liquidate)
-            .unwrap_or_else(|| sc_panic!(ERROR_NO_COLLATERAL_TOKEN));
+        data.decode_attributes::<NftAccountAttributes>()
+    }
 
-        let available_collateral_value = &deposit_position.amount * &feed.price;
+    fn check_borrow_cap(
+        &self,
+        asset_config: &AssetConfig<Self::Api>,
+        amount: &BigUint,
+        asset: &EgldOrEsdtTokenIdentifier,
+    ) {
+        if asset_config.borrow_cap.is_some() {
+            let pool = self.pools_map(asset).get();
+            let borrow_cap = asset_config.borrow_cap.clone().unwrap();
+            let total_borrow = self
+                .tx()
+                .to(pool)
+                .typed(proxy_pool::LiquidityPoolProxy)
+                .borrowed_amount()
+                .returns(ReturnsResult)
+                .sync_call_readonly();
 
-        // Take the minimum between what we need and what's available
-        BigUint::min(full_liquidation_amount, available_collateral_value)
+            require!(
+                total_borrow + amount <= borrow_cap,
+                ERROR_BORROW_CAP_REACHED
+            );
+        }
+    }
+
+    fn check_supply_cap(
+        &self,
+        asset_config: &AssetConfig<Self::Api>,
+        amount: &BigUint,
+        asset: &EgldOrEsdtTokenIdentifier,
+    ) {
+        if asset_config.supply_cap.is_some() {
+            let pool = self.pools_map(asset).get();
+            let supply_cap = asset_config.supply_cap.clone().unwrap();
+            let total_supply = self
+                .tx()
+                .to(pool)
+                .typed(proxy_pool::LiquidityPoolProxy)
+                .supplied_amount()
+                .returns(ReturnsResult)
+                .sync_call_readonly();
+
+            require!(
+                total_supply + amount <= supply_cap,
+                ERROR_SUPPLY_CAP_REACHED
+            );
+        }
     }
 }

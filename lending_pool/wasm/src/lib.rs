@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           29
+// Endpoints:                           37
 // Async Callback:                       1
-// Total number of exported functions:  32
+// Total number of exported functions:  40
 
 #![no_std]
 
@@ -31,24 +31,32 @@ multiversx_sc_wasm_adapter::endpoints! {
         createLiquidityPool => create_liquidity_pool
         upgradeLiquidityPool => upgrade_liquidity_pool
         setAggregator => set_aggregator
-        setAssetLoanToValue => set_asset_loan_to_value
-        setAssetLiquidationBonus => set_asset_liquidation_bonus
-        setAssetLiquidationThreshold => set_asset_liquidation_threshold
+        addEModeCategory => add_e_mode_category
+        editEModeCategory => edit_e_mode_category
+        removeEModeCategory => remove_e_mode_category
+        addAssetToEModeCategory => add_asset_to_e_mode_category
+        editAssetInEModeCategory => edit_asset_in_e_mode_category
+        removeAssetFromEModeCategory => remove_asset_from_e_mode_category
+        editAssetConfig => edit_asset_config
         getPoolAddress => get_pool_address
         registerAccountToken => register_account_token
         getAccountToken => account_token
         getAccountPositions => account_positions
         getDepositPositions => deposit_positions
         getBorrowPositions => borrow_positions
+        getPoolsMap => pools_map
         getPoolAllowed => pools_allowed
-        getAssetLoanToValue => asset_loan_to_value
-        getAssetLiquidationThreshold => asset_liquidation_threshold
-        getAssetLiquidationBonus => asset_liquidation_bonus
+        getPriceAggregatorAddress => price_aggregator_address
+        getAssetConfig => asset_config
+        lastEModeCategoryId => last_e_mode_category_id
+        getEModes => e_mode_category
+        getAssetEModes => asset_e_modes
+        getEModesAssets => e_mode_assets
         getCollateralAmountForToken => get_collateral_amount_for_token
+        getTotalBorrowInDollars => get_total_borrow_in_dollars
         getTotalCollateralAvailable => get_total_collateral_in_dollars
         getLiquidationCollateralAvailable => get_liquidation_collateral_available
         getLtvCollateralInDollars => get_ltv_collateral_in_dollars
-        getTotalBorrowInDollars => get_total_borrow_in_dollars
     )
 }
 

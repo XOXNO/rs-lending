@@ -3,11 +3,13 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
-use common_events::UpdateAssetParamsType;
+use common_events::{AssetConfig, EModeAssetConfig, EModeCategory};
 
 use crate::{
-    storage, ERROR_ASSET_ALREADY_SUPPORTED, ERROR_INVALID_LIQUIDATION_THRESHOLD, ERROR_INVALID_LTV,
-    ERROR_INVALID_TICKER, ERROR_NO_POOL_FOUND,
+    storage, ERROR_ASSET_ALREADY_SUPPORTED, ERROR_ASSET_ALREADY_SUPPORTED_IN_EMODE,
+    ERROR_ASSET_NOT_SUPPORTED, ERROR_ASSET_NOT_SUPPORTED_IN_EMODE, ERROR_EMODE_CATEGORY_NOT_FOUND,
+    ERROR_INVALID_AGGREGATOR, ERROR_INVALID_LIQUIDATION_THRESHOLD, ERROR_INVALID_TICKER,
+    ERROR_NO_POOL_FOUND,
 };
 
 use super::factory;
@@ -23,25 +25,20 @@ pub trait RouterModule:
     #[endpoint(createLiquidityPool)]
     fn create_liquidity_pool(
         &self,
-        base_asset: TokenIdentifier,
+        base_asset: EgldOrEsdtTokenIdentifier,
         r_max: BigUint,
         r_base: BigUint,
         r_slope1: BigUint,
         r_slope2: BigUint,
         u_optimal: BigUint,
         reserve_factor: BigUint,
-        ltv: &BigUint,
-        liquidation_threshold: &BigUint,
-        liq_bonus: &BigUint,
-        protocol_liquidation_fee: &BigUint,
-        borrow_cap: &BigUint,
-        supply_cap: &BigUint,
+        config: AssetConfig<Self::Api>,
     ) -> ManagedAddress {
         require!(
             !self.pools_map(&base_asset).is_empty(),
             ERROR_ASSET_ALREADY_SUPPORTED
         );
-        require!(base_asset.is_valid_esdt_identifier(), ERROR_INVALID_TICKER);
+        require!(base_asset.is_valid(), ERROR_INVALID_TICKER);
 
         let address = self.create_pool(
             &base_asset,
@@ -51,9 +48,6 @@ pub trait RouterModule:
             &r_slope2,
             &u_optimal,
             &reserve_factor,
-            &protocol_liquidation_fee,
-            &borrow_cap,
-            &supply_cap,
         );
 
         self.require_non_zero_address(&address);
@@ -61,9 +55,25 @@ pub trait RouterModule:
         self.pools_map(&base_asset).set(address.clone());
         self.pools_allowed().insert(address.clone());
 
-        self.set_asset_loan_to_value(&base_asset, ltv);
-        self.set_asset_liquidation_bonus(&base_asset, liq_bonus);
-        self.set_asset_liquidation_threshold(&base_asset, liquidation_threshold);
+        let asset_config = &AssetConfig {
+            ltv: config.ltv,
+            liquidation_threshold: config.liquidation_threshold,
+            liquidation_bonus: config.liquidation_bonus,
+            liquidation_base_fee: config.liquidation_base_fee,
+            borrow_cap: config.borrow_cap,
+            supply_cap: config.supply_cap,
+            can_be_collateral: config.can_be_collateral,
+            can_be_borrowed: config.can_be_borrowed,
+            is_e_mode_enabled: false,
+            is_isolated: config.is_isolated,
+            debt_ceiling_usd: config.debt_ceiling_usd,
+            is_siloed: config.is_siloed,
+            flashloan_enabled: config.flashloan_enabled,
+            can_borrow_in_isolation: config.can_borrow_in_isolation,
+        };
+
+        self.asset_config(&base_asset).set(asset_config);
+
         self.create_market_params_event(
             &base_asset,
             &r_max,
@@ -72,13 +82,8 @@ pub trait RouterModule:
             &r_slope2,
             &u_optimal,
             &reserve_factor,
-            &protocol_liquidation_fee,
             &address,
-            &ltv,
-            &liquidation_threshold,
-            &liq_bonus,
-            &borrow_cap,
-            &supply_cap,
+            asset_config,
         );
         address
     }
@@ -87,16 +92,13 @@ pub trait RouterModule:
     #[endpoint(upgradeLiquidityPool)]
     fn upgrade_liquidity_pool(
         &self,
-        base_asset: &TokenIdentifier,
+        base_asset: &EgldOrEsdtTokenIdentifier,
         r_max: BigUint,
         r_base: BigUint,
         r_slope1: BigUint,
         r_slope2: BigUint,
         u_optimal: BigUint,
         reserve_factor: BigUint,
-        protocol_liquidation_fee: BigUint,
-        borrow_cap: BigUint,
-        supply_cap: BigUint,
     ) {
         require!(!self.pools_map(base_asset).is_empty(), ERROR_NO_POOL_FOUND);
 
@@ -109,78 +111,201 @@ pub trait RouterModule:
             r_slope2,
             u_optimal,
             reserve_factor,
-            protocol_liquidation_fee,
-            borrow_cap,
-            supply_cap,
         );
     }
 
     #[only_owner]
     #[endpoint(setAggregator)]
     fn set_aggregator(&self, aggregator: ManagedAddress) {
+        require!(!aggregator.is_zero(), ERROR_INVALID_AGGREGATOR);
+
+        require!(
+            self.blockchain().is_smart_contract(&aggregator),
+            ERROR_INVALID_AGGREGATOR
+        );
         self.price_aggregator_address().set(&aggregator);
     }
 
     #[only_owner]
-    #[endpoint(setAssetLoanToValue)]
-    fn set_asset_loan_to_value(&self, asset: &TokenIdentifier, loan_to_value: &BigUint) {
-        let liquidation_threshold = self.asset_liquidation_threshold(asset);
+    #[endpoint(addEModeCategory)]
+    fn add_e_mode_category(&self, mut category: EModeCategory<Self::Api>) {
+        let map = self.last_e_mode_category_id();
 
-        if !liquidation_threshold.is_empty() {
-            require!(
-                loan_to_value < &liquidation_threshold.get(),
-                ERROR_INVALID_LTV
-            );
-        }
-        self.asset_loan_to_value(asset).set(loan_to_value);
-        let pool_address = self.get_pool_address(asset);
-        self.update_asset_params_event(
-            &pool_address,
-            asset,
-            loan_to_value,
-            UpdateAssetParamsType::LTV,
-        );
+        let last_id = map.get();
+        category.id = last_id + 1;
+
+        map.set(category.id);
+
+        self.update_e_mode_category_event(&category);
+        self.e_mode_category().insert(category.id, category);
     }
 
     #[only_owner]
-    #[endpoint(setAssetLiquidationBonus)]
-    fn set_asset_liquidation_bonus(&self, asset: &TokenIdentifier, liq_bonus: &BigUint) {
-        self.asset_liquidation_bonus(asset).set(liq_bonus);
-        let pool_address = self.get_pool_address(asset);
-        self.update_asset_params_event(
-            &pool_address,
-            asset,
-            liq_bonus,
-            UpdateAssetParamsType::LiquidationBonus,
-        );
-    }
-
-    #[only_owner]
-    #[endpoint(setAssetLiquidationThreshold)]
-    fn set_asset_liquidation_threshold(
-        &self,
-        asset: &TokenIdentifier,
-        liquidation_threshold: &BigUint,
-    ) {
-        let ltv = self.asset_loan_to_value(asset).get();
+    #[endpoint(editEModeCategory)]
+    fn edit_e_mode_category(&self, category: EModeCategory<Self::Api>) {
+        let mut map = self.e_mode_category();
         require!(
-            liquidation_threshold < &ltv,
+            map.contains_key(&category.id),
+            ERROR_EMODE_CATEGORY_NOT_FOUND
+        );
+
+        self.update_e_mode_category_event(&category);
+        map.insert(category.id, category);
+    }
+
+    #[only_owner]
+    #[endpoint(removeEModeCategory)]
+    fn remove_e_mode_category(&self, category_id: u8) {
+        let mut map = self.e_mode_category();
+        require!(
+            map.contains_key(&category_id),
+            ERROR_EMODE_CATEGORY_NOT_FOUND
+        );
+
+        let assets = self
+            .e_mode_assets(category_id)
+            .keys()
+            .collect::<ManagedVec<_>>();
+
+        for asset in &assets {
+            self.remove_asset_from_e_mode_category(asset, category_id);
+        }
+
+        let removed_category = map.remove(&category_id);
+        self.update_e_mode_category_event(&removed_category.unwrap());
+    }
+
+    #[only_owner]
+    #[endpoint(addAssetToEModeCategory)]
+    fn add_asset_to_e_mode_category(
+        &self,
+        asset: EgldOrEsdtTokenIdentifier,
+        category_id: u8,
+        config: EModeAssetConfig,
+    ) {
+        require!(
+            self.e_mode_category().contains_key(&category_id),
+            ERROR_EMODE_CATEGORY_NOT_FOUND
+        );
+        require!(
+            !self.pools_map(&asset).is_empty(),
+            ERROR_ASSET_NOT_SUPPORTED
+        );
+
+        let mut e_mode_assets = self.e_mode_assets(category_id);
+        require!(
+            !e_mode_assets.contains_key(&asset),
+            ERROR_ASSET_ALREADY_SUPPORTED_IN_EMODE
+        );
+
+        let mut asset_e_modes = self.asset_e_modes(&asset);
+        require!(
+            !asset_e_modes.contains(&category_id),
+            ERROR_ASSET_ALREADY_SUPPORTED_IN_EMODE
+        );
+
+        let asset_map = self.asset_config(&asset);
+
+        let mut asset_data = asset_map.get();
+
+        if !asset_data.is_e_mode_enabled {
+            asset_data.is_e_mode_enabled = true;
+
+            self.update_asset_config_event(&self.get_pool_address(&asset), &asset_data);
+            asset_map.set(asset_data);
+        }
+
+        self.update_e_mode_asset_event(&asset, &config, category_id);
+        asset_e_modes.insert(category_id);
+        e_mode_assets.insert(asset, config);
+    }
+
+    #[only_owner]
+    #[endpoint(editAssetInEModeCategory)]
+    fn edit_asset_in_e_mode_category(
+        &self,
+        asset: EgldOrEsdtTokenIdentifier,
+        category_id: u8,
+        config: EModeAssetConfig,
+    ) {
+        let mut map = self.e_mode_assets(category_id);
+        require!(!map.is_empty(), ERROR_EMODE_CATEGORY_NOT_FOUND);
+        require!(map.contains_key(&asset), ERROR_ASSET_NOT_SUPPORTED_IN_EMODE);
+
+        self.update_e_mode_asset_event(&asset, &config, category_id);
+        map.insert(asset, config);
+    }
+
+    #[only_owner]
+    #[endpoint(removeAssetFromEModeCategory)]
+    fn remove_asset_from_e_mode_category(&self, asset: EgldOrEsdtTokenIdentifier, category_id: u8) {
+        let mut e_mode_assets = self.e_mode_assets(category_id);
+        require!(!e_mode_assets.is_empty(), ERROR_EMODE_CATEGORY_NOT_FOUND);
+        require!(
+            !self.pools_map(&asset).is_empty(),
+            ERROR_ASSET_NOT_SUPPORTED
+        );
+        require!(
+            e_mode_assets.contains_key(&asset),
+            ERROR_ASSET_NOT_SUPPORTED_IN_EMODE
+        );
+
+        let config = e_mode_assets.remove(&asset);
+        let mut asset_e_modes = self.asset_e_modes(&asset);
+        asset_e_modes.swap_remove(&category_id);
+
+        self.update_e_mode_asset_event(&asset, &config.unwrap(), category_id);
+        if asset_e_modes.is_empty() {
+            let mut asset_data = self.asset_config(&asset).get();
+            asset_data.is_e_mode_enabled = false;
+
+            self.update_asset_config_event(&self.get_pool_address(&asset), &asset_data);
+            self.asset_config(&asset).set(asset_data);
+        }
+    }
+
+    #[only_owner]
+    #[endpoint(editAssetConfig)]
+    fn edit_asset_config(&self, asset: EgldOrEsdtTokenIdentifier, config: AssetConfig<Self::Api>) {
+        require!(
+            !self.pools_map(&asset).is_empty(),
+            ERROR_ASSET_NOT_SUPPORTED
+        );
+
+        let map = self.asset_config(&asset);
+        require!(!map.is_empty(), ERROR_ASSET_NOT_SUPPORTED);
+
+        require!(
+            config.liquidation_threshold > config.ltv,
             ERROR_INVALID_LIQUIDATION_THRESHOLD
         );
 
-        self.asset_liquidation_threshold(asset)
-            .set(liquidation_threshold);
-        let pool_address = self.get_pool_address(asset);
-        self.update_asset_params_event(
-            &pool_address,
-            asset,
-            liquidation_threshold,
-            UpdateAssetParamsType::LiquidationThreshold,
-        );
+        let old_config = map.get();
+
+        let new_config = &AssetConfig {
+            ltv: config.ltv,
+            liquidation_threshold: config.liquidation_threshold,
+            liquidation_bonus: config.liquidation_bonus,
+            liquidation_base_fee: config.liquidation_base_fee,
+            is_e_mode_enabled: old_config.is_e_mode_enabled,
+            is_isolated: config.is_isolated,
+            debt_ceiling_usd: config.debt_ceiling_usd,
+            is_siloed: config.is_siloed,
+            flashloan_enabled: config.flashloan_enabled,
+            can_be_collateral: config.can_be_collateral,
+            can_be_borrowed: config.can_be_borrowed,
+            can_borrow_in_isolation: config.can_borrow_in_isolation,
+            borrow_cap: config.borrow_cap,
+            supply_cap: config.supply_cap,
+        };
+
+        map.set(new_config);
+
+        self.update_asset_config_event(&self.get_pool_address(&asset), &new_config);
     }
 
     #[view(getPoolAddress)]
-    fn get_pool_address(&self, asset: &TokenIdentifier) -> ManagedAddress {
+    fn get_pool_address(&self, asset: &EgldOrEsdtTokenIdentifier) -> ManagedAddress {
         let pool_address = self.pools_map(asset).get();
 
         require!(!pool_address.is_zero(), ERROR_NO_POOL_FOUND);
