@@ -213,6 +213,9 @@ pub trait LendingPool:
         self.lending_account_token_valid(&account_token.token_identifier);
         self.require_non_zero_address(&initial_caller);
 
+        let attributes =
+            self.get_account_attributes(account_token.token_nonce, &account_token.token_identifier);
+
         self.internal_withdraw(
             account_token.token_nonce,
             withdraw_token_id,
@@ -220,6 +223,7 @@ pub trait LendingPool:
             &initial_caller,
             false,
             &BigUint::from(0u64),
+            Some(attributes),
         );
 
         let dep_pos_map = self.deposit_positions(account_token.token_nonce).len();
@@ -247,6 +251,7 @@ pub trait LendingPool:
         initial_caller: &ManagedAddress,
         is_liquidation: bool,
         liquidation_fee: &BigUint,
+        attributes: Option<NftAccountAttributes>,
     ) {
         let pool_address = self.get_pool_address(withdraw_token_id);
 
@@ -271,7 +276,7 @@ pub trait LendingPool:
                     amount, // Representing the amount of collateral removed
                     &deposit_position,
                     Some(initial_caller),
-                    None,
+                    attributes,
                 );
 
                 if deposit_position.amount == 0 {
@@ -633,6 +638,7 @@ pub trait LendingPool:
             &initial_caller,
             true,
             &liquidation_fee,
+            None,
         );
     }
 
