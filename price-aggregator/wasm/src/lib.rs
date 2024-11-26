@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           21
+// Endpoints:                           15
 // Async Callback (empty):               1
-// Total number of exported functions:  24
+// Total number of exported functions:  18
 
 #![no_std]
 
@@ -16,11 +16,10 @@ multiversx_sc_wasm_adapter::allocator!();
 multiversx_sc_wasm_adapter::panic_handler!();
 
 multiversx_sc_wasm_adapter::endpoints! {
-    multiversx_price_aggregator_sc
+    price_aggregator
     (
         init => init
         upgrade => upgrade
-        changeAmounts => change_amounts
         addOracles => add_oracles
         removeOracles => remove_oracles
         submit => submit
@@ -36,11 +35,6 @@ multiversx_sc_wasm_adapter::endpoints! {
         pause => pause_endpoint
         unpause => unpause_endpoint
         isPaused => paused_status
-        stake => stake
-        unstake => unstake
-        voteSlashMember => vote_slash_member
-        cancelVoteSlashMember => cancel_vote_slash_member
-        slashMember => slash_member
     )
 }
 

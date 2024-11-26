@@ -38,10 +38,8 @@ pub trait MathModule {
         reserve_factor: &BigUint,
     ) -> BigUint {
         let bp = BigUint::from(BP);
-        let loan_ratio = u_current * borrow_rate;
-        let deposit_rate = &(u_current * &loan_ratio) * &(&bp - reserve_factor);
 
-        deposit_rate / (&bp * &bp * bp)
+        (u_current * borrow_rate * (&bp - reserve_factor)) / (&bp * &bp)
     }
 
     fn compute_capital_utilisation(

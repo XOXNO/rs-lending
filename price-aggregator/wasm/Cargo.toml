@@ -24,11 +24,11 @@ overflow-checks = false
 [profile.dev]
 panic = "abort"
 
-[dependencies.multiversx-price-aggregator-sc]
+[dependencies.price-aggregator]
 path = ".."
 
 [dependencies.multiversx-sc-wasm-adapter]
-version = "0.53.2"
+version = "0.54.0"
 
 [workspace]
 members = ["."]

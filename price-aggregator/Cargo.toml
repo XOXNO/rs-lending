@@ -1,5 +1,5 @@
 [package]
-name = "multiversx-price-aggregator-sc"
+name = "price-aggregator"
 version = "0.47.1"
 authors = [
     "Claudiu-Marcel Bruda <claudiu.bruda@multiversx.com>",
@@ -29,13 +29,13 @@ edition = "2021"
 path = "src/lib.rs"
 
 [dev-dependencies.multiversx-sc-scenario]
-version = "0.53.2"
+version = "0.54.0"
 
 [dependencies.multiversx-sc]
-version = "0.53.2"
+version = "0.54.0"
 
 [dependencies.multiversx-sc-modules]
-version = "0.53.2"
+version = "0.54.0"
 
 [dependencies.arrayvec]
 version = "0.7.1"

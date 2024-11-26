@@ -44,3 +44,7 @@ pub static ERROR_CANNOT_USE_EMODE_WITH_ISOLATED_ASSETS: &[u8] =
     b"Cannot use E-Mode with isolated assets.";
 pub static ERROR_DEBT_CEILING_REACHED: &[u8] = b"Debt ceiling reached for isolated asset.";
 pub static ERROR_ASSET_NOT_BORROWABLE: &[u8] = b"Asset not borrowable.";
+pub static ERROR_FLASHLOAN_NOT_ENABLED: &[u8] = b"Flashloan not enabled for this asset.";
+pub static ERROR_INVALID_SHARD: &[u8] = b"Invalid shard for flashloan.";
+pub static ERROR_SUPPLY_CAP: &[u8] = b"Supply cap reached.";
+pub static ERROR_BORROW_CAP: &[u8] = b"Borrow cap reached.";

@@ -6,3 +6,10 @@ name = "price-aggregator"
 
 [[proxy]]
 path = "../lending_pool/src/proxy_price_aggregator.rs"
+
+[[proxy]]
+path = "../lending_pool/tests/proxy_aggregator.rs"
+
+[[proxy]]
+path = "interactor/src/proxy.rs"
+ 

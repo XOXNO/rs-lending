@@ -6,3 +6,10 @@ name = "liquidity_pool"
 
 [[proxy]]
 path = "../lending_pool/src/proxy_pool.rs"
+
+[[proxy]]
+path = "../lending_pool/tests/proxy_liquidity_pool.rs"
+
+[[proxy]]
+path = "interactor/src/proxy.rs"
+ 

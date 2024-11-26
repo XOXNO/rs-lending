@@ -2,12 +2,11 @@ multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
 use crate::{
-    math, oracle, proxy_pool, proxy_price_aggregator::PriceFeed, storage,
-    ERROR_ASSET_NOT_SUPPORTED, ERROR_DEBT_CEILING_REACHED, ERROR_MIX_ISOLATED_COLLATERAL,
+    math, oracle, proxy_pool, storage, ERROR_ASSET_NOT_SUPPORTED, ERROR_BORROW_CAP,
+    ERROR_DEBT_CEILING_REACHED, ERROR_MIX_ISOLATED_COLLATERAL, ERROR_SUPPLY_CAP,
 };
 
 use common_structs::*;
-use liquidity_pool::errors::{ERROR_BORROW_CAP_REACHED, ERROR_SUPPLY_CAP_REACHED};
 
 pub const EGELD_IDENTIFIER: &str = "EGLD-000000";
 
@@ -33,8 +32,9 @@ pub trait LendingUtilsModule:
                 AccountPositionType::Deposit,
                 token_id.clone(),
                 BigUint::zero(),
+                BigUint::zero(),
                 account_position,
-                self.blockchain().get_block_round(),
+                self.blockchain().get_block_timestamp(),
                 BigUint::from(BP),
                 // Save the current market parameters
                 asset_config.ltv.clone(),
@@ -56,8 +56,9 @@ pub trait LendingUtilsModule:
                 AccountPositionType::Borrow,
                 token_id,
                 BigUint::zero(),
+                BigUint::zero(),
                 account_position,
-                self.blockchain().get_block_round(),
+                self.blockchain().get_block_timestamp(),
                 BigUint::from(BP),
                 // Save the current market parameters
                 asset_config.ltv.clone(),
@@ -74,11 +75,32 @@ pub trait LendingUtilsModule:
         let mut deposited_amount_in_dollars = BigUint::zero();
 
         for dp in positions {
-            let dp_data = self.get_token_price_data(&dp.token_id);
-            deposited_amount_in_dollars += dp.amount * dp_data.price;
+            deposited_amount_in_dollars += self.get_token_amount_in_dollars(
+                &dp.token_id,
+                &(&dp.amount + &dp.accumulated_interest),
+            );
         }
 
         deposited_amount_in_dollars
+    }
+
+    fn get_liquidation_collateral_in_dollars_vec(
+        &self,
+        positions: &ManagedVec<AccountPosition<Self::Api>>,
+    ) -> BigUint {
+        let mut weighted_collateral_in_dollars = BigUint::zero();
+
+        for dp in positions {
+            let position_value_in_dollars = self.get_token_amount_in_dollars(
+                &dp.token_id,
+                &(&dp.amount + &dp.accumulated_interest),
+            );
+
+            weighted_collateral_in_dollars +=
+                position_value_in_dollars * &dp.entry_liquidation_threshold / BigUint::from(BP);
+        }
+
+        weighted_collateral_in_dollars
     }
 
     fn get_ltv_collateral_in_dollars_vec(
@@ -88,8 +110,11 @@ pub trait LendingUtilsModule:
         let mut weighted_collateral_in_dollars = BigUint::zero();
 
         for dp in positions {
-            let dp_data = self.get_token_price_data(&dp.token_id);
-            let position_value_in_dollars = dp.amount.clone() * dp_data.price;
+            let position_value_in_dollars = self.get_token_amount_in_dollars(
+                &dp.token_id,
+                &(&dp.amount + &dp.accumulated_interest),
+            );
+
             weighted_collateral_in_dollars +=
                 position_value_in_dollars * &dp.entry_ltv / BigUint::from(BP);
         }
@@ -104,8 +129,10 @@ pub trait LendingUtilsModule:
         let mut total_borrow_in_dollars = BigUint::zero();
 
         for bp in positions {
-            let bp_data = self.get_token_price_data(&bp.token_id);
-            total_borrow_in_dollars += bp.amount * bp_data.price;
+            total_borrow_in_dollars += self.get_token_amount_in_dollars(
+                &bp.token_id,
+                &(&bp.amount + &bp.accumulated_interest),
+            );
         }
 
         total_borrow_in_dollars
@@ -115,12 +142,11 @@ pub trait LendingUtilsModule:
         &self,
         asset_config: &AssetConfig<Self::Api>,
         token_id: &EgldOrEsdtTokenIdentifier,
-        borrow_amount: &BigUint,
-        price_data: &PriceFeed<Self::Api>,
+        amount_to_borrow_in_dollars: &BigUint,
     ) {
         let current_debt = self.isolated_asset_debt_usd(token_id).get();
-        let new_debt_amount = borrow_amount * &price_data.price;
-        let total_debt = current_debt + new_debt_amount;
+
+        let total_debt = current_debt + amount_to_borrow_in_dollars;
 
         require!(
             total_debt <= asset_config.debt_ceiling_usd,
@@ -192,12 +218,9 @@ pub trait LendingUtilsModule:
                 .typed(proxy_pool::LiquidityPoolProxy)
                 .borrowed_amount()
                 .returns(ReturnsResult)
-                .sync_call_readonly();
+                .sync_call();
 
-            require!(
-                total_borrow + amount <= borrow_cap,
-                ERROR_BORROW_CAP_REACHED
-            );
+            require!(total_borrow + amount <= borrow_cap, ERROR_BORROW_CAP);
         }
     }
 
@@ -216,12 +239,9 @@ pub trait LendingUtilsModule:
                 .typed(proxy_pool::LiquidityPoolProxy)
                 .supplied_amount()
                 .returns(ReturnsResult)
-                .sync_call_readonly();
+                .sync_call();
 
-            require!(
-                total_supply + amount <= supply_cap,
-                ERROR_SUPPLY_CAP_REACHED
-            );
+            require!(total_supply + amount <= supply_cap, ERROR_SUPPLY_CAP);
         }
     }
 

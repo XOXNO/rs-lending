@@ -24,7 +24,7 @@ pub trait OracleModule: storage::LendingStorageModule {
             .typed(PriceAggregatorProxy)
             .latest_price_feed(from_ticker, ManagedBuffer::new_from_bytes(DOLLAR_TICKER))
             .returns(ReturnsResult)
-            .sync_call_readonly();
+            .sync_call();
 
         result
     }

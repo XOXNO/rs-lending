@@ -5,7 +5,9 @@ use crate::{oracle, storage};
 multiversx_sc::imports!();
 
 #[multiversx_sc::module]
-pub trait ViewsModule: storage::LendingStorageModule + oracle::OracleModule {
+pub trait ViewsModule:
+    storage::LendingStorageModule + oracle::OracleModule + crate::math::LendingMathModule
+{
     #[view(getCollateralAmountForToken)]
     fn get_collateral_amount_for_token(
         &self,
@@ -13,7 +15,19 @@ pub trait ViewsModule: storage::LendingStorageModule + oracle::OracleModule {
         token_id: &EgldOrEsdtTokenIdentifier,
     ) -> BigUint {
         match self.deposit_positions(account_position).get(token_id) {
-            Some(dp) => dp.amount,
+            Some(dp) => dp.amount + dp.accumulated_interest,
+            None => BigUint::zero(),
+        }
+    }
+
+    #[view(getBorrowAmountForToken)]
+    fn get_borrow_amount_for_token(
+        &self,
+        account_position: u64,
+        token_id: &EgldOrEsdtTokenIdentifier,
+    ) -> BigUint {
+        match self.borrow_positions(account_position).get(token_id) {
+            Some(bp) => bp.amount + bp.accumulated_interest,
             None => BigUint::zero(),
         }
     }
@@ -24,8 +38,10 @@ pub trait ViewsModule: storage::LendingStorageModule + oracle::OracleModule {
         let borrow_positions = self.borrow_positions(account_position);
 
         for bp in borrow_positions.values() {
-            let bp_data = self.get_token_price_data(&bp.token_id);
-            total_borrow_in_dollars += bp.amount * bp_data.price;
+            total_borrow_in_dollars += self.get_token_amount_in_dollars(
+                &bp.token_id,
+                &(&bp.amount + &bp.accumulated_interest),
+            );
         }
 
         total_borrow_in_dollars
@@ -37,8 +53,10 @@ pub trait ViewsModule: storage::LendingStorageModule + oracle::OracleModule {
         let deposit_positions = self.deposit_positions(account_position);
 
         for dp in deposit_positions.values() {
-            let dp_data = self.get_token_price_data(&dp.token_id);
-            deposited_amount_in_dollars += dp.amount * dp_data.price;
+            deposited_amount_in_dollars += self.get_token_amount_in_dollars(
+                &dp.token_id,
+                &(&dp.amount + &dp.accumulated_interest),
+            );
         }
 
         deposited_amount_in_dollars
@@ -51,11 +69,12 @@ pub trait ViewsModule: storage::LendingStorageModule + oracle::OracleModule {
 
         // Single iteration for both calculations
         for dp in deposit_positions.values() {
-            let dp_data = self.get_token_price_data(&dp.token_id);
-            let position_value_in_dollars = dp.amount.clone() * dp_data.price;
-
+            let position_value_in_dollars = self.get_token_amount_in_dollars(
+                &dp.token_id,
+                &(&dp.amount + &dp.accumulated_interest),
+            );
             weighted_liquidation_threshold_sum +=
-                &position_value_in_dollars * &dp.entry_liquidation_threshold;
+                &position_value_in_dollars * &dp.entry_liquidation_threshold / BigUint::from(BP);
         }
 
         weighted_liquidation_threshold_sum
@@ -67,10 +86,13 @@ pub trait ViewsModule: storage::LendingStorageModule + oracle::OracleModule {
         let deposit_positions = self.deposit_positions(account_position);
 
         for dp in deposit_positions.values() {
-            let dp_data = self.get_token_price_data(&dp.token_id);
-            let position_value_in_dollars = dp.amount.clone() * dp_data.price;
+            let position_value_in_dollars = self.get_token_amount_in_dollars(
+                &dp.token_id,
+                &(&dp.amount + &dp.accumulated_interest),
+            );
+
             weighted_collateral_in_dollars +=
-                position_value_in_dollars * &dp.entry_ltv / BigUint::from(BP);
+                &position_value_in_dollars * &dp.entry_ltv / BigUint::from(BP);
         }
 
         weighted_collateral_in_dollars

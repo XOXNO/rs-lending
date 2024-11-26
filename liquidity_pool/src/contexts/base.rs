@@ -12,12 +12,12 @@ where
     pub reserves_amount: BigUint<C::Api>,
     pub borrowed_amount: BigUint<C::Api>,
     pub rewards_reserve: BigUint<C::Api>,
-    pub round: u64,
+    pub timestamp: u64,
     pub pool_asset: EgldOrEsdtTokenIdentifier<C::Api>,
     pub pool_params: PoolParams<C::Api>,
     pub borrow_index: BigUint<C::Api>,
     pub supply_index: BigUint<C::Api>,
-    pub borrow_index_last_update_round: u64,
+    pub borrow_index_last_update_timestamp: u64,
 }
 
 impl<'a, C> StorageCache<'a, C>
@@ -30,12 +30,12 @@ where
             reserves_amount: sc_ref.reserves().get(),
             borrowed_amount: sc_ref.borrowed_amount().get(),
             rewards_reserve: sc_ref.rewards_reserves().get(),
-            round: sc_ref.blockchain().get_block_round(),
+            timestamp: sc_ref.blockchain().get_block_timestamp(),
             pool_asset: sc_ref.pool_asset().get(),
             pool_params: sc_ref.pool_params().get(),
             borrow_index: sc_ref.borrow_index().get(),
             supply_index: sc_ref.supply_index().get(),
-            borrow_index_last_update_round: sc_ref.borrow_index_last_update_round().get(),
+            borrow_index_last_update_timestamp: sc_ref.borrow_index_last_update_timestamp().get(),
             sc_ref,
         }
     }
@@ -54,7 +54,7 @@ where
         self.sc_ref.borrow_index().set(&self.borrow_index);
         self.sc_ref.supply_index().set(&self.supply_index);
         self.sc_ref
-            .borrow_index_last_update_round()
-            .set(&self.borrow_index_last_update_round);
+            .borrow_index_last_update_timestamp()
+            .set(&self.borrow_index_last_update_timestamp);
     }
 }

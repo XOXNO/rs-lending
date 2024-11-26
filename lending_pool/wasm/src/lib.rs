@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           37
+// Endpoints:                           39
 // Async Callback:                       1
-// Total number of exported functions:  40
+// Total number of exported functions:  42
 
 #![no_std]
 
@@ -25,6 +25,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         borrow => borrow
         repay => repay
         liquidate => liquidate
+        flashLoan => flash_loan
         updatePositionInterest => update_collateral_with_interest
         updatePositionDebt => update_borrows_with_debt
         getLiqPoolTemplateAddress => liq_pool_template_address
@@ -53,6 +54,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         getAssetEModes => asset_e_modes
         getEModesAssets => e_mode_assets
         getCollateralAmountForToken => get_collateral_amount_for_token
+        getBorrowAmountForToken => get_borrow_amount_for_token
         getTotalBorrowInDollars => get_total_borrow_in_dollars
         getTotalCollateralAvailable => get_total_collateral_in_dollars
         getLiquidationCollateralAvailable => get_liquidation_collateral_available

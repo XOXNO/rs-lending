@@ -139,8 +139,7 @@ pub trait LendingPool:
             let e_mode_category_id = e_mode_category.clone().into_option().unwrap();
 
             require!(
-                !self
-                    .asset_e_modes(&collateral_payment.token_identifier)
+                self.asset_e_modes(&collateral_payment.token_identifier)
                     .contains(&e_mode_category_id),
                 ERROR_EMODE_CATEGORY_NOT_FOUND
             );
@@ -265,7 +264,7 @@ pub trait LendingPool:
         let mut dep_pos_map = self.deposit_positions(account_nonce);
         match dep_pos_map.get(withdraw_token_id) {
             Some(dp) => {
-                require!(amount > &dp.amount, ERROR_INSUFFICIENT_DEPOSIT);
+                require!(amount <= &dp.amount, ERROR_INSUFFICIENT_DEPOSIT);
 
                 let deposit_position = self
                     .tx()
@@ -303,8 +302,9 @@ pub trait LendingPool:
         // Make sure the health factor is greater than 100% when is a normal withdraw, to prevent self liquidations risks
         // For liquidations, we allow health factor to go below 100% as maybe the liquidation was not enough to cover the debt and make it healthy again
         // A next liquidation can happen again until the health factor is above 100%
+
         require!(
-            health_factor >= BP && !is_liquidation,
+            health_factor >= BP || is_liquidation,
             ERROR_HEALTH_FACTOR_WITHDRAW
         );
     }
@@ -372,8 +372,8 @@ pub trait LendingPool:
         let collateral_positions = self.update_collateral_with_interest(nft_account_nonce);
         let borrow_positions = self.update_borrows_with_debt(nft_account_nonce);
 
-        let price_data = self.get_token_price_data(&asset_to_borrow);
-
+        let amount_to_borrow_in_dollars =
+            self.get_token_amount_in_dollars(&asset_to_borrow, &amount);
         // Siloed mode works in combination with e-mode categories
         if asset_config.is_siloed {
             require!(
@@ -390,8 +390,7 @@ pub trait LendingPool:
             self.validate_isolated_debt_ceiling(
                 &asset_config,
                 &asset_to_borrow,
-                &amount,
-                &price_data,
+                &amount_to_borrow_in_dollars,
             );
         }
 
@@ -399,8 +398,6 @@ pub trait LendingPool:
             self.get_ltv_collateral_in_dollars_vec(&collateral_positions);
 
         let borrowed_amount_in_dollars = self.get_total_borrow_in_dollars_vec(&borrow_positions);
-
-        let amount_to_borrow_in_dollars = amount.clone() * price_data.price;
 
         require!(
             get_ltv_collateral_in_dollars
@@ -416,7 +413,7 @@ pub trait LendingPool:
 
         let ret_borrow_position = self
             .tx()
-            .to(borrow_token_pool_address)
+            .to(borrow_token_pool_address.clone())
             .typed(proxy_pool::LiquidityPoolProxy)
             .borrow(&initial_caller, &amount, borrow_position)
             .returns(ReturnsResult)
@@ -482,11 +479,12 @@ pub trait LendingPool:
             let asset_config = self.asset_config(&collateral_token_id).get();
 
             if asset_config.is_isolated {
-                let price_data = self.get_token_price_data(&collateral_token_id);
+                let amount_to_repay_in_dollars =
+                    self.get_token_amount_in_dollars(&collateral_token_id, &repay_amount);
                 // In repay function
                 self.update_isolated_debt_usd(
                     &collateral_token_id,
-                    &(repay_amount * &price_data.price),
+                    &amount_to_repay_in_dollars,
                     false, // is_decrease
                 );
             }
@@ -529,120 +527,155 @@ pub trait LendingPool:
     fn liquidate(
         &self,
         liquidatee_account_nonce: u64,
-        token_to_liquidate: &EgldOrEsdtTokenIdentifier,
+        collateral_to_receive: &EgldOrEsdtTokenIdentifier,
     ) {
-        let liquidator_payment = self.call_value().egld_or_single_fungible_esdt();
+        let debt_payment = self.call_value().egld_or_single_fungible_esdt();
+        let initial_caller = self.blockchain().get_caller();
         let bp = BigUint::from(BP);
 
-        let initial_caller = self.blockchain().get_caller();
-
-        // Liquidatee is in the market; Liquidator doesn't have to be in the Lending Protocol
+        // Basic validations
         self.lending_account_in_the_market(liquidatee_account_nonce);
-        self.require_asset_supported(&liquidator_payment.0);
-        self.require_amount_greater_than_zero(&liquidator_payment.1);
+        self.require_asset_supported(&debt_payment.0);
+        self.require_asset_supported(collateral_to_receive);
+        self.require_amount_greater_than_zero(&debt_payment.1);
         self.require_non_zero_address(&initial_caller);
 
-        require!(
-            token_to_liquidate == &liquidator_payment.0,
-            ERROR_TOKEN_MISMATCH
-        );
-
-        // Make sure the collateral and borrows are updated with interest and debt before liquidation
+        // Update positions with latest interest
         let collateral_positions = self.update_collateral_with_interest(liquidatee_account_nonce);
         let borrow_positions = self.update_borrows_with_debt(liquidatee_account_nonce);
 
-        let collateral_in_dollars = self.get_ltv_collateral_in_dollars_vec(&collateral_positions);
-
+        // Calculate health factor
+        let collateral_in_dollars =
+            self.get_liquidation_collateral_in_dollars_vec(&collateral_positions);
         let borrowed_dollars = self.get_total_borrow_in_dollars_vec(&borrow_positions);
-
         let health_factor = self.compute_health_factor(&collateral_in_dollars, &borrowed_dollars);
 
+        sc_print!("health_factor: {}", health_factor);
         require!(health_factor < BP, ERROR_HEALTH_FACTOR);
 
-        // Price in USD of the asset that the liquidator sends to us
-        let liquidator_asset_data = self.get_token_price_data(&liquidator_payment.0);
-        // Total USD value of the liquidator's asset
-        let liquidator_asset_value_in_dollars =
-            &liquidator_payment.1 * &liquidator_asset_data.price;
-
-        let amount_needed_for_liquidation = self.calculate_single_asset_liquidation_amount(
+        // Calculate liquidation amount using Dutch auction mechanism
+        let liquidation_amount = self.calculate_single_asset_liquidation_amount(
             &health_factor,
             &borrowed_dollars,
-            token_to_liquidate,
-            &liquidator_asset_data,
+            collateral_to_receive,
             liquidatee_account_nonce,
         );
 
+        // Convert liquidator's payment to USD
+        let debt_payment_in_usd =
+            self.get_token_amount_in_dollars(&debt_payment.0, &debt_payment.1);
+
+        // Ensure liquidator is paying enough
         require!(
-            liquidator_asset_value_in_dollars >= amount_needed_for_liquidation,
+            debt_payment_in_usd >= liquidation_amount,
             ERROR_INSUFFICIENT_LIQUIDATION
         );
 
-        let asset_config = self.asset_config(&liquidator_payment.0).get();
+        // Calculate actual payment to use (handle excess)
+        let (payment_to_use, excess_amount) = if debt_payment_in_usd > liquidation_amount {
+            let excess_in_usd = &debt_payment_in_usd - &liquidation_amount;
+            let excess_in_tokens = self.get_usd_amount_in_tokens(&debt_payment.0, &excess_in_usd);
+            (
+                debt_payment.1.clone() - &excess_in_tokens,
+                Some(excess_in_tokens),
+            )
+        } else {
+            (debt_payment.1.clone(), None)
+        };
 
-        // Calculate dynamic liquidation bonus
-        let liq_bonus = self
-            .calculate_dynamic_liquidation_bonus(&health_factor, asset_config.liquidation_bonus);
+        // Return excess if any
+        if let Some(excess) = excess_amount {
+            self.tx()
+                .to(&initial_caller)
+                .payment(EgldOrEsdtTokenPayment::new(
+                    debt_payment.0.clone(),
+                    0,
+                    excess.clone(),
+                ))
+                .transfer();
+        }
 
-        // Calculate how much of liquidator's payment we'll actually use
-        let liquidator_payment_to_use =
-            if liquidator_asset_value_in_dollars > amount_needed_for_liquidation {
-                // Convert excess dollars back to token amount
-                let excess_dollars =
-                    &liquidator_asset_value_in_dollars - &amount_needed_for_liquidation;
+        // Calculate collateral to receive with bonus
+        let bonus_rate = self.calculate_dynamic_liquidation_bonus(
+            &health_factor,
+            self.asset_config(collateral_to_receive)
+                .get()
+                .liquidation_bonus,
+        );
 
-                let excess_tokens = (&excess_dollars * BP / &liquidator_asset_data.price)
-                    * BigUint::from(10u64).pow(liquidator_asset_data.decimals as u32)
-                    / BP;
+        let collateral_to_receive_in_usd = self
+            .get_token_amount_in_dollars(&debt_payment.0, &payment_to_use)
+            * (bp.clone() + bonus_rate)
+            / bp;
 
-                // Return excess to liquidator
-                self.tx()
-                    .to(&initial_caller)
-                    .payment(EgldOrEsdtTokenPayment::new(
-                        liquidator_payment.0.clone(),
-                        0,
-                        excess_tokens.clone(),
-                    ))
-                    .transfer();
+        // Convert USD value to collateral token amount
+        let collateral_amount = self.compute_amount_in_tokens(
+            liquidatee_account_nonce,
+            collateral_to_receive,
+            collateral_to_receive_in_usd,
+        );
 
-                // Use only what's needed
-                liquidator_payment.1 - excess_tokens
-            } else {
-                liquidator_payment.1
-            };
-
-        // Calculate collateral to return with bonus
-        let amount_to_return_to_liquidator_in_dollars =
-            (&liquidator_payment_to_use * &liquidator_asset_data.price * &(&bp + &liq_bonus)) / &bp;
-
-        // Repay the liquidatee account debt with the liquidator's asset
+        // Repay debt
         self.internal_repay(
             liquidatee_account_nonce,
-            &liquidator_payment.0,
-            &liquidator_payment_to_use,
+            &debt_payment.0,
+            &payment_to_use,
             &initial_caller,
         );
 
-        // Go through all DepositPositions and send amount_to_return_in_dollars to Liquidator
-        // USDC return to liquidator
-        let amount_to_send = self.compute_amount_in_tokens(
-            liquidatee_account_nonce,
-            token_to_liquidate,
-            amount_to_return_to_liquidator_in_dollars,
+        // Calculate and transfer collateral with protocol fee
+        let liquidation_fee = self.calculate_dynamic_protocol_fee(
+            &health_factor,
+            self.asset_config(collateral_to_receive)
+                .get()
+                .liquidation_base_fee,
         );
 
-        let liquidation_fee =
-            self.calculate_dynamic_protocol_fee(&health_factor, asset_config.liquidation_base_fee);
-        // Remove collateral from the liquidatee account
         self.internal_withdraw(
             liquidatee_account_nonce,
-            token_to_liquidate,
-            &amount_to_send,
+            collateral_to_receive,
+            &collateral_amount,
             &initial_caller,
             true,
             &liquidation_fee,
             None,
         );
+    }
+
+    #[endpoint(flashLoan)]
+    fn flash_loan(
+        &self,
+        borrowed_token: &EgldOrEsdtTokenIdentifier,
+        amount: &BigUint,
+        contract_address: &ManagedAddress,
+        endpoint: ManagedBuffer<Self::Api>,
+        arguments: ManagedArgBuffer<Self::Api>,
+    ) {
+        let asset_info = self.asset_config(&borrowed_token).get();
+        require!(asset_info.flashloan_enabled, ERROR_FLASHLOAN_NOT_ENABLED);
+
+        let pool_address = self.get_pool_address(borrowed_token);
+
+        let shard_id = self.blockchain().get_shard_of_address(contract_address);
+        let current_shard_id = self
+            .blockchain()
+            .get_shard_of_address(&self.blockchain().get_sc_address());
+
+        require!(shard_id == current_shard_id, ERROR_INVALID_SHARD);
+
+        self.tx()
+            .to(pool_address)
+            .typed(proxy_pool::LiquidityPoolProxy)
+            .flash_loan(
+                borrowed_token,
+                amount,
+                contract_address,
+                endpoint,
+                arguments,
+                &asset_info.flash_loan_fee,
+            )
+            .returns(ReturnsResult)
+            .sync_call();
     }
 
     #[endpoint(updatePositionInterest)]

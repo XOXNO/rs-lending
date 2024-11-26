@@ -25,7 +25,9 @@ pub trait ViewModule: liq_math::MathModule + liq_storage::StorageModule {
 
     #[view(getDebtInterest)]
     fn get_debt_interest(&self, amount: &BigUint, initial_borrow_index: &BigUint) -> BigUint {
-        let borrow_index_diff = self.get_borrow_index_diff(initial_borrow_index);
+        let current_borrow_index = self.borrow_index().get();
+        let borrow_index_diff =
+            self.get_borrow_index_diff(initial_borrow_index, &current_borrow_index);
 
         amount * &borrow_index_diff / BP
     }
@@ -58,10 +60,13 @@ pub trait ViewModule: liq_math::MathModule + liq_storage::StorageModule {
         )
     }
 
-    fn get_borrow_index_diff(&self, initial_borrow_index: &BigUint) -> BigUint {
-        let current_borrow_index = self.borrow_index().get();
+    fn get_borrow_index_diff(
+        &self,
+        initial_borrow_index: &BigUint,
+        current_borrow_index: &BigUint,
+    ) -> BigUint {
         require!(
-            &current_borrow_index >= initial_borrow_index,
+            current_borrow_index >= initial_borrow_index,
             ERROR_INVALID_BORROW_INDEX
         );
 

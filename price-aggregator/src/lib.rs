@@ -6,7 +6,6 @@ mod events;
 pub mod median;
 pub mod price_aggregator_data;
 
-use multiversx_sc_modules::staking;
 use price_aggregator_data::{OracleStatus, PriceFeed, TimestampedPrice, TokenPair};
 
 const SUBMISSION_LIST_MAX_LEN: usize = 50;
@@ -14,31 +13,19 @@ const SUBMISSION_LIST_MIN_LEN: usize = 3;
 const FIRST_SUBMISSION_TIMESTAMP_MAX_DIFF_SECONDS: u64 = 30;
 pub const MAX_ROUND_DURATION_SECONDS: u64 = 1_800; // 30 minutes
 const PAUSED_ERROR_MSG: &[u8] = b"Contract is paused";
-const PAIR_DECIMALS_NOT_CONFIGURED_ERROR: &[u8] = b"pair decimals not configured";
-const WRONG_NUMBER_OF_DECIMALS_ERROR: &[u8] = b"wrong number of decimals";
+const PAIR_DECIMALS_NOT_CONFIGURED_ERROR: &[u8] = b"Pair decimals not configured";
+const WRONG_NUMBER_OF_DECIMALS_ERROR: &[u8] = b"Wrong number of decimals";
 
 #[multiversx_sc::contract]
 pub trait PriceAggregator:
-    multiversx_sc_modules::pause::PauseModule + staking::StakingModule + events::EventsModule
+    multiversx_sc_modules::pause::PauseModule + events::EventsModule
 {
     #[init]
     fn init(
         &self,
-        staking_token: EgldOrEsdtTokenIdentifier,
-        staking_amount: BigUint,
-        slash_amount: BigUint,
-        slash_quorum: usize,
         submission_count: usize,
         oracles: MultiValueEncoded<ManagedAddress>,
     ) {
-        self.init_staking_module(
-            &staking_token,
-            &staking_amount,
-            &slash_amount,
-            slash_quorum,
-            &oracles.to_vec(),
-        );
-
         self.add_oracles(oracles);
 
         self.require_valid_submission_count(submission_count);
@@ -50,39 +37,6 @@ pub trait PriceAggregator:
     #[upgrade]
     fn upgrade(&self) {
         self.set_paused(true);
-    }
-
-    #[only_owner]
-    #[endpoint(changeAmounts)]
-    fn change_amounts(&self, staking_amount: BigUint, slash_amount: BigUint) {
-        require!(
-            staking_amount > 0 && slash_amount > 0,
-            "Staking and slash amount cannot be 0"
-        );
-        require!(
-            slash_amount <= staking_amount,
-            "Slash amount cannot be higher than required stake"
-        );
-
-        let user_whitelist = self.user_whitelist();
-        let slash_quorum = self.slash_quorum().get();
-
-        let mut users_owning_new_amount = 0;
-        for user in user_whitelist.iter() {
-            if staking_amount < self.staked_amount(&user).get() {
-                users_owning_new_amount += 1;
-            }
-            if users_owning_new_amount > slash_quorum {
-                break;
-            }
-        }
-
-        require!(
-            users_owning_new_amount > slash_quorum,
-            "New staking amount is too big compared to members staked amount"
-        );
-        self.required_stake_amount().set(staking_amount);
-        self.slash_amount().set(slash_amount);
     }
 
     #[only_owner]
@@ -98,7 +52,6 @@ pub trait PriceAggregator:
                         accepted_submissions: 0,
                     },
                 );
-                self.add_board_member(oracle);
             }
         }
     }
@@ -111,7 +64,6 @@ pub trait PriceAggregator:
         let mut oracle_mapper = self.oracle_status();
         for oracle in oracles {
             let _ = oracle_mapper.remove(&oracle);
-            self.remove_board_member(&oracle);
         }
 
         self.require_valid_submission_count(submission_count);
@@ -250,7 +202,7 @@ pub trait PriceAggregator:
     fn require_is_oracle(&self) {
         let caller = self.blockchain().get_caller();
         require!(
-            self.oracle_status().contains_key(&caller) && self.is_staked_board_member(&caller),
+            self.oracle_status().contains_key(&caller),
             "only oracles allowed"
         );
     }

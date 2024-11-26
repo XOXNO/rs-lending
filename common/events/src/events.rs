@@ -70,7 +70,7 @@ pub trait EventsModule {
     #[event("update_asset_config")]
     fn update_asset_config_event(
         &self,
-        #[indexed] pool_address: &ManagedAddress,
+        #[indexed] asset: &EgldOrEsdtTokenIdentifier,
         #[indexed] config: &AssetConfig<Self::Api>,
     );
 

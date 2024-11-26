@@ -35,7 +35,7 @@ pub trait RouterModule:
         config: AssetConfig<Self::Api>,
     ) -> ManagedAddress {
         require!(
-            !self.pools_map(&base_asset).is_empty(),
+            self.pools_map(&base_asset).is_empty(),
             ERROR_ASSET_ALREADY_SUPPORTED
         );
         require!(base_asset.is_valid(), ERROR_INVALID_TICKER);
@@ -67,6 +67,7 @@ pub trait RouterModule:
             is_e_mode_enabled: false,
             is_isolated: config.is_isolated,
             debt_ceiling_usd: config.debt_ceiling_usd,
+            flash_loan_fee: config.flash_loan_fee,
             is_siloed: config.is_siloed,
             flashloan_enabled: config.flashloan_enabled,
             can_borrow_in_isolation: config.can_borrow_in_isolation,
@@ -211,7 +212,7 @@ pub trait RouterModule:
         if !asset_data.is_e_mode_enabled {
             asset_data.is_e_mode_enabled = true;
 
-            self.update_asset_config_event(&self.get_pool_address(&asset), &asset_data);
+            self.update_asset_config_event(&asset, &asset_data);
             asset_map.set(asset_data);
         }
 
@@ -259,7 +260,7 @@ pub trait RouterModule:
             let mut asset_data = self.asset_config(&asset).get();
             asset_data.is_e_mode_enabled = false;
 
-            self.update_asset_config_event(&self.get_pool_address(&asset), &asset_data);
+            self.update_asset_config_event(&asset, &asset_data);
             self.asset_config(&asset).set(asset_data);
         }
     }
@@ -292,6 +293,7 @@ pub trait RouterModule:
             debt_ceiling_usd: config.debt_ceiling_usd,
             is_siloed: config.is_siloed,
             flashloan_enabled: config.flashloan_enabled,
+            flash_loan_fee: config.flash_loan_fee,
             can_be_collateral: config.can_be_collateral,
             can_be_borrowed: config.can_be_borrowed,
             can_borrow_in_isolation: config.can_borrow_in_isolation,
@@ -301,7 +303,7 @@ pub trait RouterModule:
 
         map.set(new_config);
 
-        self.update_asset_config_event(&self.get_pool_address(&asset), &new_config);
+        self.update_asset_config_event(&asset, &new_config);
     }
 
     #[view(getPoolAddress)]

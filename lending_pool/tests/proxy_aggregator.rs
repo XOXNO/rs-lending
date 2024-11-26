@@ -44,28 +44,16 @@ where
     Gas: TxGas<Env>,
 {
     pub fn init<
-        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-        Arg1: ProxyArg<BigUint<Env::Api>>,
-        Arg2: ProxyArg<BigUint<Env::Api>>,
-        Arg3: ProxyArg<usize>,
-        Arg4: ProxyArg<usize>,
-        Arg5: ProxyArg<MultiValueEncoded<Env::Api, ManagedAddress<Env::Api>>>,
+        Arg0: ProxyArg<usize>,
+        Arg1: ProxyArg<MultiValueEncoded<Env::Api, ManagedAddress<Env::Api>>>,
     >(
         self,
-        staking_token: Arg0,
-        staking_amount: Arg1,
-        slash_amount: Arg2,
-        slash_quorum: Arg3,
-        submission_count: Arg4,
-        oracles: Arg5,
+        submission_count: Arg0,
+        oracles: Arg1,
     ) -> TxTypedDeploy<Env, From, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_deploy()
-            .argument(&staking_token)
-            .argument(&staking_amount)
-            .argument(&slash_amount)
-            .argument(&slash_quorum)
             .argument(&submission_count)
             .argument(&oracles)
             .original_result()
@@ -81,22 +69,25 @@ where
     To: TxTo<Env>,
     Gas: TxGas<Env>,
 {
-    pub fn change_amounts<
-        Arg0: ProxyArg<BigUint<Env::Api>>,
-        Arg1: ProxyArg<BigUint<Env::Api>>,
-    >(
+    pub fn upgrade(
         self,
-        staking_amount: Arg0,
-        slash_amount: Arg1,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+    ) -> TxTypedUpgrade<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("changeAmounts")
-            .argument(&staking_amount)
-            .argument(&slash_amount)
+            .raw_upgrade()
             .original_result()
     }
+}
 
+#[rustfmt::skip]
+impl<Env, From, To, Gas> PriceAggregatorProxyMethods<Env, From, To, Gas>
+where
+    Env: TxEnv,
+    Env::Api: VMApi,
+    From: TxFrom<Env>,
+    To: TxTo<Env>,
+    Gas: TxGas<Env>,
+{
     pub fn add_oracles<
         Arg0: ProxyArg<MultiValueEncoded<Env::Api, ManagedAddress<Env::Api>>>,
     >(
@@ -182,7 +173,7 @@ where
         self,
         from: Arg0,
         to: Arg1,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValue6<u32, ManagedBuffer<Env::Api>, ManagedBuffer<Env::Api>, u64, BigUint<Env::Api>, u8>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, PriceFeed<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("latestPriceFeed")
@@ -198,7 +189,7 @@ where
         self,
         from: Arg0,
         to: Arg1,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, OptionalValue<MultiValue6<u32, ManagedBuffer<Env::Api>, ManagedBuffer<Env::Api>, u64, BigUint<Env::Api>, u8>>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, OptionalValue<PriceFeed<Env::Api>>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("latestPriceFeedOptional")
@@ -299,66 +290,6 @@ where
             .raw_call("isPaused")
             .original_result()
     }
-
-    pub fn stake(
-        self,
-    ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
-        self.wrapped_tx
-            .raw_call("stake")
-            .original_result()
-    }
-
-    pub fn unstake<
-        Arg0: ProxyArg<BigUint<Env::Api>>,
-    >(
-        self,
-        unstake_amount: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("unstake")
-            .argument(&unstake_amount)
-            .original_result()
-    }
-
-    pub fn vote_slash_member<
-        Arg0: ProxyArg<ManagedAddress<Env::Api>>,
-    >(
-        self,
-        member_to_slash: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("voteSlashMember")
-            .argument(&member_to_slash)
-            .original_result()
-    }
-
-    pub fn cancel_vote_slash_member<
-        Arg0: ProxyArg<ManagedAddress<Env::Api>>,
-    >(
-        self,
-        member_to_slash: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("cancelVoteSlashMember")
-            .argument(&member_to_slash)
-            .original_result()
-    }
-
-    pub fn slash_member<
-        Arg0: ProxyArg<ManagedAddress<Env::Api>>,
-    >(
-        self,
-        member_to_slash: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("slashMember")
-            .argument(&member_to_slash)
-            .original_result()
-    }
 }
 
 #[type_abi]
@@ -386,4 +317,12 @@ where
     pub decimals: u8,
     pub block: u64,
     pub epoch: u64,
+}
+
+#[type_abi]
+#[derive(TopEncode)]
+pub struct DiscardSubmissionEvent {
+    pub submission_timestamp: u64,
+    pub first_submission_timestamp: u64,
+    pub has_caller_already_submitted: bool,
 }

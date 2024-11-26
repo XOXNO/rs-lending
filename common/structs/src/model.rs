@@ -3,6 +3,7 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
+pub const SECONDS_PER_YEAR: u64 = 31_556_926;
 pub const BP: u64 = 1_000_000_000; // Represents 100%
 pub const MAX_BONUS: u64 = 300_000_000; // Represents 30% basis points
 pub const MAX_THRESHOLD: u64 = BP / 2;
@@ -38,7 +39,8 @@ pub struct AccountPosition<M: ManagedTypeApi> {
     pub account_nonce: u64,
     pub token_id: EgldOrEsdtTokenIdentifier<M>,
     pub amount: BigUint<M>,
-    pub round: u64,
+    pub accumulated_interest: BigUint<M>,
+    pub timestamp: u64,
     pub index: BigUint<M>,
 
     pub entry_ltv: BigUint<M>,
@@ -51,8 +53,9 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
         deposit_type: AccountPositionType,
         token_id: EgldOrEsdtTokenIdentifier<M>,
         amount: BigUint<M>,
+        accumulated_interest: BigUint<M>,
         account_nonce: u64,
-        round: u64,
+        timestamp: u64,
         index: BigUint<M>,
         entry_ltv: BigUint<M>,
         entry_liquidation_threshold: BigUint<M>,
@@ -62,8 +65,9 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
             deposit_type,
             token_id,
             amount,
+            accumulated_interest,
             account_nonce,
-            round,
+            timestamp,
             index,
             entry_ltv,
             entry_liquidation_threshold,
@@ -100,6 +104,7 @@ pub struct AssetConfig<M: ManagedTypeApi> {
 
     // Flashloan flag if the asset supports flashloans
     pub flashloan_enabled: bool,
+    pub flash_loan_fee: BigUint<M>,
 
     // Isolation mode borrow flags (Usully for stablecoins)
     pub can_borrow_in_isolation: bool,
