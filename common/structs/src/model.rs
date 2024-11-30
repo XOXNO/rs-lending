@@ -74,6 +74,10 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
             entry_liquidation_bonus,
         }
     }
+
+    pub fn get_total_amount(&self) -> BigUint<M> {
+        &self.amount + &self.accumulated_interest
+    }
 }
 
 #[derive(ManagedVecItem, TypeAbi, TopEncode, TopDecode, NestedEncode, NestedDecode)]
@@ -131,7 +135,16 @@ pub struct NftAccountAttributes {
 }
 
 #[derive(
-    ManagedVecItem, TopDecode, TopEncode, NestedDecode, NestedEncode, TypeAbi, Clone, PartialEq, Eq, Debug,
+    ManagedVecItem,
+    TopDecode,
+    TopEncode,
+    NestedDecode,
+    NestedEncode,
+    TypeAbi,
+    Clone,
+    PartialEq,
+    Eq,
+    Debug,
 )]
 pub struct EgldOrEsdtTokenPaymentNew<M: ManagedTypeApi> {
     pub token_identifier: EgldOrEsdtTokenIdentifier<M>,

@@ -23,7 +23,21 @@ pub trait LiquidityModule:
         deposit_position: AccountPosition<Self::Api>,
     ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
-        self.internal_update_collateral_with_interest(deposit_position, &mut storage_cache)
+        let account = self.internal_update_collateral_with_interest(
+            deposit_position,
+            &mut storage_cache,
+        );
+        self.update_market_state_event(
+            storage_cache.timestamp,
+            &storage_cache.supply_index,
+            &storage_cache.borrow_index,
+            &storage_cache.reserves_amount,
+            &storage_cache.supplied_amount,
+            &storage_cache.borrowed_amount,
+            &storage_cache.rewards_reserve,
+            &storage_cache.pool_asset,
+        );
+        account
     }
 
     #[only_owner]
@@ -33,7 +47,18 @@ pub trait LiquidityModule:
         borrow_position: AccountPosition<Self::Api>,
     ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
-        self.internal_update_borrows_with_debt(borrow_position, &mut storage_cache)
+        let account = self.internal_update_borrows_with_debt(borrow_position, &mut storage_cache);
+        self.update_market_state_event(
+            storage_cache.timestamp,
+            &storage_cache.supply_index,
+            &storage_cache.borrow_index,
+            &storage_cache.reserves_amount,
+            &storage_cache.supplied_amount,
+            &storage_cache.borrowed_amount,
+            &storage_cache.rewards_reserve,
+            &storage_cache.pool_asset,
+        );
+        account
     }
 
     #[only_owner]
@@ -72,6 +97,7 @@ pub trait LiquidityModule:
             &storage_cache.supplied_amount,
             &storage_cache.borrowed_amount,
             &storage_cache.rewards_reserve,
+            &storage_cache.pool_asset,
         );
 
         ret_deposit_position
@@ -128,6 +154,7 @@ pub trait LiquidityModule:
             &storage_cache.supplied_amount,
             &storage_cache.borrowed_amount,
             &storage_cache.rewards_reserve,
+            &storage_cache.pool_asset,
         );
 
         ret_borrow_position
@@ -151,28 +178,43 @@ pub trait LiquidityModule:
 
         self.update_interest_indexes(&mut storage_cache);
 
-        // Withdrawal amount = initial_deposit + Interest
-        let withdrawal_amount = self.compute_withdrawal_amount(
-            amount,
-            &storage_cache.supply_index,
-            &deposit_position.index,
-        );
+        // Unaccrued interest for the wanted amount
+        let extra_interest =
+            self.compute_interest(amount, &storage_cache.supply_index, &deposit_position.index);
 
+        let total_withdraw = amount + &extra_interest;
+        // Withdrawal amount = initial wanted amount + Unaccrued interest for that amount (this has to be paid back to the user that requested the withdrawal)
+        let mut principal_amount = total_withdraw.clone();
+        // Check if there is enough liquidity to cover the withdrawal
         require!(
-            &storage_cache.reserves_amount >= &withdrawal_amount,
+            &storage_cache.reserves_amount >= &principal_amount,
             ERROR_INSUFFICIENT_LIQUIDITY
         );
 
-        storage_cache.reserves_amount -= &withdrawal_amount;
+        // Update the reserves amount
+        storage_cache.reserves_amount -= &principal_amount;
 
-        require!(
-            storage_cache.supplied_amount >= *amount,
-            ERROR_INSUFFICIENT_LIQUIDITY
-        );
+        // If the total withdrawal amount is greater than the accumulated interest, we need to subtract the accumulated interest from the withdrawal amount
+        if principal_amount >= deposit_position.accumulated_interest {
+            principal_amount -= &deposit_position.accumulated_interest;
+            deposit_position.accumulated_interest = BigUint::zero();
+        }
 
-        storage_cache.supplied_amount -= amount;
+        // If the accumulated interest is greater than the withdrawal amount, we need to subtract the withdrawal amount from the accumulated interest
+        if deposit_position.accumulated_interest >= principal_amount {
+            deposit_position.accumulated_interest -= principal_amount;
+            principal_amount = BigUint::zero();
+        }
 
-        deposit_position.amount -= amount;
+        // Check if there is enough liquidity to cover the withdrawal after the interest was subtracted
+        if principal_amount > BigUint::zero() {
+            require!(
+                storage_cache.supplied_amount >= principal_amount,
+                ERROR_INSUFFICIENT_LIQUIDITY
+            );
+            deposit_position.amount -= &principal_amount;
+            storage_cache.supplied_amount -= &principal_amount;
+        }
 
         if !is_liquidation {
             self.tx()
@@ -180,12 +222,12 @@ pub trait LiquidityModule:
                 .payment(EgldOrEsdtTokenPayment::new(
                     storage_cache.pool_asset.clone(),
                     0,
-                    withdrawal_amount.clone(),
+                    total_withdraw.clone(),
                 ))
                 .transfer();
         } else {
-            let liquidation_fee = &withdrawal_amount * protocol_liquidation_fee / BP;
-            let amount_after_fee = &withdrawal_amount - &liquidation_fee;
+            let liquidation_fee = &total_withdraw * protocol_liquidation_fee / BP;
+            let amount_after_fee = &total_withdraw - &liquidation_fee;
 
             storage_cache.rewards_reserve += &liquidation_fee;
 
@@ -207,6 +249,7 @@ pub trait LiquidityModule:
             &storage_cache.supplied_amount,
             &storage_cache.borrowed_amount,
             &storage_cache.rewards_reserve,
+            &storage_cache.pool_asset,
         );
         deposit_position
     }
@@ -220,7 +263,7 @@ pub trait LiquidityModule:
         borrow_position: AccountPosition<Self::Api>,
     ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
-        let (received_asset, mut received_amount) = self.call_value().single_fungible_esdt();
+        let (received_asset, received_amount) = self.call_value().single_fungible_esdt();
 
         self.require_non_zero_address(&initial_caller);
         self.require_amount_greater_than_zero(&received_amount);
@@ -234,8 +277,7 @@ pub trait LiquidityModule:
         let mut ret_borrow_position =
             self.internal_update_borrows_with_debt(borrow_position, &mut storage_cache);
 
-        let total_owed_with_interest =
-            &ret_borrow_position.amount + &ret_borrow_position.accumulated_interest;
+        let total_owed_with_interest = ret_borrow_position.get_total_amount();
 
         if received_amount >= total_owed_with_interest {
             // Full repayment
@@ -244,43 +286,28 @@ pub trait LiquidityModule:
                 self.send()
                     .direct_esdt(&initial_caller, &received_asset, 0, &extra_amount);
             }
+            // Reduce borrowed by principal
             storage_cache.borrowed_amount -= &ret_borrow_position.amount;
-            storage_cache.reserves_amount += &ret_borrow_position.amount;
+            // Add full payment (principal + interest) to reserves
+            storage_cache.reserves_amount += &total_owed_with_interest;
+
             ret_borrow_position.amount = BigUint::zero();
             ret_borrow_position.accumulated_interest = BigUint::zero();
         } else {
-            // Pay always first the accumulated interest if covered in full
-            if received_amount >= ret_borrow_position.accumulated_interest {
-                received_amount -= &ret_borrow_position.accumulated_interest;
-                // Reset accumulated interest to zero when fully covered
-                ret_borrow_position.accumulated_interest = BigUint::zero();
-            }
+            // Partial repayment
+            let total_debt = total_owed_with_interest.clone();
 
-            if ret_borrow_position.accumulated_interest >= received_amount {
-                ret_borrow_position.accumulated_interest -= received_amount;
-                received_amount = BigUint::zero();
-            }
+            // Calculate principal portion of the payment
+            let principal_portion = &received_amount * &ret_borrow_position.amount / &total_debt;
+            let interest_portion = &received_amount - &principal_portion;
 
-            // Pay the principal via the remaining received amount after covering the interest
-            sc_print!("received_amoun1:             {}", total_owed_with_interest);
-            sc_print!("received_amount:             {}", received_amount);
-            sc_print!(
-                "borrowed_amount:             {}",
-                storage_cache.borrowed_amount
-            );
-            sc_print!(
-                "ret_borrow_position.amount:  {}",
-                ret_borrow_position.amount
-            );
-            sc_print!(
-                "ret_borrow_position.accu  :  {}",
-                ret_borrow_position.accumulated_interest
-            );
-            if received_amount > BigUint::zero() {
-                ret_borrow_position.amount -= &received_amount;
-                storage_cache.borrowed_amount -= &received_amount;
-                storage_cache.reserves_amount += &received_amount;
-            }
+            // Reduce position amounts
+            ret_borrow_position.amount -= &principal_portion;
+            ret_borrow_position.accumulated_interest -= &interest_portion;
+
+            // Update storage
+            storage_cache.borrowed_amount -= &principal_portion;
+            storage_cache.reserves_amount += &received_amount; // Full payment goes to reserves
         }
 
         self.update_market_state_event(
@@ -291,6 +318,7 @@ pub trait LiquidityModule:
             &storage_cache.supplied_amount,
             &storage_cache.borrowed_amount,
             &storage_cache.rewards_reserve,
+            &storage_cache.pool_asset,
         );
 
         ret_borrow_position
@@ -376,6 +404,7 @@ pub trait LiquidityModule:
             &storage_cache.supplied_amount,
             &storage_cache.borrowed_amount,
             &storage_cache.rewards_reserve,
+            &storage_cache.pool_asset,
         );
     }
 }

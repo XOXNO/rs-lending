@@ -1,25 +1,7 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
-use crate::price_aggregator_data::{TimestampedPrice, TokenPair};
-
-#[type_abi]
-#[derive(TopEncode)]
-pub struct NewRoundEvent<M: ManagedTypeApi> {
-    price: BigUint<M>,
-    timestamp: u64,
-    decimals: u8,
-    block: u64,
-    epoch: u64,
-}
-
-#[type_abi]
-#[derive(TopEncode)]
-pub struct DiscardSubmissionEvent {
-    submission_timestamp: u64,
-    first_submission_timestamp: u64,
-    has_caller_already_submitted: bool,
-}
+use crate::structs::{DiscardSubmissionEvent, NewRoundEvent, TimestampedPrice, TokenPair};
 
 #[multiversx_sc::module]
 pub trait EventsModule {

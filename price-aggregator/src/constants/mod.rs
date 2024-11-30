@@ -1,0 +1,4 @@
+pub const SUBMISSION_LIST_MAX_LEN: usize = 50;
+pub const SUBMISSION_LIST_MIN_LEN: usize = 1;
+pub const FIRST_SUBMISSION_TIMESTAMP_MAX_DIFF_SECONDS: u64 = 30;
+pub const MAX_ROUND_DURATION_SECONDS: u64 = 1_800; // 30 minutes

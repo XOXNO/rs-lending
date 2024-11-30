@@ -15,7 +15,7 @@ pub trait ViewsModule:
         token_id: &EgldOrEsdtTokenIdentifier,
     ) -> BigUint {
         match self.deposit_positions(account_position).get(token_id) {
-            Some(dp) => dp.amount + dp.accumulated_interest,
+            Some(dp) => dp.get_total_amount(),
             None => BigUint::zero(),
         }
     }
@@ -27,7 +27,7 @@ pub trait ViewsModule:
         token_id: &EgldOrEsdtTokenIdentifier,
     ) -> BigUint {
         match self.borrow_positions(account_position).get(token_id) {
-            Some(bp) => bp.amount + bp.accumulated_interest,
+            Some(bp) => bp.get_total_amount(),
             None => BigUint::zero(),
         }
     }
@@ -38,10 +38,8 @@ pub trait ViewsModule:
         let borrow_positions = self.borrow_positions(account_position);
 
         for bp in borrow_positions.values() {
-            total_borrow_in_dollars += self.get_token_amount_in_dollars(
-                &bp.token_id,
-                &(&bp.amount + &bp.accumulated_interest),
-            );
+            total_borrow_in_dollars +=
+                self.get_token_amount_in_dollars(&bp.token_id, &bp.get_total_amount());
         }
 
         total_borrow_in_dollars
@@ -53,10 +51,8 @@ pub trait ViewsModule:
         let deposit_positions = self.deposit_positions(account_position);
 
         for dp in deposit_positions.values() {
-            deposited_amount_in_dollars += self.get_token_amount_in_dollars(
-                &dp.token_id,
-                &(&dp.amount + &dp.accumulated_interest),
-            );
+            deposited_amount_in_dollars +=
+                self.get_token_amount_in_dollars(&dp.token_id, &dp.get_total_amount());
         }
 
         deposited_amount_in_dollars
@@ -69,10 +65,8 @@ pub trait ViewsModule:
 
         // Single iteration for both calculations
         for dp in deposit_positions.values() {
-            let position_value_in_dollars = self.get_token_amount_in_dollars(
-                &dp.token_id,
-                &(&dp.amount + &dp.accumulated_interest),
-            );
+            let position_value_in_dollars =
+                self.get_token_amount_in_dollars(&dp.token_id, &dp.get_total_amount());
             weighted_liquidation_threshold_sum +=
                 &position_value_in_dollars * &dp.entry_liquidation_threshold / BigUint::from(BP);
         }
@@ -86,10 +80,8 @@ pub trait ViewsModule:
         let deposit_positions = self.deposit_positions(account_position);
 
         for dp in deposit_positions.values() {
-            let position_value_in_dollars = self.get_token_amount_in_dollars(
-                &dp.token_id,
-                &(&dp.amount + &dp.accumulated_interest),
-            );
+            let position_value_in_dollars =
+                self.get_token_amount_in_dollars(&dp.token_id, &dp.get_total_amount());
 
             weighted_collateral_in_dollars +=
                 &position_value_in_dollars * &dp.entry_ltv / BigUint::from(BP);

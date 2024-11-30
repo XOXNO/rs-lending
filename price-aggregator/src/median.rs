@@ -1,5 +1,7 @@
 use multiversx_sc::imports::*;
 
+use crate::errors::*;
+
 /// Returns the sorted middle, or the average of the two middle indexed items if the
 /// vector has an even number of elements.
 pub fn calculate<M: ManagedTypeApi>(
@@ -12,11 +14,11 @@ pub fn calculate<M: ManagedTypeApi>(
     let len = list.len();
     let middle_index = len / 2;
     if len % 2 == 0 {
-        let median1 = list.get(middle_index - 1).ok_or("median1 invalid index")?;
-        let median2 = list.get(middle_index).ok_or("median2 invalid index")?;
+        let median1 = list.get(middle_index - 1).ok_or(MEDIAN_1_INVALID_INDEX)?;
+        let median2 = list.get(middle_index).ok_or(MEDIAN_2_INVALID_INDEX)?;
         Result::Ok(Some((median1.clone() + median2.clone()) / 2u64))
     } else {
-        let median = list.get(middle_index).ok_or("median invalid index")?;
+        let median = list.get(middle_index).ok_or(MEDIAN_INVALID_INDEX)?;
         Result::Ok(Some(median.clone()))
     }
 }

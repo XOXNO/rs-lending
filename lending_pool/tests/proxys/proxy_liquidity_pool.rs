@@ -194,12 +194,12 @@ where
             .original_result()
     }
 
-    pub fn borrow_index_last_update_round(
+    pub fn borrow_index_last_update_timestamp(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, u64> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("borrowIndexLastUpdateRound")
+            .raw_call("borrowIndexLastUpdateTimestamp")
             .original_result()
     }
 

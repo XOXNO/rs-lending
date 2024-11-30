@@ -148,12 +148,12 @@ where
     >(
         self,
         liquidatee_account_nonce: Arg0,
-        token_to_liquidate: Arg1,
+        collateral_to_receive: Arg1,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("liquidate")
             .argument(&liquidatee_account_nonce)
-            .argument(&token_to_liquidate)
+            .argument(&collateral_to_receive)
             .original_result()
     }
 
@@ -225,7 +225,20 @@ where
         Arg4: ProxyArg<BigUint<Env::Api>>,
         Arg5: ProxyArg<BigUint<Env::Api>>,
         Arg6: ProxyArg<BigUint<Env::Api>>,
-        Arg7: ProxyArg<common_structs::AssetConfig<Env::Api>>,
+        Arg7: ProxyArg<BigUint<Env::Api>>,
+        Arg8: ProxyArg<BigUint<Env::Api>>,
+        Arg9: ProxyArg<BigUint<Env::Api>>,
+        Arg10: ProxyArg<BigUint<Env::Api>>,
+        Arg11: ProxyArg<bool>,
+        Arg12: ProxyArg<bool>,
+        Arg13: ProxyArg<bool>,
+        Arg14: ProxyArg<BigUint<Env::Api>>,
+        Arg15: ProxyArg<BigUint<Env::Api>>,
+        Arg16: ProxyArg<bool>,
+        Arg17: ProxyArg<bool>,
+        Arg18: ProxyArg<bool>,
+        Arg19: ProxyArg<OptionalValue<BigUint<Env::Api>>>,
+        Arg20: ProxyArg<OptionalValue<BigUint<Env::Api>>>,
     >(
         self,
         base_asset: Arg0,
@@ -235,7 +248,20 @@ where
         r_slope2: Arg4,
         u_optimal: Arg5,
         reserve_factor: Arg6,
-        config: Arg7,
+        ltv: Arg7,
+        liquidation_threshold: Arg8,
+        liquidation_bonus: Arg9,
+        liquidation_base_fee: Arg10,
+        can_be_collateral: Arg11,
+        can_be_borrowed: Arg12,
+        is_isolated: Arg13,
+        debt_ceiling_usd: Arg14,
+        flash_loan_fee: Arg15,
+        is_siloed: Arg16,
+        flashloan_enabled: Arg17,
+        can_borrow_in_isolation: Arg18,
+        borrow_cap: Arg19,
+        supply_cap: Arg20,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
@@ -247,7 +273,20 @@ where
             .argument(&r_slope2)
             .argument(&u_optimal)
             .argument(&reserve_factor)
-            .argument(&config)
+            .argument(&ltv)
+            .argument(&liquidation_threshold)
+            .argument(&liquidation_bonus)
+            .argument(&liquidation_base_fee)
+            .argument(&can_be_collateral)
+            .argument(&can_be_borrowed)
+            .argument(&is_isolated)
+            .argument(&debt_ceiling_usd)
+            .argument(&flash_loan_fee)
+            .argument(&is_siloed)
+            .argument(&flashloan_enabled)
+            .argument(&can_borrow_in_isolation)
+            .argument(&borrow_cap)
+            .argument(&supply_cap)
             .original_result()
     }
 

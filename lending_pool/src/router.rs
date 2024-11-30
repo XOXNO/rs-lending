@@ -21,6 +21,7 @@ pub trait RouterModule:
     + storage::LendingStorageModule
     + common_events::EventsModule
 {
+    #[allow_multiple_var_args]
     #[only_owner]
     #[endpoint(createLiquidityPool)]
     fn create_liquidity_pool(
@@ -32,7 +33,20 @@ pub trait RouterModule:
         r_slope2: BigUint,
         u_optimal: BigUint,
         reserve_factor: BigUint,
-        config: AssetConfig<Self::Api>,
+        ltv: BigUint,
+        liquidation_threshold: BigUint,
+        liquidation_bonus: BigUint,
+        liquidation_base_fee: BigUint,
+        can_be_collateral: bool,
+        can_be_borrowed: bool,
+        is_isolated: bool,
+        debt_ceiling_usd: BigUint,
+        flash_loan_fee: BigUint,
+        is_siloed: bool,
+        flashloan_enabled: bool,
+        can_borrow_in_isolation: bool,
+        borrow_cap: OptionalValue<BigUint>,
+        supply_cap: OptionalValue<BigUint>,
     ) -> ManagedAddress {
         require!(
             self.pools_map(&base_asset).is_empty(),
@@ -56,21 +70,21 @@ pub trait RouterModule:
         self.pools_allowed().insert(address.clone());
 
         let asset_config = &AssetConfig {
-            ltv: config.ltv,
-            liquidation_threshold: config.liquidation_threshold,
-            liquidation_bonus: config.liquidation_bonus,
-            liquidation_base_fee: config.liquidation_base_fee,
-            borrow_cap: config.borrow_cap,
-            supply_cap: config.supply_cap,
-            can_be_collateral: config.can_be_collateral,
-            can_be_borrowed: config.can_be_borrowed,
+            ltv,
+            liquidation_threshold,
+            liquidation_bonus,
+            liquidation_base_fee,
+            borrow_cap: borrow_cap.into_option(),
+            supply_cap: supply_cap.into_option(),
+            can_be_collateral,
+            can_be_borrowed,
             is_e_mode_enabled: false,
-            is_isolated: config.is_isolated,
-            debt_ceiling_usd: config.debt_ceiling_usd,
-            flash_loan_fee: config.flash_loan_fee,
-            is_siloed: config.is_siloed,
-            flashloan_enabled: config.flashloan_enabled,
-            can_borrow_in_isolation: config.can_borrow_in_isolation,
+            is_isolated,
+            debt_ceiling_usd,
+            flash_loan_fee,
+            is_siloed,
+            flashloan_enabled,
+            can_borrow_in_isolation,
         };
 
         self.asset_config(&base_asset).set(asset_config);

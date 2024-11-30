@@ -49,22 +49,10 @@ pub trait MathModule {
     ) -> BigUint {
         let bp = BigUint::from(BP);
         if *total_reserves == BigUint::zero() {
-            total_reserves.clone()
+            BigUint::zero()
         } else {
             &(borrowed_amount * &bp) / total_reserves
         }
-    }
-
-    fn compute_withdrawal_amount(
-        &self,
-        amount: &BigUint,
-        current_supply_index: &BigUint,
-        initial_supply_index: &BigUint,
-    ) -> BigUint {
-        let bp = BigUint::from(BP);
-        let interest = (current_supply_index - initial_supply_index) * amount / bp;
-
-        amount + &interest
     }
 
     fn compute_interest(

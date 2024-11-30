@@ -33,3 +33,21 @@ pub struct OracleStatus {
     pub accepted_submissions: u64,
     pub total_submissions: u64,
 }
+
+#[type_abi]
+#[derive(TopEncode)]
+pub struct NewRoundEvent<M: ManagedTypeApi> {
+    pub price: BigUint<M>,
+    pub timestamp: u64,
+    pub decimals: u8,
+    pub block: u64,
+    pub epoch: u64,
+}
+
+#[type_abi]
+#[derive(TopEncode)]
+pub struct DiscardSubmissionEvent {
+    pub submission_timestamp: u64,
+    pub first_submission_timestamp: u64,
+    pub has_caller_already_submitted: bool,
+}

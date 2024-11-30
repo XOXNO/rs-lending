@@ -124,11 +124,6 @@ pub trait LendingPool:
             ERROR_CANNOT_USE_EMODE_WITH_ISOLATED_ASSETS
         );
 
-        require!(
-            !(asset_info.is_isolated && !nft_attributes.is_isolated),
-            ERROR_MIX_ISOLATED_COLLATERAL
-        );
-
         if asset_info.is_isolated || nft_attributes.is_isolated {
             self.validate_isolated_collateral(account_nonce, &collateral_payment.token_identifier);
         }
@@ -197,8 +192,8 @@ pub trait LendingPool:
         self.update_position_event(
             &collateral_payment.amount,
             &updated_deposit_position,
-            Some(&initial_caller),
-            Some(nft_attributes),
+            OptionalValue::Some(initial_caller),
+            OptionalValue::Some(nft_attributes),
         );
 
         self.deposit_positions(account_nonce).insert(
@@ -226,7 +221,7 @@ pub trait LendingPool:
             &initial_caller,
             false,
             &BigUint::from(0u64),
-            Some(attributes),
+            OptionalValue::Some(attributes),
         );
 
         let dep_pos_map = self.deposit_positions(account_token.token_nonce).len();
@@ -253,7 +248,7 @@ pub trait LendingPool:
         initial_caller: &ManagedAddress,
         is_liquidation: bool,
         liquidation_fee: &BigUint,
-        attributes: Option<NftAccountAttributes>,
+        attributes: OptionalValue<NftAccountAttributes>,
     ) {
         let pool_address = self.get_pool_address(withdraw_token_id);
 
@@ -262,36 +257,36 @@ pub trait LendingPool:
         self.require_amount_greater_than_zero(amount);
 
         let mut dep_pos_map = self.deposit_positions(account_nonce);
-        match dep_pos_map.get(withdraw_token_id) {
-            Some(dp) => {
-                require!(amount <= &dp.amount, ERROR_INSUFFICIENT_DEPOSIT);
+        let dp_opt = dep_pos_map.get(withdraw_token_id);
+        require!(
+            dp_opt.is_some(),
+            "Token {} is not available for this account",
+            withdraw_token_id
+        );
+        let dp = dp_opt.unwrap();
 
-                let deposit_position = self
-                    .tx()
-                    .to(pool_address)
-                    .typed(proxy_pool::LiquidityPoolProxy)
-                    .withdraw(initial_caller, amount, dp, is_liquidation, liquidation_fee)
-                    .returns(ReturnsResult)
-                    .sync_call();
+        require!(amount <= &dp.amount, ERROR_INSUFFICIENT_DEPOSIT);
 
-                self.update_position_event(
-                    amount, // Representing the amount of collateral removed
-                    &deposit_position,
-                    Some(initial_caller),
-                    attributes,
-                );
+        let deposit_position = self
+            .tx()
+            .to(pool_address)
+            .typed(proxy_pool::LiquidityPoolProxy)
+            .withdraw(initial_caller, amount, dp, is_liquidation, liquidation_fee)
+            .returns(ReturnsResult)
+            .sync_call();
 
-                if deposit_position.amount == 0 {
-                    dep_pos_map.remove(withdraw_token_id);
-                } else {
-                    dep_pos_map.insert(withdraw_token_id.clone(), deposit_position);
-                }
-            }
-            None => panic!(
-                "Tokens {} are not available for this account", // maybe was liquidated already
-                (withdraw_token_id.clone().into_name())
-            ),
-        };
+        self.update_position_event(
+            amount, // Representing the amount of collateral removed
+            &deposit_position,
+            OptionalValue::Some(initial_caller.clone()),
+            attributes,
+        );
+
+        if deposit_position.amount == 0 {
+            dep_pos_map.remove(withdraw_token_id);
+        } else {
+            dep_pos_map.insert(withdraw_token_id.clone(), deposit_position);
+        }
 
         let collateral_in_dollars = self.get_liquidation_collateral_available(account_nonce);
 
@@ -337,8 +332,7 @@ pub trait LendingPool:
 
         if account_attributes.e_mode_category != 0 {
             require!(
-                !self
-                    .asset_e_modes(&asset_to_borrow)
+                self.asset_e_modes(&asset_to_borrow)
                     .contains(&account_attributes.e_mode_category),
                 ERROR_EMODE_CATEGORY_NOT_FOUND
             );
@@ -353,11 +347,6 @@ pub trait LendingPool:
                 .get(&asset_to_borrow)
                 .unwrap();
 
-            require!(
-                asset_emode_config.can_be_borrowed,
-                ERROR_EMODE_ASSET_NOT_SUPPORTED_AS_COLLATERAL
-            );
-
             asset_config.can_be_borrowed = asset_emode_config.can_be_borrowed;
             asset_config.can_be_collateral = asset_emode_config.can_be_collateral;
             asset_config.ltv = category_data.ltv;
@@ -369,29 +358,32 @@ pub trait LendingPool:
 
         self.check_borrow_cap(&asset_config, &amount, &asset_to_borrow);
 
+
         let collateral_positions = self.update_collateral_with_interest(nft_account_nonce);
         let borrow_positions = self.update_borrows_with_debt(nft_account_nonce);
 
         let amount_to_borrow_in_dollars =
             self.get_token_amount_in_dollars(&asset_to_borrow, &amount);
+
         // Siloed mode works in combination with e-mode categories
         if asset_config.is_siloed {
             require!(
-                collateral_positions.len() <= 1,
+                borrow_positions.len() <= 1,
                 ERROR_ASSET_NOT_BORROWABLE_IN_SILOED
             );
+        }
 
-            require!(
-                borrow_positions.len() == 0
-                    || (&borrow_positions.get(0).token_id == &asset_to_borrow),
-                ERROR_ASSET_NOT_BORROWABLE_IN_SILOED
-            );
-
-            self.validate_isolated_debt_ceiling(
-                &asset_config,
-                &asset_to_borrow,
-                &amount_to_borrow_in_dollars,
-            );
+        if borrow_positions.len() == 1 {
+            let final_first_borrow_position = borrow_positions.get(0).clone();
+            let asset_config_borrowed = self
+                .asset_config(&final_first_borrow_position.token_id)
+                .get();
+            if asset_config_borrowed.is_siloed || asset_config.is_siloed {
+                require!(
+                    asset_to_borrow == final_first_borrow_position.token_id,
+                    ERROR_ASSET_NOT_BORROWABLE_IN_SILOED
+                );
+            }
         }
 
         let get_ltv_collateral_in_dollars =
@@ -420,6 +412,11 @@ pub trait LendingPool:
             .sync_call();
 
         if account_attributes.is_isolated {
+            self.validate_isolated_debt_ceiling(
+                &asset_config,
+                &asset_to_borrow,
+                &amount_to_borrow_in_dollars,
+            );
             self.update_isolated_debt_usd(
                 &asset_to_borrow,
                 &amount_to_borrow_in_dollars,
@@ -430,8 +427,8 @@ pub trait LendingPool:
         self.update_position_event(
             &amount, // Representing the amount of borrowed tokens
             &ret_borrow_position,
-            Some(&initial_caller),
-            Some(account_attributes),
+            OptionalValue::Some(initial_caller.clone()),
+            OptionalValue::Some(account_attributes),
         );
 
         self.borrow_positions(nft_account_nonce)
@@ -451,11 +448,14 @@ pub trait LendingPool:
     fn repay(&self, account_nonce: u64) {
         let (repay_token_id, repay_amount) = self.call_value().egld_or_single_fungible_esdt();
         let initial_caller = self.blockchain().get_caller();
+        self.update_borrows_with_debt(account_nonce);
+
         self.internal_repay(
             account_nonce,
             &repay_token_id,
             &repay_amount,
             &initial_caller,
+            None,
         );
     }
 
@@ -465,12 +465,23 @@ pub trait LendingPool:
         repay_token_id: &EgldOrEsdtTokenIdentifier,
         repay_amount: &BigUint,
         initial_caller: &ManagedAddress,
+        repay_amount_in_usd: Option<BigUint>,
     ) {
         let asset_address = self.get_pool_address(repay_token_id);
 
         self.lending_account_in_the_market(account_nonce);
         self.require_asset_supported(repay_token_id);
         self.require_amount_greater_than_zero(repay_amount);
+
+        let mut map = self.borrow_positions(account_nonce);
+        let bp_opt = map.get(repay_token_id);
+
+        require!(
+            bp_opt.is_some(),
+            "Borrowed token {} are not available for this account",
+            repay_token_id
+        );
+
         let collaterals_map = self.deposit_positions(account_nonce);
         if collaterals_map.len() == 1 {
             // Impossible to have 0 collateral when we repay a position
@@ -478,9 +489,13 @@ pub trait LendingPool:
 
             let asset_config = self.asset_config(&collateral_token_id).get();
 
+            // Check if collateral is an isolated asset
             if asset_config.is_isolated {
-                let amount_to_repay_in_dollars =
-                    self.get_token_amount_in_dollars(&collateral_token_id, &repay_amount);
+                let amount_to_repay_in_dollars = if repay_amount_in_usd.is_none() {
+                    self.get_token_amount_in_dollars(&repay_token_id, &repay_amount)
+                } else {
+                    repay_amount_in_usd.unwrap()
+                };
                 // In repay function
                 self.update_isolated_debt_usd(
                     &collateral_token_id,
@@ -490,36 +505,29 @@ pub trait LendingPool:
             }
         };
 
-        let mut map = self.borrow_positions(account_nonce);
-        match map.get(repay_token_id) {
-            Some(bp) => {
-                let borrow_position = self
-                    .tx()
-                    .to(asset_address)
-                    .typed(proxy_pool::LiquidityPoolProxy)
-                    .repay(initial_caller, bp)
-                    .egld_or_single_esdt(repay_token_id, 0, repay_amount)
-                    .returns(ReturnsResult)
-                    .sync_call();
+        let bp = bp_opt.unwrap();
 
-                self.update_position_event(
-                    repay_amount, // Representing the amount of repayed tokens
-                    &borrow_position,
-                    Some(&initial_caller),
-                    None,
-                );
+        let borrow_position = self
+            .tx()
+            .to(asset_address)
+            .typed(proxy_pool::LiquidityPoolProxy)
+            .repay(initial_caller, bp)
+            .egld_or_single_esdt(repay_token_id, 0, repay_amount)
+            .returns(ReturnsResult)
+            .sync_call();
 
-                // Update BorrowPosition
-                map.remove(repay_token_id);
-                if borrow_position.amount != 0 {
-                    map.insert(repay_token_id.clone(), borrow_position);
-                }
-            }
-            None => panic!(
-                "Borrowed tokens {} are not available for this account",
-                (repay_token_id.clone().into_name())
-            ),
-        };
+        self.update_position_event(
+            repay_amount, // Representing the amount of repayed tokens
+            &borrow_position,
+            OptionalValue::Some(initial_caller.clone()),
+            OptionalValue::None,
+        );
+
+        // Update BorrowPosition
+        map.remove(repay_token_id);
+        if borrow_position.amount != 0 {
+            map.insert(repay_token_id.clone(), borrow_position);
+        }
     }
 
     #[payable("*")]
@@ -550,31 +558,35 @@ pub trait LendingPool:
         let borrowed_dollars = self.get_total_borrow_in_dollars_vec(&borrow_positions);
         let health_factor = self.compute_health_factor(&collateral_in_dollars, &borrowed_dollars);
 
-        sc_print!("health_factor: {}", health_factor);
         require!(health_factor < BP, ERROR_HEALTH_FACTOR);
 
+        let debt_token_price_data = self.get_token_price_data(&debt_payment.0);
+        let collateral_token_price_data = self.get_token_price_data(collateral_to_receive);
+
         // Calculate liquidation amount using Dutch auction mechanism
-        let liquidation_amount = self.calculate_single_asset_liquidation_amount(
+        let liquidation_amount_usd = self.calculate_single_asset_liquidation_amount(
             &health_factor,
             &borrowed_dollars,
             collateral_to_receive,
+            &collateral_token_price_data,
             liquidatee_account_nonce,
         );
 
         // Convert liquidator's payment to USD
         let debt_payment_in_usd =
-            self.get_token_amount_in_dollars(&debt_payment.0, &debt_payment.1);
+            self.get_token_amount_in_dollars_raw(&debt_payment.1, &debt_token_price_data);
 
         // Ensure liquidator is paying enough
         require!(
-            debt_payment_in_usd >= liquidation_amount,
+            debt_payment_in_usd >= liquidation_amount_usd,
             ERROR_INSUFFICIENT_LIQUIDATION
         );
 
         // Calculate actual payment to use (handle excess)
-        let (payment_to_use, excess_amount) = if debt_payment_in_usd > liquidation_amount {
-            let excess_in_usd = &debt_payment_in_usd - &liquidation_amount;
-            let excess_in_tokens = self.get_usd_amount_in_tokens(&debt_payment.0, &excess_in_usd);
+        let (payment_to_use, excess_amount) = if debt_payment_in_usd > liquidation_amount_usd {
+            let excess_in_usd = &debt_payment_in_usd - &liquidation_amount_usd;
+            let excess_in_tokens =
+                self.get_usd_amount_in_tokens_raw(&excess_in_usd, &debt_token_price_data);
             (
                 debt_payment.1.clone() - &excess_in_tokens,
                 Some(excess_in_tokens),
@@ -595,16 +607,13 @@ pub trait LendingPool:
                 .transfer();
         }
 
+        let asset_config = self.asset_config(collateral_to_receive).get();
         // Calculate collateral to receive with bonus
-        let bonus_rate = self.calculate_dynamic_liquidation_bonus(
-            &health_factor,
-            self.asset_config(collateral_to_receive)
-                .get()
-                .liquidation_bonus,
-        );
+        let bonus_rate = self
+            .calculate_dynamic_liquidation_bonus(&health_factor, asset_config.liquidation_bonus);
 
         let collateral_to_receive_in_usd = self
-            .get_token_amount_in_dollars(&debt_payment.0, &payment_to_use)
+            .get_token_amount_in_dollars_raw(&payment_to_use, &debt_token_price_data)
             * (bp.clone() + bonus_rate)
             / bp;
 
@@ -613,6 +622,7 @@ pub trait LendingPool:
             liquidatee_account_nonce,
             collateral_to_receive,
             collateral_to_receive_in_usd,
+            &collateral_token_price_data,
         );
 
         // Repay debt
@@ -621,15 +631,12 @@ pub trait LendingPool:
             &debt_payment.0,
             &payment_to_use,
             &initial_caller,
+            Some(debt_payment_in_usd),
         );
 
         // Calculate and transfer collateral with protocol fee
-        let liquidation_fee = self.calculate_dynamic_protocol_fee(
-            &health_factor,
-            self.asset_config(collateral_to_receive)
-                .get()
-                .liquidation_base_fee,
-        );
+        let liquidation_fee =
+            self.calculate_dynamic_protocol_fee(&health_factor, asset_config.liquidation_base_fee);
 
         self.internal_withdraw(
             liquidatee_account_nonce,
@@ -638,7 +645,7 @@ pub trait LendingPool:
             &initial_caller,
             true,
             &liquidation_fee,
-            None,
+            OptionalValue::None,
         );
     }
 

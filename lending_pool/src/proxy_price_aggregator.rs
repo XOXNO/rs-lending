@@ -88,37 +88,6 @@ where
     To: TxTo<Env>,
     Gas: TxGas<Env>,
 {
-    pub fn add_oracles<
-        Arg0: ProxyArg<MultiValueEncoded<Env::Api, ManagedAddress<Env::Api>>>,
-    >(
-        self,
-        oracles: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("addOracles")
-            .argument(&oracles)
-            .original_result()
-    }
-
-    /// Also receives submission count, 
-    /// so the owner does not have to update it manually with setSubmissionCount before this call 
-    pub fn remove_oracles<
-        Arg0: ProxyArg<usize>,
-        Arg1: ProxyArg<MultiValueEncoded<Env::Api, ManagedAddress<Env::Api>>>,
-    >(
-        self,
-        submission_count: Arg0,
-        oracles: Arg1,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("removeOracles")
-            .argument(&submission_count)
-            .argument(&oracles)
-            .original_result()
-    }
-
     pub fn submit<
         Arg0: ProxyArg<ManagedBuffer<Env::Api>>,
         Arg1: ProxyArg<ManagedBuffer<Env::Api>>,
@@ -154,6 +123,58 @@ where
             .payment(NotPayable)
             .raw_call("submitBatch")
             .argument(&submissions)
+            .original_result()
+    }
+
+    pub fn pause_endpoint(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("pause")
+            .original_result()
+    }
+
+    pub fn unpause_endpoint(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("unpause")
+            .original_result()
+    }
+
+    pub fn paused_status(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, bool> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("isPaused")
+            .original_result()
+    }
+
+    pub fn submission_count(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, usize> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("submission_count")
+            .original_result()
+    }
+
+    pub fn get_pair_decimals<
+        Arg0: ProxyArg<ManagedBuffer<Env::Api>>,
+        Arg1: ProxyArg<ManagedBuffer<Env::Api>>,
+    >(
+        self,
+        from: Arg0,
+        to: Arg1,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, u8> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getPairDecimals")
+            .argument(&from)
+            .argument(&to)
             .original_result()
     }
 
@@ -198,6 +219,46 @@ where
             .original_result()
     }
 
+    pub fn get_oracles(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValueEncoded<Env::Api, ManagedAddress<Env::Api>>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getOracles")
+            .original_result()
+    }
+
+    pub fn add_oracles<
+        Arg0: ProxyArg<MultiValueEncoded<Env::Api, ManagedAddress<Env::Api>>>,
+    >(
+        self,
+        oracles: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("addOracles")
+            .argument(&oracles)
+            .original_result()
+    }
+
+    /// Also receives submission count, 
+    /// so the owner does not have to update it manually with setSubmissionCount before this call 
+    pub fn remove_oracles<
+        Arg0: ProxyArg<usize>,
+        Arg1: ProxyArg<MultiValueEncoded<Env::Api, ManagedAddress<Env::Api>>>,
+    >(
+        self,
+        submission_count: Arg0,
+        oracles: Arg1,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("removeOracles")
+            .argument(&submission_count)
+            .argument(&oracles)
+            .original_result()
+    }
+
     pub fn set_submission_count<
         Arg0: ProxyArg<usize>,
     >(
@@ -208,15 +269,6 @@ where
             .payment(NotPayable)
             .raw_call("setSubmissionCount")
             .argument(&submission_count)
-            .original_result()
-    }
-
-    pub fn get_oracles(
-        self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValueEncoded<Env::Api, ManagedAddress<Env::Api>>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getOracles")
             .original_result()
     }
 
@@ -238,72 +290,6 @@ where
             .argument(&decimals)
             .original_result()
     }
-
-    pub fn get_pair_decimals<
-        Arg0: ProxyArg<ManagedBuffer<Env::Api>>,
-        Arg1: ProxyArg<ManagedBuffer<Env::Api>>,
-    >(
-        self,
-        from: Arg0,
-        to: Arg1,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, u8> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getPairDecimals")
-            .argument(&from)
-            .argument(&to)
-            .original_result()
-    }
-
-    pub fn submission_count(
-        self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, usize> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("submission_count")
-            .original_result()
-    }
-
-    pub fn pause_endpoint(
-        self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("pause")
-            .original_result()
-    }
-
-    pub fn unpause_endpoint(
-        self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("unpause")
-            .original_result()
-    }
-
-    pub fn paused_status(
-        self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, bool> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("isPaused")
-            .original_result()
-    }
-}
-
-#[type_abi]
-#[derive(NestedEncode, NestedDecode, TopEncode, TopDecode)]
-pub struct PriceFeed<Api>
-where
-    Api: ManagedTypeApi,
-{
-    pub round_id: u32,
-    pub from: ManagedBuffer<Api>,
-    pub to: ManagedBuffer<Api>,
-    pub timestamp: u64,
-    pub price: BigUint<Api>,
-    pub decimals: u8,
 }
 
 #[type_abi]
@@ -325,4 +311,18 @@ pub struct DiscardSubmissionEvent {
     pub submission_timestamp: u64,
     pub first_submission_timestamp: u64,
     pub has_caller_already_submitted: bool,
+}
+
+#[type_abi]
+#[derive(NestedEncode, NestedDecode, TopEncode, TopDecode)]
+pub struct PriceFeed<Api>
+where
+    Api: ManagedTypeApi,
+{
+    pub round_id: u32,
+    pub from: ManagedBuffer<Api>,
+    pub to: ManagedBuffer<Api>,
+    pub timestamp: u64,
+    pub price: BigUint<Api>,
+    pub decimals: u8,
 }

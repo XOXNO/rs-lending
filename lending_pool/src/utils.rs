@@ -68,22 +68,6 @@ pub trait LendingUtilsModule:
         }
     }
 
-    fn get_total_collateral_in_dollars_vec(
-        &self,
-        positions: &ManagedVec<AccountPosition<Self::Api>>,
-    ) -> BigUint {
-        let mut deposited_amount_in_dollars = BigUint::zero();
-
-        for dp in positions {
-            deposited_amount_in_dollars += self.get_token_amount_in_dollars(
-                &dp.token_id,
-                &(&dp.amount + &dp.accumulated_interest),
-            );
-        }
-
-        deposited_amount_in_dollars
-    }
-
     fn get_liquidation_collateral_in_dollars_vec(
         &self,
         positions: &ManagedVec<AccountPosition<Self::Api>>,
@@ -91,10 +75,8 @@ pub trait LendingUtilsModule:
         let mut weighted_collateral_in_dollars = BigUint::zero();
 
         for dp in positions {
-            let position_value_in_dollars = self.get_token_amount_in_dollars(
-                &dp.token_id,
-                &(&dp.amount + &dp.accumulated_interest),
-            );
+            let position_value_in_dollars =
+                self.get_token_amount_in_dollars(&dp.token_id, &dp.get_total_amount());
 
             weighted_collateral_in_dollars +=
                 position_value_in_dollars * &dp.entry_liquidation_threshold / BigUint::from(BP);
@@ -110,10 +92,8 @@ pub trait LendingUtilsModule:
         let mut weighted_collateral_in_dollars = BigUint::zero();
 
         for dp in positions {
-            let position_value_in_dollars = self.get_token_amount_in_dollars(
-                &dp.token_id,
-                &(&dp.amount + &dp.accumulated_interest),
-            );
+            let position_value_in_dollars =
+                self.get_token_amount_in_dollars(&dp.token_id, &dp.get_total_amount());
 
             weighted_collateral_in_dollars +=
                 position_value_in_dollars * &dp.entry_ltv / BigUint::from(BP);
@@ -129,10 +109,8 @@ pub trait LendingUtilsModule:
         let mut total_borrow_in_dollars = BigUint::zero();
 
         for bp in positions {
-            total_borrow_in_dollars += self.get_token_amount_in_dollars(
-                &bp.token_id,
-                &(&bp.amount + &bp.accumulated_interest),
-            );
+            total_borrow_in_dollars +=
+                self.get_token_amount_in_dollars(&bp.token_id, &bp.get_total_amount());
         }
 
         total_borrow_in_dollars
@@ -258,13 +236,15 @@ pub trait LendingUtilsModule:
                 valid_payments.push(EgldOrEsdtTokenPaymentNew {
                     token_identifier: EgldOrEsdtTokenIdentifier::egld(),
                     token_nonce: 0,
-                    amount: payment.amount,
+                    amount: payment.amount.clone(),
                 });
             } else {
                 valid_payments.push(EgldOrEsdtTokenPaymentNew {
-                    token_identifier: EgldOrEsdtTokenIdentifier::esdt(payment.token_identifier),
+                    token_identifier: EgldOrEsdtTokenIdentifier::esdt(
+                        payment.token_identifier.clone(),
+                    ),
                     token_nonce: payment.token_nonce,
-                    amount: payment.amount,
+                    amount: payment.amount.clone(),
                 });
             }
         }

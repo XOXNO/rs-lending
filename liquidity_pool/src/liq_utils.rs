@@ -1,9 +1,7 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
-use crate::{
-    contexts::base::StorageCache, errors::ERROR_INVALID_TIMESTAMP, liq_math, liq_storage, view,
-};
+use crate::{contexts::base::StorageCache, liq_math, liq_storage, view};
 
 use common_structs::*;
 
@@ -71,11 +69,6 @@ pub trait UtilsModule:
     }
 
     fn get_timestamp_diff(&self, initial_timestamp: u64, current_timestamp: u64) -> u64 {
-        require!(
-            current_timestamp >= initial_timestamp,
-            ERROR_INVALID_TIMESTAMP
-        );
-
         current_timestamp - initial_timestamp
     }
 
@@ -103,7 +96,7 @@ pub trait UtilsModule:
         self.update_interest_indexes(storage_cache);
 
         let accrued_interest = self.compute_interest(
-            &(&deposit_position.amount + &deposit_position.accumulated_interest),
+            &deposit_position.get_total_amount(),
             &storage_cache.supply_index,
             &deposit_position.index,
         );
@@ -112,7 +105,12 @@ pub trait UtilsModule:
         deposit_position.timestamp = storage_cache.timestamp;
         deposit_position.index = storage_cache.supply_index.clone();
 
-        self.update_position_event(&accrued_interest, &deposit_position, None, None);
+        self.update_position_event(
+            &accrued_interest,
+            &deposit_position,
+            OptionalValue::None,
+            OptionalValue::None,
+        );
 
         deposit_position
     }
@@ -124,30 +122,23 @@ pub trait UtilsModule:
     ) -> AccountPosition<Self::Api> {
         self.update_interest_indexes(storage_cache);
 
-        let accumulated_debt = self.get_debt_interest_internal(
-            &(&borrow_position.amount + &borrow_position.accumulated_interest),
-            &borrow_position.index,
+        let accumulated_debt = self.compute_interest(
+            &borrow_position.get_total_amount(),
             &storage_cache.borrow_index,
+            &borrow_position.index,
         );
 
         borrow_position.accumulated_interest += &accumulated_debt;
         borrow_position.timestamp = storage_cache.timestamp;
         borrow_position.index = storage_cache.borrow_index.clone();
 
-        self.update_position_event(&accumulated_debt, &borrow_position, None, None);
+        self.update_position_event(
+            &accumulated_debt,
+            &borrow_position,
+            OptionalValue::None,
+            OptionalValue::None,
+        );
 
         borrow_position
-    }
-
-    fn get_debt_interest_internal(
-        &self,
-        amount: &BigUint,
-        initial_borrow_index: &BigUint,
-        current_borrow_index: &BigUint,
-    ) -> BigUint {
-        let borrow_index_diff =
-            self.get_borrow_index_diff(initial_borrow_index, &current_borrow_index);
-
-        amount * &borrow_index_diff / BP
     }
 }

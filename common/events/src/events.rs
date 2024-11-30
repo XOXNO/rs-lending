@@ -35,13 +35,14 @@ pub trait EventsModule {
     #[event("update_market_state")]
     fn update_market_state_event(
         &self,
-        #[indexed] round: u64,
+        #[indexed] timestamp: u64,
         #[indexed] supply_index: &BigUint,
         #[indexed] borrow_index: &BigUint,
         #[indexed] reserves: &BigUint,
         #[indexed] supplied_amount: &BigUint,
         #[indexed] borrowed_amount: &BigUint,
         #[indexed] rewards_reserve: &BigUint,
+        #[indexed] base_asset: &EgldOrEsdtTokenIdentifier,
     );
 
     // This can come from few actions and from both the protocol internal actions and the user actions:
@@ -56,8 +57,8 @@ pub trait EventsModule {
         &self,
         #[indexed] amount: &BigUint,
         #[indexed] position: &AccountPosition<Self::Api>,
-        #[indexed] caller: Option<&ManagedAddress>, // When is none, then the position is updated by the protocol and the amount is the interest, either for borrow or supply
-        #[indexed] account_attributes: Option<NftAccountAttributes>,
+        #[indexed] caller: OptionalValue<ManagedAddress>, // When is none, then the position is updated by the protocol and the amount is the interest, either for borrow or supply
+        #[indexed] account_attributes: OptionalValue<NftAccountAttributes>,
     );
 
     #[event("update_debt_ceiling")]
