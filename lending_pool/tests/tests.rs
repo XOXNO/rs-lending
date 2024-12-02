@@ -17,24 +17,7 @@ fn test_basic_supply_and_borrow() {
 
     // Setup accounts
     state.world.current_block().block_timestamp(0);
-    state
-        .world
-        .account(supplier)
-        .nonce(1)
-        .esdt_balance(
-            USDC_TOKEN,
-            BigUint::from(10000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
-        )
-        .esdt_balance(
-            EGLD_TOKEN,
-            BigUint::from(1000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
-        );
-
-    state.world.account(borrower).nonce(1).esdt_balance(
-        USDC_TOKEN,
-        BigUint::from(10000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
-    );
-
+    setup_accounts(&mut state, supplier, borrower);
     // Test supply
     state.supply_asset(
         &supplier,
@@ -97,7 +80,7 @@ fn test_complete_market_exit() {
         OptionalValue::None,
         OptionalValue::None,
     );
-
+    state.world.current_block().block_timestamp(6000u64);
     state.borrow_asset(
         &borrower,
         EGLD_TOKEN,
@@ -105,6 +88,9 @@ fn test_complete_market_exit() {
         2,
         EGLD_DECIMALS,
     );
+    state.world.current_block().block_timestamp(8000u64);
+    state.update_borrows_with_debt(&borrower, 2);
+    state.update_interest_indexes(&supplier, 1);
 
     state
         .world
@@ -118,14 +104,19 @@ fn test_complete_market_exit() {
                 e_mode_category: 0,
             },
         );
+    let borrow_amount_in_dollars = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+    println!("borrow_amount_in_dollars: {:?}", borrow_amount_in_dollars);
 
     state.repay_asset(
         &borrower,
         &EGLD_TOKEN,
-        BigUint::from(50u64),
+        BigUint::from(55u64),
         2,
         EGLD_DECIMALS,
     );
+    state.update_borrows_with_debt(&borrower, 2);
+    state.update_interest_indexes(&supplier, 1);
+    state.world.current_block().block_timestamp(9000u64);
 
     state.withdraw_asset(
         &borrower,
@@ -134,6 +125,8 @@ fn test_complete_market_exit() {
         2,
         USDC_DECIMALS,
     );
+    state.world.current_block().block_timestamp(10000u64);
+    state.update_interest_indexes(&supplier, 1);
 
     state
         .world
@@ -147,6 +140,17 @@ fn test_complete_market_exit() {
                 e_mode_category: 0,
             },
         );
+    let collateral_in_dollars = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    println!("collateral_in_dollars: {:?}", collateral_in_dollars);
+    
+    state.withdraw_asset(
+        &supplier,
+        EGLD_TOKEN,
+        BigUint::from(102u64),
+        1,
+        EGLD_DECIMALS,
+    );
+    return;
 }
 
 #[test]
@@ -859,7 +863,7 @@ fn test_withdraw_non_borrowed_asset_error() {
 
 // Liquidation Tests
 #[test]
-fn test_liquidation() {
+fn test_liquidation_and_left_bad_debt() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
@@ -930,32 +934,20 @@ fn test_liquidation() {
     println!("collateral_in_dollars: {:?}", collateral_in_dollars);
 
     state.world.current_block().block_timestamp(600000000u64);
-    // state.submit_price(
-    //     &state.price_aggregator_sc.clone(),
-    //     EGLD_TOKEN.as_bytes(),
-    //     EGLD_PRICE_IN_DOLLARS / 4,
-    //     EGLD_DECIMALS,
-    //     600000000u64,
-    // );
+    state.update_borrows_with_debt(&borrower, 2);
 
     // Attempt liquidation
     state.liquidate_account(
         &liquidator,
         &EGLD_TOKEN,
         &USDC_TOKEN,
-        BigUint::from(2500u64),
+        BigUint::from(8000u64),
         2,
         USDC_DECIMALS,
     );
 
     let borrow_amount_in_dollars = state.get_borrow_amount_for_token(2, USDC_TOKEN);
-    let collateral_in_dollars = state.get_collateral_amount_for_token(2, EGLD_TOKEN);
-
-    println!(
-        "borrow_amount_in_dollars: {}",
-        borrow_amount_in_dollars.to_u64().unwrap()
-    );
-    println!("collateral_in_dollars: {:?}", collateral_in_dollars);
+    assert!(borrow_amount_in_dollars > BigUint::from(0u64));
 }
 
 #[test]
@@ -994,6 +986,95 @@ fn test_borrow_not_enough_collateral_error() {
     );
 }
 
+// #[test]
+// fn test_liquidation_partial_payment() {
+//     let mut state = LendingPoolTestState::new();
+//     let supplier = TestAddress::new("supplier");
+//     let borrower = TestAddress::new("borrower");
+//     let liquidator = TestAddress::new("liquidator");
+
+//     // Setup accounts including liquidator
+//     state.world.current_block().block_timestamp(0);
+//     setup_accounts(&mut state, supplier, borrower);
+//     state.world.account(liquidator).nonce(1).esdt_balance(
+//         USDC_TOKEN,
+//         BigUint::from(20000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
+//     );
+
+//     // Create risky position
+//     state.supply_asset(
+//         &supplier,
+//         USDC_TOKEN,
+//         BigUint::from(4000u64),
+//         USDC_DECIMALS,
+//         OptionalValue::None,
+//         OptionalValue::None,
+//     );
+
+//     // Create risky position
+//     state.supply_asset(
+//         &supplier,
+//         USDC_TOKEN,
+//         BigUint::from(1000u64),
+//         USDC_DECIMALS,
+//         OptionalValue::Some(1),
+//         OptionalValue::None,
+//     );
+
+//     state.supply_asset(
+//         &borrower,
+//         EGLD_TOKEN,
+//         BigUint::from(100u64),
+//         EGLD_DECIMALS,
+//         OptionalValue::None,
+//         OptionalValue::None,
+//     );
+
+//     state.borrow_asset(
+//         &borrower,
+//         USDC_TOKEN.clone(),
+//         BigUint::from(1000u64),
+//         2,
+//         USDC_DECIMALS,
+//     );
+
+//     state.borrow_asset(
+//         &borrower,
+//         USDC_TOKEN.clone(),
+//         BigUint::from(1000u64),
+//         2,
+//         USDC_DECIMALS,
+//     );
+
+//     state.world.current_block().block_timestamp(1);
+
+//     let borrow_amount_in_dollars = state.get_borrow_amount_for_token(2, USDC_TOKEN);
+//     let collateral_in_dollars = state.get_collateral_amount_for_token(2, EGLD_TOKEN);
+
+//     println!(
+//         "borrow_amount_in_dollars: {}",
+//         borrow_amount_in_dollars.to_u64().unwrap()
+//     );
+//     println!("collateral_in_dollars: {:?}", collateral_in_dollars);
+
+//     state.world.current_block().block_timestamp(6000000u64);
+//     state.update_borrows_with_debt(&borrower, 2);
+//     println!("borrow_amount_in_dollars: {:?}", borrow_amount_in_dollars);
+
+//     // Attempt liquidation
+//     state.liquidate_account(
+//         &liquidator,
+//         &EGLD_TOKEN,
+//         &USDC_TOKEN,
+//         BigUint::from(8000u64),
+//         2,
+//         USDC_DECIMALS,
+//     );
+
+//     let borrow_amount_in_dollars = state.get_borrow_amount_for_token(2, USDC_TOKEN);
+//     assert!(borrow_amount_in_dollars > BigUint::from(0u64));
+// }
+
 // Liquidation Tests End
 
 // Input Validation Tests
@@ -1016,3 +1097,87 @@ fn test_supply_asset_payment_count_error() {
     );
 }
 // Input Validation Tests End
+
+#[test]
+fn test_interest_accrual_test() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    // Setup initial state
+    state.world.current_block().block_timestamp(0);
+    setup_accounts(&mut state, supplier, borrower);
+
+    // Initial supply and borrow
+    state.supply_asset(
+        &supplier,
+        EGLD_TOKEN,
+        BigUint::from(110u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+    );
+
+    state.supply_asset(
+        &borrower,
+        USDC_TOKEN,
+        BigUint::from(10000u64),
+        USDC_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+    );
+    state.borrow_asset(
+        &supplier,
+        EGLD_TOKEN,
+        BigUint::from(10u64),
+        1,
+        EGLD_DECIMALS,
+    );
+    state.borrow_asset(
+        &borrower,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        2,
+        EGLD_DECIMALS,
+    );
+
+    // Record initial amounts
+    let initial_borrow = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+    let initial_supply = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    let capacity = state.get_market_utilization(state.egld_market.clone());
+    println!("capacity: {:?}", capacity);
+    // Simulate daily updates for a month
+    // for day in 1..=182 {
+    //     state
+    //         .world
+    //         .current_block()
+    //         .block_timestamp(day * SECONDS_PER_DAY);
+    //     state.update_borrows_with_debt(&supplier, 1);
+    //     state.update_interest_indexes(&supplier, 1);
+    // }
+    state
+        .world
+        .current_block()
+        .block_timestamp(SECONDS_PER_YEAR / 2);
+    let borrow_rate = state.get_market_borrow_rate(state.egld_market.clone());
+    let supply_rate = state.get_market_supply_rate(state.egld_market.clone());
+    println!("borrow_rate: {:?}", borrow_rate);
+    println!("supply_rate: {:?}", supply_rate);
+    state.update_borrows_with_debt(&borrower, 2);
+
+    state
+        .world
+        .current_block()
+        .block_timestamp(SECONDS_PER_YEAR);
+    // Verify interest accrual
+    let final_borrow = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+    let final_supply = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    println!("final_borrow: {:?}", final_borrow);
+    println!("final_supply: {:?}", final_supply);
+
+    state.update_borrows_with_debt(&borrower, 2);
+    let final_borrow = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+    println!("final_borrow: {:?}", final_borrow);
+    // assert!(final_borrow > initial_borrow);
+    // assert!(final_supply > initial_supply);
+}

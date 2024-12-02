@@ -12,8 +12,24 @@ pub trait UtilsModule:
     fn calculate_interest_factor(&self, rate: &BigUint, delta_timestamp: u64) -> BigUint {
         let bp = BigUint::from(BP);
 
-        // Calculate accumulated rate and add BP (1.0) to get the multiplier
-        bp + (rate * &BigUint::from(delta_timestamp) / BigUint::from(SECONDS_PER_YEAR))
+        // Calculate x = rt/T (rate * time fraction)
+        let x = BigUint::from(delta_timestamp) * rate / BigUint::from(SECONDS_PER_YEAR);
+
+        // Calculate terms:
+        // term1 = x
+        let term1 = &x;
+
+        // term2 = x²/2
+        let term2 = &x * &x / (BigUint::from(2u32) * &bp);
+
+        // term3 = x³/6
+        let term3 = &x * &x * &x / (BigUint::from(6u32) * &bp * &bp);
+
+        // term4 = x⁴/24
+        let term4 = &x * &x * &x * &x / (BigUint::from(24u32) * &bp * &bp * &bp);
+
+        // Final formula: 1 + x + x²/2! + x³/3! + x⁴/4!
+        &bp + term1 + term2 + term3 + term4
     }
 
     fn update_borrow_index(
@@ -56,14 +72,19 @@ pub trait UtilsModule:
         // 2. Calculate total interest earned (compound)
         let new_borrowed_amount =
             &storage_cache.borrowed_amount * &interest_factor / BigUint::from(BP);
+
         let rewards_increase = new_borrowed_amount - &storage_cache.borrowed_amount;
 
+        sc_print!("rewards_increase: {}", rewards_increase);
         // 3. Calculate protocol's share
-        let revenue = rewards_increase.clone() * &storage_cache.pool_params.reserve_factor / BP;
+        let revenue = (&rewards_increase * &storage_cache.pool_params.reserve_factor + &BigUint::from(BP - 1)) / BP;
 
+        sc_print!("revenue: {}", revenue);
         // 4. Update reserves
         storage_cache.rewards_reserve += &revenue;
+        sc_print!("storage_cache.rewards_reserve: {}", storage_cache.rewards_reserve);
 
+        sc_print!("rewards_increase - revenue: {}", (rewards_increase.clone() - revenue.clone()));
         // 5. Return suppliers' share
         rewards_increase - revenue
     }

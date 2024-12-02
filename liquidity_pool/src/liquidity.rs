@@ -23,10 +23,8 @@ pub trait LiquidityModule:
         deposit_position: AccountPosition<Self::Api>,
     ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
-        let account = self.internal_update_collateral_with_interest(
-            deposit_position,
-            &mut storage_cache,
-        );
+        let account =
+            self.internal_update_collateral_with_interest(deposit_position, &mut storage_cache);
         self.update_market_state_event(
             storage_cache.timestamp,
             &storage_cache.supply_index,
@@ -86,7 +84,9 @@ pub trait LiquidityModule:
         ret_deposit_position.timestamp = storage_cache.timestamp;
         ret_deposit_position.index = storage_cache.supply_index.clone();
 
+        sc_print!("deposit_amount: {}", deposit_amount);
         storage_cache.reserves_amount += &deposit_amount;
+        sc_print!("storage_cache.reserves_amount: {}", storage_cache.reserves_amount);
         storage_cache.supplied_amount += deposit_amount;
 
         self.update_market_state_event(
@@ -134,8 +134,9 @@ pub trait LiquidityModule:
         ret_borrow_position.index = storage_cache.borrow_index.clone();
 
         storage_cache.borrowed_amount += borrow_amount;
-
+        sc_print!("borrow_amount.borrowed_amount: {}", borrow_amount);
         storage_cache.reserves_amount -= borrow_amount;
+        sc_print!("storage_cache.reserves_amount: {}", storage_cache.reserves_amount);
 
         self.tx()
             .to(initial_caller)
@@ -178,22 +179,27 @@ pub trait LiquidityModule:
 
         self.update_interest_indexes(&mut storage_cache);
 
+        sc_print!("amount: {}", amount);
         // Unaccrued interest for the wanted amount
         let extra_interest =
             self.compute_interest(amount, &storage_cache.supply_index, &deposit_position.index);
-
+        sc_print!("extra_interest: {}", extra_interest);
         let total_withdraw = amount + &extra_interest;
+        sc_print!("total_withdraw: {}", total_withdraw);
         // Withdrawal amount = initial wanted amount + Unaccrued interest for that amount (this has to be paid back to the user that requested the withdrawal)
         let mut principal_amount = total_withdraw.clone();
         // Check if there is enough liquidity to cover the withdrawal
+
+        sc_print!("storage_cache.reserves_amount: {}", storage_cache.reserves_amount);
         require!(
             &storage_cache.reserves_amount >= &principal_amount,
             ERROR_INSUFFICIENT_LIQUIDITY
         );
 
         // Update the reserves amount
+        sc_print!("principal_amount:              {}", principal_amount);
         storage_cache.reserves_amount -= &principal_amount;
-
+        sc_print!("storage_cache.reserves_amount: {}", storage_cache.reserves_amount);
         // If the total withdrawal amount is greater than the accumulated interest, we need to subtract the accumulated interest from the withdrawal amount
         if principal_amount >= deposit_position.accumulated_interest {
             principal_amount -= &deposit_position.accumulated_interest;
@@ -241,6 +247,8 @@ pub trait LiquidityModule:
                 .transfer();
         }
 
+        sc_print!("storage_cache.reserves_amount: {}", storage_cache.reserves_amount);
+        sc_print!("storage_cache.rewards_reserve: {}", storage_cache.rewards_reserve);
         self.update_market_state_event(
             storage_cache.timestamp,
             &storage_cache.supply_index,
@@ -263,7 +271,7 @@ pub trait LiquidityModule:
         borrow_position: AccountPosition<Self::Api>,
     ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
-        let (received_asset, received_amount) = self.call_value().single_fungible_esdt();
+        let (received_asset, received_amount) = self.call_value().egld_or_single_fungible_esdt();
 
         self.require_non_zero_address(&initial_caller);
         self.require_amount_greater_than_zero(&received_amount);
@@ -283,13 +291,21 @@ pub trait LiquidityModule:
             // Full repayment
             let extra_amount = &received_amount - &total_owed_with_interest;
             if extra_amount > BigUint::zero() {
-                self.send()
-                    .direct_esdt(&initial_caller, &received_asset, 0, &extra_amount);
+                self.tx()
+                    .to(&initial_caller)
+                    .payment(EgldOrEsdtTokenPayment::new(
+                        received_asset,
+                        0,
+                        extra_amount.clone(),
+                    ))
+                    .transfer();
             }
             // Reduce borrowed by principal
             storage_cache.borrowed_amount -= &ret_borrow_position.amount;
             // Add full payment (principal + interest) to reserves
+            sc_print!("total_owed_with_interest: {}", total_owed_with_interest);
             storage_cache.reserves_amount += &total_owed_with_interest;
+            sc_print!("storage_cache.reserves_amount: {}", storage_cache.reserves_amount);
 
             ret_borrow_position.amount = BigUint::zero();
             ret_borrow_position.accumulated_interest = BigUint::zero();
@@ -307,7 +323,9 @@ pub trait LiquidityModule:
 
             // Update storage
             storage_cache.borrowed_amount -= &principal_portion;
+            sc_print!("storage_cache.received_amount: {}", received_amount);
             storage_cache.reserves_amount += &received_amount; // Full payment goes to reserves
+            sc_print!("storage_cache.reserves_amount: {}", storage_cache.reserves_amount);
         }
 
         self.update_market_state_event(

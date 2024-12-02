@@ -1,6 +1,6 @@
 multiversx_sc::imports!();
 
-use common_events::{MAX_BONUS, MAX_THRESHOLD};
+use common_events::MAX_BONUS;
 use common_structs::BP;
 
 use crate::{oracle, proxy_price_aggregator::PriceFeed, storage, ERROR_NO_COLLATERAL_TOKEN};
@@ -34,11 +34,7 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
         let target_health_factor = &bp + &(&bp / &BigUint::from(5u32)); // 120%
 
         let required_debt_reduction = (total_debt * &(&target_health_factor - health_factor)) / &bp;
-
-        BigUint::min(
-            required_debt_reduction,
-            total_debt * &BigUint::from(MAX_THRESHOLD) / &bp,
-        )
+        required_debt_reduction
     }
 
     fn compute_amount_in_tokens(
@@ -126,8 +122,10 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
             .get(token_to_liquidate)
             .unwrap_or_else(|| sc_panic!(ERROR_NO_COLLATERAL_TOKEN));
 
-        let available_collateral_value =
-            self.get_token_amount_in_dollars_raw(&deposit_position.amount, token_price_data);
+        let available_collateral_value = self.get_token_amount_in_dollars_raw(
+            &deposit_position.get_total_amount(),
+            token_price_data,
+        );
 
         // Take the minimum between what we need and what's available
         BigUint::min(full_liquidation_amount, available_collateral_value)

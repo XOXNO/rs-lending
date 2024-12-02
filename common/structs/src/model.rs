@@ -6,7 +6,6 @@ multiversx_sc::derive_imports!();
 pub const SECONDS_PER_YEAR: u64 = 31_556_926;
 pub const BP: u64 = 1_000_000_000; // Represents 100%
 pub const MAX_BONUS: u64 = 300_000_000; // Represents 30% basis points
-pub const MAX_THRESHOLD: u64 = BP / 2;
 
 #[derive(TopEncode, TopDecode, TypeAbi)]
 pub struct PoolParams<M: ManagedTypeApi> {

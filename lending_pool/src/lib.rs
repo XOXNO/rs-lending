@@ -217,7 +217,7 @@ pub trait LendingPool:
         self.internal_withdraw(
             account_token.token_nonce,
             withdraw_token_id,
-            amount,
+            amount.clone(),
             &initial_caller,
             false,
             &BigUint::from(0u64),
@@ -244,7 +244,7 @@ pub trait LendingPool:
         &self,
         account_nonce: u64,
         withdraw_token_id: &EgldOrEsdtTokenIdentifier,
-        amount: &BigUint,
+        mut amount: BigUint,
         initial_caller: &ManagedAddress,
         is_liquidation: bool,
         liquidation_fee: &BigUint,
@@ -254,7 +254,7 @@ pub trait LendingPool:
 
         self.require_asset_supported(withdraw_token_id);
         self.lending_account_in_the_market(account_nonce);
-        self.require_amount_greater_than_zero(amount);
+        self.require_amount_greater_than_zero(&amount);
 
         let mut dep_pos_map = self.deposit_positions(account_nonce);
         let dp_opt = dep_pos_map.get(withdraw_token_id);
@@ -265,18 +265,20 @@ pub trait LendingPool:
         );
         let dp = dp_opt.unwrap();
 
-        require!(amount <= &dp.amount, ERROR_INSUFFICIENT_DEPOSIT);
+        if amount > dp.get_total_amount() {
+            amount = dp.get_total_amount();
+        }
 
         let deposit_position = self
             .tx()
             .to(pool_address)
             .typed(proxy_pool::LiquidityPoolProxy)
-            .withdraw(initial_caller, amount, dp, is_liquidation, liquidation_fee)
+            .withdraw(initial_caller, &amount, dp, is_liquidation, liquidation_fee)
             .returns(ReturnsResult)
             .sync_call();
 
         self.update_position_event(
-            amount, // Representing the amount of collateral removed
+            &amount, // Representing the amount of collateral removed
             &deposit_position,
             OptionalValue::Some(initial_caller.clone()),
             attributes,
@@ -357,7 +359,6 @@ pub trait LendingPool:
         require!(asset_config.can_be_borrowed, ERROR_ASSET_NOT_BORROWABLE);
 
         self.check_borrow_cap(&asset_config, &amount, &asset_to_borrow);
-
 
         let collateral_positions = self.update_collateral_with_interest(nft_account_nonce);
         let borrow_positions = self.update_borrows_with_debt(nft_account_nonce);
@@ -641,7 +642,7 @@ pub trait LendingPool:
         self.internal_withdraw(
             liquidatee_account_nonce,
             collateral_to_receive,
-            &collateral_amount,
+            collateral_amount,
             &initial_caller,
             true,
             &liquidation_fee,

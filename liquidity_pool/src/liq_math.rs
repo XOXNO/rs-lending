@@ -58,11 +58,10 @@ pub trait MathModule {
     fn compute_interest(
         &self,
         amount: &BigUint,
-        current_supply_index: &BigUint,
-        initial_supply_index: &BigUint,
+        current_supply_index: &BigUint, // Market index
+        initial_supply_index: &BigUint, // Account position index
     ) -> BigUint {
-        let bp = BigUint::from(BP);
-
-        (current_supply_index - initial_supply_index) * amount / bp
+        let new_amount = (amount * current_supply_index) / initial_supply_index;
+        new_amount - amount
     }
 }
