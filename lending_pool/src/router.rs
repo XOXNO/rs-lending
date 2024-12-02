@@ -143,11 +143,21 @@ pub trait RouterModule:
 
     #[only_owner]
     #[endpoint(addEModeCategory)]
-    fn add_e_mode_category(&self, mut category: EModeCategory<Self::Api>) {
+    fn add_e_mode_category(
+        &self,
+        ltv: BigUint,
+        liquidation_threshold: BigUint,
+        liquidation_bonus: BigUint,
+    ) {
         let map = self.last_e_mode_category_id();
 
         let last_id = map.get();
-        category.id = last_id + 1;
+        let category = EModeCategory {
+            id: last_id + 1,
+            ltv,
+            liquidation_threshold,
+            liquidation_bonus,
+        };
 
         map.set(category.id);
 
@@ -196,7 +206,8 @@ pub trait RouterModule:
         &self,
         asset: EgldOrEsdtTokenIdentifier,
         category_id: u8,
-        config: EModeAssetConfig,
+        can_be_collateral: bool,
+        can_be_borrowed: bool,
     ) {
         require!(
             self.e_mode_category().contains_key(&category_id),
@@ -229,10 +240,13 @@ pub trait RouterModule:
             self.update_asset_config_event(&asset, &asset_data);
             asset_map.set(asset_data);
         }
-
-        self.update_e_mode_asset_event(&asset, &config, category_id);
+        let e_mode_asset_config = EModeAssetConfig {
+            can_be_collateral,
+            can_be_borrowed,
+        };
+        self.update_e_mode_asset_event(&asset, &e_mode_asset_config, category_id);
         asset_e_modes.insert(category_id);
-        e_mode_assets.insert(asset, config);
+        e_mode_assets.insert(asset, e_mode_asset_config);
     }
 
     #[only_owner]

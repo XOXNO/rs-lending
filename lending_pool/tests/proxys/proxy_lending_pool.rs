@@ -335,15 +335,21 @@ where
     }
 
     pub fn add_e_mode_category<
-        Arg0: ProxyArg<common_structs::EModeCategory<Env::Api>>,
+        Arg0: ProxyArg<BigUint<Env::Api>>,
+        Arg1: ProxyArg<BigUint<Env::Api>>,
+        Arg2: ProxyArg<BigUint<Env::Api>>,
     >(
         self,
-        category: Arg0,
+        ltv: Arg0,
+        liquidation_threshold: Arg1,
+        liquidation_bonus: Arg2,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("addEModeCategory")
-            .argument(&category)
+            .argument(&ltv)
+            .argument(&liquidation_threshold)
+            .argument(&liquidation_bonus)
             .original_result()
     }
 
@@ -376,19 +382,22 @@ where
     pub fn add_asset_to_e_mode_category<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg1: ProxyArg<u8>,
-        Arg2: ProxyArg<common_structs::EModeAssetConfig>,
+        Arg2: ProxyArg<bool>,
+        Arg3: ProxyArg<bool>,
     >(
         self,
         asset: Arg0,
         category_id: Arg1,
-        config: Arg2,
+        can_be_collateral: Arg2,
+        can_be_borrowed: Arg3,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("addAssetToEModeCategory")
             .argument(&asset)
             .argument(&category_id)
-            .argument(&config)
+            .argument(&can_be_collateral)
+            .argument(&can_be_borrowed)
             .original_result()
     }
 

@@ -14,6 +14,7 @@ ACCOUNT_TOKEN_TICKER="str:BOBERLEND"
 ISSUE_COST=50000000000000000
 
 ASSET="str:LXOXNO-a00540"
+ASSET_2="str:XOXNO-589e09"
 R_MAX=1000000000 # 100%
 R_BASE=20000000 # 2%
 R_SLOPE1=100000000 # 10%
@@ -21,8 +22,11 @@ R_SLOPE2=1000000000 # 100%
 U_OPTIMAL=800000000 # 80%
 RESERVE_FACTOR=300000000 # 30%
 LTV=750000000 # 75%
+LTV_EMODE=950000000 # 95%
 LIQ_THRESOLD=800000000 # 80%
+LIQ_THRESOLD_EMODE=970000000 # 97%
 LIQ_BONUS=100000000 # 10%
+LIQ_BONUS_EMODE=50000000 # 5%
 LIQ_BASE_FEE=50000000 # 5%
 BORROW_CAP=15000000000000000000000000 # 15.000.000 EGLD
 SUPPLY_CAP=20000000000000000000000000 # 20.000.000 EGLD
@@ -67,6 +71,20 @@ create_pool() {
     --function="createLiquidityPool" --arguments ${ASSET} ${R_MAX} ${R_BASE} ${R_SLOPE1} ${R_SLOPE2} ${U_OPTIMAL} ${RESERVE_FACTOR} \
     ${LTV} ${LIQ_THRESOLD} ${LIQ_BONUS} ${LIQ_BASE_FEE} ${CAN_BE_COLLATERAL} ${CAN_BE_BORROWED} \
     ${IS_ISOLATED} ${DEBT_CEILING_USD} ${FLASH_LOAN_FEE} ${IS_SILOED} ${FLASHLOAN_ENABLED} ${CAN_BORROW_IN_ISOLATION} ${BORROW_CAP} ${SUPPLY_CAP} \
+    --proxy=${PROXY} --chain=${CHAIN_ID} --send
+}
+
+addEModeCategory() {
+    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=20000000 \
+    --ledger --ledger-account-index=0 --ledger-address-index=0 \
+    --function="addEModeCategory" --arguments ${LTV_EMODE} ${LIQ_THRESOLD_EMODE} ${LIQ_BONUS_EMODE} \
+    --proxy=${PROXY} --chain=${CHAIN_ID} --send
+}
+
+addAssetToEModeCategory() {
+    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=20000000 \
+    --ledger --ledger-account-index=0 --ledger-address-index=0 \
+    --function="addAssetToEModeCategory" --arguments ${ASSET_2} 0x01 0x01 0x01 \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 
