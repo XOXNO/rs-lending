@@ -1,30 +1,58 @@
-use common_structs::BP;
+use common_structs::*;
 
 multiversx_sc::imports!();
 
 #[multiversx_sc::module]
 pub trait MathModule {
+    /// Computes the borrow rate based on the current utilization.
+    ///
+    /// # Parameters
+    /// - `r_max`: The maximum borrow rate.
+    /// - `r_base`: The base borrow rate.
+    /// - `r_slope1`: The slope of the borrow rate before the optimal utilization.
+    /// - `r_slope2`: The slope of the borrow rate after the optimal utilization.
+    /// - `u_optimal`: The optimal utilization ratio.
+    /// - `u_current`: The current utilization ratio.
+    ///
+    /// # Returns
+    /// - `BigUint`: The computed borrow rate.
     fn compute_borrow_rate(
         &self,
-        r_max: &BigUint,
-        r_base: &BigUint,
-        r_slope1: &BigUint,
-        r_slope2: &BigUint,
-        u_optimal: &BigUint,
-        u_current: &BigUint,
-    ) -> BigUint {
-        let bp = BigUint::from(BP);
+        r_max: ManagedDecimal<Self::Api, NumDecimals>,
+        r_base: ManagedDecimal<Self::Api, NumDecimals>,
+        r_slope1: ManagedDecimal<Self::Api, NumDecimals>,
+        r_slope2: ManagedDecimal<Self::Api, NumDecimals>,
+        u_optimal: ManagedDecimal<Self::Api, NumDecimals>,
+        u_current: ManagedDecimal<Self::Api, NumDecimals>,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        // Represent 1.0 in ManagedDecimal using BP (Basis Points)
+        let one_dec = ManagedDecimal::from_raw_units(BigUint::from(BP), DECIMAL_PRECISION);
 
         if u_current <= u_optimal {
-            let utilisation_ratio = &(u_current * r_slope1) / u_optimal;
-            r_base + &utilisation_ratio
-        } else {
-            let denominator = &bp - u_optimal;
-            let numerator = &(u_current - u_optimal) * r_slope2;
-            let result = (r_base + r_slope1) + numerator / denominator;
+            // Calculate utilization ratio: (u_current * r_slope1) / u_optimal
+            let utilization_ratio = u_current.mul(r_slope1).div(u_optimal);
 
-            if &result > r_max {
-                r_max.clone()
+            // Compute borrow rate: r_base + utilization_ratio
+            let borrow_rate_dec = r_base.add(utilization_ratio);
+
+            // Rescale and convert back to BigUint
+            borrow_rate_dec
+        } else {
+            // Calculate denominator: BP - u_optimal
+            let denominator = one_dec.sub(u_optimal.clone());
+
+            // Calculate numerator: (u_current - u_optimal) * r_slope2
+            let numerator = u_current.sub(u_optimal).mul(r_slope2);
+
+            // Compute intermediate rate: r_base + r_slope1
+            let intermediate_rate = r_base.add(r_slope1);
+
+            // Compute the final result: intermediate_rate + (numerator / denominator)
+            let result = intermediate_rate.add(numerator.div(denominator));
+
+            // Compare with r_max and return the minimum
+            if result > r_max {
+                r_max
             } else {
                 result
             }
@@ -33,35 +61,51 @@ pub trait MathModule {
 
     fn compute_deposit_rate(
         &self,
-        u_current: &BigUint,
-        borrow_rate: &BigUint,
-        reserve_factor: &BigUint,
-    ) -> BigUint {
-        let bp = BigUint::from(BP);
+        u_current: ManagedDecimal<Self::Api, NumDecimals>,
+        borrow_rate: ManagedDecimal<Self::Api, NumDecimals>,
+        reserve_factor: ManagedDecimal<Self::Api, NumDecimals>,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        // Perform calculations using ManagedDecimal
+        let one_dec = ManagedDecimal::from_raw_units(BigUint::from(BP), DECIMAL_PRECISION);
 
-        (u_current * borrow_rate * (&bp - reserve_factor)) / (&bp * &bp)
+        let deposit_rate_dec = u_current.mul(borrow_rate).mul(one_dec.sub(reserve_factor));
+
+        deposit_rate_dec
     }
 
     fn compute_capital_utilisation(
         &self,
-        borrowed_amount: &BigUint,
-        total_reserves: &BigUint,
-    ) -> BigUint {
-        let bp = BigUint::from(BP);
-        if *total_reserves == BigUint::zero() {
-            BigUint::zero()
+        borrowed_amount: ManagedDecimal<Self::Api, NumDecimals>,
+        total_reserves: ManagedDecimal<Self::Api, NumDecimals>,
+        decimals: usize,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        let zero_dec = ManagedDecimal::from_raw_units(BigUint::zero(), decimals);
+
+        if total_reserves == zero_dec {
+            zero_dec
         } else {
-            &(borrowed_amount * &bp) / total_reserves
+            let utilization_ratio = borrowed_amount
+                .mul(ManagedDecimal::from_raw_units(
+                    BigUint::from(BP),
+                    DECIMAL_PRECISION,
+                ))
+                .div(total_reserves);
+
+            utilization_ratio
         }
     }
 
     fn compute_interest(
         &self,
-        amount: &BigUint,
-        current_supply_index: &BigUint, // Market index
-        initial_supply_index: &BigUint, // Account position index
-    ) -> BigUint {
-        let new_amount = (amount * current_supply_index) / initial_supply_index;
+        amount: ManagedDecimal<Self::Api, NumDecimals>,
+        current_supply_index: ManagedDecimal<Self::Api, NumDecimals>, // Market index
+        initial_supply_index: ManagedDecimal<Self::Api, NumDecimals>, // Account position index
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        let new_amount = amount
+            .clone()
+            .mul(current_supply_index)
+            .div(initial_supply_index);
+
         new_amount - amount
     }
 }

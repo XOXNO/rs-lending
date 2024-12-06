@@ -18,6 +18,7 @@ pub mod views;
 pub use common_structs::*;
 pub use common_tokens::*;
 pub use errors::*;
+use proxy_price_aggregator::PriceFeed;
 
 #[multiversx_sc::contract]
 pub trait LendingPool:
@@ -47,6 +48,7 @@ pub trait LendingPool:
         &self,
         caller: &ManagedAddress,
         is_isolated: bool,
+        is_vault: bool,
         e_mode_category: OptionalValue<u8>,
     ) -> (EsdtTokenPayment, NftAccountAttributes) {
         let amount = BigUint::from(1u64);
@@ -57,6 +59,7 @@ pub trait LendingPool:
             } else {
                 e_mode_category.into_option().unwrap_or(0)
             },
+            is_vault,
         };
         let nft_token_payment = self
             .account_token()
@@ -70,7 +73,7 @@ pub trait LendingPool:
 
     #[payable("*")]
     #[endpoint(supply)]
-    fn supply(&self, e_mode_category: OptionalValue<u8>) {
+    fn supply(&self, is_vault: bool, e_mode_category: OptionalValue<u8>) {
         let payments = self.get_multi_payments();
         let payments_len = payments.len();
 
@@ -113,10 +116,19 @@ pub trait LendingPool:
             let (account_token, attributes) = self.enter(
                 &initial_caller,
                 asset_info.is_isolated,
+                is_vault,
                 e_mode_category.clone(),
             );
             nft_attributes = attributes;
             account_nonce = account_token.token_nonce;
+        }
+
+        // Make sure the variable match the NFT attributes of the account
+        if nft_attributes.is_vault || is_vault {
+            require!(
+                nft_attributes.is_vault == is_vault,
+                ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL
+            );
         }
 
         require!(
@@ -170,24 +182,29 @@ pub trait LendingPool:
         self.require_amount_greater_than_zero(&collateral_payment.amount);
         self.require_non_zero_address(&initial_caller);
 
-        let deposit_position = self.get_existing_or_new_deposit_position_for_token(
+        let mut deposit_position = self.get_existing_or_new_deposit_position_for_token(
             account_nonce,
             &asset_info,
             &collateral_payment.token_identifier,
+            is_vault,
         );
 
-        let updated_deposit_position = self
-            .tx()
-            .to(pool_address)
-            .typed(proxy_pool::LiquidityPoolProxy)
-            .supply(deposit_position)
-            .payment(EgldOrEsdtTokenPayment::new(
-                collateral_payment.token_identifier.clone(),
-                collateral_payment.token_nonce,
-                collateral_payment.amount.clone(),
-            ))
-            .returns(ReturnsResult)
-            .sync_call();
+        let updated_deposit_position = if is_vault {
+            deposit_position.amount += collateral_payment.amount.clone(); // Increase the amount of the deposit position
+            deposit_position
+        } else {
+            self.tx()
+                .to(pool_address)
+                .typed(proxy_pool::LiquidityPoolProxy)
+                .supply(deposit_position)
+                .payment(EgldOrEsdtTokenPayment::new(
+                    collateral_payment.token_identifier.clone(),
+                    collateral_payment.token_nonce,
+                    collateral_payment.amount.clone(),
+                ))
+                .returns(ReturnsResult)
+                .sync_call()
+        };
 
         self.update_position_event(
             &collateral_payment.amount,
@@ -263,19 +280,38 @@ pub trait LendingPool:
             "Token {} is not available for this account",
             withdraw_token_id
         );
-        let dp = dp_opt.unwrap();
+        let mut dp = dp_opt.unwrap();
 
+        // This protects from withdrawing more than the total amount of the deposit position + interest
         if amount > dp.get_total_amount() {
             amount = dp.get_total_amount();
         }
 
-        let deposit_position = self
-            .tx()
-            .to(pool_address)
-            .typed(proxy_pool::LiquidityPoolProxy)
-            .withdraw(initial_caller, &amount, dp, is_liquidation, liquidation_fee)
-            .returns(ReturnsResult)
-            .sync_call();
+        let deposit_position = if dp.is_vault {
+            dp.amount -= &amount;
+
+            if is_liquidation {
+                self.tx()
+                    .to(initial_caller)
+                    .egld_or_single_esdt(withdraw_token_id, 0, &(&amount - liquidation_fee))
+                    .sync_call();
+                self.tx()
+                    .to(pool_address)
+                    .typed(proxy_pool::LiquidityPoolProxy)
+                    .vault_rewards()
+                    .egld_or_single_esdt(withdraw_token_id, 0, liquidation_fee)
+                    .returns(ReturnsResult)
+                    .sync_call()
+            }
+            dp
+        } else {
+            self.tx()
+                .to(pool_address)
+                .typed(proxy_pool::LiquidityPoolProxy)
+                .withdraw(initial_caller, &amount, dp, is_liquidation, liquidation_fee)
+                .returns(ReturnsResult)
+                .sync_call()
+        };
 
         self.update_position_event(
             &amount, // Representing the amount of collateral removed
@@ -290,20 +326,20 @@ pub trait LendingPool:
             dep_pos_map.insert(withdraw_token_id.clone(), deposit_position);
         }
 
-        let collateral_in_dollars = self.get_liquidation_collateral_available(account_nonce);
+        if !is_liquidation {
+            let collateral_in_dollars = self.get_liquidation_collateral_available(account_nonce);
 
-        let borrowed_dollars = self.get_total_borrow_in_dollars(account_nonce);
+            let borrowed_dollars = self.get_total_borrow_in_dollars(account_nonce);
 
-        let health_factor = self.compute_health_factor(&collateral_in_dollars, &borrowed_dollars);
+            let health_factor =
+                self.compute_health_factor(&collateral_in_dollars, &borrowed_dollars);
 
-        // Make sure the health factor is greater than 100% when is a normal withdraw, to prevent self liquidations risks
-        // For liquidations, we allow health factor to go below 100% as maybe the liquidation was not enough to cover the debt and make it healthy again
-        // A next liquidation can happen again until the health factor is above 100%
-
-        require!(
-            health_factor >= BP || is_liquidation,
-            ERROR_HEALTH_FACTOR_WITHDRAW
-        );
+            // Make sure the health factor is greater than 100% when is a normal withdraw, to prevent self liquidations risks
+            require!(
+                health_factor >= BigUint::from(BP),
+                ERROR_HEALTH_FACTOR_WITHDRAW
+            );
+        }
     }
 
     #[payable("*")]
@@ -363,6 +399,9 @@ pub trait LendingPool:
         let collateral_positions = self.update_collateral_with_interest(nft_account_nonce);
         let borrow_positions = self.update_borrows_with_debt(nft_account_nonce);
 
+        sc_print!("amount {}", amount);
+        sc_print!("asset_to_borrow {}", asset_to_borrow);
+
         let amount_to_borrow_in_dollars =
             self.get_token_amount_in_dollars(&asset_to_borrow, &amount);
 
@@ -402,6 +441,7 @@ pub trait LendingPool:
             nft_account_nonce,
             &asset_config,
             asset_to_borrow.clone(),
+            account_attributes.is_vault,
         );
 
         let ret_borrow_position = self
@@ -413,13 +453,15 @@ pub trait LendingPool:
             .sync_call();
 
         if account_attributes.is_isolated {
+            let collateral_token_id = collateral_positions.get(0).token_id;
+            let asset_config_collateral = self.asset_config(&collateral_token_id).get();
             self.validate_isolated_debt_ceiling(
-                &asset_config,
-                &asset_to_borrow,
+                &asset_config_collateral,
+                &collateral_token_id,
                 &amount_to_borrow_in_dollars,
             );
             self.update_isolated_debt_usd(
-                &asset_to_borrow,
+                &collateral_token_id,
                 &amount_to_borrow_in_dollars,
                 true, // is_increase
             );
@@ -457,6 +499,7 @@ pub trait LendingPool:
             &repay_amount,
             &initial_caller,
             None,
+            None,
         );
     }
 
@@ -467,6 +510,7 @@ pub trait LendingPool:
         repay_amount: &BigUint,
         initial_caller: &ManagedAddress,
         repay_amount_in_usd: Option<BigUint>,
+        debt_token_price_data: Option<PriceFeed<Self::Api>>,
     ) {
         let asset_address = self.get_pool_address(repay_token_id);
 
@@ -483,6 +527,7 @@ pub trait LendingPool:
             repay_token_id
         );
 
+        let bp = bp_opt.unwrap();
         let collaterals_map = self.deposit_positions(account_nonce);
         if collaterals_map.len() == 1 {
             // Impossible to have 0 collateral when we repay a position
@@ -497,16 +542,38 @@ pub trait LendingPool:
                 } else {
                     repay_amount_in_usd.unwrap()
                 };
+
+                let debt_interest_amount = bp.accumulated_interest.clone();
+
+                let debt_token_price_data_feed = if debt_token_price_data.is_some() {
+                    debt_token_price_data.unwrap()
+                } else {
+                    self.get_token_price_data(&repay_token_id)
+                };
+
+                let interest_usd_amount = self.get_token_amount_in_dollars_raw(
+                    &debt_interest_amount,
+                    &debt_token_price_data_feed,
+                );
+
+                let total_principal_borrowed_usd_amount =
+                    self.get_token_amount_in_dollars_raw(&bp.amount, &debt_token_price_data_feed);
+
+                let principal_usd_amount = if amount_to_repay_in_dollars > interest_usd_amount {
+                    (amount_to_repay_in_dollars - interest_usd_amount)
+                        .min(total_principal_borrowed_usd_amount) // Protection for over paying, while the excess is returned in the child SC
+                } else {
+                    BigUint::from(0u64)
+                };
+
                 // In repay function
                 self.update_isolated_debt_usd(
                     &collateral_token_id,
-                    &amount_to_repay_in_dollars,
+                    &principal_usd_amount,
                     false, // is_decrease
                 );
             }
         };
-
-        let bp = bp_opt.unwrap();
 
         let borrow_position = self
             .tx()
@@ -558,46 +625,51 @@ pub trait LendingPool:
             self.get_liquidation_collateral_in_dollars_vec(&collateral_positions);
         let borrowed_dollars = self.get_total_borrow_in_dollars_vec(&borrow_positions);
         let health_factor = self.compute_health_factor(&collateral_in_dollars, &borrowed_dollars);
-
-        require!(health_factor < BP, ERROR_HEALTH_FACTOR);
+        sc_print!("health_factor {}", health_factor);
+        require!(health_factor < bp, ERROR_HEALTH_FACTOR);
 
         let debt_token_price_data = self.get_token_price_data(&debt_payment.0);
         let collateral_token_price_data = self.get_token_price_data(collateral_to_receive);
+
+        // Convert liquidator's payment to USD
+        let mut debt_payment_in_usd =
+            self.get_token_amount_in_dollars_raw(&debt_payment.1, &debt_token_price_data);
+
+        let asset_config = self.asset_config(collateral_to_receive).get();
+        // Calculate collateral to receive with bonus
+        let bonus_rate = self
+            .calculate_dynamic_liquidation_bonus(&health_factor, asset_config.liquidation_bonus);
 
         // Calculate liquidation amount using Dutch auction mechanism
         let liquidation_amount_usd = self.calculate_single_asset_liquidation_amount(
             &health_factor,
             &borrowed_dollars,
-            collateral_to_receive,
+            &collateral_in_dollars,
+            &collateral_to_receive,
             &collateral_token_price_data,
             liquidatee_account_nonce,
-        );
-
-        // Convert liquidator's payment to USD
-        let debt_payment_in_usd =
-            self.get_token_amount_in_dollars_raw(&debt_payment.1, &debt_token_price_data);
-
-        // Ensure liquidator is paying enough
-        require!(
-            debt_payment_in_usd >= liquidation_amount_usd,
-            ERROR_INSUFFICIENT_LIQUIDATION
+            &debt_payment_in_usd,
+            &bonus_rate,
         );
 
         // Calculate actual payment to use (handle excess)
-        let (payment_to_use, excess_amount) = if debt_payment_in_usd > liquidation_amount_usd {
+        let (debt_to_repay_amount, excess_amount) = if debt_payment_in_usd > liquidation_amount_usd
+        {
             let excess_in_usd = &debt_payment_in_usd - &liquidation_amount_usd;
             let excess_in_tokens =
                 self.get_usd_amount_in_tokens_raw(&excess_in_usd, &debt_token_price_data);
-            (
-                debt_payment.1.clone() - &excess_in_tokens,
-                Some(excess_in_tokens),
-            )
+            let used_tokens_for_debt = debt_payment.1.clone() - &excess_in_tokens;
+            debt_payment_in_usd =
+                self.get_token_amount_in_dollars_raw(&used_tokens_for_debt, &debt_token_price_data);
+
+            (used_tokens_for_debt, Some(excess_in_tokens))
         } else {
             (debt_payment.1.clone(), None)
         };
 
         // Return excess if any
         if let Some(excess) = excess_amount {
+            sc_print!("excess: {}", excess);
             self.tx()
                 .to(&initial_caller)
                 .payment(EgldOrEsdtTokenPayment::new(
@@ -608,44 +680,46 @@ pub trait LendingPool:
                 .transfer();
         }
 
-        let asset_config = self.asset_config(collateral_to_receive).get();
-        // Calculate collateral to receive with bonus
-        let bonus_rate = self
-            .calculate_dynamic_liquidation_bonus(&health_factor, asset_config.liquidation_bonus);
-
-        let collateral_to_receive_in_usd = self
-            .get_token_amount_in_dollars_raw(&payment_to_use, &debt_token_price_data)
-            * (bp.clone() + bonus_rate)
-            / bp;
-
         // Convert USD value to collateral token amount
-        let collateral_amount = self.compute_amount_in_tokens(
-            liquidatee_account_nonce,
-            collateral_to_receive,
-            collateral_to_receive_in_usd,
-            &collateral_token_price_data,
-        );
+        let collateral_amount_before_bonus =
+            self.compute_amount_in_tokens(&liquidation_amount_usd, &collateral_token_price_data);
 
+        let collateral_amount_after_bonus =
+            &collateral_amount_before_bonus * &(&bp + &bonus_rate) / &bp;
+
+        sc_print!(
+            "collateral_amount_before_bonus:  {}",
+            collateral_amount_before_bonus
+        );
+        sc_print!(
+            "collateral_amount_after_bonus:  {}",
+            collateral_amount_after_bonus
+        );
         // Repay debt
         self.internal_repay(
             liquidatee_account_nonce,
             &debt_payment.0,
-            &payment_to_use,
+            &debt_to_repay_amount,
             &initial_caller,
             Some(debt_payment_in_usd),
+            Some(debt_token_price_data),
         );
 
         // Calculate and transfer collateral with protocol fee
         let liquidation_fee =
             self.calculate_dynamic_protocol_fee(&health_factor, asset_config.liquidation_base_fee);
 
+        let liq_bonus_amount = &collateral_amount_after_bonus - &collateral_amount_before_bonus;
+
+        let protocol_fee_amount = liq_bonus_amount.clone() * &liquidation_fee / &bp;
+
         self.internal_withdraw(
             liquidatee_account_nonce,
             collateral_to_receive,
-            collateral_amount,
+            collateral_amount_after_bonus,
             &initial_caller,
             true,
-            &liquidation_fee,
+            &protocol_fee_amount,
             OptionalValue::None,
         );
     }
@@ -695,17 +769,21 @@ pub trait LendingPool:
         let mut positions: ManagedVec<Self::Api, AccountPosition<Self::Api>> = ManagedVec::new();
         for dp in deposit_positions.values() {
             let asset_address = self.get_pool_address(&dp.token_id);
-            let latest_position = self
-                .tx()
-                .to(asset_address)
-                .typed(proxy_pool::LiquidityPoolProxy)
-                .update_collateral_with_interest(dp.clone())
-                .returns(ReturnsResult)
-                .sync_call();
+            if !dp.is_vault {
+                let latest_position = self
+                    .tx()
+                    .to(asset_address)
+                    .typed(proxy_pool::LiquidityPoolProxy)
+                    .update_collateral_with_interest(dp.clone())
+                    .returns(ReturnsResult)
+                    .sync_call();
 
-            positions.push(latest_position.clone());
-            self.deposit_positions(account_position)
-                .insert(dp.token_id, latest_position);
+                self.deposit_positions(account_position)
+                    .insert(dp.token_id, latest_position.clone());
+                positions.push(latest_position);
+            } else {
+                positions.push(dp.clone());
+            }
         }
         positions
     }

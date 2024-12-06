@@ -45,12 +45,13 @@ where
 {
     pub fn init<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-        Arg1: ProxyArg<BigUint<Env::Api>>,
-        Arg2: ProxyArg<BigUint<Env::Api>>,
-        Arg3: ProxyArg<BigUint<Env::Api>>,
-        Arg4: ProxyArg<BigUint<Env::Api>>,
-        Arg5: ProxyArg<BigUint<Env::Api>>,
-        Arg6: ProxyArg<BigUint<Env::Api>>,
+        Arg1: ProxyArg<ManagedDecimal<Env::Api, usize>>,
+        Arg2: ProxyArg<ManagedDecimal<Env::Api, usize>>,
+        Arg3: ProxyArg<ManagedDecimal<Env::Api, usize>>,
+        Arg4: ProxyArg<ManagedDecimal<Env::Api, usize>>,
+        Arg5: ProxyArg<ManagedDecimal<Env::Api, usize>>,
+        Arg6: ProxyArg<ManagedDecimal<Env::Api, usize>>,
+        Arg7: ProxyArg<usize>,
     >(
         self,
         asset: Arg0,
@@ -60,6 +61,7 @@ where
         r_slope2: Arg4,
         u_optimal: Arg5,
         reserve_factor: Arg6,
+        decimals: Arg7,
     ) -> TxTypedDeploy<Env, From, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
@@ -71,6 +73,7 @@ where
             .argument(&r_slope2)
             .argument(&u_optimal)
             .argument(&reserve_factor)
+            .argument(&decimals)
             .original_result()
     }
 }
@@ -85,12 +88,12 @@ where
     Gas: TxGas<Env>,
 {
     pub fn upgrade<
-        Arg0: ProxyArg<BigUint<Env::Api>>,
-        Arg1: ProxyArg<BigUint<Env::Api>>,
-        Arg2: ProxyArg<BigUint<Env::Api>>,
-        Arg3: ProxyArg<BigUint<Env::Api>>,
-        Arg4: ProxyArg<BigUint<Env::Api>>,
-        Arg5: ProxyArg<BigUint<Env::Api>>,
+        Arg0: ProxyArg<ManagedDecimal<Env::Api, usize>>,
+        Arg1: ProxyArg<ManagedDecimal<Env::Api, usize>>,
+        Arg2: ProxyArg<ManagedDecimal<Env::Api, usize>>,
+        Arg3: ProxyArg<ManagedDecimal<Env::Api, usize>>,
+        Arg4: ProxyArg<ManagedDecimal<Env::Api, usize>>,
+        Arg5: ProxyArg<ManagedDecimal<Env::Api, usize>>,
     >(
         self,
         r_max: Arg0,
@@ -178,7 +181,7 @@ where
 
     pub fn borrow_index(
         self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getBorrowIndex")
@@ -187,19 +190,19 @@ where
 
     pub fn supply_index(
         self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getSupplyIndex")
             .original_result()
     }
 
-    pub fn borrow_index_last_update_timestamp(
+    pub fn last_update_timestamp(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, u64> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("borrowIndexLastUpdateTimestamp")
+            .raw_call("getLastUpdateTimestamp")
             .original_result()
     }
 
@@ -218,6 +221,15 @@ where
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getAccountPositions")
+            .original_result()
+    }
+
+    pub fn stable_token(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, TokenIdentifier<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getStableToken")
             .original_result()
     }
 
@@ -316,6 +328,14 @@ where
             .original_result()
     }
 
+    pub fn vault_rewards(
+        self,
+    ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
+        self.wrapped_tx
+            .raw_call("vaultRewards")
+            .original_result()
+    }
+
     pub fn flash_loan<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
@@ -346,7 +366,7 @@ where
 
     pub fn get_capital_utilisation(
         self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getCapitalUtilisation")
@@ -355,7 +375,7 @@ where
 
     pub fn get_total_capital(
         self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getTotalCapital")
@@ -363,13 +383,13 @@ where
     }
 
     pub fn get_debt_interest<
-        Arg0: ProxyArg<BigUint<Env::Api>>,
-        Arg1: ProxyArg<BigUint<Env::Api>>,
+        Arg0: ProxyArg<ManagedDecimal<Env::Api, usize>>,
+        Arg1: ProxyArg<ManagedDecimal<Env::Api, usize>>,
     >(
         self,
         amount: Arg0,
         initial_borrow_index: Arg1,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getDebtInterest")
@@ -380,7 +400,7 @@ where
 
     pub fn get_deposit_rate(
         self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getDepositRate")
@@ -389,7 +409,7 @@ where
 
     pub fn get_borrow_rate(
         self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getBorrowRate")

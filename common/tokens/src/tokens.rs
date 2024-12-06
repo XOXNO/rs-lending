@@ -13,6 +13,10 @@ pub trait AccountTokenModule {
     #[storage_mapper("account_positions")]
     fn account_positions(&self) -> UnorderedSetMapper<u64>;
 
+    #[view(getStableToken)]
+    #[storage_mapper("stable_token")]
+    fn stable_token(&self) -> FungibleTokenMapper<Self::Api>;
+
     fn lending_account_in_the_market(&self, nonce: u64) {
         require!(
             self.account_positions().contains(&nonce),

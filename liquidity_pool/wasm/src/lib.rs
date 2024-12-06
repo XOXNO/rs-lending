@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           23
+// Endpoints:                           25
 // Async Callback (empty):               1
-// Total number of exported functions:  26
+// Total number of exported functions:  28
 
 #![no_std]
 
@@ -28,15 +28,17 @@ multiversx_sc_wasm_adapter::endpoints! {
         getPoolParams => pool_params
         getBorrowIndex => borrow_index
         getSupplyIndex => supply_index
-        borrowIndexLastUpdateTimestamp => borrow_index_last_update_timestamp
+        getLastUpdateTimestamp => last_update_timestamp
         getAccountToken => account_token
         getAccountPositions => account_positions
+        getStableToken => stable_token
         updatePositionInterest => update_collateral_with_interest
         updatePositionDebt => update_borrows_with_debt
         supply => supply
         borrow => borrow
         withdraw => withdraw
         repay => repay
+        vaultRewards => vault_rewards
         flashLoan => flash_loan
         getCapitalUtilisation => get_capital_utilisation
         getTotalCapital => get_total_capital

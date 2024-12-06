@@ -17,7 +17,7 @@ pub trait OracleModule: storage::LendingStorageModule {
             !price_aggregator_address.is_empty(),
             ERROR_PRICE_AGGREGATOR_NOT_SET
         );
-
+        
         let result = self
             .tx()
             .to(self.price_aggregator_address().get())

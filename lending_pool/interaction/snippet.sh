@@ -84,7 +84,7 @@ addEModeCategory() {
 addAssetToEModeCategory() {
     mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=20000000 \
     --ledger --ledger-account-index=0 --ledger-address-index=0 \
-    --function="addAssetToEModeCategory" --arguments ${ASSET_2} 0x01 0x01 0x01 \
+    --function="addAssetToEModeCategory" --arguments ${ASSET} 0x02 0x01 0x01 \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 

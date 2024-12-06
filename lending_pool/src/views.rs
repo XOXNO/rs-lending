@@ -32,6 +32,19 @@ pub trait ViewsModule:
         }
     }
 
+    #[view(getAccountHealthFactor)]
+    fn get_account_health_factor(&self, account_position: u64) -> BigUint {
+        let collateral_in_dollars = self.get_liquidation_collateral_available(account_position);
+        let borrowed_dollars = self.get_total_borrow_in_dollars(account_position);
+        self.compute_health_factor(&collateral_in_dollars, &borrowed_dollars)
+    }
+
+    #[view(canBeLiquidated)]
+    fn can_be_liquidated(&self, account_position: u64) -> bool {
+        let health_factor = self.get_account_health_factor(account_position);
+        health_factor < BigUint::from(BP)
+    }
+
     #[view(getTotalBorrowInDollars)]
     fn get_total_borrow_in_dollars(&self, account_position: u64) -> BigUint {
         let mut total_borrow_in_dollars = BigUint::zero();

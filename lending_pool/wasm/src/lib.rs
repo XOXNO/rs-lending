@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           39
+// Endpoints:                           44
 // Async Callback:                       1
-// Total number of exported functions:  42
+// Total number of exported functions:  47
 
 #![no_std]
 
@@ -41,8 +41,10 @@ multiversx_sc_wasm_adapter::endpoints! {
         editAssetConfig => edit_asset_config
         getPoolAddress => get_pool_address
         registerAccountToken => register_account_token
+        registerStableToken => register_stable_token
         getAccountToken => account_token
         getAccountPositions => account_positions
+        getStableToken => stable_token
         getDepositPositions => deposit_positions
         getBorrowPositions => borrow_positions
         getPoolsMap => pools_map
@@ -53,8 +55,11 @@ multiversx_sc_wasm_adapter::endpoints! {
         getEModes => e_mode_category
         getAssetEModes => asset_e_modes
         getEModesAssets => e_mode_assets
+        getIsolatedAssetDebtUsd => isolated_asset_debt_usd
         getCollateralAmountForToken => get_collateral_amount_for_token
         getBorrowAmountForToken => get_borrow_amount_for_token
+        getAccountHealthFactor => get_account_health_factor
+        canBeLiquidated => can_be_liquidated
         getTotalBorrowInDollars => get_total_borrow_in_dollars
         getTotalCollateralAvailable => get_total_collateral_in_dollars
         getLiquidationCollateralAvailable => get_liquidation_collateral_available

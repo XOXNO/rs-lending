@@ -24,24 +24,24 @@ pub trait EventsModule {
     fn market_params_event(
         &self,
         #[indexed] base_asset: &EgldOrEsdtTokenIdentifier,
-        #[indexed] r_max: &BigUint,
-        #[indexed] r_base: &BigUint,
-        #[indexed] r_slope1: &BigUint,
-        #[indexed] r_slope2: &BigUint,
-        #[indexed] u_optimal: &BigUint,
-        #[indexed] reserve_factor: &BigUint,
+        #[indexed] r_max: &ManagedDecimal<Self::Api, NumDecimals>,
+        #[indexed] r_base: &ManagedDecimal<Self::Api, NumDecimals>,
+        #[indexed] r_slope1: &ManagedDecimal<Self::Api, NumDecimals>,
+        #[indexed] r_slope2: &ManagedDecimal<Self::Api, NumDecimals>,
+        #[indexed] u_optimal: &ManagedDecimal<Self::Api, NumDecimals>,
+        #[indexed] reserve_factor: &ManagedDecimal<Self::Api, NumDecimals>,
     );
 
     #[event("update_market_state")]
     fn update_market_state_event(
         &self,
         #[indexed] timestamp: u64,
-        #[indexed] supply_index: &BigUint,
-        #[indexed] borrow_index: &BigUint,
-        #[indexed] reserves: &BigUint,
-        #[indexed] supplied_amount: &BigUint,
-        #[indexed] borrowed_amount: &BigUint,
-        #[indexed] rewards_reserve: &BigUint,
+        #[indexed] supply_index: &ManagedDecimal<Self::Api, NumDecimals>,
+        #[indexed] borrow_index: &ManagedDecimal<Self::Api, NumDecimals>,
+        #[indexed] reserves: &ManagedDecimal<Self::Api, NumDecimals>,
+        #[indexed] supplied_amount: &ManagedDecimal<Self::Api, NumDecimals>,
+        #[indexed] borrowed_amount: &ManagedDecimal<Self::Api, NumDecimals>,
+        #[indexed] rewards_reserve: &ManagedDecimal<Self::Api, NumDecimals>,
         #[indexed] base_asset: &EgldOrEsdtTokenIdentifier,
     );
 

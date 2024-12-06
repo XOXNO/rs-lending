@@ -6,7 +6,7 @@ multiversx_sc::derive_imports!();
 use common_events::{AssetConfig, EModeAssetConfig, EModeCategory};
 
 use crate::{
-    storage, ERROR_ASSET_ALREADY_SUPPORTED, ERROR_ASSET_ALREADY_SUPPORTED_IN_EMODE,
+    oracle, storage, ERROR_ASSET_ALREADY_SUPPORTED, ERROR_ASSET_ALREADY_SUPPORTED_IN_EMODE,
     ERROR_ASSET_NOT_SUPPORTED, ERROR_ASSET_NOT_SUPPORTED_IN_EMODE, ERROR_EMODE_CATEGORY_NOT_FOUND,
     ERROR_INVALID_AGGREGATOR, ERROR_INVALID_LIQUIDATION_THRESHOLD, ERROR_INVALID_TICKER,
     ERROR_NO_POOL_FOUND,
@@ -20,6 +20,7 @@ pub trait RouterModule:
     + common_checks::ChecksModule
     + storage::LendingStorageModule
     + common_events::EventsModule
+    + oracle::OracleModule
 {
     #[allow_multiple_var_args]
     #[only_owner]
@@ -68,7 +69,8 @@ pub trait RouterModule:
 
         self.pools_map(&base_asset).set(address.clone());
         self.pools_allowed().insert(address.clone());
-
+        sc_print!("debt celling {}", debt_ceiling_usd);
+        sc_print!("asset_config {}", base_asset);
         let asset_config = &AssetConfig {
             ltv,
             liquidation_threshold,

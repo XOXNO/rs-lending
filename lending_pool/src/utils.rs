@@ -22,6 +22,7 @@ pub trait LendingUtilsModule:
         account_position: u64,
         asset_config: &AssetConfig<Self::Api>,
         token_id: &EgldOrEsdtTokenIdentifier,
+        is_vault: bool,
     ) -> AccountPosition<Self::Api> {
         match self.deposit_positions(account_position).get(token_id) {
             Some(dp) => {
@@ -40,6 +41,7 @@ pub trait LendingUtilsModule:
                 asset_config.ltv.clone(),
                 asset_config.liquidation_threshold.clone(),
                 asset_config.liquidation_bonus.clone(),
+                is_vault,
             ),
         }
     }
@@ -49,6 +51,7 @@ pub trait LendingUtilsModule:
         account_position: u64,
         asset_config: &AssetConfig<Self::Api>,
         token_id: EgldOrEsdtTokenIdentifier,
+        is_vault: bool,
     ) -> AccountPosition<Self::Api> {
         match self.borrow_positions(account_position).get(&token_id) {
             Some(bp) => bp,
@@ -64,6 +67,7 @@ pub trait LendingUtilsModule:
                 asset_config.ltv.clone(),
                 asset_config.liquidation_threshold.clone(),
                 asset_config.liquidation_bonus.clone(),
+                is_vault,
             ),
         }
     }
@@ -124,7 +128,7 @@ pub trait LendingUtilsModule:
     ) {
         let current_debt = self.isolated_asset_debt_usd(token_id).get();
 
-        let total_debt = current_debt + amount_to_borrow_in_dollars;
+        let total_debt = current_debt.clone() + amount_to_borrow_in_dollars;
 
         require!(
             total_debt <= asset_config.debt_ceiling_usd,
@@ -138,12 +142,16 @@ pub trait LendingUtilsModule:
         amount_to_borrow_in_dollars: &BigUint,
         is_increase: bool,
     ) {
+        if amount_to_borrow_in_dollars.eq(&BigUint::from(0u64)) {
+            return;
+        }
+
         let map = self.isolated_asset_debt_usd(token_id);
 
         if is_increase {
             map.update(|debt| *debt += amount_to_borrow_in_dollars);
         } else {
-            map.update(|debt| *debt -= amount_to_borrow_in_dollars);
+            map.update(|debt| *debt -= amount_to_borrow_in_dollars.min(&debt.clone()));
         }
 
         self.update_debt_ceiling_event(token_id, map.get());

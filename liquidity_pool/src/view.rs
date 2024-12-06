@@ -1,75 +1,98 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
-use crate::{errors::ERROR_INVALID_BORROW_INDEX, liq_math, liq_storage};
-
-use common_structs::*;
+use crate::{contexts::base::StorageCache, liq_math, liq_storage};
 
 #[multiversx_sc::module]
 pub trait ViewModule: liq_math::MathModule + liq_storage::StorageModule {
     #[view(getCapitalUtilisation)]
-    fn get_capital_utilisation(&self) -> BigUint {
-        let borrowed_amount = self.borrowed_amount().get();
-        let total_amount = self.supplied_amount().get();
+    fn get_capital_utilisation(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
+        let mut storage_cache = StorageCache::new(self);
 
-        self.compute_capital_utilisation(&borrowed_amount, &total_amount)
+        self.get_capital_utilisation_internal(&mut storage_cache)
+    }
+
+    fn get_capital_utilisation_internal(
+        &self,
+        storage_cache: &mut StorageCache<Self>,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        self.compute_capital_utilisation(
+            storage_cache.borrowed_amount.clone(),
+            storage_cache.supplied_amount.clone(),
+            storage_cache.pool_params.decimals,
+        )
     }
 
     #[view(getTotalCapital)]
-    fn get_total_capital(&self) -> BigUint {
-        let reserve_amount = self.reserves().get();
-        let borrowed_amount = self.borrowed_amount().get();
+    fn get_total_capital(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
+        let mut storage_cache = StorageCache::new(self);
 
-        &reserve_amount + &borrowed_amount
+        self.get_total_capital_internal(&mut storage_cache)
+    }
+
+    fn get_total_capital_internal(
+        &self,
+        storage_cache: &mut StorageCache<Self>,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        let reserve_amount = storage_cache.reserves_amount.clone();
+        let borrowed_amount = storage_cache.borrowed_amount.clone();
+
+        reserve_amount + borrowed_amount
     }
 
     #[view(getDebtInterest)]
-    fn get_debt_interest(&self, amount: &BigUint, initial_borrow_index: &BigUint) -> BigUint {
+    fn get_debt_interest(
+        &self,
+        amount: ManagedDecimal<Self::Api, NumDecimals>,
+        initial_borrow_index: ManagedDecimal<Self::Api, NumDecimals>,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let current_borrow_index = self.borrow_index().get();
-        let borrow_index_diff =
-            self.get_borrow_index_diff(initial_borrow_index, &current_borrow_index);
+        let borrow_index_diff = current_borrow_index - initial_borrow_index;
 
-        amount * &borrow_index_diff / BP
+        amount * borrow_index_diff
     }
 
     #[view(getDepositRate)]
-    fn get_deposit_rate(&self) -> BigUint {
-        let pool_params = self.pool_params().get();
-        let capital_utilisation = self.get_capital_utilisation();
-        let borrow_rate = self.get_borrow_rate();
+    fn get_deposit_rate(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
+        let mut storage_cache = StorageCache::new(self);
+
+        self.get_deposit_rate_internal(&mut storage_cache)
+    }
+
+    fn get_deposit_rate_internal(
+        &self,
+        storage_cache: &mut StorageCache<Self>,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        let capital_utilisation = self.get_capital_utilisation_internal(storage_cache);
+        let borrow_rate = self.get_borrow_rate_internal(storage_cache);
 
         self.compute_deposit_rate(
-            &capital_utilisation,
-            &borrow_rate,
-            &pool_params.reserve_factor,
+            capital_utilisation,
+            borrow_rate,
+            storage_cache.pool_params.reserve_factor.clone(),
         )
     }
 
     #[view(getBorrowRate)]
-    fn get_borrow_rate(&self) -> BigUint {
-        let pool_params = self.pool_params().get();
-        let capital_utilisation = self.get_capital_utilisation();
+    fn get_borrow_rate(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
+        let mut storage_cache = StorageCache::new(self);
 
-        self.compute_borrow_rate(
-            &pool_params.r_max,
-            &pool_params.r_base,
-            &pool_params.r_slope1,
-            &pool_params.r_slope2,
-            &pool_params.u_optimal,
-            &capital_utilisation,
-        )
+        self.get_borrow_rate_internal(&mut storage_cache)
     }
 
-    fn get_borrow_index_diff(
+    fn get_borrow_rate_internal(
         &self,
-        initial_borrow_index: &BigUint,
-        current_borrow_index: &BigUint,
-    ) -> BigUint {
-        require!(
-            current_borrow_index >= initial_borrow_index,
-            ERROR_INVALID_BORROW_INDEX
-        );
+        storage_cache: &mut StorageCache<Self>,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        let capital_utilisation = self.get_capital_utilisation_internal(storage_cache);
 
-        current_borrow_index - initial_borrow_index
+        self.compute_borrow_rate(
+            storage_cache.pool_params.r_max.clone(),
+            storage_cache.pool_params.r_base.clone(),
+            storage_cache.pool_params.r_slope1.clone(),
+            storage_cache.pool_params.r_slope2.clone(),
+            storage_cache.pool_params.u_optimal.clone(),
+            capital_utilisation,
+        )
     }
 }

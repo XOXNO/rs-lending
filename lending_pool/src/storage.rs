@@ -64,6 +64,7 @@ pub trait LendingStorageModule {
     fn e_mode_assets(&self, id: u8) -> MapMapper<EgldOrEsdtTokenIdentifier, EModeAssetConfig>;
 
     // Debt in USD for isolated assets
+    #[view(getIsolatedAssetDebtUsd)]
     #[storage_mapper("isolated_asset_debt_usd")]
     fn isolated_asset_debt_usd(&self, token_id: &EgldOrEsdtTokenIdentifier) -> SingleValueMapper<BigUint>;
 }

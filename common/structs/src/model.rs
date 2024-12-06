@@ -4,20 +4,24 @@ multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
 pub const SECONDS_PER_YEAR: u64 = 31_556_926;
-pub const BP: u64 = 1_000_000_000; // Represents 100%
-pub const MAX_BONUS: u64 = 300_000_000; // Represents 30% basis points
+pub const BP: u128 = 1_000_000_000_000_000_000_000; // Represents 100%
+pub const DECIMAL_PRECISION: usize = 21;
+pub const MAX_BONUS: u128 = 300_000_000_000_000_000_000; // Represents 30% basis points
 
-#[derive(TopEncode, TopDecode, TypeAbi)]
+#[type_abi]
+#[derive(TopEncode, TopDecode)]
 pub struct PoolParams<M: ManagedTypeApi> {
-    pub r_max: BigUint<M>,
-    pub r_base: BigUint<M>,
-    pub r_slope1: BigUint<M>,
-    pub r_slope2: BigUint<M>,
-    pub u_optimal: BigUint<M>,
-    pub reserve_factor: BigUint<M>,
+    pub r_max: ManagedDecimal<M, NumDecimals>,
+    pub r_base: ManagedDecimal<M, NumDecimals>,
+    pub r_slope1: ManagedDecimal<M, NumDecimals>,
+    pub r_slope2: ManagedDecimal<M, NumDecimals>,
+    pub u_optimal: ManagedDecimal<M, NumDecimals>,
+    pub reserve_factor: ManagedDecimal<M, NumDecimals>,
+    pub decimals: usize,
 }
 
-#[derive(NestedEncode, NestedDecode, TopEncode, TopDecode, TypeAbi, Clone)]
+#[type_abi]
+#[derive(NestedEncode, NestedDecode, TopEncode, TopDecode, Clone)]
 pub enum UpdateAssetParamsType {
     None,
     LTV,
@@ -25,14 +29,16 @@ pub enum UpdateAssetParamsType {
     LiquidationThreshold,
 }
 
-#[derive(ManagedVecItem, NestedEncode, NestedDecode, TopEncode, TopDecode, TypeAbi, Clone)]
+#[type_abi]
+#[derive(ManagedVecItem, NestedEncode, NestedDecode, TopEncode, TopDecode, Clone)]
 pub enum AccountPositionType {
     None,
     Deposit,
     Borrow,
 }
 
-#[derive(ManagedVecItem, NestedEncode, NestedDecode, TopEncode, TopDecode, TypeAbi, Clone)]
+#[type_abi]
+#[derive(ManagedVecItem, NestedEncode, NestedDecode, TopEncode, TopDecode, Clone)]
 pub struct AccountPosition<M: ManagedTypeApi> {
     pub deposit_type: AccountPositionType,
     pub account_nonce: u64,
@@ -41,6 +47,7 @@ pub struct AccountPosition<M: ManagedTypeApi> {
     pub accumulated_interest: BigUint<M>,
     pub timestamp: u64,
     pub index: BigUint<M>,
+    pub is_vault: bool,
 
     pub entry_ltv: BigUint<M>,
     pub entry_liquidation_threshold: BigUint<M>,
@@ -59,6 +66,7 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
         entry_ltv: BigUint<M>,
         entry_liquidation_threshold: BigUint<M>,
         entry_liquidation_bonus: BigUint<M>,
+        is_vault: bool,
     ) -> Self {
         AccountPosition {
             deposit_type,
@@ -68,6 +76,7 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
             account_nonce,
             timestamp,
             index,
+            is_vault,
             entry_ltv,
             entry_liquidation_threshold,
             entry_liquidation_bonus,
@@ -79,7 +88,8 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
     }
 }
 
-#[derive(ManagedVecItem, TypeAbi, TopEncode, TopDecode, NestedEncode, NestedDecode)]
+#[type_abi]
+#[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode)]
 pub struct AssetConfig<M: ManagedTypeApi> {
     // Basic parameters
     pub ltv: BigUint<M>,
@@ -113,7 +123,8 @@ pub struct AssetConfig<M: ManagedTypeApi> {
     pub can_borrow_in_isolation: bool,
 }
 
-#[derive(ManagedVecItem, TypeAbi, TopEncode, TopDecode, NestedEncode, NestedDecode)]
+#[type_abi]
+#[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode)]
 pub struct EModeCategory<M: ManagedTypeApi> {
     pub id: u8,
     pub ltv: BigUint<M>,
@@ -121,29 +132,24 @@ pub struct EModeCategory<M: ManagedTypeApi> {
     pub liquidation_bonus: BigUint<M>,
 }
 
-#[derive(ManagedVecItem, TypeAbi, TopEncode, TopDecode, NestedEncode, NestedDecode)]
+#[type_abi]
+#[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode)]
 pub struct EModeAssetConfig {
     pub can_be_collateral: bool,
     pub can_be_borrowed: bool,
 }
 
-#[derive(NestedEncode, NestedDecode, TopEncode, TopDecode, TypeAbi, Clone)]
+#[type_abi]
+#[derive(NestedEncode, NestedDecode, TopEncode, TopDecode, Clone)]
 pub struct NftAccountAttributes {
     pub is_isolated: bool,
     pub e_mode_category: u8,
+    pub is_vault: bool,
 }
 
+#[type_abi]
 #[derive(
-    ManagedVecItem,
-    TopDecode,
-    TopEncode,
-    NestedDecode,
-    NestedEncode,
-    TypeAbi,
-    Clone,
-    PartialEq,
-    Eq,
-    Debug,
+    ManagedVecItem, TopDecode, TopEncode, NestedDecode, NestedEncode, Clone, PartialEq, Eq, Debug,
 )]
 pub struct EgldOrEsdtTokenPaymentNew<M: ManagedTypeApi> {
     pub token_identifier: EgldOrEsdtTokenIdentifier<M>,

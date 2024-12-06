@@ -31,13 +31,13 @@ pub trait StorageModule {
 
     #[view(getBorrowIndex)]
     #[storage_mapper("borrow_index")]
-    fn borrow_index(&self) -> SingleValueMapper<BigUint>;
+    fn borrow_index(&self) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
 
     #[view(getSupplyIndex)]
     #[storage_mapper("supply_index")]
-    fn supply_index(&self) -> SingleValueMapper<BigUint>;
+    fn supply_index(&self) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
 
-    #[view(borrowIndexLastUpdateTimestamp)]
-    #[storage_mapper("borrow_index_last_update_timestamp")]
-    fn borrow_index_last_update_timestamp(&self) -> SingleValueMapper<u64>;
+    #[view(getLastUpdateTimestamp)]
+    #[storage_mapper("last_update_timestamp")]
+    fn last_update_timestamp(&self) -> SingleValueMapper<u64>;
 }

@@ -14,7 +14,7 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
     ) -> BigUint {
         // If there's no borrowed value, health factor is "infinite" (represented by max value)
         if borrowed_value_in_dollars == &BigUint::zero() {
-            return BigUint::from(BigUint::from(BP));
+            return BigUint::from(u128::MAX);
         }
 
         let health_factor = weighted_collateral_in_dollars
@@ -24,35 +24,14 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
         health_factor
     }
 
-    fn calculate_liquidation_amount(
-        &self,
-        health_factor: &BigUint,
-        total_debt: &BigUint,
-    ) -> BigUint {
-        // Only liquidate enough to bring position back to health
-        let bp = BigUint::from(BP);
-        let target_health_factor = &bp + &(&bp / &BigUint::from(5u32)); // 120%
-
-        let required_debt_reduction = (total_debt * &(&target_health_factor - health_factor)) / &bp;
-        required_debt_reduction
-    }
-
     fn compute_amount_in_tokens(
         &self,
-        liquidatee_account_nonce: u64,
-        token_to_liquidate: &EgldOrEsdtTokenIdentifier, // collateral token of the debt position
-        amount_to_return_to_liquidator_in_dollars: BigUint, // amount to return to the liquidator with bonus
+        amount_to_return_to_liquidator_in_dollars: &BigUint, // amount to return to the liquidator with bonus
         token_price_data: &PriceFeed<Self::Api>,
     ) -> BigUint {
-        require!(
-            self.deposit_positions(liquidatee_account_nonce)
-                .contains_key(token_to_liquidate),
-            ERROR_NO_COLLATERAL_TOKEN
-        );
-
         self.get_usd_amount_in_tokens_raw(
-            &amount_to_return_to_liquidator_in_dollars,
-            &token_price_data,
+            amount_to_return_to_liquidator_in_dollars,
+            token_price_data,
         )
     }
 
@@ -66,17 +45,6 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
             .div(&token_data.price)
             .mul(BigUint::from(10u64).pow(token_data.decimals as u32))
             .div(&BigUint::from(BP))
-    }
-
-    fn get_usd_amount_in_tokens(
-        &self,
-        token_id: &EgldOrEsdtTokenIdentifier,
-        amount_in_dollars: &BigUint,
-    ) -> BigUint {
-        // Take the USD price of the token that the liquidator will receive
-        let token_data = self.get_token_price_data(token_id);
-        // Convert the amount to return to the liquidator with bonus to the token amount
-        self.get_usd_amount_in_tokens_raw(amount_in_dollars, &token_data)
     }
 
     #[inline]
@@ -106,16 +74,56 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
             .div(&BigUint::from(BP))
     }
 
+    fn calculate_max_liquidatable_amount_in_dollars(
+        &self,
+        health_factor: &BigUint,
+        total_debt_in_dollars: &BigUint,
+        weighted_collateral_in_dollars: &BigUint,
+        liquidation_bonus: &BigUint,
+    ) -> BigUint {
+        let bp = BigUint::from(BP);
+        
+        // Target HF = 1.05 for all liquidations
+        let target_hf = bp.clone() * 105u32 / 100u32; // 1.05
+        
+        sc_print!("target_hf:           {}", target_hf);
+        sc_print!("current_hf:          {}", health_factor);
+        
+        // Calculate required repayment to reach target HF
+        let adjusted_debt = total_debt_in_dollars * &target_hf / &bp;
+        // Since HF < 1.0, total_debt > weighted_collateral, and we multiply by 1.05,
+        // adjusted_debt is always > weighted_collateral
+        let debt_surplus = adjusted_debt.clone() - weighted_collateral_in_dollars;
+        let required_repayment = &debt_surplus * &bp / &(liquidation_bonus + &(&target_hf - &bp));
+        
+        sc_print!("total_debt:          {}", total_debt_in_dollars);
+        sc_print!("weighted_collateral: {}", weighted_collateral_in_dollars);
+        sc_print!("adjusted_debt:       {}", adjusted_debt);
+        sc_print!("debt_surplus:        {}", debt_surplus);
+        sc_print!("required_repayment:  {}", required_repayment);
+        
+        // If required repayment is more than total debt, it means we can't restore HF > 1.05
+        // In this case, allow maximum liquidation (100% of debt)
+        if &required_repayment > total_debt_in_dollars {
+            sc_print!("reason:              {}", 1); // Can't restore HF, liquidate maximum
+            total_debt_in_dollars.clone()
+        } else {
+            sc_print!("reason:              {}", 2); // Can restore HF with partial liquidation
+            required_repayment
+        }
+    }
+
     fn calculate_single_asset_liquidation_amount(
         &self,
         health_factor: &BigUint,
-        total_debt: &BigUint,
+        total_debt_in_dollars: &BigUint,
+        total_collateral_in_dollars: &BigUint,
         token_to_liquidate: &EgldOrEsdtTokenIdentifier,
         token_price_data: &PriceFeed<Self::Api>,
         liquidatee_account_nonce: u64,
+        debt_payment_in_usd: &BigUint,
+        liquidation_bonus: &BigUint,
     ) -> BigUint {
-        let full_liquidation_amount = self.calculate_liquidation_amount(health_factor, total_debt);
-
         // Get the available collateral value for this specific asset
         let deposit_position = self
             .deposit_positions(liquidatee_account_nonce)
@@ -127,8 +135,19 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
             token_price_data,
         );
 
-        // Take the minimum between what we need and what's available
-        BigUint::min(full_liquidation_amount, available_collateral_value)
+        let max_liquidatable_amount = self.calculate_max_liquidatable_amount_in_dollars(
+            health_factor,
+            total_debt_in_dollars,
+            total_collateral_in_dollars,
+            liquidation_bonus,
+        );
+
+        sc_print!("available_collateral_value: {}", available_collateral_value);
+        sc_print!("max_liquidatable_amount:    {}", max_liquidatable_amount);
+        sc_print!("debt_payment_in_usd:        {}", debt_payment_in_usd);
+        // Take the minimum between what we need and what's available and what the liquidator is paying
+        BigUint::min(max_liquidatable_amount, available_collateral_value)
+            .min(debt_payment_in_usd.clone())
     }
 
     fn calculate_dynamic_liquidation_bonus(
@@ -166,10 +185,10 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
         base_protocol_fee: BigUint,
     ) -> BigUint {
         let bp = BigUint::from(BP);
-        let max_bonus = BigUint::from(MAX_BONUS / 5); // 12%
+        let max_bonus = BigUint::from(MAX_BONUS / 4); // 25%
 
-        // Only start reducing fee when health factor < 70% of BP
-        let threshold = &bp - &max_bonus; // 10_000 - 15_000 = 8_500
+        // Only start reducing fee when health factor < 75% of BP
+        let threshold = &bp - &max_bonus; // 10_000 - 25_000 = 7_500
 
         if health_factor >= &threshold {
             return base_protocol_fee;

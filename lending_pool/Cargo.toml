@@ -9,10 +9,10 @@ publish = false
 path = "src/lib.rs"
 
 [dependencies.multiversx-sc-modules]
-version = "0.54.0"
+version = "0.54.6"
 
 [dependencies.multiversx-sc]
-version = "0.54.0"
+version = "0.54.6"
 
 [dependencies.liquidity-pool]
 path = "../liquidity_pool"
@@ -35,7 +35,7 @@ num-traits = "0.2"
 hex = "0.4"
 
 [dev-dependencies.multiversx-sc-scenario]
-version = "0.54.0"
+version = "0.54.6"
 
 [dependencies.price-aggregator]
 path = "../price-aggregator"

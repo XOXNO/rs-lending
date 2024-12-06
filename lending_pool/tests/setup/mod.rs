@@ -1,10 +1,10 @@
 use crate::{constants::*, proxys::*};
-use lending_pool::{AccountTokenModule, EModeAssetConfig, EModeCategory, BP};
+use lending_pool::{AccountTokenModule, BP};
 use multiversx_sc::{
-    imports::{OptionalValue, StorageTokenWrapper},
+    imports::OptionalValue,
     types::{
-        BigUint, ManagedAddress, ManagedBuffer, MultiValueEncoded, ReturnsNewManagedAddress,
-        ReturnsResult, TestTokenIdentifier,
+        BigUint, ManagedAddress, ManagedBuffer, ManagedDecimal, MultiValueEncoded,
+        ReturnsNewManagedAddress, ReturnsResult, TestTokenIdentifier,
     },
 };
 use multiversx_sc_scenario::{
@@ -57,7 +57,7 @@ impl LendingPoolTestState {
         let mut world = world();
 
         world.account(OWNER_ADDRESS).nonce(1);
-        world.current_block().block_timestamp(1);
+        world.current_block().block_timestamp(0);
 
         let (template_address_liquidity_pool, liquidity_pool_whitebox) =
             setup_template_liquidity_pool(&mut world);
@@ -152,9 +152,10 @@ impl LendingPoolTestState {
         from: &TestAddress,
         token_id: TestTokenIdentifier,
         amount: BigUint<StaticApi>,
-        decimals: u64,
+        decimals: usize,
         account_nonce: OptionalValue<u64>,
         e_mode_category: OptionalValue<u8>,
+        is_vault: bool,
     ) {
         let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
 
@@ -177,7 +178,7 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::LendingPoolProxy)
-            .supply(e_mode_category)
+            .supply(is_vault, e_mode_category)
             .multi_esdt(vec)
             .run();
     }
@@ -188,9 +189,10 @@ impl LendingPoolTestState {
         from: &TestAddress,
         token_id: TestTokenIdentifier,
         amount: BigUint<StaticApi>,
-        decimals: u64,
+        decimals: usize,
         account_nonce: OptionalValue<u64>,
         e_mode_category: OptionalValue<u8>,
+        is_vault: bool,
         error_message: &[u8],
     ) {
         let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
@@ -214,7 +216,7 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::LendingPoolProxy)
-            .supply(e_mode_category)
+            .supply(is_vault, e_mode_category)
             .multi_esdt(vec)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
@@ -225,9 +227,10 @@ impl LendingPoolTestState {
         from: &TestAddress,
         token_id: TestTokenIdentifier,
         amount: BigUint<StaticApi>,
-        decimals: u64,
+        decimals: usize,
         account_nonce: OptionalValue<u64>,
         e_mode_category: OptionalValue<u8>,
+        is_vault: bool,
         error_message: &[u8],
     ) {
         let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
@@ -262,7 +265,7 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::LendingPoolProxy)
-            .supply(e_mode_category)
+            .supply(is_vault, e_mode_category)
             .multi_esdt(vec)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
@@ -275,7 +278,7 @@ impl LendingPoolTestState {
         token_id: TestTokenIdentifier,
         amount: BigUint<StaticApi>,
         account_nonce: u64,
-        decimals: u64,
+        decimals: usize,
     ) {
         let transfer = EsdtTokenPayment::new(
             ACCOUNT_TOKEN.to_token_identifier(),
@@ -301,7 +304,7 @@ impl LendingPoolTestState {
         token_id: TestTokenIdentifier,
         amount: BigUint<StaticApi>,
         account_nonce: u64,
-        decimals: u64,
+        decimals: usize,
         error_message: &[u8],
     ) {
         let transfer = EsdtTokenPayment::new(
@@ -329,7 +332,7 @@ impl LendingPoolTestState {
         asset_to_borrow: TestTokenIdentifier,
         amount: BigUint<StaticApi>,
         account_nonce: u64,
-        decimals: u64,
+        decimals: usize,
     ) {
         self.world
             .tx()
@@ -350,7 +353,7 @@ impl LendingPoolTestState {
         asset_to_borrow: TestTokenIdentifier,
         amount: BigUint<StaticApi>,
         account_nonce: u64,
-        decimals: u64,
+        decimals: usize,
         error_message: &[u8],
     ) {
         self.world
@@ -373,7 +376,7 @@ impl LendingPoolTestState {
         token: &TestTokenIdentifier,
         amount: BigUint<StaticApi>,
         account_nonce: u64,
-        decimals: u64,
+        decimals: usize,
     ) {
         let amount_to_repay = amount.mul(BigUint::from(10u64).pow(decimals as u32));
 
@@ -396,7 +399,7 @@ impl LendingPoolTestState {
         liquidator_payment: &TestTokenIdentifier,
         amount: BigUint<StaticApi>,
         account_nonce: u64,
-        decimals: u64,
+        decimals: usize,
     ) {
         let amount_to_transfer = amount.mul(BigUint::from(10u64).pow(decimals as u32));
         let transfer = EsdtTokenPayment::new(
@@ -421,7 +424,7 @@ impl LendingPoolTestState {
         price_aggregator_sc: &ManagedAddress<StaticApi>,
         from: &[u8],
         price: u64,
-        decimals: u64,
+        decimals: usize,
         timestamp: u64,
     ) -> () {
         let oracles = vec![
@@ -458,7 +461,10 @@ impl LendingPoolTestState {
         }
     }
 
-    pub fn get_market_utilization(&mut self, market_address: ManagedAddress<StaticApi>) -> f64 {
+    pub fn get_market_utilization(
+        &mut self,
+        market_address: ManagedAddress<StaticApi>,
+    ) -> ManagedDecimal<StaticApi, usize> {
         let utilization_ratio = self
             .world
             .query()
@@ -468,10 +474,13 @@ impl LendingPoolTestState {
             .returns(ReturnsResult)
             .run();
 
-        (utilization_ratio.to_u64().unwrap() as f64 * 100.0) / BP as f64
+        utilization_ratio
     }
 
-    pub fn get_market_borrow_rate(&mut self, market_address: ManagedAddress<StaticApi>) -> f64 {
+    pub fn get_market_borrow_rate(
+        &mut self,
+        market_address: ManagedAddress<StaticApi>,
+    ) -> ManagedDecimal<StaticApi, usize> {
         let borrow_rate = self
             .world
             .query()
@@ -481,10 +490,40 @@ impl LendingPoolTestState {
             .returns(ReturnsResult)
             .run();
 
-        (borrow_rate.to_u64().unwrap() as f64 * 100.0) / BP as f64
+        borrow_rate
+    }
+    pub fn get_account_health_factor(
+        &mut self,
+        account_position: u64,
+    ) -> ManagedDecimal<StaticApi, usize> {
+        let health_factor = self
+            .world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .get_account_health_factor(account_position)
+            .returns(ReturnsResult)
+            .run();
+
+        ManagedDecimal::from_raw_units(health_factor, DECIMAL_PRECISION)
     }
 
-    pub fn get_market_supply_rate(&mut self, market_address: ManagedAddress<StaticApi>) -> f64 {
+    pub fn can_be_liquidated(&mut self, account_position: u64) -> bool {
+        let can_be_liquidated = self
+            .world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .can_be_liquidated(account_position)
+            .returns(ReturnsResult)
+            .run();
+
+        can_be_liquidated
+    }
+    pub fn get_market_supply_rate(
+        &mut self,
+        market_address: ManagedAddress<StaticApi>,
+    ) -> ManagedDecimal<StaticApi, usize> {
         let supply_rate = self
             .world
             .query()
@@ -494,13 +533,13 @@ impl LendingPoolTestState {
             .returns(ReturnsResult)
             .run();
 
-        (supply_rate.to_u64().unwrap() as f64 * 100.0) / BP as f64
+        supply_rate
     }
 
     pub fn get_market_total_capital(
         &mut self,
         market_address: ManagedAddress<StaticApi>,
-    ) -> BigUint<StaticApi> {
+    ) -> ManagedDecimal<StaticApi, usize> {
         self.world
             .query()
             .to(market_address)
@@ -565,7 +604,20 @@ impl LendingPoolTestState {
         token_amount
     }
 
-    pub fn get_total_borrow_in_dollars(&mut self, account_position: u64) -> BigUint<StaticApi> {
+    pub fn get_used_isolated_asset_debt_usd(
+        &mut self,
+        token_id: &TestTokenIdentifier,
+    ) -> BigUint<StaticApi> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .isolated_asset_debt_usd(token_id)
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    pub fn get_total_borrow_in_dollars(&mut self, account_position: u64) -> u64 {
         let borrow_amount = self
             .world
             .query()
@@ -575,10 +627,10 @@ impl LendingPoolTestState {
             .returns(ReturnsResult)
             .run();
 
-        borrow_amount / BigUint::from(BP)
+        (borrow_amount / BigUint::from(BP)).to_u64().unwrap()
     }
 
-    pub fn get_total_collateral_in_dollars(&mut self, account_position: u64) -> BigUint<StaticApi> {
+    pub fn get_total_collateral_in_dollars(&mut self, account_position: u64) -> u64 {
         let collateral_amount_usd = self
             .world
             .query()
@@ -588,7 +640,9 @@ impl LendingPoolTestState {
             .returns(ReturnsResult)
             .run();
 
-        collateral_amount_usd / BigUint::from(BP)
+        (collateral_amount_usd / BigUint::from(BP))
+            .to_u64()
+            .unwrap()
     }
 }
 
@@ -704,6 +758,23 @@ pub fn setup_price_aggregator(
         EGLD_PRICE_IN_DOLLARS,
         EGLD_DECIMALS,
     );
+
+    submit_price(
+        world,
+        &price_aggregator_sc,
+        SEGLD_TICKER,
+        SEGLD_PRICE_IN_DOLLARS,
+        SEGLD_DECIMALS,
+    );
+
+    submit_price(
+        world,
+        &price_aggregator_sc,
+        LEGLD_TICKER,
+        LEGLD_PRICE_IN_DOLLARS,
+        LEGLD_DECIMALS,
+    );
+
     submit_price(
         world,
         &price_aggregator_sc,
@@ -748,7 +819,7 @@ pub fn submit_price(
     price_aggregator_sc: &ManagedAddress<StaticApi>,
     from: &[u8],
     price: u64,
-    decimals: u64,
+    decimals: usize,
 ) -> () {
     let oracles = vec![
         ORACLE_ADDRESS_1,
@@ -777,7 +848,7 @@ pub fn submit_price(
             .submit(
                 ManagedBuffer::from(from),
                 ManagedBuffer::from(DOLLAR_TICKER),
-                1u64,
+                0u64,
                 BigUint::from(price).mul(BigUint::from(BP)),
                 decimals as u8,
             )
@@ -800,12 +871,13 @@ pub fn setup_template_liquidity_pool(
         .typed(proxy_liquidity_pool::LiquidityPoolProxy)
         .init(
             USDC_TICKER,
-            R_MAX,
-            R_BASE,
-            R_SLOPE1,
-            R_SLOPE2,
-            U_OPTIMAL,
-            RESERVE_FACTOR,
+            ManagedDecimal::from_raw_units(BigUint::from(R_MAX), DECIMAL_PRECISION),
+            ManagedDecimal::from_raw_units(BigUint::from(R_BASE), DECIMAL_PRECISION),
+            ManagedDecimal::from_raw_units(BigUint::from(R_SLOPE1), DECIMAL_PRECISION),
+            ManagedDecimal::from_raw_units(BigUint::from(R_SLOPE2), DECIMAL_PRECISION),
+            ManagedDecimal::from_raw_units(BigUint::from(U_OPTIMAL), DECIMAL_PRECISION),
+            ManagedDecimal::from_raw_units(BigUint::from(RESERVE_FACTOR), DECIMAL_PRECISION),
+            USDC_DECIMALS,
         )
         .code(LIQUIDITY_POOL_PATH)
         .returns(ReturnsNewManagedAddress)
@@ -819,12 +891,11 @@ pub fn create_e_mode_category(world: &mut ScenarioWorld, lending_sc: &ManagedAdd
         .from(OWNER_ADDRESS)
         .to(lending_sc)
         .typed(proxy_lending_pool::LendingPoolProxy)
-        .add_e_mode_category(EModeCategory {
-            id: 1,
-            ltv: BigUint::from(LTV),
-            liquidation_threshold: BigUint::from(E_MODE_LIQ_THRESOLD),
-            liquidation_bonus: BigUint::from(E_MODE_LIQ_BONUS),
-        })
+        .add_e_mode_category(
+            BigUint::from(LTV),
+            BigUint::from(E_MODE_LIQ_THRESOLD),
+            BigUint::from(E_MODE_LIQ_BONUS),
+        )
         .returns(ReturnsResult)
         .run();
 }
@@ -841,14 +912,7 @@ pub fn add_asset_to_e_mode_category(
         .from(OWNER_ADDRESS)
         .to(lending_sc)
         .typed(proxy_lending_pool::LendingPoolProxy)
-        .add_asset_to_e_mode_category(
-            asset,
-            category_id,
-            EModeAssetConfig {
-                can_be_collateral,
-                can_be_borrowed,
-            },
-        )
+        .add_asset_to_e_mode_category(asset, category_id, can_be_collateral, can_be_borrowed)
         .returns(ReturnsResult)
         .run();
 }
@@ -866,12 +930,12 @@ pub fn setup_market(
         .typed(proxy_lending_pool::LendingPoolProxy)
         .create_liquidity_pool(
             token.to_token_identifier(),
-            config.r_max,
-            config.r_base,
-            config.r_slope1,
-            config.r_slope2,
-            config.u_optimal,
-            config.reserve_factor,
+            BigUint::from(R_MAX),
+            BigUint::from(R_BASE),
+            BigUint::from(R_SLOPE1),
+            BigUint::from(R_SLOPE2),
+            BigUint::from(U_OPTIMAL),
+            BigUint::from(RESERVE_FACTOR),
             config.config.ltv,
             config.config.liquidation_threshold,
             config.config.liquidation_bonus,
@@ -893,9 +957,12 @@ pub fn setup_market(
     market_address
 }
 
-
 // Helper function for account setup
-pub fn setup_accounts(state: &mut LendingPoolTestState, supplier: TestAddress, borrower: TestAddress) {
+pub fn setup_accounts(
+    state: &mut LendingPoolTestState,
+    supplier: TestAddress,
+    borrower: TestAddress,
+) {
     state
         .world
         .account(supplier)
@@ -907,6 +974,10 @@ pub fn setup_accounts(state: &mut LendingPoolTestState, supplier: TestAddress, b
         .esdt_balance(
             ISOLATED_TOKEN,
             BigUint::from(1000u64) * BigUint::from(10u64).pow(ISOLATED_DECIMALS as u32),
+        )
+        .esdt_balance(
+            CAPPED_TOKEN,
+            BigUint::from(1000u64) * BigUint::from(10u64).pow(CAPPED_DECIMALS as u32),
         )
         .esdt_balance(
             SILOED_TOKEN,
@@ -932,6 +1003,10 @@ pub fn setup_accounts(state: &mut LendingPoolTestState, supplier: TestAddress, b
         .esdt_balance(
             EGLD_TOKEN,
             BigUint::from(1000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+        )
+        .esdt_balance(
+            CAPPED_TOKEN,
+            BigUint::from(1000u64) * BigUint::from(10u64).pow(CAPPED_DECIMALS as u32),
         )
         .esdt_balance(
             ISOLATED_TOKEN,

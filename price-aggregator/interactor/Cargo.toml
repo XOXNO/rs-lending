@@ -13,10 +13,10 @@ path = "src/interactor_main.rs"
 path = ".."
 
 [dependencies.multiversx-sc-snippets]
-version = "0.54.1"
+version = "0.54.5"
 
 [dependencies.multiversx-sc]
-version = "0.54.1"
+version = "0.54.6"
 
 [dependencies]
 clap = { version = "4.4.7", features = ["derive"] }
