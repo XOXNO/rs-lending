@@ -256,7 +256,7 @@ pub trait LendingPool:
             self.tx()
                 .to(&initial_caller)
                 .esdt(account_token)
-                .sync_call();
+                .transfer();
         }
     }
 
@@ -298,7 +298,7 @@ pub trait LendingPool:
                 self.tx()
                     .to(initial_caller)
                     .egld_or_single_esdt(withdraw_token_id, 0, &(&amount - liquidation_fee))
-                    .sync_call();
+                    .transfer();
                 self.tx()
                     .to(pool_address)
                     .typed(proxy_pool::LiquidityPoolProxy)
@@ -310,7 +310,7 @@ pub trait LendingPool:
                 self.tx()
                     .to(initial_caller)
                     .egld_or_single_esdt(withdraw_token_id, 0, &amount)
-                    .sync_call();
+                    .transfer();
             }
             dp
         } else {
