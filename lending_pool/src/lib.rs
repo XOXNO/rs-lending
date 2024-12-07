@@ -211,9 +211,9 @@ pub trait LendingPool:
         self.update_position_event(
             &collateral_payment.amount,
             &updated_deposit_position,
+            OptionalValue::Some(asset_data_feed.price),
             OptionalValue::Some(initial_caller),
             OptionalValue::Some(nft_attributes),
-            OptionalValue::Some(asset_data_feed.price),
         );
 
         self.deposit_positions(account_nonce).insert(
@@ -253,10 +253,7 @@ pub trait LendingPool:
                 .swap_remove(&account_token.token_nonce);
         } else {
             // Return NFT to owner
-            self.tx()
-                .to(&initial_caller)
-                .esdt(account_token)
-                .transfer();
+            self.tx().to(&initial_caller).esdt(account_token).transfer();
         }
     }
 
@@ -332,9 +329,9 @@ pub trait LendingPool:
         self.update_position_event(
             &amount, // Representing the amount of collateral removed
             &deposit_position,
+            OptionalValue::Some(asset_data.price),
             OptionalValue::Some(initial_caller.clone()),
             attributes,
-            OptionalValue::Some(asset_data.price),
         );
 
         if deposit_position.amount == 0 {
@@ -493,9 +490,9 @@ pub trait LendingPool:
         self.update_position_event(
             &amount, // Representing the amount of borrowed tokens
             &ret_borrow_position,
+            OptionalValue::Some(asset_to_borrow_feed.price),
             OptionalValue::Some(initial_caller.clone()),
             OptionalValue::Some(account_attributes),
-            OptionalValue::Some(asset_to_borrow_feed.price),
         );
 
         self.borrow_positions(nft_account_nonce)
@@ -610,9 +607,9 @@ pub trait LendingPool:
         self.update_position_event(
             repay_amount, // Representing the amount of repayed tokens
             &borrow_position,
+            OptionalValue::Some(debt_token_price_data_feed.price),
             OptionalValue::Some(initial_caller.clone()),
             OptionalValue::None,
-            OptionalValue::Some(debt_token_price_data_feed.price),
         );
 
         // Update BorrowPosition
