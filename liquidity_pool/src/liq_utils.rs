@@ -157,21 +157,27 @@ pub trait UtilsModule:
                 storage_cache.pool_params.decimals,
             ),
             storage_cache.supply_index.clone(),
-            ManagedDecimal::from_raw_units(deposit_position.index, DECIMAL_PRECISION),
+            ManagedDecimal::from_raw_units(deposit_position.index.clone(), DECIMAL_PRECISION),
         );
 
-        deposit_position.accumulated_interest += &accrued_interest.into_raw_units().clone();
-        deposit_position.timestamp = storage_cache.timestamp;
-        deposit_position.index = storage_cache.supply_index.into_raw_units().clone();
+        if accrued_interest
+            > ManagedDecimal::from_raw_units(
+                BigUint::from(0u64),
+                storage_cache.pool_params.decimals,
+            )
+        {
+            deposit_position.accumulated_interest += &accrued_interest.into_raw_units().clone();
+            deposit_position.timestamp = storage_cache.timestamp;
+            deposit_position.index = storage_cache.supply_index.into_raw_units().clone();
 
-        self.update_position_event(
-            &accrued_interest.into_raw_units().clone(),
-            &deposit_position,
-            OptionalValue::None,
-            OptionalValue::None,
-            OptionalValue::None,
-        );
-
+            self.update_position_event(
+                &accrued_interest.into_raw_units().clone(),
+                &deposit_position,
+                OptionalValue::None,
+                OptionalValue::None,
+                OptionalValue::None,
+            );
+        }
         deposit_position
     }
 
@@ -188,20 +194,27 @@ pub trait UtilsModule:
                 storage_cache.pool_params.decimals,
             ),
             storage_cache.borrow_index.clone(),
-            ManagedDecimal::from_raw_units(borrow_position.index, DECIMAL_PRECISION),
+            ManagedDecimal::from_raw_units(borrow_position.index.clone(), DECIMAL_PRECISION),
         );
 
-        borrow_position.accumulated_interest += accumulated_debt.into_raw_units().clone();
-        borrow_position.timestamp = storage_cache.timestamp;
-        borrow_position.index = storage_cache.borrow_index.into_raw_units().clone();
+        if accumulated_debt
+            > ManagedDecimal::from_raw_units(
+                BigUint::from(0u64),
+                storage_cache.pool_params.decimals,
+            )
+        {
+            borrow_position.accumulated_interest += accumulated_debt.into_raw_units().clone();
+            borrow_position.timestamp = storage_cache.timestamp;
+            borrow_position.index = storage_cache.borrow_index.into_raw_units().clone();
 
-        self.update_position_event(
-            &accumulated_debt.into_raw_units().clone(),
-            &borrow_position,
-            OptionalValue::None,
-            OptionalValue::None,
-            OptionalValue::None,
-        );
+            self.update_position_event(
+                &accumulated_debt.into_raw_units().clone(),
+                &borrow_position,
+                OptionalValue::None,
+                OptionalValue::None,
+                OptionalValue::None,
+            );
+        }
 
         borrow_position
     }

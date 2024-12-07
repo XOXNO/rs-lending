@@ -58,9 +58,9 @@ pub trait EventsModule {
         &self,
         #[indexed] amount: &BigUint,
         #[indexed] position: &AccountPosition<Self::Api>,
+        #[indexed] asset_usd_price: OptionalValue<BigUint>,
         #[indexed] caller: OptionalValue<ManagedAddress>, // When is none, then the position is updated by the protocol and the amount is the interest, either for borrow or supply
         #[indexed] account_attributes: OptionalValue<NftAccountAttributes>,
-        #[indexed] asset_usd_price: OptionalValue<BigUint>,
     );
 
     #[event("update_debt_ceiling")]
