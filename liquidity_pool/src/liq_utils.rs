@@ -169,6 +169,7 @@ pub trait UtilsModule:
             &deposit_position,
             OptionalValue::None,
             OptionalValue::None,
+            OptionalValue::None,
         );
 
         deposit_position
@@ -197,6 +198,7 @@ pub trait UtilsModule:
         self.update_position_event(
             &accumulated_debt.into_raw_units().clone(),
             &borrow_position,
+            OptionalValue::None,
             OptionalValue::None,
             OptionalValue::None,
         );

@@ -38,6 +38,7 @@ pub static ERROR_ASSET_NOT_BORROWABLE_IN_SILOED: &[u8] =
     b"Asset can not be borrowed when in siloed mode, if there are other borrow positions.";
 pub static ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL: &[u8] = b"Asset not supported as collateral.";
 pub static ERROR_INVALID_AGGREGATOR: &[u8] = b"Invalid aggregator.";
+pub static ERROR_INVALID_LIQUIDITY_POOL_TEMPLATE: &[u8] = b"Invalid liquidity pool template.";
 pub static ERROR_MIX_ISOLATED_COLLATERAL: &[u8] =
     b"Cannot mix isolated collateral with other assets.";
 pub static ERROR_CANNOT_USE_EMODE_WITH_ISOLATED_ASSETS: &[u8] =

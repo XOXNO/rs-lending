@@ -1,5 +1,3 @@
-use common_events::DECIMAL_PRECISION;
-
 use crate::{proxy_pool, ERROR_TEMPLATE_EMPTY};
 
 multiversx_sc::imports!();
@@ -29,12 +27,12 @@ pub trait FactoryModule:
             .typed(proxy_pool::LiquidityPoolProxy)
             .init(
                 base_asset,
-                ManagedDecimal::from_raw_units(r_max.clone(), DECIMAL_PRECISION),
-                ManagedDecimal::from_raw_units(r_base.clone(), DECIMAL_PRECISION),
-                ManagedDecimal::from_raw_units(r_slope1.clone(), DECIMAL_PRECISION),
-                ManagedDecimal::from_raw_units(r_slope2.clone(), DECIMAL_PRECISION),
-                ManagedDecimal::from_raw_units(u_optimal.clone(), DECIMAL_PRECISION),
-                ManagedDecimal::from_raw_units(reserve_factor.clone(), DECIMAL_PRECISION),
+                r_max,
+                r_base,
+                r_slope1,
+                r_slope2,
+                u_optimal,
+                reserve_factor,
                 decimals.decimals as usize,
             )
             .from_source(self.liq_pool_template_address().get())
@@ -63,12 +61,12 @@ pub trait FactoryModule:
             .to(lp_address)
             .typed(proxy_pool::LiquidityPoolProxy)
             .upgrade(
-                ManagedDecimal::from_raw_units(r_max.clone(), DECIMAL_PRECISION),
-                ManagedDecimal::from_raw_units(r_base.clone(), DECIMAL_PRECISION),
-                ManagedDecimal::from_raw_units(r_slope1.clone(), DECIMAL_PRECISION),
-                ManagedDecimal::from_raw_units(r_slope2.clone(), DECIMAL_PRECISION),
-                ManagedDecimal::from_raw_units(u_optimal.clone(), DECIMAL_PRECISION),
-                ManagedDecimal::from_raw_units(reserve_factor.clone(), DECIMAL_PRECISION),
+                r_max,
+                r_base,
+                r_slope1,
+                r_slope2,
+                u_optimal,
+                reserve_factor,
             )
             .from_source(self.liq_pool_template_address().get())
             .code_metadata(CodeMetadata::UPGRADEABLE)

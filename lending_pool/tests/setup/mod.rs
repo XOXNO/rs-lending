@@ -554,9 +554,9 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
-            .update_borrows_with_debt(account_position)
-            .run();
+            .whitebox(lending_pool::contract_obj, |sc| {
+                sc.update_borrows_with_debt(account_position);
+            });
     }
 
     pub fn update_interest_indexes(&mut self, from: &TestAddress, account_position: u64) {
@@ -564,9 +564,9 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
-            .update_collateral_with_interest(account_position)
-            .run();
+            .whitebox(lending_pool::contract_obj, |sc| {
+                sc.update_collateral_with_interest(account_position);
+            });
     }
 
     // View functions
@@ -871,12 +871,12 @@ pub fn setup_template_liquidity_pool(
         .typed(proxy_liquidity_pool::LiquidityPoolProxy)
         .init(
             USDC_TICKER,
-            ManagedDecimal::from_raw_units(BigUint::from(R_MAX), DECIMAL_PRECISION),
-            ManagedDecimal::from_raw_units(BigUint::from(R_BASE), DECIMAL_PRECISION),
-            ManagedDecimal::from_raw_units(BigUint::from(R_SLOPE1), DECIMAL_PRECISION),
-            ManagedDecimal::from_raw_units(BigUint::from(R_SLOPE2), DECIMAL_PRECISION),
-            ManagedDecimal::from_raw_units(BigUint::from(U_OPTIMAL), DECIMAL_PRECISION),
-            ManagedDecimal::from_raw_units(BigUint::from(RESERVE_FACTOR), DECIMAL_PRECISION),
+            BigUint::from(R_MAX),
+            BigUint::from(R_BASE),
+            BigUint::from(R_SLOPE1),
+            BigUint::from(R_SLOPE2),
+            BigUint::from(U_OPTIMAL),
+            BigUint::from(RESERVE_FACTOR),
             USDC_DECIMALS,
         )
         .code(LIQUIDITY_POOL_PATH)

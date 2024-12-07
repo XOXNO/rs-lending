@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           44
+// Endpoints:                           43
 // Async Callback:                       1
-// Total number of exported functions:  47
+// Total number of exported functions:  46
 
 #![no_std]
 
@@ -26,12 +26,11 @@ multiversx_sc_wasm_adapter::endpoints! {
         repay => repay
         liquidate => liquidate
         flashLoan => flash_loan
-        updatePositionInterest => update_collateral_with_interest
-        updatePositionDebt => update_borrows_with_debt
         getLiqPoolTemplateAddress => liq_pool_template_address
         createLiquidityPool => create_liquidity_pool
         upgradeLiquidityPool => upgrade_liquidity_pool
         setAggregator => set_aggregator
+        setLiquidityPoolTemplate => set_liquidity_pool_template
         addEModeCategory => add_e_mode_category
         editEModeCategory => edit_e_mode_category
         removeEModeCategory => remove_e_mode_category

@@ -185,32 +185,6 @@ where
             .original_result()
     }
 
-    pub fn update_collateral_with_interest<
-        Arg0: ProxyArg<u64>,
-    >(
-        self,
-        account_position: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedVec<Env::Api, common_structs::AccountPosition<Env::Api>>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("updatePositionInterest")
-            .argument(&account_position)
-            .original_result()
-    }
-
-    pub fn update_borrows_with_debt<
-        Arg0: ProxyArg<u64>,
-    >(
-        self,
-        account_position: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedVec<Env::Api, common_structs::AccountPosition<Env::Api>>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("updatePositionDebt")
-            .argument(&account_position)
-            .original_result()
-    }
-
     pub fn liq_pool_template_address(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
@@ -337,6 +311,19 @@ where
             .original_result()
     }
 
+    pub fn set_liquidity_pool_template<
+        Arg0: ProxyArg<ManagedAddress<Env::Api>>,
+    >(
+        self,
+        address: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("setLiquidityPoolTemplate")
+            .argument(&address)
+            .original_result()
+    }
+
     pub fn add_e_mode_category<
         Arg0: ProxyArg<BigUint<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
@@ -441,17 +428,56 @@ where
 
     pub fn edit_asset_config<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-        Arg1: ProxyArg<common_structs::AssetConfig<Env::Api>>,
+        Arg1: ProxyArg<BigUint<Env::Api>>,
+        Arg2: ProxyArg<BigUint<Env::Api>>,
+        Arg3: ProxyArg<BigUint<Env::Api>>,
+        Arg4: ProxyArg<BigUint<Env::Api>>,
+        Arg5: ProxyArg<bool>,
+        Arg6: ProxyArg<BigUint<Env::Api>>,
+        Arg7: ProxyArg<bool>,
+        Arg8: ProxyArg<bool>,
+        Arg9: ProxyArg<BigUint<Env::Api>>,
+        Arg10: ProxyArg<bool>,
+        Arg11: ProxyArg<bool>,
+        Arg12: ProxyArg<bool>,
+        Arg13: ProxyArg<OptionalValue<BigUint<Env::Api>>>,
+        Arg14: ProxyArg<OptionalValue<BigUint<Env::Api>>>,
     >(
         self,
         asset: Arg0,
-        config: Arg1,
+        ltv: Arg1,
+        liquidation_threshold: Arg2,
+        liquidation_bonus: Arg3,
+        liquidation_base_fee: Arg4,
+        is_isolated: Arg5,
+        debt_ceiling_usd: Arg6,
+        is_siloed: Arg7,
+        flashloan_enabled: Arg8,
+        flash_loan_fee: Arg9,
+        can_be_collateral: Arg10,
+        can_be_borrowed: Arg11,
+        can_borrow_in_isolation: Arg12,
+        borrow_cap: Arg13,
+        supply_cap: Arg14,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("editAssetConfig")
             .argument(&asset)
-            .argument(&config)
+            .argument(&ltv)
+            .argument(&liquidation_threshold)
+            .argument(&liquidation_bonus)
+            .argument(&liquidation_base_fee)
+            .argument(&is_isolated)
+            .argument(&debt_ceiling_usd)
+            .argument(&is_siloed)
+            .argument(&flashloan_enabled)
+            .argument(&flash_loan_fee)
+            .argument(&can_be_collateral)
+            .argument(&can_be_borrowed)
+            .argument(&can_borrow_in_isolation)
+            .argument(&borrow_cap)
+            .argument(&supply_cap)
             .original_result()
     }
 

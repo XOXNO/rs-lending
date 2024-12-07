@@ -8,8 +8,8 @@ use common_events::{AssetConfig, EModeAssetConfig, EModeCategory};
 use crate::{
     oracle, storage, ERROR_ASSET_ALREADY_SUPPORTED, ERROR_ASSET_ALREADY_SUPPORTED_IN_EMODE,
     ERROR_ASSET_NOT_SUPPORTED, ERROR_ASSET_NOT_SUPPORTED_IN_EMODE, ERROR_EMODE_CATEGORY_NOT_FOUND,
-    ERROR_INVALID_AGGREGATOR, ERROR_INVALID_LIQUIDATION_THRESHOLD, ERROR_INVALID_TICKER,
-    ERROR_NO_POOL_FOUND,
+    ERROR_INVALID_AGGREGATOR, ERROR_INVALID_LIQUIDATION_THRESHOLD,
+    ERROR_INVALID_LIQUIDITY_POOL_TEMPLATE, ERROR_INVALID_TICKER, ERROR_NO_POOL_FOUND,
 };
 
 use super::factory;
@@ -69,8 +69,7 @@ pub trait RouterModule:
 
         self.pools_map(&base_asset).set(address.clone());
         self.pools_allowed().insert(address.clone());
-        sc_print!("debt celling {}", debt_ceiling_usd);
-        sc_print!("asset_config {}", base_asset);
+
         let asset_config = &AssetConfig {
             ltv,
             liquidation_threshold,
@@ -141,6 +140,18 @@ pub trait RouterModule:
             ERROR_INVALID_AGGREGATOR
         );
         self.price_aggregator_address().set(&aggregator);
+    }
+
+    #[only_owner]
+    #[endpoint(setLiquidityPoolTemplate)]
+    fn set_liquidity_pool_template(&self, address: ManagedAddress) {
+        require!(!address.is_zero(), ERROR_INVALID_LIQUIDITY_POOL_TEMPLATE);
+
+        require!(
+            self.blockchain().is_smart_contract(&address),
+            ERROR_INVALID_LIQUIDITY_POOL_TEMPLATE
+        );
+        self.liq_pool_template_address().set(&address);
     }
 
     #[only_owner]
@@ -294,10 +305,28 @@ pub trait RouterModule:
             self.asset_config(&asset).set(asset_data);
         }
     }
-
+    
+    #[allow_multiple_var_args]
     #[only_owner]
     #[endpoint(editAssetConfig)]
-    fn edit_asset_config(&self, asset: EgldOrEsdtTokenIdentifier, config: AssetConfig<Self::Api>) {
+    fn edit_asset_config(
+        &self,
+        asset: EgldOrEsdtTokenIdentifier,
+        ltv: BigUint,
+        liquidation_threshold: BigUint,
+        liquidation_bonus: BigUint,
+        liquidation_base_fee: BigUint,
+        is_isolated: bool,
+        debt_ceiling_usd: BigUint,
+        is_siloed: bool,
+        flashloan_enabled: bool,
+        flash_loan_fee: BigUint,
+        can_be_collateral: bool,
+        can_be_borrowed: bool,
+        can_borrow_in_isolation: bool,
+        borrow_cap: OptionalValue<BigUint>,
+        supply_cap: OptionalValue<BigUint>,
+    ) {
         require!(
             !self.pools_map(&asset).is_empty(),
             ERROR_ASSET_NOT_SUPPORTED
@@ -307,28 +336,28 @@ pub trait RouterModule:
         require!(!map.is_empty(), ERROR_ASSET_NOT_SUPPORTED);
 
         require!(
-            config.liquidation_threshold > config.ltv,
+            liquidation_threshold > ltv,
             ERROR_INVALID_LIQUIDATION_THRESHOLD
         );
 
         let old_config = map.get();
 
         let new_config = &AssetConfig {
-            ltv: config.ltv,
-            liquidation_threshold: config.liquidation_threshold,
-            liquidation_bonus: config.liquidation_bonus,
-            liquidation_base_fee: config.liquidation_base_fee,
+            ltv,
+            liquidation_threshold,
+            liquidation_bonus,
+            liquidation_base_fee,
             is_e_mode_enabled: old_config.is_e_mode_enabled,
-            is_isolated: config.is_isolated,
-            debt_ceiling_usd: config.debt_ceiling_usd,
-            is_siloed: config.is_siloed,
-            flashloan_enabled: config.flashloan_enabled,
-            flash_loan_fee: config.flash_loan_fee,
-            can_be_collateral: config.can_be_collateral,
-            can_be_borrowed: config.can_be_borrowed,
-            can_borrow_in_isolation: config.can_borrow_in_isolation,
-            borrow_cap: config.borrow_cap,
-            supply_cap: config.supply_cap,
+            is_isolated,
+            debt_ceiling_usd,
+            is_siloed,
+            flashloan_enabled,
+            flash_loan_fee,
+            can_be_collateral,
+            can_be_borrowed,
+            can_borrow_in_isolation,
+            borrow_cap: borrow_cap.into_option(),
+            supply_cap: supply_cap.into_option(),
         };
 
         map.set(new_config);

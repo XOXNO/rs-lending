@@ -25,16 +25,7 @@ pub trait LiquidityModule:
         let mut storage_cache = StorageCache::new(self);
         let account =
             self.internal_update_collateral_with_interest(deposit_position, &mut storage_cache);
-        self.update_market_state_event(
-            storage_cache.timestamp,
-            &storage_cache.supply_index,
-            &storage_cache.borrow_index,
-            &storage_cache.reserves_amount,
-            &storage_cache.supplied_amount,
-            &storage_cache.borrowed_amount,
-            &storage_cache.rewards_reserve,
-            &storage_cache.pool_asset,
-        );
+
         account
     }
 
@@ -46,23 +37,18 @@ pub trait LiquidityModule:
     ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
         let account = self.internal_update_borrows_with_debt(borrow_position, &mut storage_cache);
-        self.update_market_state_event(
-            storage_cache.timestamp,
-            &storage_cache.supply_index,
-            &storage_cache.borrow_index,
-            &storage_cache.reserves_amount,
-            &storage_cache.supplied_amount,
-            &storage_cache.borrowed_amount,
-            &storage_cache.rewards_reserve,
-            &storage_cache.pool_asset,
-        );
+
         account
     }
 
     #[only_owner]
     #[payable("*")]
     #[endpoint(supply)]
-    fn supply(&self, deposit_position: AccountPosition<Self::Api>) -> AccountPosition<Self::Api> {
+    fn supply(
+        &self,
+        deposit_position: AccountPosition<Self::Api>,
+        asset_usd_price: &BigUint,
+    ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
 
         let (deposit_asset, deposit_amount) = self.call_value().single_fungible_esdt();
@@ -98,13 +84,14 @@ pub trait LiquidityModule:
 
         self.update_market_state_event(
             storage_cache.timestamp,
-            &storage_cache.supply_index,
-            &storage_cache.borrow_index,
-            &storage_cache.reserves_amount,
-            &storage_cache.supplied_amount,
-            &storage_cache.borrowed_amount,
-            &storage_cache.rewards_reserve,
+            &storage_cache.supply_index.into_raw_units(),
+            &storage_cache.borrow_index.into_raw_units(),
+            &storage_cache.reserves_amount.into_raw_units(),
+            &storage_cache.supplied_amount.into_raw_units(),
+            &storage_cache.borrowed_amount.into_raw_units(),
+            &storage_cache.rewards_reserve.into_raw_units(),
             &storage_cache.pool_asset,
+            asset_usd_price,
         );
 
         ret_deposit_position
@@ -118,6 +105,7 @@ pub trait LiquidityModule:
         initial_caller: &ManagedAddress,
         borrow_amount: &BigUint,
         existing_borrow_position: AccountPosition<Self::Api>,
+        asset_usd_price: &BigUint,
     ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
 
@@ -158,13 +146,14 @@ pub trait LiquidityModule:
 
         self.update_market_state_event(
             storage_cache.timestamp,
-            &storage_cache.supply_index,
-            &storage_cache.borrow_index,
-            &storage_cache.reserves_amount,
-            &storage_cache.supplied_amount,
-            &storage_cache.borrowed_amount,
-            &storage_cache.rewards_reserve,
+            &storage_cache.supply_index.into_raw_units(),
+            &storage_cache.borrow_index.into_raw_units(),
+            &storage_cache.reserves_amount.into_raw_units(),
+            &storage_cache.supplied_amount.into_raw_units(),
+            &storage_cache.borrowed_amount.into_raw_units(),
+            &storage_cache.rewards_reserve.into_raw_units(),
             &storage_cache.pool_asset,
+            asset_usd_price,
         );
 
         ret_borrow_position
@@ -180,6 +169,7 @@ pub trait LiquidityModule:
         mut deposit_position: AccountPosition<Self::Api>,
         is_liquidation: bool,
         protocol_liquidation_fee: &BigUint,
+        asset_usd_price: &BigUint,
     ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
 
@@ -314,13 +304,14 @@ pub trait LiquidityModule:
         );
         self.update_market_state_event(
             storage_cache.timestamp,
-            &storage_cache.supply_index,
-            &storage_cache.borrow_index,
-            &storage_cache.reserves_amount,
-            &storage_cache.supplied_amount,
-            &storage_cache.borrowed_amount,
-            &storage_cache.rewards_reserve,
+            &storage_cache.supply_index.into_raw_units().clone(),
+            &storage_cache.borrow_index.into_raw_units().clone(),
+            &storage_cache.reserves_amount.into_raw_units().clone(),
+            &storage_cache.supplied_amount.into_raw_units().clone(),
+            &storage_cache.borrowed_amount.into_raw_units().clone(),
+            &storage_cache.rewards_reserve.into_raw_units().clone(),
             &storage_cache.pool_asset,
+            asset_usd_price,
         );
         deposit_position
     }
@@ -332,6 +323,7 @@ pub trait LiquidityModule:
         &self,
         initial_caller: ManagedAddress,
         borrow_position: AccountPosition<Self::Api>,
+        asset_usd_price: &BigUint,
     ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
         let (received_asset, received_amount) = self.call_value().egld_or_single_fungible_esdt();
@@ -422,13 +414,14 @@ pub trait LiquidityModule:
 
         self.update_market_state_event(
             storage_cache.timestamp,
-            &storage_cache.supply_index,
-            &storage_cache.borrow_index,
-            &storage_cache.reserves_amount,
-            &storage_cache.supplied_amount,
-            &storage_cache.borrowed_amount,
-            &storage_cache.rewards_reserve,
+            &storage_cache.supply_index.into_raw_units().clone(),
+            &storage_cache.borrow_index.into_raw_units().clone(),
+            &storage_cache.reserves_amount.into_raw_units().clone(),
+            &storage_cache.supplied_amount.into_raw_units().clone(),
+            &storage_cache.borrowed_amount.into_raw_units().clone(),
+            &storage_cache.rewards_reserve.into_raw_units().clone(),
             &storage_cache.pool_asset,
+            asset_usd_price,
         );
 
         ret_borrow_position
@@ -437,7 +430,7 @@ pub trait LiquidityModule:
     #[payable("*")]
     #[only_owner]
     #[endpoint(vaultRewards)]
-    fn vault_rewards(&self) {
+    fn vault_rewards(&self, asset_usd_price: &BigUint) {
         let (received_asset, received_amount) = self.call_value().egld_or_single_fungible_esdt();
         let mut storage_cache = StorageCache::new(self);
         require!(
@@ -450,13 +443,14 @@ pub trait LiquidityModule:
         );
         self.update_market_state_event(
             storage_cache.timestamp,
-            &storage_cache.supply_index,
-            &storage_cache.borrow_index,
-            &storage_cache.reserves_amount,
-            &storage_cache.supplied_amount,
-            &storage_cache.borrowed_amount,
-            &storage_cache.rewards_reserve,
+            &storage_cache.supply_index.into_raw_units().clone(),
+            &storage_cache.borrow_index.into_raw_units().clone(),
+            &storage_cache.reserves_amount.into_raw_units().clone(),
+            &storage_cache.supplied_amount.into_raw_units().clone(),
+            &storage_cache.borrowed_amount.into_raw_units().clone(),
+            &storage_cache.rewards_reserve.into_raw_units().clone(),
             &storage_cache.pool_asset,
+            asset_usd_price,
         );
     }
 
@@ -469,6 +463,7 @@ pub trait LiquidityModule:
         endpoint: ManagedBuffer<Self::Api>,
         arguments: ManagedArgBuffer<Self::Api>,
         fees: &BigUint,
+        asset_usd_price: &BigUint,
     ) {
         let mut storage_cache = StorageCache::new(self);
 
@@ -546,13 +541,14 @@ pub trait LiquidityModule:
 
         self.update_market_state_event(
             storage_cache.timestamp,
-            &storage_cache.supply_index,
-            &storage_cache.borrow_index,
-            &storage_cache.reserves_amount,
-            &storage_cache.supplied_amount,
-            &storage_cache.borrowed_amount,
-            &storage_cache.rewards_reserve,
+            &storage_cache.supply_index.into_raw_units().clone(),
+            &storage_cache.borrow_index.into_raw_units().clone(),
+            &storage_cache.reserves_amount.into_raw_units().clone(),
+            &storage_cache.supplied_amount.into_raw_units().clone(),
+            &storage_cache.borrowed_amount.into_raw_units().clone(),
+            &storage_cache.rewards_reserve.into_raw_units().clone(),
             &storage_cache.pool_asset,
+            asset_usd_price,
         );
     }
 }

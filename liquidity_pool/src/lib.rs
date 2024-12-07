@@ -31,22 +31,25 @@ pub trait LiquidityPool:
     fn init(
         &self,
         asset: &EgldOrEsdtTokenIdentifier,
-        r_max: &ManagedDecimal<Self::Api, NumDecimals>,
-        r_base: &ManagedDecimal<Self::Api, NumDecimals>,
-        r_slope1: &ManagedDecimal<Self::Api, NumDecimals>,
-        r_slope2: &ManagedDecimal<Self::Api, NumDecimals>,
-        u_optimal: &ManagedDecimal<Self::Api, NumDecimals>,
-        reserve_factor: &ManagedDecimal<Self::Api, NumDecimals>,
+        r_max: &BigUint,
+        r_base: &BigUint,
+        r_slope1: &BigUint,
+        r_slope2: &BigUint,
+        u_optimal: &BigUint,
+        reserve_factor: &BigUint,
         decimals: usize,
     ) {
         self.pool_asset().set(asset);
         self.pool_params().set(&PoolParams {
-            r_max: r_max.clone(),
-            r_base: r_base.clone(),
-            r_slope1: r_slope1.clone(),
-            r_slope2: r_slope2.clone(),
-            u_optimal: u_optimal.clone(),
-            reserve_factor: reserve_factor.clone(),
+            r_max: ManagedDecimal::from_raw_units(r_max.clone(), DECIMAL_PRECISION),
+            r_base: ManagedDecimal::from_raw_units(r_base.clone(), DECIMAL_PRECISION),
+            r_slope1: ManagedDecimal::from_raw_units(r_slope1.clone(), DECIMAL_PRECISION),
+            r_slope2: ManagedDecimal::from_raw_units(r_slope2.clone(), DECIMAL_PRECISION),
+            u_optimal: ManagedDecimal::from_raw_units(u_optimal.clone(), DECIMAL_PRECISION),
+            reserve_factor: ManagedDecimal::from_raw_units(
+                reserve_factor.clone(),
+                DECIMAL_PRECISION,
+            ),
             decimals,
         });
         self.borrow_index().set(ManagedDecimal::from_raw_units(
@@ -65,12 +68,12 @@ pub trait LiquidityPool:
     #[upgrade]
     fn upgrade(
         &self,
-        r_max: ManagedDecimal<Self::Api, NumDecimals>,
-        r_base: ManagedDecimal<Self::Api, NumDecimals>,
-        r_slope1: ManagedDecimal<Self::Api, NumDecimals>,
-        r_slope2: ManagedDecimal<Self::Api, NumDecimals>,
-        u_optimal: ManagedDecimal<Self::Api, NumDecimals>,
-        reserve_factor: ManagedDecimal<Self::Api, NumDecimals>,
+        r_max: BigUint,
+        r_base: BigUint,
+        r_slope1: BigUint,
+        r_slope2: BigUint,
+        u_optimal: BigUint,
+        reserve_factor: BigUint,
     ) {
         self.market_params_event(
             &self.pool_asset().get(),
@@ -83,12 +86,12 @@ pub trait LiquidityPool:
         );
 
         self.pool_params().update(|pool_params| {
-            pool_params.r_max = r_max;
-            pool_params.r_base = r_base;
-            pool_params.r_slope1 = r_slope1;
-            pool_params.r_slope2 = r_slope2;
-            pool_params.u_optimal = u_optimal;
-            pool_params.reserve_factor = reserve_factor;
+            pool_params.r_max = ManagedDecimal::from_raw_units(r_max.clone(), DECIMAL_PRECISION);
+            pool_params.r_base = ManagedDecimal::from_raw_units(r_base.clone(), DECIMAL_PRECISION);
+            pool_params.r_slope1 = ManagedDecimal::from_raw_units(r_slope1.clone(), DECIMAL_PRECISION);
+            pool_params.r_slope2 = ManagedDecimal::from_raw_units(r_slope2.clone(), DECIMAL_PRECISION);
+            pool_params.u_optimal = ManagedDecimal::from_raw_units(u_optimal.clone(), DECIMAL_PRECISION);
+            pool_params.reserve_factor = ManagedDecimal::from_raw_units(reserve_factor.clone(), DECIMAL_PRECISION);
         });
     }
 }

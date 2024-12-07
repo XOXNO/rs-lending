@@ -45,12 +45,12 @@ where
 {
     pub fn init<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-        Arg1: ProxyArg<ManagedDecimal<Env::Api, usize>>,
-        Arg2: ProxyArg<ManagedDecimal<Env::Api, usize>>,
-        Arg3: ProxyArg<ManagedDecimal<Env::Api, usize>>,
-        Arg4: ProxyArg<ManagedDecimal<Env::Api, usize>>,
-        Arg5: ProxyArg<ManagedDecimal<Env::Api, usize>>,
-        Arg6: ProxyArg<ManagedDecimal<Env::Api, usize>>,
+        Arg1: ProxyArg<BigUint<Env::Api>>,
+        Arg2: ProxyArg<BigUint<Env::Api>>,
+        Arg3: ProxyArg<BigUint<Env::Api>>,
+        Arg4: ProxyArg<BigUint<Env::Api>>,
+        Arg5: ProxyArg<BigUint<Env::Api>>,
+        Arg6: ProxyArg<BigUint<Env::Api>>,
         Arg7: ProxyArg<usize>,
     >(
         self,
@@ -88,12 +88,12 @@ where
     Gas: TxGas<Env>,
 {
     pub fn upgrade<
-        Arg0: ProxyArg<ManagedDecimal<Env::Api, usize>>,
-        Arg1: ProxyArg<ManagedDecimal<Env::Api, usize>>,
-        Arg2: ProxyArg<ManagedDecimal<Env::Api, usize>>,
-        Arg3: ProxyArg<ManagedDecimal<Env::Api, usize>>,
-        Arg4: ProxyArg<ManagedDecimal<Env::Api, usize>>,
-        Arg5: ProxyArg<ManagedDecimal<Env::Api, usize>>,
+        Arg0: ProxyArg<BigUint<Env::Api>>,
+        Arg1: ProxyArg<BigUint<Env::Api>>,
+        Arg2: ProxyArg<BigUint<Env::Api>>,
+        Arg3: ProxyArg<BigUint<Env::Api>>,
+        Arg4: ProxyArg<BigUint<Env::Api>>,
+        Arg5: ProxyArg<BigUint<Env::Api>>,
     >(
         self,
         r_max: Arg0,
@@ -261,13 +261,16 @@ where
 
     pub fn supply<
         Arg0: ProxyArg<common_structs::AccountPosition<Env::Api>>,
+        Arg1: ProxyArg<BigUint<Env::Api>>,
     >(
         self,
         deposit_position: Arg0,
+        asset_usd_price: Arg1,
     ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPosition<Env::Api>> {
         self.wrapped_tx
             .raw_call("supply")
             .argument(&deposit_position)
+            .argument(&asset_usd_price)
             .original_result()
     }
 
@@ -275,17 +278,20 @@ where
         Arg0: ProxyArg<ManagedAddress<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
         Arg2: ProxyArg<common_structs::AccountPosition<Env::Api>>,
+        Arg3: ProxyArg<BigUint<Env::Api>>,
     >(
         self,
         initial_caller: Arg0,
         borrow_amount: Arg1,
         existing_borrow_position: Arg2,
+        asset_usd_price: Arg3,
     ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPosition<Env::Api>> {
         self.wrapped_tx
             .raw_call("borrow")
             .argument(&initial_caller)
             .argument(&borrow_amount)
             .argument(&existing_borrow_position)
+            .argument(&asset_usd_price)
             .original_result()
     }
 
@@ -295,6 +301,7 @@ where
         Arg2: ProxyArg<common_structs::AccountPosition<Env::Api>>,
         Arg3: ProxyArg<bool>,
         Arg4: ProxyArg<BigUint<Env::Api>>,
+        Arg5: ProxyArg<BigUint<Env::Api>>,
     >(
         self,
         initial_caller: Arg0,
@@ -302,6 +309,7 @@ where
         deposit_position: Arg2,
         is_liquidation: Arg3,
         protocol_liquidation_fee: Arg4,
+        asset_usd_price: Arg5,
     ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPosition<Env::Api>> {
         self.wrapped_tx
             .raw_call("withdraw")
@@ -310,29 +318,37 @@ where
             .argument(&deposit_position)
             .argument(&is_liquidation)
             .argument(&protocol_liquidation_fee)
+            .argument(&asset_usd_price)
             .original_result()
     }
 
     pub fn repay<
         Arg0: ProxyArg<ManagedAddress<Env::Api>>,
         Arg1: ProxyArg<common_structs::AccountPosition<Env::Api>>,
+        Arg2: ProxyArg<BigUint<Env::Api>>,
     >(
         self,
         initial_caller: Arg0,
         borrow_position: Arg1,
+        asset_usd_price: Arg2,
     ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPosition<Env::Api>> {
         self.wrapped_tx
             .raw_call("repay")
             .argument(&initial_caller)
             .argument(&borrow_position)
+            .argument(&asset_usd_price)
             .original_result()
     }
 
-    pub fn vault_rewards(
+    pub fn vault_rewards<
+        Arg0: ProxyArg<BigUint<Env::Api>>,
+    >(
         self,
+        asset_usd_price: Arg0,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("vaultRewards")
+            .argument(&asset_usd_price)
             .original_result()
     }
 
@@ -343,6 +359,7 @@ where
         Arg3: ProxyArg<ManagedBuffer<Env::Api>>,
         Arg4: ProxyArg<ManagedArgBuffer<Env::Api>>,
         Arg5: ProxyArg<BigUint<Env::Api>>,
+        Arg6: ProxyArg<BigUint<Env::Api>>,
     >(
         self,
         borrowed_token: Arg0,
@@ -351,6 +368,7 @@ where
         endpoint: Arg3,
         arguments: Arg4,
         fees: Arg5,
+        asset_usd_price: Arg6,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
@@ -361,6 +379,7 @@ where
             .argument(&endpoint)
             .argument(&arguments)
             .argument(&fees)
+            .argument(&asset_usd_price)
             .original_result()
     }
 

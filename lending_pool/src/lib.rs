@@ -189,6 +189,8 @@ pub trait LendingPool:
             is_vault,
         );
 
+        let asset_data_feed = self.get_token_price_data(&collateral_payment.token_identifier);
+
         let updated_deposit_position = if is_vault {
             deposit_position.amount += collateral_payment.amount.clone(); // Increase the amount of the deposit position
             deposit_position
@@ -196,7 +198,7 @@ pub trait LendingPool:
             self.tx()
                 .to(pool_address)
                 .typed(proxy_pool::LiquidityPoolProxy)
-                .supply(deposit_position)
+                .supply(deposit_position, &asset_data_feed.price)
                 .payment(EgldOrEsdtTokenPayment::new(
                     collateral_payment.token_identifier.clone(),
                     collateral_payment.token_nonce,
@@ -211,6 +213,7 @@ pub trait LendingPool:
             &updated_deposit_position,
             OptionalValue::Some(initial_caller),
             OptionalValue::Some(nft_attributes),
+            OptionalValue::Some(asset_data_feed.price),
         );
 
         self.deposit_positions(account_nonce).insert(
@@ -287,6 +290,7 @@ pub trait LendingPool:
             amount = dp.get_total_amount();
         }
 
+        let asset_data = self.get_token_price_data(&withdraw_token_id);
         let deposit_position = if dp.is_vault {
             dp.amount -= &amount;
 
@@ -298,17 +302,29 @@ pub trait LendingPool:
                 self.tx()
                     .to(pool_address)
                     .typed(proxy_pool::LiquidityPoolProxy)
-                    .vault_rewards()
+                    .vault_rewards(&asset_data.price)
                     .egld_or_single_esdt(withdraw_token_id, 0, liquidation_fee)
                     .returns(ReturnsResult)
                     .sync_call()
+            } else {
+                self.tx()
+                    .to(initial_caller)
+                    .egld_or_single_esdt(withdraw_token_id, 0, &amount)
+                    .sync_call();
             }
             dp
         } else {
             self.tx()
                 .to(pool_address)
                 .typed(proxy_pool::LiquidityPoolProxy)
-                .withdraw(initial_caller, &amount, dp, is_liquidation, liquidation_fee)
+                .withdraw(
+                    initial_caller,
+                    &amount,
+                    dp,
+                    is_liquidation,
+                    liquidation_fee,
+                    &asset_data.price,
+                )
                 .returns(ReturnsResult)
                 .sync_call()
         };
@@ -318,6 +334,7 @@ pub trait LendingPool:
             &deposit_position,
             OptionalValue::Some(initial_caller.clone()),
             attributes,
+            OptionalValue::Some(asset_data.price),
         );
 
         if deposit_position.amount == 0 {
@@ -402,8 +419,9 @@ pub trait LendingPool:
         sc_print!("amount {}", amount);
         sc_print!("asset_to_borrow {}", asset_to_borrow);
 
+        let asset_to_borrow_feed = self.get_token_price_data(&asset_to_borrow);
         let amount_to_borrow_in_dollars =
-            self.get_token_amount_in_dollars(&asset_to_borrow, &amount);
+            self.get_token_amount_in_dollars_raw(&amount, &asset_to_borrow_feed);
 
         // Siloed mode works in combination with e-mode categories
         if asset_config.is_siloed {
@@ -448,7 +466,12 @@ pub trait LendingPool:
             .tx()
             .to(borrow_token_pool_address.clone())
             .typed(proxy_pool::LiquidityPoolProxy)
-            .borrow(&initial_caller, &amount, borrow_position)
+            .borrow(
+                &initial_caller,
+                &amount,
+                borrow_position,
+                &asset_to_borrow_feed.price,
+            )
             .returns(ReturnsResult)
             .sync_call();
 
@@ -472,6 +495,7 @@ pub trait LendingPool:
             &ret_borrow_position,
             OptionalValue::Some(initial_caller.clone()),
             OptionalValue::Some(account_attributes),
+            OptionalValue::Some(asset_to_borrow_feed.price),
         );
 
         self.borrow_positions(nft_account_nonce)
@@ -526,6 +550,11 @@ pub trait LendingPool:
             "Borrowed token {} are not available for this account",
             repay_token_id
         );
+        let debt_token_price_data_feed = if debt_token_price_data.is_some() {
+            debt_token_price_data.unwrap()
+        } else {
+            self.get_token_price_data(&repay_token_id)
+        };
 
         let bp = bp_opt.unwrap();
         let collaterals_map = self.deposit_positions(account_nonce);
@@ -544,12 +573,6 @@ pub trait LendingPool:
                 };
 
                 let debt_interest_amount = bp.accumulated_interest.clone();
-
-                let debt_token_price_data_feed = if debt_token_price_data.is_some() {
-                    debt_token_price_data.unwrap()
-                } else {
-                    self.get_token_price_data(&repay_token_id)
-                };
 
                 let interest_usd_amount = self.get_token_amount_in_dollars_raw(
                     &debt_interest_amount,
@@ -579,7 +602,7 @@ pub trait LendingPool:
             .tx()
             .to(asset_address)
             .typed(proxy_pool::LiquidityPoolProxy)
-            .repay(initial_caller, bp)
+            .repay(initial_caller, bp, &debt_token_price_data_feed.price)
             .egld_or_single_esdt(repay_token_id, 0, repay_amount)
             .returns(ReturnsResult)
             .sync_call();
@@ -589,6 +612,7 @@ pub trait LendingPool:
             &borrow_position,
             OptionalValue::Some(initial_caller.clone()),
             OptionalValue::None,
+            OptionalValue::Some(debt_token_price_data_feed.price),
         );
 
         // Update BorrowPosition
@@ -744,7 +768,7 @@ pub trait LendingPool:
             .get_shard_of_address(&self.blockchain().get_sc_address());
 
         require!(shard_id == current_shard_id, ERROR_INVALID_SHARD);
-
+        let asset_data = self.get_token_price_data(borrowed_token);
         self.tx()
             .to(pool_address)
             .typed(proxy_pool::LiquidityPoolProxy)
@@ -755,12 +779,12 @@ pub trait LendingPool:
                 endpoint,
                 arguments,
                 &asset_info.flash_loan_fee,
+                &asset_data.price,
             )
             .returns(ReturnsResult)
             .sync_call();
     }
 
-    #[endpoint(updatePositionInterest)]
     fn update_collateral_with_interest(
         &self,
         account_position: u64,
@@ -788,7 +812,6 @@ pub trait LendingPool:
         positions
     }
 
-    #[endpoint(updatePositionDebt)]
     fn update_borrows_with_debt(
         &self,
         account_position: u64,

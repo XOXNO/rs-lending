@@ -38,9 +38,16 @@ unpause() {
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 
-FROM="str:LXOXNO"
+pause() {
+    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=10000000 \
+    --ledger --ledger-account-index=0 --ledger-address-index=0 \
+    --function="pause" \
+    --proxy=${PROXY} --chain=${CHAIN_ID} --send
+}
+
+FROM="str:MEX"
 TO="str:USD"
-PRICE=19806138 # 0.9 USD
+PRICE=20084644506565 # 55 USD
 
 DECIMALS=18
 
