@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           43
+// Endpoints:                           45
 // Async Callback:                       1
-// Total number of exported functions:  46
+// Total number of exported functions:  48
 
 #![no_std]
 
@@ -26,6 +26,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         repay => repay
         liquidate => liquidate
         flashLoan => flash_loan
+        syncAccountPositions => sync_account_positions
         getLiqPoolTemplateAddress => liq_pool_template_address
         createLiquidityPool => create_liquidity_pool
         upgradeLiquidityPool => upgrade_liquidity_pool
@@ -38,12 +39,9 @@ multiversx_sc_wasm_adapter::endpoints! {
         editAssetInEModeCategory => edit_asset_in_e_mode_category
         removeAssetFromEModeCategory => remove_asset_from_e_mode_category
         editAssetConfig => edit_asset_config
-        getPoolAddress => get_pool_address
         registerAccountToken => register_account_token
-        registerStableToken => register_stable_token
         getAccountToken => account_token
         getAccountPositions => account_positions
-        getStableToken => stable_token
         getDepositPositions => deposit_positions
         getBorrowPositions => borrow_positions
         getPoolsMap => pools_map
@@ -55,12 +53,16 @@ multiversx_sc_wasm_adapter::endpoints! {
         getAssetEModes => asset_e_modes
         getEModesAssets => e_mode_assets
         getIsolatedAssetDebtUsd => isolated_asset_debt_usd
+        getVaultSuppliedAmount => vault_supplied_amount
+        getPoolAddress => get_pool_address
+        updateIndexes => update_indexes
+        canBeLiquidated => can_be_liquidated
+        getHealthFactor => get_health_factor
+        getMaxLiquidateAmountForCollateral => get_max_liquidate_amount_for_collateral
         getCollateralAmountForToken => get_collateral_amount_for_token
         getBorrowAmountForToken => get_borrow_amount_for_token
-        getAccountHealthFactor => get_account_health_factor
-        canBeLiquidated => can_be_liquidated
         getTotalBorrowInDollars => get_total_borrow_in_dollars
-        getTotalCollateralAvailable => get_total_collateral_in_dollars
+        getTotalCollateralInDollars => get_total_collateral_in_dollars
         getLiquidationCollateralAvailable => get_liquidation_collateral_available
         getLtvCollateralInDollars => get_ltv_collateral_in_dollars
     )

@@ -1,11 +1,11 @@
-use crate::{proxy_pool, ERROR_TEMPLATE_EMPTY};
+use crate::{oracle, proxy_pool, storage, ERROR_TEMPLATE_EMPTY};
 
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
 #[multiversx_sc::module]
 pub trait FactoryModule:
-    common_events::EventsModule + crate::oracle::OracleModule + crate::storage::LendingStorageModule
+    common_events::EventsModule + oracle::OracleModule + storage::LendingStorageModule
 {
     fn create_pool(
         &self,
@@ -60,14 +60,7 @@ pub trait FactoryModule:
         self.tx()
             .to(lp_address)
             .typed(proxy_pool::LiquidityPoolProxy)
-            .upgrade(
-                r_max,
-                r_base,
-                r_slope1,
-                r_slope2,
-                u_optimal,
-                reserve_factor,
-            )
+            .upgrade(r_max, r_base, r_slope1, r_slope2, u_optimal, reserve_factor)
             .from_source(self.liq_pool_template_address().get())
             .code_metadata(CodeMetadata::UPGRADEABLE)
             .upgrade_async_call_and_exit();

@@ -254,7 +254,7 @@ fn test_interest_accrual() {
         OptionalValue::None,
         false,
     );
-
+    state.update_interest_indexes(&supplier, 1);
     state.supply_asset(
         &borrower,
         USDC_TOKEN,
@@ -264,6 +264,7 @@ fn test_interest_accrual() {
         OptionalValue::None,
         false,
     );
+    state.update_interest_indexes(&supplier, 1);
 
     state.borrow_asset(
         &borrower,
@@ -272,6 +273,8 @@ fn test_interest_accrual() {
         2,
         EGLD_DECIMALS,
     );
+
+    state.update_borrows_with_debt(&borrower, 2);
     let utilization_ratio = state.get_market_utilization(state.egld_market.clone());
     println!("utilization_ratio: {:?}", utilization_ratio);
 
@@ -280,7 +283,7 @@ fn test_interest_accrual() {
     let initial_supply = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
 
     // Simulate daily updates for a month
-    for day in 1..=30 {
+    for day in 1..=365 {
         state
             .world
             .current_block()

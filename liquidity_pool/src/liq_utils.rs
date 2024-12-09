@@ -81,7 +81,6 @@ pub trait UtilsModule:
             )
         {
             // Convert rewards to an index increase factor
-
             let rewards_factor: ManagedDecimal<<Self as ContractBase>::Api, _> =
                 rewards_increase.clone() / storage_cache.supplied_amount.clone()
                     + ManagedDecimal::from_raw_units(BigUint::from(BP), DECIMAL_PRECISION);
@@ -127,13 +126,7 @@ pub trait UtilsModule:
         let delta_timestamp =
             self.get_timestamp_diff(storage_cache.last_update_timestamp, storage_cache.timestamp);
 
-        if delta_timestamp > 0
-            && storage_cache.borrowed_amount
-                != ManagedDecimal::from_raw_units(
-                    BigUint::from(0u64),
-                    storage_cache.pool_params.decimals,
-                )
-        {
+        if delta_timestamp > 0 {
             let borrow_rate = self.get_borrow_rate_internal(storage_cache);
             self.update_borrow_index(&borrow_rate, delta_timestamp, storage_cache);
             let rewards =
@@ -144,78 +137,45 @@ pub trait UtilsModule:
         }
     }
 
-    fn internal_update_collateral_with_interest(
+    fn internal_update_position_with_interest(
         &self,
-        mut deposit_position: AccountPosition<Self::Api>,
+        mut position: AccountPosition<Self::Api>,
         storage_cache: &mut StorageCache<Self>,
     ) -> AccountPosition<Self::Api> {
         self.update_interest_indexes(storage_cache);
+        let is_supply = position.deposit_type == AccountPositionType::Deposit;
 
-        let accrued_interest = self.compute_interest(
+        let index = if is_supply {
+            storage_cache.supply_index.clone()
+        } else {
+            storage_cache.borrow_index.clone()
+        };
+
+        let accumulated_interest_dec = self.compute_interest(
             ManagedDecimal::from_raw_units(
-                deposit_position.get_total_amount().clone(),
+                position.get_total_amount().clone(),
                 storage_cache.pool_params.decimals,
             ),
-            storage_cache.supply_index.clone(),
-            ManagedDecimal::from_raw_units(deposit_position.index.clone(), DECIMAL_PRECISION),
+            &index,
+            &ManagedDecimal::from_raw_units(position.index.clone(), DECIMAL_PRECISION),
         );
 
-        if accrued_interest
-            > ManagedDecimal::from_raw_units(
-                BigUint::from(0u64),
-                storage_cache.pool_params.decimals,
-            )
-        {
-            deposit_position.accumulated_interest += &accrued_interest.into_raw_units().clone();
-            deposit_position.timestamp = storage_cache.timestamp;
-            deposit_position.index = storage_cache.supply_index.into_raw_units().clone();
+        let accumulated_interest = accumulated_interest_dec.into_raw_units();
+
+        if accumulated_interest.gt(&BigUint::zero()) {
+            position.accumulated_interest += accumulated_interest;
+            position.timestamp = storage_cache.timestamp;
+            position.index = index.into_raw_units().clone();
 
             self.update_position_event(
-                &accrued_interest.into_raw_units().clone(),
-                &deposit_position,
-                OptionalValue::None,
-                OptionalValue::None,
-                OptionalValue::None,
-            );
-        }
-        deposit_position
-    }
-
-    fn internal_update_borrows_with_debt(
-        &self,
-        mut borrow_position: AccountPosition<Self::Api>,
-        storage_cache: &mut StorageCache<Self>,
-    ) -> AccountPosition<Self::Api> {
-        self.update_interest_indexes(storage_cache);
-
-        let accumulated_debt = self.compute_interest(
-            ManagedDecimal::from_raw_units(
-                borrow_position.get_total_amount().clone(),
-                storage_cache.pool_params.decimals,
-            ),
-            storage_cache.borrow_index.clone(),
-            ManagedDecimal::from_raw_units(borrow_position.index.clone(), DECIMAL_PRECISION),
-        );
-
-        if accumulated_debt
-            > ManagedDecimal::from_raw_units(
-                BigUint::from(0u64),
-                storage_cache.pool_params.decimals,
-            )
-        {
-            borrow_position.accumulated_interest += accumulated_debt.into_raw_units().clone();
-            borrow_position.timestamp = storage_cache.timestamp;
-            borrow_position.index = storage_cache.borrow_index.into_raw_units().clone();
-
-            self.update_position_event(
-                &accumulated_debt.into_raw_units().clone(),
-                &borrow_position,
+                accumulated_interest,
+                &position,
                 OptionalValue::None,
                 OptionalValue::None,
                 OptionalValue::None,
             );
         }
 
-        borrow_position
+        position
     }
 }

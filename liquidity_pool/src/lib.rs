@@ -62,7 +62,7 @@ pub trait LiquidityPool:
         ));
 
         self.rewards_reserves().set(BigUint::from(0u64));
-        self.last_update_timestamp().set(0);
+        self.last_update_timestamp().set(self.blockchain().get_block_timestamp());
     }
 
     #[upgrade]

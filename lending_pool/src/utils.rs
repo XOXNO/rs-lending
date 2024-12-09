@@ -3,7 +3,8 @@ multiversx_sc::derive_imports!();
 
 use crate::{
     math, oracle, proxy_pool, storage, ERROR_ASSET_NOT_SUPPORTED, ERROR_BORROW_CAP,
-    ERROR_DEBT_CEILING_REACHED, ERROR_MIX_ISOLATED_COLLATERAL, ERROR_SUPPLY_CAP,
+    ERROR_DEBT_CEILING_REACHED, ERROR_MIX_ISOLATED_COLLATERAL, ERROR_NO_POOL_FOUND,
+    ERROR_SUPPLY_CAP,
 };
 
 use common_structs::*;
@@ -17,6 +18,27 @@ pub trait LendingUtilsModule:
     + oracle::OracleModule
     + common_events::EventsModule
 {
+    #[view(getPoolAddress)]
+    fn get_pool_address(&self, asset: &EgldOrEsdtTokenIdentifier) -> ManagedAddress {
+        let pool_address = self.pools_map(asset).get();
+
+        require!(!pool_address.is_zero(), ERROR_NO_POOL_FOUND);
+
+        pool_address
+    }
+
+    #[endpoint(updateIndexes)]
+    fn update_indexes(&self, token_id: EgldOrEsdtTokenIdentifier) {
+        let pool_address = self.get_pool_address(&token_id);
+
+        let asset_price = self.get_token_price_data(&token_id);
+        self.tx()
+            .to(pool_address)
+            .typed(proxy_pool::LiquidityPoolProxy)
+            .update_indexes(&asset_price.price)
+            .sync_call();
+    }
+
     fn get_existing_or_new_deposit_position_for_token(
         &self,
         account_position: u64,
@@ -38,9 +60,7 @@ pub trait LendingUtilsModule:
                 self.blockchain().get_block_timestamp(),
                 BigUint::from(BP),
                 // Save the current market parameters
-                asset_config.ltv.clone(),
                 asset_config.liquidation_threshold.clone(),
-                asset_config.liquidation_bonus.clone(),
                 is_vault,
             ),
         }
@@ -64,9 +84,7 @@ pub trait LendingUtilsModule:
                 self.blockchain().get_block_timestamp(),
                 BigUint::from(BP),
                 // Save the current market parameters
-                asset_config.ltv.clone(),
                 asset_config.liquidation_threshold.clone(),
-                asset_config.liquidation_bonus.clone(),
                 is_vault,
             ),
         }
@@ -98,9 +116,10 @@ pub trait LendingUtilsModule:
         for dp in positions {
             let position_value_in_dollars =
                 self.get_token_amount_in_dollars(&dp.token_id, &dp.get_total_amount());
+            let asset_config = self.asset_config(&dp.token_id).get();
 
             weighted_collateral_in_dollars +=
-                position_value_in_dollars * &dp.entry_ltv / BigUint::from(BP);
+                &position_value_in_dollars * &asset_config.ltv / BigUint::from(BP);
         }
 
         weighted_collateral_in_dollars
@@ -215,17 +234,22 @@ pub trait LendingUtilsModule:
         asset_config: &AssetConfig<Self::Api>,
         amount: &BigUint,
         asset: &EgldOrEsdtTokenIdentifier,
+        is_vault: bool,
     ) {
         if asset_config.supply_cap.is_some() {
             let pool = self.pools_map(asset).get();
             let supply_cap = asset_config.supply_cap.clone().unwrap();
-            let total_supply = self
+            let mut total_supply = self
                 .tx()
                 .to(pool)
                 .typed(proxy_pool::LiquidityPoolProxy)
                 .supplied_amount()
                 .returns(ReturnsResult)
                 .sync_call();
+
+            if is_vault {
+                total_supply += self.vault_supplied_amount(asset).get();
+            }
 
             require!(total_supply + amount <= supply_cap, ERROR_SUPPLY_CAP);
         }

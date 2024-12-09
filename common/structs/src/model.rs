@@ -30,7 +30,9 @@ pub enum UpdateAssetParamsType {
 }
 
 #[type_abi]
-#[derive(ManagedVecItem, NestedEncode, NestedDecode, TopEncode, TopDecode, Clone)]
+#[derive(
+    ManagedVecItem, NestedEncode, NestedDecode, TopEncode, TopDecode, Clone, Eq, PartialEq,
+)]
 pub enum AccountPositionType {
     None,
     Deposit,
@@ -49,9 +51,7 @@ pub struct AccountPosition<M: ManagedTypeApi> {
     pub index: BigUint<M>,
     pub is_vault: bool,
 
-    pub entry_ltv: BigUint<M>,
     pub entry_liquidation_threshold: BigUint<M>,
-    pub entry_liquidation_bonus: BigUint<M>,
 }
 
 impl<M: ManagedTypeApi> AccountPosition<M> {
@@ -63,9 +63,7 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
         account_nonce: u64,
         timestamp: u64,
         index: BigUint<M>,
-        entry_ltv: BigUint<M>,
         entry_liquidation_threshold: BigUint<M>,
-        entry_liquidation_bonus: BigUint<M>,
         is_vault: bool,
     ) -> Self {
         AccountPosition {
@@ -77,9 +75,7 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
             timestamp,
             index,
             is_vault,
-            entry_ltv,
             entry_liquidation_threshold,
-            entry_liquidation_bonus,
         }
     }
 
@@ -155,4 +151,31 @@ pub struct EgldOrEsdtTokenPaymentNew<M: ManagedTypeApi> {
     pub token_identifier: EgldOrEsdtTokenIdentifier<M>,
     pub token_nonce: u64,
     pub amount: BigUint<M>,
+}
+
+#[type_abi]
+#[derive(
+    ManagedVecItem, NestedEncode, NestedDecode, TopEncode, TopDecode, Clone, Eq, PartialEq,
+)]
+pub enum OracleOverrideType {
+    None,
+    Derived,
+    Lp,
+}
+
+#[type_abi]
+#[derive(
+    ManagedVecItem, NestedEncode, NestedDecode, TopEncode, TopDecode, Clone, Eq, PartialEq,
+)]
+pub enum ExchangeSource {
+    None,
+    XExchange,
+}
+
+#[type_abi]
+#[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode)]
+pub struct OracleOverride<M: ManagedTypeApi> {
+    pub original_token_id: EgldOrEsdtTokenIdentifier<M>,
+    pub contract_address: ManagedAddress<M>,
+    pub token_type: OracleOverrideType,
 }

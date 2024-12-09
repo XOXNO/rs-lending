@@ -17,27 +17,48 @@ pub trait LiquidityModule:
     + common_checks::ChecksModule
 {
     #[only_owner]
-    #[endpoint(updatePositionInterest)]
-    fn update_collateral_with_interest(
-        &self,
-        deposit_position: AccountPosition<Self::Api>,
-    ) -> AccountPosition<Self::Api> {
+    #[endpoint(updateIndexes)]
+    fn update_indexes(&self, asset_usd_price: &BigUint) {
         let mut storage_cache = StorageCache::new(self);
-        let account =
-            self.internal_update_collateral_with_interest(deposit_position, &mut storage_cache);
 
-        account
+        self.update_interest_indexes(&mut storage_cache);
+
+        self.update_market_state_event(
+            storage_cache.timestamp,
+            storage_cache.supply_index.into_raw_units(),
+            storage_cache.borrow_index.into_raw_units(),
+            storage_cache.reserves_amount.into_raw_units(),
+            storage_cache.supplied_amount.into_raw_units(),
+            storage_cache.borrowed_amount.into_raw_units(),
+            storage_cache.rewards_reserve.into_raw_units(),
+            &storage_cache.pool_asset,
+            asset_usd_price,
+        );
     }
 
     #[only_owner]
-    #[endpoint(updatePositionDebt)]
-    fn update_borrows_with_debt(
+    #[endpoint(updatePositionInterest)]
+    fn update_position_with_interest(
         &self,
-        borrow_position: AccountPosition<Self::Api>,
+        position: AccountPosition<Self::Api>,
+        asset_usd_price: OptionalValue<BigUint>,
     ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
-        let account = self.internal_update_borrows_with_debt(borrow_position, &mut storage_cache);
+        let account = self.internal_update_position_with_interest(position, &mut storage_cache);
 
+        if asset_usd_price.is_some() {
+            self.update_market_state_event(
+                storage_cache.timestamp,
+                storage_cache.supply_index.into_raw_units(),
+                storage_cache.borrow_index.into_raw_units(),
+                storage_cache.reserves_amount.into_raw_units(),
+                storage_cache.supplied_amount.into_raw_units(),
+                storage_cache.borrowed_amount.into_raw_units(),
+                storage_cache.rewards_reserve.into_raw_units(),
+                &storage_cache.pool_asset,
+                &asset_usd_price.into_option().unwrap(),
+            );
+        }
         account
     }
 
@@ -65,16 +86,12 @@ pub trait LiquidityModule:
 
         self.update_interest_indexes(&mut storage_cache);
 
-        if deposit_position.amount != 0 {
+        if deposit_position.amount.gt(&BigUint::zero()) {
             ret_deposit_position =
-                self.internal_update_collateral_with_interest(deposit_position, &mut storage_cache);
+                self.internal_update_position_with_interest(deposit_position, &mut storage_cache);
         }
 
         ret_deposit_position.amount += &deposit_amount;
-        sc_print!(
-            "ret_deposit_position.amount: {}",
-            ret_deposit_position.amount
-        );
         ret_deposit_position.timestamp = storage_cache.timestamp;
         ret_deposit_position.index = storage_cache.supply_index.into_raw_units().clone();
 
@@ -84,12 +101,12 @@ pub trait LiquidityModule:
 
         self.update_market_state_event(
             storage_cache.timestamp,
-            &storage_cache.supply_index.into_raw_units(),
-            &storage_cache.borrow_index.into_raw_units(),
-            &storage_cache.reserves_amount.into_raw_units(),
-            &storage_cache.supplied_amount.into_raw_units(),
-            &storage_cache.borrowed_amount.into_raw_units(),
-            &storage_cache.rewards_reserve.into_raw_units(),
+            storage_cache.supply_index.into_raw_units(),
+            storage_cache.borrow_index.into_raw_units(),
+            storage_cache.reserves_amount.into_raw_units(),
+            storage_cache.supplied_amount.into_raw_units(),
+            storage_cache.borrowed_amount.into_raw_units(),
+            storage_cache.rewards_reserve.into_raw_units(),
             &storage_cache.pool_asset,
             asset_usd_price,
         );
@@ -110,6 +127,7 @@ pub trait LiquidityModule:
         let mut storage_cache = StorageCache::new(self);
 
         let mut ret_borrow_position = existing_borrow_position.clone();
+
         self.require_non_zero_address(initial_caller);
         let borrow_amount_dec = ManagedDecimal::from_raw_units(
             borrow_amount.clone(),
@@ -122,13 +140,14 @@ pub trait LiquidityModule:
 
         self.update_interest_indexes(&mut storage_cache);
 
-        if ret_borrow_position.amount != 0 {
-            ret_borrow_position = self
-                .internal_update_borrows_with_debt(existing_borrow_position, &mut storage_cache);
+        if ret_borrow_position.amount.gt(&BigUint::zero()) {
+            ret_borrow_position = self.internal_update_position_with_interest(
+                existing_borrow_position,
+                &mut storage_cache,
+            );
         }
 
         ret_borrow_position.amount += borrow_amount;
-        sc_print!("ret_borrow_position.amount: {}", ret_borrow_position.amount);
         ret_borrow_position.timestamp = storage_cache.timestamp;
         ret_borrow_position.index = storage_cache.borrow_index.into_raw_units().clone();
 
@@ -146,12 +165,12 @@ pub trait LiquidityModule:
 
         self.update_market_state_event(
             storage_cache.timestamp,
-            &storage_cache.supply_index.into_raw_units(),
-            &storage_cache.borrow_index.into_raw_units(),
-            &storage_cache.reserves_amount.into_raw_units(),
-            &storage_cache.supplied_amount.into_raw_units(),
-            &storage_cache.borrowed_amount.into_raw_units(),
-            &storage_cache.rewards_reserve.into_raw_units(),
+            storage_cache.supply_index.into_raw_units(),
+            storage_cache.borrow_index.into_raw_units(),
+            storage_cache.reserves_amount.into_raw_units(),
+            storage_cache.supplied_amount.into_raw_units(),
+            storage_cache.borrowed_amount.into_raw_units(),
+            storage_cache.rewards_reserve.into_raw_units(),
             &storage_cache.pool_asset,
             asset_usd_price,
         );
@@ -182,15 +201,13 @@ pub trait LiquidityModule:
         // Unaccrued interest for the wanted amount
         let extra_interest = self.compute_interest(
             amount_dec.clone(),
-            storage_cache.supply_index.clone(),
-            ManagedDecimal::from_raw_units(deposit_position.index.clone(), DECIMAL_PRECISION),
+            &storage_cache.supply_index,
+            &ManagedDecimal::from_raw_units(deposit_position.index.clone(), DECIMAL_PRECISION),
         );
 
         let total_withdraw = amount_dec + extra_interest;
-        sc_print!("total_withdraw:   {}", total_withdraw);
         // Withdrawal amount = initial wanted amount + Unaccrued interest for that amount (this has to be paid back to the user that requested the withdrawal)
         let mut principal_amount = total_withdraw.clone();
-        sc_print!("principal_amount: {}", principal_amount);
         // Check if there is enough liquidity to cover the withdrawal
 
         require!(
@@ -202,7 +219,7 @@ pub trait LiquidityModule:
         storage_cache.reserves_amount -= &principal_amount;
 
         let mut accumulated_interest = ManagedDecimal::from_raw_units(
-            deposit_position.accumulated_interest,
+            deposit_position.accumulated_interest.clone(),
             storage_cache.pool_params.decimals,
         );
 
@@ -220,28 +237,13 @@ pub trait LiquidityModule:
             principal_amount = zero.clone();
         }
         deposit_position.accumulated_interest = accumulated_interest.into_raw_units().clone();
-        sc_print!(
-            "deposit_position.accumulated_interest: {}",
-            deposit_position.accumulated_interest
-        );
         // Check if there is enough liquidity to cover the withdrawal after the interest was subtracted
-        sc_print!("principal_amount: {}", principal_amount);
-        sc_print!("zero:             {}", zero);
         if principal_amount.gt(&zero) {
-            sc_print!(
-                "storage_cache.supplied_amount: {}",
-                storage_cache.supplied_amount.into_raw_units().clone()
-            );
             require!(
                 storage_cache.supplied_amount >= principal_amount,
                 ERROR_INSUFFICIENT_LIQUIDITY
             );
-            sc_print!(
-                "principal_amou).clone(): {}",
-                principal_amount.into_raw_units().clone()
-            );
             deposit_position.amount -= principal_amount.into_raw_units().clone();
-            sc_print!("deposit_position.amount: {}", deposit_position.amount);
             storage_cache.supplied_amount -= &principal_amount;
         }
 
@@ -262,18 +264,6 @@ pub trait LiquidityModule:
 
             storage_cache.rewards_reserve += &protocol_liquidation_fee_dec;
             storage_cache.reserves_amount += &protocol_liquidation_fee_dec;
-            sc_print!(
-                "protocol_liquidation_fee_dec: {}",
-                protocol_liquidation_fee_dec.into_raw_units().clone()
-            );
-            sc_print!(
-                "total_withdraw:               {}",
-                total_withdraw.into_raw_units().clone()
-            );
-            sc_print!(
-                "storage_cache.rewards_reserve:{}",
-                principal_amount.into_raw_units().clone()
-            );
             let amount_after_fee = total_withdraw - protocol_liquidation_fee_dec;
 
             self.tx()
@@ -286,30 +276,14 @@ pub trait LiquidityModule:
                 .transfer();
         }
 
-        sc_print!(
-            "storage_cache.rewards_reserve: {}",
-            storage_cache.rewards_reserve.into_raw_units().clone()
-        );
-        sc_print!(
-            "storage_cache.reserves_amount: {}",
-            storage_cache.reserves_amount.into_raw_units().clone()
-        );
-        sc_print!(
-            "storage_cache.supplied_amount: {}",
-            storage_cache.supplied_amount.into_raw_units().clone()
-        );
-        sc_print!(
-            "storage_cache.borrowed_amount: {}",
-            storage_cache.borrowed_amount.into_raw_units().clone()
-        );
         self.update_market_state_event(
             storage_cache.timestamp,
-            &storage_cache.supply_index.into_raw_units().clone(),
-            &storage_cache.borrow_index.into_raw_units().clone(),
-            &storage_cache.reserves_amount.into_raw_units().clone(),
-            &storage_cache.supplied_amount.into_raw_units().clone(),
-            &storage_cache.borrowed_amount.into_raw_units().clone(),
-            &storage_cache.rewards_reserve.into_raw_units().clone(),
+            storage_cache.supply_index.into_raw_units(),
+            storage_cache.borrow_index.into_raw_units(),
+            storage_cache.reserves_amount.into_raw_units(),
+            storage_cache.supplied_amount.into_raw_units(),
+            storage_cache.borrowed_amount.into_raw_units(),
+            storage_cache.rewards_reserve.into_raw_units(),
             &storage_cache.pool_asset,
             asset_usd_price,
         );
@@ -339,10 +313,8 @@ pub trait LiquidityModule:
             storage_cache.pool_params.decimals,
         );
         self.update_interest_indexes(&mut storage_cache);
-        sc_print!("borrow_position.amount: {}", borrow_position.amount);
-        sc_print!("received_amount_dec: {}", received_amount_dec);
         let mut ret_borrow_position =
-            self.internal_update_borrows_with_debt(borrow_position, &mut storage_cache);
+            self.internal_update_position_with_interest(borrow_position, &mut storage_cache);
 
         let total_owed_with_interest = ManagedDecimal::from_raw_units(
             ret_borrow_position.get_total_amount().clone(),
@@ -350,8 +322,6 @@ pub trait LiquidityModule:
         );
 
         if received_amount_dec >= total_owed_with_interest {
-            sc_print!("received_amount_dec: {}", received_amount_dec);
-            sc_print!("total_owed_with_interest: {}", total_owed_with_interest);
             // Full repayment
             let extra_amount = received_amount - ret_borrow_position.get_total_amount();
             if extra_amount > BigUint::zero() {
@@ -378,48 +348,34 @@ pub trait LiquidityModule:
         } else {
             // Partial repayment
             let total_debt = total_owed_with_interest.clone();
-            sc_print!("total_debt: {}", total_debt);
             // Calculate principal portion of the payment
-            let principal_portion = received_amount_dec.clone()
-                * ManagedDecimal::from_raw_units(
+            let principal_portion = received_amount_dec
+                .clone()
+                .mul(ManagedDecimal::from_raw_units(
                     ret_borrow_position.amount.clone(),
                     storage_cache.pool_params.decimals,
-                )
-                / total_debt;
-            sc_print!("principal_portion: {}", principal_portion);
+                ))
+                .div(total_debt);
             let interest_portion = received_amount_dec.clone() - principal_portion.clone();
-            sc_print!("interest_portion: {}", interest_portion);
 
             // Reduce position amounts
             ret_borrow_position.amount -= &principal_portion.into_raw_units().clone();
             ret_borrow_position.accumulated_interest -= &interest_portion.into_raw_units().clone();
-            sc_print!(
-                "ret_borrow_position.accumulated_interest: {}",
-                ret_borrow_position.accumulated_interest
-            );
-            sc_print!("ret_borrow_position.amount: {}", ret_borrow_position.amount);
+
             // Update storage
             storage_cache.borrowed_amount -= &principal_portion;
 
             storage_cache.reserves_amount += &received_amount_dec; // Full payment goes to reserves
-            sc_print!(
-                "storage_cache.reserves_amount: {}",
-                storage_cache.reserves_amount.into_raw_units().clone()
-            );
-            sc_print!(
-                "storage_cache.reserves_amount: {}",
-                storage_cache.borrowed_amount.into_raw_units().clone()
-            );
         }
 
         self.update_market_state_event(
             storage_cache.timestamp,
-            &storage_cache.supply_index.into_raw_units().clone(),
-            &storage_cache.borrow_index.into_raw_units().clone(),
-            &storage_cache.reserves_amount.into_raw_units().clone(),
-            &storage_cache.supplied_amount.into_raw_units().clone(),
-            &storage_cache.borrowed_amount.into_raw_units().clone(),
-            &storage_cache.rewards_reserve.into_raw_units().clone(),
+            storage_cache.supply_index.into_raw_units(),
+            storage_cache.borrow_index.into_raw_units(),
+            storage_cache.reserves_amount.into_raw_units(),
+            storage_cache.supplied_amount.into_raw_units(),
+            storage_cache.borrowed_amount.into_raw_units(),
+            storage_cache.rewards_reserve.into_raw_units(),
             &storage_cache.pool_asset,
             asset_usd_price,
         );
@@ -443,12 +399,12 @@ pub trait LiquidityModule:
         );
         self.update_market_state_event(
             storage_cache.timestamp,
-            &storage_cache.supply_index.into_raw_units().clone(),
-            &storage_cache.borrow_index.into_raw_units().clone(),
-            &storage_cache.reserves_amount.into_raw_units().clone(),
-            &storage_cache.supplied_amount.into_raw_units().clone(),
-            &storage_cache.borrowed_amount.into_raw_units().clone(),
-            &storage_cache.rewards_reserve.into_raw_units().clone(),
+            storage_cache.supply_index.into_raw_units(),
+            storage_cache.borrow_index.into_raw_units(),
+            storage_cache.reserves_amount.into_raw_units(),
+            storage_cache.supplied_amount.into_raw_units(),
+            storage_cache.borrowed_amount.into_raw_units(),
+            storage_cache.rewards_reserve.into_raw_units(),
             &storage_cache.pool_asset,
             asset_usd_price,
         );

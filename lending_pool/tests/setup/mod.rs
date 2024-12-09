@@ -501,7 +501,7 @@ impl LendingPoolTestState {
             .query()
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::LendingPoolProxy)
-            .get_account_health_factor(account_position)
+            .get_health_factor(account_position)
             .returns(ReturnsResult)
             .run();
 
@@ -555,7 +555,7 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .whitebox(lending_pool::contract_obj, |sc| {
-                sc.update_borrows_with_debt(account_position);
+                sc.update_borrows_with_debt(account_position, true);
             });
     }
 
@@ -565,7 +565,7 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .whitebox(lending_pool::contract_obj, |sc| {
-                sc.update_collateral_with_interest(account_position);
+                sc.update_collateral_with_interest(account_position, true);
             });
     }
 

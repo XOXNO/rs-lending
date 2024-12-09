@@ -68,7 +68,9 @@ pub trait MathModule {
         // Perform calculations using ManagedDecimal
         let one_dec = ManagedDecimal::from_raw_units(BigUint::from(BP), DECIMAL_PRECISION);
 
-        let deposit_rate_dec = u_current.mul(borrow_rate).mul(one_dec.sub(reserve_factor));
+        let deposit_rate_dec = u_current
+            .mul_with_precision(borrow_rate, DECIMAL_PRECISION)
+            .mul_with_precision(one_dec.sub(reserve_factor), DECIMAL_PRECISION);
 
         deposit_rate_dec
     }
@@ -98,13 +100,13 @@ pub trait MathModule {
     fn compute_interest(
         &self,
         amount: ManagedDecimal<Self::Api, NumDecimals>,
-        current_supply_index: ManagedDecimal<Self::Api, NumDecimals>, // Market index
-        initial_supply_index: ManagedDecimal<Self::Api, NumDecimals>, // Account position index
+        current_index: &ManagedDecimal<Self::Api, NumDecimals>, // Market index
+        initial_index: &ManagedDecimal<Self::Api, NumDecimals>, // Account position index
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let new_amount = amount
             .clone()
-            .mul(current_supply_index)
-            .div(initial_supply_index);
+            .mul(current_index.clone())
+            .div(initial_index.clone());
 
         new_amount - amount
     }

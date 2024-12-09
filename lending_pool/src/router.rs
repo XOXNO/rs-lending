@@ -6,10 +6,11 @@ multiversx_sc::derive_imports!();
 use common_events::{AssetConfig, EModeAssetConfig, EModeCategory};
 
 use crate::{
-    oracle, storage, ERROR_ASSET_ALREADY_SUPPORTED, ERROR_ASSET_ALREADY_SUPPORTED_IN_EMODE,
-    ERROR_ASSET_NOT_SUPPORTED, ERROR_ASSET_NOT_SUPPORTED_IN_EMODE, ERROR_EMODE_CATEGORY_NOT_FOUND,
-    ERROR_INVALID_AGGREGATOR, ERROR_INVALID_LIQUIDATION_THRESHOLD,
-    ERROR_INVALID_LIQUIDITY_POOL_TEMPLATE, ERROR_INVALID_TICKER, ERROR_NO_POOL_FOUND,
+    math, oracle, storage, utils, ERROR_ASSET_ALREADY_SUPPORTED,
+    ERROR_ASSET_ALREADY_SUPPORTED_IN_EMODE, ERROR_ASSET_NOT_SUPPORTED,
+    ERROR_ASSET_NOT_SUPPORTED_IN_EMODE, ERROR_EMODE_CATEGORY_NOT_FOUND, ERROR_INVALID_AGGREGATOR,
+    ERROR_INVALID_LIQUIDATION_THRESHOLD, ERROR_INVALID_LIQUIDITY_POOL_TEMPLATE,
+    ERROR_INVALID_TICKER, ERROR_NO_POOL_FOUND,
 };
 
 use super::factory;
@@ -21,6 +22,8 @@ pub trait RouterModule:
     + storage::LendingStorageModule
     + common_events::EventsModule
     + oracle::OracleModule
+    + utils::LendingUtilsModule
+    + math::LendingMathModule
 {
     #[allow_multiple_var_args]
     #[only_owner]
@@ -305,7 +308,7 @@ pub trait RouterModule:
             self.asset_config(&asset).set(asset_data);
         }
     }
-    
+
     #[allow_multiple_var_args]
     #[only_owner]
     #[endpoint(editAssetConfig)]
@@ -363,14 +366,5 @@ pub trait RouterModule:
         map.set(new_config);
 
         self.update_asset_config_event(&asset, &new_config);
-    }
-
-    #[view(getPoolAddress)]
-    fn get_pool_address(&self, asset: &EgldOrEsdtTokenIdentifier) -> ManagedAddress {
-        let pool_address = self.pools_map(asset).get();
-
-        require!(!pool_address.is_zero(), ERROR_NO_POOL_FOUND);
-
-        pool_address
     }
 }

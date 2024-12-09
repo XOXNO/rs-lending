@@ -47,7 +47,6 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
             .div(&BigUint::from(BP))
     }
 
-    #[inline]
     fn get_token_amount_in_dollars(
         &self,
         token_id: &EgldOrEsdtTokenIdentifier,
@@ -76,52 +75,39 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
 
     fn calculate_max_liquidatable_amount_in_dollars(
         &self,
-        health_factor: &BigUint,
         total_debt_in_dollars: &BigUint,
         weighted_collateral_in_dollars: &BigUint,
         liquidation_bonus: &BigUint,
     ) -> BigUint {
         let bp = BigUint::from(BP);
-        
+
         // Target HF = 1.05 for all liquidations
         let target_hf = bp.clone() * 105u32 / 100u32; // 1.05
-        
-        sc_print!("target_hf:           {}", target_hf);
-        sc_print!("current_hf:          {}", health_factor);
-        
+
         // Calculate required repayment to reach target HF
         let adjusted_debt = total_debt_in_dollars * &target_hf / &bp;
         // Since HF < 1.0, total_debt > weighted_collateral, and we multiply by 1.05,
         // adjusted_debt is always > weighted_collateral
         let debt_surplus = adjusted_debt.clone() - weighted_collateral_in_dollars;
         let required_repayment = &debt_surplus * &bp / &(liquidation_bonus + &(&target_hf - &bp));
-        
-        sc_print!("total_debt:          {}", total_debt_in_dollars);
-        sc_print!("weighted_collateral: {}", weighted_collateral_in_dollars);
-        sc_print!("adjusted_debt:       {}", adjusted_debt);
-        sc_print!("debt_surplus:        {}", debt_surplus);
-        sc_print!("required_repayment:  {}", required_repayment);
-        
+
         // If required repayment is more than total debt, it means we can't restore HF > 1.05
         // In this case, allow maximum liquidation (100% of debt)
         if &required_repayment > total_debt_in_dollars {
-            sc_print!("reason:              {}", 1); // Can't restore HF, liquidate maximum
             total_debt_in_dollars.clone()
         } else {
-            sc_print!("reason:              {}", 2); // Can restore HF with partial liquidation
             required_repayment
         }
     }
 
     fn calculate_single_asset_liquidation_amount(
         &self,
-        health_factor: &BigUint,
         total_debt_in_dollars: &BigUint,
         total_collateral_in_dollars: &BigUint,
         token_to_liquidate: &EgldOrEsdtTokenIdentifier,
         token_price_data: &PriceFeed<Self::Api>,
         liquidatee_account_nonce: u64,
-        debt_payment_in_usd: &BigUint,
+        debt_payment_in_usd: OptionalValue<BigUint>,
         liquidation_bonus: &BigUint,
     ) -> BigUint {
         // Get the available collateral value for this specific asset
@@ -136,18 +122,18 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
         );
 
         let max_liquidatable_amount = self.calculate_max_liquidatable_amount_in_dollars(
-            health_factor,
             total_debt_in_dollars,
             total_collateral_in_dollars,
             liquidation_bonus,
         );
 
-        sc_print!("available_collateral_value: {}", available_collateral_value);
-        sc_print!("max_liquidatable_amount:    {}", max_liquidatable_amount);
-        sc_print!("debt_payment_in_usd:        {}", debt_payment_in_usd);
-        // Take the minimum between what we need and what's available and what the liquidator is paying
-        BigUint::min(max_liquidatable_amount, available_collateral_value)
-            .min(debt_payment_in_usd.clone())
+        if debt_payment_in_usd.is_some() {
+            // Take the minimum between what we need and what's available and what the liquidator is paying
+            BigUint::min(max_liquidatable_amount, available_collateral_value)
+                .min(debt_payment_in_usd.into_option().unwrap())
+        } else {
+            BigUint::min(max_liquidatable_amount, available_collateral_value)
+        }
     }
 
     fn calculate_dynamic_liquidation_bonus(

@@ -174,6 +174,7 @@ pub trait LendingPool:
             &asset_info,
             &collateral_payment.amount,
             &collateral_payment.token_identifier,
+            is_vault,
         );
 
         let pool_address = self.get_pool_address(&collateral_payment.token_identifier);
@@ -192,7 +193,19 @@ pub trait LendingPool:
         let asset_data_feed = self.get_token_price_data(&collateral_payment.token_identifier);
 
         let updated_deposit_position = if is_vault {
-            deposit_position.amount += collateral_payment.amount.clone(); // Increase the amount of the deposit position
+            let last_value = self
+                .vault_supplied_amount(&collateral_payment.token_identifier)
+                .update(|am| {
+                    *am += &collateral_payment.amount;
+                    am.clone()
+                });
+
+            self.update_vault_supplied_amount_event(
+                &collateral_payment.token_identifier,
+                last_value,
+            );
+
+            deposit_position.amount += &collateral_payment.amount; // Increase the amount of the deposit position
             deposit_position
         } else {
             self.tx()
@@ -289,6 +302,13 @@ pub trait LendingPool:
 
         let asset_data = self.get_token_price_data(&withdraw_token_id);
         let deposit_position = if dp.is_vault {
+            let last_value = self.vault_supplied_amount(&withdraw_token_id).update(|am| {
+                *am -= &amount;
+                am.clone()
+            });
+
+            self.update_vault_supplied_amount_event(&withdraw_token_id, last_value);
+
             dp.amount -= &amount;
 
             if is_liquidation {
@@ -410,11 +430,8 @@ pub trait LendingPool:
 
         self.check_borrow_cap(&asset_config, &amount, &asset_to_borrow);
 
-        let collateral_positions = self.update_collateral_with_interest(nft_account_nonce);
-        let borrow_positions = self.update_borrows_with_debt(nft_account_nonce);
-
-        sc_print!("amount {}", amount);
-        sc_print!("asset_to_borrow {}", asset_to_borrow);
+        let collateral_positions = self.update_collateral_with_interest(nft_account_nonce, false);
+        let borrow_positions = self.update_borrows_with_debt(nft_account_nonce, false);
 
         let asset_to_borrow_feed = self.get_token_price_data(&asset_to_borrow);
         let amount_to_borrow_in_dollars =
@@ -512,7 +529,7 @@ pub trait LendingPool:
     fn repay(&self, account_nonce: u64) {
         let (repay_token_id, repay_amount) = self.call_value().egld_or_single_fungible_esdt();
         let initial_caller = self.blockchain().get_caller();
-        self.update_borrows_with_debt(account_nonce);
+        self.update_borrows_with_debt(account_nonce, false);
 
         self.internal_repay(
             account_nonce,
@@ -564,7 +581,7 @@ pub trait LendingPool:
             // Check if collateral is an isolated asset
             if asset_config.is_isolated {
                 let amount_to_repay_in_dollars = if repay_amount_in_usd.is_none() {
-                    self.get_token_amount_in_dollars(&repay_token_id, &repay_amount)
+                    self.get_token_amount_in_dollars_raw(&repay_amount, &debt_token_price_data_feed)
                 } else {
                     repay_amount_in_usd.unwrap()
                 };
@@ -638,15 +655,16 @@ pub trait LendingPool:
         self.require_non_zero_address(&initial_caller);
 
         // Update positions with latest interest
-        let collateral_positions = self.update_collateral_with_interest(liquidatee_account_nonce);
-        let borrow_positions = self.update_borrows_with_debt(liquidatee_account_nonce);
+        let collateral_positions =
+            self.update_collateral_with_interest(liquidatee_account_nonce, false);
+        let borrow_positions = self.update_borrows_with_debt(liquidatee_account_nonce, false);
 
         // Calculate health factor
         let collateral_in_dollars =
             self.get_liquidation_collateral_in_dollars_vec(&collateral_positions);
         let borrowed_dollars = self.get_total_borrow_in_dollars_vec(&borrow_positions);
         let health_factor = self.compute_health_factor(&collateral_in_dollars, &borrowed_dollars);
-        sc_print!("health_factor {}", health_factor);
+
         require!(health_factor < bp, ERROR_HEALTH_FACTOR);
 
         let debt_token_price_data = self.get_token_price_data(&debt_payment.0);
@@ -663,13 +681,12 @@ pub trait LendingPool:
 
         // Calculate liquidation amount using Dutch auction mechanism
         let liquidation_amount_usd = self.calculate_single_asset_liquidation_amount(
-            &health_factor,
             &borrowed_dollars,
             &collateral_in_dollars,
             &collateral_to_receive,
             &collateral_token_price_data,
             liquidatee_account_nonce,
-            &debt_payment_in_usd,
+            OptionalValue::Some(debt_payment_in_usd.clone()),
             &bonus_rate,
         );
 
@@ -690,7 +707,6 @@ pub trait LendingPool:
 
         // Return excess if any
         if let Some(excess) = excess_amount {
-            sc_print!("excess: {}", excess);
             self.tx()
                 .to(&initial_caller)
                 .payment(EgldOrEsdtTokenPayment::new(
@@ -708,14 +724,6 @@ pub trait LendingPool:
         let collateral_amount_after_bonus =
             &collateral_amount_before_bonus * &(&bp + &bonus_rate) / &bp;
 
-        sc_print!(
-            "collateral_amount_before_bonus:  {}",
-            collateral_amount_before_bonus
-        );
-        sc_print!(
-            "collateral_amount_after_bonus:  {}",
-            collateral_amount_after_bonus
-        );
         // Repay debt
         self.internal_repay(
             liquidatee_account_nonce,
@@ -785,17 +793,24 @@ pub trait LendingPool:
     fn update_collateral_with_interest(
         &self,
         account_position: u64,
+        fetch_price: bool,
     ) -> ManagedVec<AccountPosition<Self::Api>> {
         let deposit_positions = self.deposit_positions(account_position);
         let mut positions: ManagedVec<Self::Api, AccountPosition<Self::Api>> = ManagedVec::new();
         for dp in deposit_positions.values() {
             let asset_address = self.get_pool_address(&dp.token_id);
             if !dp.is_vault {
+                let price = if fetch_price {
+                    let feed = self.get_token_price_data(&dp.token_id);
+                    OptionalValue::Some(feed.price)
+                } else {
+                    OptionalValue::None
+                };
                 let latest_position = self
                     .tx()
                     .to(asset_address)
                     .typed(proxy_pool::LiquidityPoolProxy)
-                    .update_collateral_with_interest(dp.clone())
+                    .update_position_with_interest(dp.clone(), price)
                     .returns(ReturnsResult)
                     .sync_call();
 
@@ -809,20 +824,39 @@ pub trait LendingPool:
         positions
     }
 
+    #[endpoint(syncAccountPositions)]
+    fn sync_account_positions(
+        &self,
+        account_nonce: u64,
+    ) -> MultiValue2<ManagedVec<AccountPosition<Self::Api>>, ManagedVec<AccountPosition<Self::Api>>>
+    {
+        self.lending_account_in_the_market(account_nonce);
+        let borrow_positions = self.update_borrows_with_debt(account_nonce, true);
+        let deposit_positions = self.update_collateral_with_interest(account_nonce, true);
+        (deposit_positions, borrow_positions).into()
+    }
+
     fn update_borrows_with_debt(
         &self,
         account_position: u64,
+        fetch_price: bool,
     ) -> ManagedVec<AccountPosition<Self::Api>> {
         let borrow_positions = self.borrow_positions(account_position);
         let mut positions: ManagedVec<Self::Api, AccountPosition<Self::Api>> = ManagedVec::new();
 
         for bp in borrow_positions.values() {
             let asset_address = self.get_pool_address(&bp.token_id);
+            let price = if fetch_price {
+                let feed = self.get_token_price_data(&bp.token_id);
+                OptionalValue::Some(feed.price)
+            } else {
+                OptionalValue::None
+            };
             let latest_position = self
                 .tx()
                 .to(asset_address)
                 .typed(proxy_pool::LiquidityPoolProxy)
-                .update_borrows_with_debt(bp.clone())
+                .update_position_with_interest(bp.clone(), price)
                 .returns(ReturnsResult)
                 .sync_call();
 

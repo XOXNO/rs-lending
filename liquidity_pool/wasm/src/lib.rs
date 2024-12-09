@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           25
+// Endpoints:                           24
 // Async Callback (empty):               1
-// Total number of exported functions:  28
+// Total number of exported functions:  27
 
 #![no_std]
 
@@ -31,9 +31,8 @@ multiversx_sc_wasm_adapter::endpoints! {
         getLastUpdateTimestamp => last_update_timestamp
         getAccountToken => account_token
         getAccountPositions => account_positions
-        getStableToken => stable_token
-        updatePositionInterest => update_collateral_with_interest
-        updatePositionDebt => update_borrows_with_debt
+        updateIndexes => update_indexes
+        updatePositionInterest => update_position_with_interest
         supply => supply
         borrow => borrow
         withdraw => withdraw

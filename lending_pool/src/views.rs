@@ -1,6 +1,6 @@
 use common_events::BP;
 
-use crate::{oracle, storage};
+use crate::{oracle, storage, ERROR_HEALTH_FACTOR};
 
 multiversx_sc::imports!();
 
@@ -8,6 +8,63 @@ multiversx_sc::imports!();
 pub trait ViewsModule:
     storage::LendingStorageModule + oracle::OracleModule + crate::math::LendingMathModule
 {
+    #[view(canBeLiquidated)]
+    fn can_be_liquidated(&self, account_position: u64) -> bool {
+        let bp = BigUint::from(BP);
+        let health_factor = self.get_health_factor(account_position);
+        health_factor < bp
+    }
+
+    #[view(getHealthFactor)]
+    fn get_health_factor(&self, account_position: u64) -> BigUint {
+        let collateral_in_dollars = self.get_liquidation_collateral_available(account_position);
+        let borrowed_dollars = self.get_total_borrow_in_dollars(account_position);
+        self.compute_health_factor(&collateral_in_dollars, &borrowed_dollars)
+    }
+
+    #[view(getMaxLiquidateAmountForCollateral)]
+    fn get_max_liquidate_amount_for_collateral(
+        &self,
+        account_position: u64,
+        collateral_asset: &EgldOrEsdtTokenIdentifier,
+        in_usd: bool,
+    ) -> BigUint {
+        let bp = BigUint::from(BP);
+
+        let borrowed_dollars = self.get_total_borrow_in_dollars(account_position);
+        let collateral_in_dollars = self.get_liquidation_collateral_available(account_position);
+        let health_factor = self.compute_health_factor(&collateral_in_dollars, &borrowed_dollars);
+
+        require!(health_factor < bp, ERROR_HEALTH_FACTOR);
+
+        let asset_config = self.asset_config(collateral_asset).get();
+        // Calculate collateral to receive with bonus
+        let bonus_rate = self
+            .calculate_dynamic_liquidation_bonus(&health_factor, asset_config.liquidation_bonus);
+
+        let feed = self.get_token_price_data(collateral_asset);
+
+        // Calculate liquidation amount using Dutch auction mechanism
+        let liquidation_amount_usd = self.calculate_single_asset_liquidation_amount(
+            &borrowed_dollars,
+            &collateral_in_dollars,
+            collateral_asset,
+            &feed,
+            account_position,
+            OptionalValue::None,
+            &bonus_rate,
+        );
+        // Convert USD value to collateral token amount
+        let collateral_amount_before_bonus =
+            self.compute_amount_in_tokens(&liquidation_amount_usd, &feed);
+
+        if in_usd {
+            liquidation_amount_usd
+        } else {
+            collateral_amount_before_bonus
+        }
+    }
+
     #[view(getCollateralAmountForToken)]
     fn get_collateral_amount_for_token(
         &self,
@@ -32,19 +89,6 @@ pub trait ViewsModule:
         }
     }
 
-    #[view(getAccountHealthFactor)]
-    fn get_account_health_factor(&self, account_position: u64) -> BigUint {
-        let collateral_in_dollars = self.get_liquidation_collateral_available(account_position);
-        let borrowed_dollars = self.get_total_borrow_in_dollars(account_position);
-        self.compute_health_factor(&collateral_in_dollars, &borrowed_dollars)
-    }
-
-    #[view(canBeLiquidated)]
-    fn can_be_liquidated(&self, account_position: u64) -> bool {
-        let health_factor = self.get_account_health_factor(account_position);
-        health_factor < BigUint::from(BP)
-    }
-
     #[view(getTotalBorrowInDollars)]
     fn get_total_borrow_in_dollars(&self, account_position: u64) -> BigUint {
         let mut total_borrow_in_dollars = BigUint::zero();
@@ -58,7 +102,7 @@ pub trait ViewsModule:
         total_borrow_in_dollars
     }
 
-    #[view(getTotalCollateralAvailable)]
+    #[view(getTotalCollateralInDollars)]
     fn get_total_collateral_in_dollars(&self, account_position: u64) -> BigUint {
         let mut deposited_amount_in_dollars = BigUint::zero();
         let deposit_positions = self.deposit_positions(account_position);
@@ -95,9 +139,10 @@ pub trait ViewsModule:
         for dp in deposit_positions.values() {
             let position_value_in_dollars =
                 self.get_token_amount_in_dollars(&dp.token_id, &dp.get_total_amount());
+            let asset_config = self.asset_config(&dp.token_id).get();
 
             weighted_collateral_in_dollars +=
-                &position_value_in_dollars * &dp.entry_ltv / BigUint::from(BP);
+                &position_value_in_dollars * &asset_config.ltv / BigUint::from(BP);
         }
 
         weighted_collateral_in_dollars

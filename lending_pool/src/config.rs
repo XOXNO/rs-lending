@@ -17,18 +17,4 @@ pub trait ConfigModule: common_tokens::AccountTokenModule {
             None,
         );
     }
-
-    #[only_owner]
-    #[payable("EGLD")]
-    #[endpoint(registerStableToken)]
-    fn register_stable_token(&self, token_name: ManagedBuffer, ticker: ManagedBuffer) {
-        let payment_amount = self.call_value().egld_value();
-        self.stable_token().issue_and_set_all_roles(
-            payment_amount.clone_value(),
-            token_name,
-            ticker,
-            18,
-            None,
-        );
-    }
 }

@@ -70,6 +70,13 @@ pub trait EventsModule {
         #[indexed] amount: BigUint,
     );
 
+    #[event("update_vault_supplied_amount")]
+    fn update_vault_supplied_amount_event(
+        &self,
+        #[indexed] asset: &EgldOrEsdtTokenIdentifier,
+        #[indexed] amount: BigUint,
+    );
+
     #[event("update_asset_config")]
     fn update_asset_config_event(
         &self,

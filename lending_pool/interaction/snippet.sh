@@ -171,7 +171,14 @@ getLtvCollateralInDollars() {
     mxpy contract query ${ADDRESS} --function="getLtvCollateralInDollars" --arguments 0x02 --proxy=${PROXY}
 }
 
+getCollateralAmountForToken() {
+    mxpy contract query ${ADDRESS} --function="getCollateralAmountForToken" --arguments 0x0e ${XEGLD_TOKEN} --proxy=${PROXY}
+}
+
+getBorrowAmountForToken() {
+    mxpy contract query ${ADDRESS} --function="getBorrowAmountForToken" --arguments 0x0e ${XEGLD_TOKEN} --proxy=${PROXY}
+}
 
 getTotalCollateralAvailable() {
-    mxpy contract query ${ADDRESS} --function="getTotalCollateralAvailable" --arguments 0x02 --proxy=${PROXY}
+    mxpy contract query ${ADDRESS} --function="getTotalCollateralAvailable" --arguments 0x0a --proxy=${PROXY}
 }

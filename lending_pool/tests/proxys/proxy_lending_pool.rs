@@ -185,6 +185,19 @@ where
             .original_result()
     }
 
+    pub fn sync_account_positions<
+        Arg0: ProxyArg<u64>,
+    >(
+        self,
+        account_nonce: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValue2<ManagedVec<Env::Api, common_structs::AccountPosition<Env::Api>>, ManagedVec<Env::Api, common_structs::AccountPosition<Env::Api>>>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("syncAccountPositions")
+            .argument(&account_nonce)
+            .original_result()
+    }
+
     pub fn liq_pool_template_address(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
@@ -481,19 +494,6 @@ where
             .original_result()
     }
 
-    pub fn get_pool_address<
-        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-    >(
-        self,
-        asset: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getPoolAddress")
-            .argument(&asset)
-            .original_result()
-    }
-
     pub fn register_account_token<
         Arg0: ProxyArg<ManagedBuffer<Env::Api>>,
         Arg1: ProxyArg<ManagedBuffer<Env::Api>>,
@@ -504,21 +504,6 @@ where
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("registerAccountToken")
-            .argument(&token_name)
-            .argument(&ticker)
-            .original_result()
-    }
-
-    pub fn register_stable_token<
-        Arg0: ProxyArg<ManagedBuffer<Env::Api>>,
-        Arg1: ProxyArg<ManagedBuffer<Env::Api>>,
-    >(
-        self,
-        token_name: Arg0,
-        ticker: Arg1,
-    ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
-        self.wrapped_tx
-            .raw_call("registerStableToken")
             .argument(&token_name)
             .argument(&ticker)
             .original_result()
@@ -539,15 +524,6 @@ where
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getAccountPositions")
-            .original_result()
-    }
-
-    pub fn stable_token(
-        self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, TokenIdentifier<Env::Api>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getStableToken")
             .original_result()
     }
 
@@ -678,6 +654,77 @@ where
             .original_result()
     }
 
+    pub fn get_pool_address<
+        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+    >(
+        self,
+        asset: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getPoolAddress")
+            .argument(&asset)
+            .original_result()
+    }
+
+    pub fn update_indexes<
+        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+    >(
+        self,
+        token_id: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("updateIndexes")
+            .argument(&token_id)
+            .original_result()
+    }
+
+    pub fn can_be_liquidated<
+        Arg0: ProxyArg<u64>,
+    >(
+        self,
+        account_position: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, bool> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("canBeLiquidated")
+            .argument(&account_position)
+            .original_result()
+    }
+
+    pub fn get_health_factor<
+        Arg0: ProxyArg<u64>,
+    >(
+        self,
+        account_position: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getHealthFactor")
+            .argument(&account_position)
+            .original_result()
+    }
+
+    pub fn get_max_liquidate_amount_for_collateral<
+        Arg0: ProxyArg<u64>,
+        Arg1: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+        Arg2: ProxyArg<bool>,
+    >(
+        self,
+        account_position: Arg0,
+        collateral_asset: Arg1,
+        in_usd: Arg2,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getMaxLiquidateAmountForCollateral")
+            .argument(&account_position)
+            .argument(&collateral_asset)
+            .argument(&in_usd)
+            .original_result()
+    }
+
     pub fn get_collateral_amount_for_token<
         Arg0: ProxyArg<u64>,
         Arg1: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
@@ -710,32 +757,6 @@ where
             .original_result()
     }
 
-    pub fn get_account_health_factor<
-        Arg0: ProxyArg<u64>,
-    >(
-        self,
-        account_position: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getAccountHealthFactor")
-            .argument(&account_position)
-            .original_result()
-    }
-
-    pub fn can_be_liquidated<
-        Arg0: ProxyArg<u64>,
-    >(
-        self,
-        account_position: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, bool> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("canBeLiquidated")
-            .argument(&account_position)
-            .original_result()
-    }
-
     pub fn get_total_borrow_in_dollars<
         Arg0: ProxyArg<u64>,
     >(
@@ -757,7 +778,7 @@ where
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getTotalCollateralAvailable")
+            .raw_call("getTotalCollateralInDollars")
             .argument(&account_position)
             .original_result()
     }

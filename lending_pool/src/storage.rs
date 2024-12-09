@@ -67,4 +67,9 @@ pub trait LendingStorageModule {
     #[view(getIsolatedAssetDebtUsd)]
     #[storage_mapper("isolated_asset_debt_usd")]
     fn isolated_asset_debt_usd(&self, token_id: &EgldOrEsdtTokenIdentifier) -> SingleValueMapper<BigUint>;
+
+    // Vault supplied amount per token
+    #[view(getVaultSuppliedAmount)]
+    #[storage_mapper("vault_supplied_amount")]
+    fn vault_supplied_amount(&self, token_id: &EgldOrEsdtTokenIdentifier) -> SingleValueMapper<BigUint>;
 }

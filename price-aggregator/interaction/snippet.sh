@@ -45,7 +45,7 @@ pause() {
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 
-FROM="str:MEX"
+FROM="str:HTM"
 TO="str:USD"
 PRICE=20084644506565 # 55 USD
 
@@ -65,3 +65,7 @@ submit() {
     --function="submit" --arguments ${FROM} ${TO} ${timestamp} ${PRICE} ${DECIMALS} \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
     }
+
+getPairDecimals() {
+    mxpy contract query ${ADDRESS} --function="getPairDecimals" --arguments ${FROM} ${TO} --proxy=${PROXY}
+}

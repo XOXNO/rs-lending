@@ -224,38 +224,32 @@ where
             .original_result()
     }
 
-    pub fn stable_token(
+    pub fn update_indexes<
+        Arg0: ProxyArg<BigUint<Env::Api>>,
+    >(
         self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, TokenIdentifier<Env::Api>> {
+        asset_usd_price: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getStableToken")
+            .raw_call("updateIndexes")
+            .argument(&asset_usd_price)
             .original_result()
     }
 
-    pub fn update_collateral_with_interest<
+    pub fn update_position_with_interest<
         Arg0: ProxyArg<common_structs::AccountPosition<Env::Api>>,
+        Arg1: ProxyArg<OptionalValue<BigUint<Env::Api>>>,
     >(
         self,
-        deposit_position: Arg0,
+        position: Arg0,
+        asset_usd_price: Arg1,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::AccountPosition<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("updatePositionInterest")
-            .argument(&deposit_position)
-            .original_result()
-    }
-
-    pub fn update_borrows_with_debt<
-        Arg0: ProxyArg<common_structs::AccountPosition<Env::Api>>,
-    >(
-        self,
-        borrow_position: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::AccountPosition<Env::Api>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("updatePositionDebt")
-            .argument(&borrow_position)
+            .argument(&position)
+            .argument(&asset_usd_price)
             .original_result()
     }
 
