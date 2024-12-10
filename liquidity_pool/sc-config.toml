@@ -5,7 +5,7 @@ main = "main"
 name = "liquidity_pool"
 
 [[proxy]]
-path = "../lending_pool/src/proxy_pool.rs"
+path = "../lending_pool/src/proxys/proxy_pool.rs"
 
 [[proxy]]
 path = "../lending_pool/tests/proxys/proxy_liquidity_pool.rs"

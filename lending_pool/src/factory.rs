@@ -1,4 +1,4 @@
-use crate::{oracle, proxy_pool, storage, ERROR_TEMPLATE_EMPTY};
+use crate::{oracle, proxies::*, storage, ERROR_TEMPLATE_EMPTY};
 
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();

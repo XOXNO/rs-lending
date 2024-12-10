@@ -2,9 +2,7 @@ multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
 use crate::{
-    math, oracle, proxy_pool, storage, ERROR_ASSET_NOT_SUPPORTED, ERROR_BORROW_CAP,
-    ERROR_DEBT_CEILING_REACHED, ERROR_MIX_ISOLATED_COLLATERAL, ERROR_NO_POOL_FOUND,
-    ERROR_SUPPLY_CAP,
+    math, oracle, proxy_pool, proxy_price_aggregator::PriceFeed, storage, ERROR_ASSET_NOT_SUPPORTED, ERROR_BORROW_CAP, ERROR_DEBT_CEILING_REACHED, ERROR_MIX_ISOLATED_COLLATERAL, ERROR_NO_POOL_FOUND, ERROR_SUPPLY_CAP
 };
 
 use common_structs::*;
@@ -228,7 +226,7 @@ pub trait LendingUtilsModule:
             require!(total_borrow + amount <= borrow_cap, ERROR_BORROW_CAP);
         }
     }
-
+    
     fn check_supply_cap(
         &self,
         asset_config: &AssetConfig<Self::Api>,

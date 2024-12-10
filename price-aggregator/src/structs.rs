@@ -9,7 +9,7 @@ pub struct TokenPair<M: ManagedTypeApi> {
 }
 
 #[type_abi]
-#[derive(NestedEncode, NestedDecode, TopEncode, TopDecode)]
+#[derive(NestedEncode, NestedDecode, TopEncode, TopDecode, Clone)]
 pub struct PriceFeed<M: ManagedTypeApi> {
     pub round_id: u32,
     pub from: ManagedBuffer<M>,

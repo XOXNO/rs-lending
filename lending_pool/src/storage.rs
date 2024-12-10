@@ -1,4 +1,4 @@
-use common_events::{AssetConfig, EModeAssetConfig, EModeCategory};
+use common_events::{AssetConfig, EModeAssetConfig, EModeCategory, OracleProvider};
 use common_structs::AccountPosition;
 
 multiversx_sc::imports!();
@@ -30,6 +30,10 @@ pub trait LendingStorageModule {
     #[view(getPriceAggregatorAddress)]
     #[storage_mapper("price_aggregator_address")]
     fn price_aggregator_address(&self) -> SingleValueMapper<ManagedAddress>;
+
+    #[view(getSafePriceView)]
+    #[storage_mapper("safe_price_view")]
+    fn safe_price_view(&self) -> SingleValueMapper<ManagedAddress>;
 
     ///////
     // Asset config
@@ -72,4 +76,8 @@ pub trait LendingStorageModule {
     #[view(getVaultSuppliedAmount)]
     #[storage_mapper("vault_supplied_amount")]
     fn vault_supplied_amount(&self, token_id: &EgldOrEsdtTokenIdentifier) -> SingleValueMapper<BigUint>;
+
+    #[view(getTokenOracle)]
+    #[storage_mapper("token_oracle")] // LXOXNO, LPEGLD, XEGLD (market token)
+    fn token_oracle(&self, token_id: &EgldOrEsdtTokenIdentifier) -> SingleValueMapper<OracleProvider<Self::Api>>;
 }

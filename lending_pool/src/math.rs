@@ -24,55 +24,6 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
         health_factor
     }
 
-    fn compute_amount_in_tokens(
-        &self,
-        amount_to_return_to_liquidator_in_dollars: &BigUint, // amount to return to the liquidator with bonus
-        token_price_data: &PriceFeed<Self::Api>,
-    ) -> BigUint {
-        self.get_usd_amount_in_tokens_raw(
-            amount_to_return_to_liquidator_in_dollars,
-            token_price_data,
-        )
-    }
-
-    fn get_usd_amount_in_tokens_raw(
-        &self,
-        amount_in_dollars: &BigUint,
-        token_data: &PriceFeed<Self::Api>,
-    ) -> BigUint {
-        amount_in_dollars
-            .mul(&BigUint::from(BP))
-            .div(&token_data.price)
-            .mul(BigUint::from(10u64).pow(token_data.decimals as u32))
-            .div(&BigUint::from(BP))
-    }
-
-    fn get_token_amount_in_dollars(
-        &self,
-        token_id: &EgldOrEsdtTokenIdentifier,
-        amount: &BigUint,
-    ) -> BigUint {
-        let token_data = self.get_token_price_data(token_id);
-
-        amount
-            .mul(&BigUint::from(BP))
-            .mul(&token_data.price)
-            .div(BigUint::from(10u64).pow(token_data.decimals as u32))
-            .div(&BigUint::from(BP))
-    }
-
-    fn get_token_amount_in_dollars_raw(
-        &self,
-        amount: &BigUint,
-        token_data: &PriceFeed<Self::Api>,
-    ) -> BigUint {
-        amount
-            .mul(&BigUint::from(BP))
-            .mul(&token_data.price)
-            .div(BigUint::from(10u64).pow(token_data.decimals as u32))
-            .div(&BigUint::from(BP))
-    }
-
     fn calculate_max_liquidatable_amount_in_dollars(
         &self,
         total_debt_in_dollars: &BigUint,

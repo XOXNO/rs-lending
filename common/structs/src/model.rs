@@ -157,8 +157,21 @@ pub struct EgldOrEsdtTokenPaymentNew<M: ManagedTypeApi> {
 #[derive(
     ManagedVecItem, NestedEncode, NestedDecode, TopEncode, TopDecode, Clone, Eq, PartialEq,
 )]
-pub enum OracleOverrideType {
+pub enum PricingMethod {
     None,
+    Safe,
+    Instant,
+    Aggregator,
+    Mix,
+}
+
+#[type_abi]
+#[derive(
+    ManagedVecItem, NestedEncode, NestedDecode, TopEncode, TopDecode, Clone, Eq, PartialEq,
+)]
+pub enum OracleType {
+    None,
+    Normal,
     Derived,
     Lp,
 }
@@ -170,12 +183,18 @@ pub enum OracleOverrideType {
 pub enum ExchangeSource {
     None,
     XExchange,
+    LXOXNO,
+    XEGLD,
 }
 
 #[type_abi]
 #[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode)]
-pub struct OracleOverride<M: ManagedTypeApi> {
-    pub original_token_id: EgldOrEsdtTokenIdentifier<M>,
+pub struct OracleProvider<M: ManagedTypeApi> {
+    pub first_token_id: EgldOrEsdtTokenIdentifier<M>, // EGLD
+    pub second_token_id: EgldOrEsdtTokenIdentifier<M>, // none
     pub contract_address: ManagedAddress<M>,
-    pub token_type: OracleOverrideType,
+    pub pricing_method: PricingMethod,
+    pub token_type: OracleType,
+    pub source: ExchangeSource,
+    pub decimals: u8,
 }

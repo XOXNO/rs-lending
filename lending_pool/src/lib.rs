@@ -8,8 +8,7 @@ pub mod errors;
 pub mod factory;
 pub mod math;
 pub mod oracle;
-pub mod proxy_pool;
-pub mod proxy_price_aggregator;
+pub mod proxies;
 pub mod router;
 pub mod storage;
 pub mod utils;
@@ -18,6 +17,7 @@ pub mod views;
 pub use common_structs::*;
 pub use common_tokens::*;
 pub use errors::*;
+pub use proxies::*;
 use proxy_price_aggregator::PriceFeed;
 
 #[multiversx_sc::contract]
@@ -695,7 +695,7 @@ pub trait LendingPool:
         {
             let excess_in_usd = &debt_payment_in_usd - &liquidation_amount_usd;
             let excess_in_tokens =
-                self.get_usd_amount_in_tokens_raw(&excess_in_usd, &debt_token_price_data);
+                self.compute_amount_in_tokens(&excess_in_usd, &debt_token_price_data);
             let used_tokens_for_debt = debt_payment.1.clone() - &excess_in_tokens;
             debt_payment_in_usd =
                 self.get_token_amount_in_dollars_raw(&used_tokens_for_debt, &debt_token_price_data);

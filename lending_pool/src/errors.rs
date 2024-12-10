@@ -49,3 +49,6 @@ pub static ERROR_FLASHLOAN_NOT_ENABLED: &[u8] = b"Flashloan not enabled for this
 pub static ERROR_INVALID_SHARD: &[u8] = b"Invalid shard for flashloan.";
 pub static ERROR_SUPPLY_CAP: &[u8] = b"Supply cap reached.";
 pub static ERROR_BORROW_CAP: &[u8] = b"Borrow cap reached.";
+pub static ERROR_INVALID_EXCHANGE_SOURCE: &[u8] = b"Invalid exchange source.";
+pub static ERROR_INVALID_ORACLE_OVERRIDE_TYPE: &[u8] = b"Invalid oracle override type.";
+pub static ERROR_ORACLE_OVERRIDE_NOT_FOUND: &[u8] = b"Oracle override not found.";

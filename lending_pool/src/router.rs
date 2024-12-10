@@ -3,14 +3,17 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
-use common_events::{AssetConfig, EModeAssetConfig, EModeCategory};
+use common_events::{
+    AssetConfig, EModeAssetConfig, EModeCategory, ExchangeSource, OracleProvider, OracleType,
+    PricingMethod,
+};
 
 use crate::{
-    math, oracle, storage, utils, ERROR_ASSET_ALREADY_SUPPORTED,
-    ERROR_ASSET_ALREADY_SUPPORTED_IN_EMODE, ERROR_ASSET_NOT_SUPPORTED,
-    ERROR_ASSET_NOT_SUPPORTED_IN_EMODE, ERROR_EMODE_CATEGORY_NOT_FOUND, ERROR_INVALID_AGGREGATOR,
-    ERROR_INVALID_LIQUIDATION_THRESHOLD, ERROR_INVALID_LIQUIDITY_POOL_TEMPLATE,
-    ERROR_INVALID_TICKER, ERROR_NO_POOL_FOUND,
+    lxoxno_proxy, math, oracle, proxy_xexchange_pair, storage, utils, xegld_proxy,
+    ERROR_ASSET_ALREADY_SUPPORTED, ERROR_ASSET_ALREADY_SUPPORTED_IN_EMODE,
+    ERROR_ASSET_NOT_SUPPORTED, ERROR_ASSET_NOT_SUPPORTED_IN_EMODE, ERROR_EMODE_CATEGORY_NOT_FOUND,
+    ERROR_INVALID_AGGREGATOR, ERROR_INVALID_EXCHANGE_SOURCE, ERROR_INVALID_LIQUIDATION_THRESHOLD,
+    ERROR_INVALID_LIQUIDITY_POOL_TEMPLATE, ERROR_INVALID_TICKER, ERROR_NO_POOL_FOUND,
 };
 
 use super::factory;
@@ -131,6 +134,73 @@ pub trait RouterModule:
             u_optimal,
             reserve_factor,
         );
+    }
+
+    #[only_owner]
+    #[endpoint(setTokenOracle)]
+    fn set_token_oracle(
+        &self,
+        market_token: &EgldOrEsdtTokenIdentifier,
+        decimals: u8,
+        contract_address: &ManagedAddress,
+        pricing_method: PricingMethod,
+        token_type: OracleType,
+        source: ExchangeSource,
+    ) {
+        let first_token_id = match source {
+            ExchangeSource::LXOXNO => {
+                let token_id = self
+                    .tx()
+                    .to(contract_address)
+                    .typed(lxoxno_proxy::RsLiquidXoxnoProxy)
+                    .main_token()
+                    .returns(ReturnsResult)
+                    .sync_call();
+                EgldOrEsdtTokenIdentifier::esdt(token_id)
+            }
+            ExchangeSource::XExchange => {
+                let token_id = self
+                    .tx()
+                    .to(contract_address)
+                    .typed(proxy_xexchange_pair::PairProxy)
+                    .first_token_id()
+                    .returns(ReturnsResult)
+                    .sync_call();
+                EgldOrEsdtTokenIdentifier::esdt(token_id)
+            }
+            ExchangeSource::XEGLD => EgldOrEsdtTokenIdentifier::egld(),
+            _ => {
+                panic!("Invalid exchange source")
+            }
+        };
+
+        let second_token_id = match source {
+            ExchangeSource::XExchange => {
+                let token_id = self
+                    .tx()
+                    .to(contract_address)
+                    .typed(proxy_xexchange_pair::PairProxy)
+                    .second_token_id()
+                    .returns(ReturnsResult)
+                    .sync_call();
+                EgldOrEsdtTokenIdentifier::esdt(token_id)
+            }
+            _ => {
+                panic!("")
+            }
+        };
+
+        let oracle = OracleProvider {
+            decimals,
+            contract_address: contract_address.clone(),
+            pricing_method,
+            token_type,
+            source,
+            first_token_id,
+            second_token_id,
+        };
+
+        self.token_oracle(market_token).set(&oracle);
     }
 
     #[only_owner]

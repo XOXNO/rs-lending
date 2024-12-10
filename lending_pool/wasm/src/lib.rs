@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           45
+// Endpoints:                           47
 // Async Callback:                       1
-// Total number of exported functions:  48
+// Total number of exported functions:  50
 
 #![no_std]
 
@@ -47,6 +47,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         getPoolsMap => pools_map
         getPoolAllowed => pools_allowed
         getPriceAggregatorAddress => price_aggregator_address
+        getSafePriceView => safe_price_view
         getAssetConfig => asset_config
         lastEModeCategoryId => last_e_mode_category_id
         getEModes => e_mode_category
@@ -54,6 +55,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         getEModesAssets => e_mode_assets
         getIsolatedAssetDebtUsd => isolated_asset_debt_usd
         getVaultSuppliedAmount => vault_supplied_amount
+        getTokenOracle => token_oracle
         getPoolAddress => get_pool_address
         updateIndexes => update_indexes
         canBeLiquidated => can_be_liquidated
