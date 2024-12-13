@@ -9,11 +9,12 @@ use common_events::{
 };
 
 use crate::{
-    lxoxno_proxy, math, oracle, proxy_xexchange_pair, storage, utils, xegld_proxy,
+    lxoxno_proxy, math, oracle, proxy_xexchange_pair, storage, utils,
     ERROR_ASSET_ALREADY_SUPPORTED, ERROR_ASSET_ALREADY_SUPPORTED_IN_EMODE,
     ERROR_ASSET_NOT_SUPPORTED, ERROR_ASSET_NOT_SUPPORTED_IN_EMODE, ERROR_EMODE_CATEGORY_NOT_FOUND,
-    ERROR_INVALID_AGGREGATOR, ERROR_INVALID_EXCHANGE_SOURCE, ERROR_INVALID_LIQUIDATION_THRESHOLD,
+    ERROR_INVALID_AGGREGATOR, ERROR_INVALID_LIQUIDATION_THRESHOLD,
     ERROR_INVALID_LIQUIDITY_POOL_TEMPLATE, ERROR_INVALID_TICKER, ERROR_NO_POOL_FOUND,
+    ERROR_ORACLE_TOKEN_NOT_FOUND,
 };
 
 use super::factory;
@@ -146,7 +147,12 @@ pub trait RouterModule:
         pricing_method: PricingMethod,
         token_type: OracleType,
         source: ExchangeSource,
+        first_tolerance: BigUint,
+        last_tolerance: BigUint,
     ) {
+        let mapper = self.token_oracle(market_token);
+        require!(mapper.is_empty(), ERROR_ORACLE_TOKEN_NOT_FOUND);
+
         let first_token_id = match source {
             ExchangeSource::LXOXNO => {
                 let token_id = self
@@ -185,10 +191,14 @@ pub trait RouterModule:
                     .sync_call();
                 EgldOrEsdtTokenIdentifier::esdt(token_id)
             }
+            ExchangeSource::XEGLD => first_token_id.clone(),
+            ExchangeSource::LXOXNO => first_token_id.clone(),
             _ => {
-                panic!("")
+                panic!("Invalid exchange source")
             }
         };
+
+        let tolerance = self.get_anchor_tolerances(&first_tolerance, &last_tolerance);
 
         let oracle = OracleProvider {
             decimals,
@@ -198,9 +208,29 @@ pub trait RouterModule:
             source,
             first_token_id,
             second_token_id,
+            tolerance,
         };
 
-        self.token_oracle(market_token).set(&oracle);
+        mapper.set(&oracle);
+    }
+
+    #[only_owner]
+    #[endpoint(editTokenOracletTolerance)]
+    fn edit_token_oracle_tolerance(
+        &self,
+        market_token: &EgldOrEsdtTokenIdentifier,
+        first_tolerance: BigUint,
+        last_tolerance: BigUint,
+    ) {
+        require!(
+            !self.token_oracle(market_token).is_empty(),
+            ERROR_ORACLE_TOKEN_NOT_FOUND
+        );
+
+        let tolerance = self.get_anchor_tolerances(&first_tolerance, &last_tolerance);
+        self.token_oracle(market_token).update(|oracle| {
+            oracle.tolerance = tolerance;
+        });
     }
 
     #[only_owner]
@@ -213,6 +243,18 @@ pub trait RouterModule:
             ERROR_INVALID_AGGREGATOR
         );
         self.price_aggregator_address().set(&aggregator);
+    }
+
+    #[only_owner]
+    #[endpoint(setSafePriceView)]
+    fn set_safe_price_view(&self, safe_view_address: ManagedAddress) {
+        require!(!safe_view_address.is_zero(), ERROR_INVALID_AGGREGATOR);
+
+        require!(
+            self.blockchain().is_smart_contract(&safe_view_address),
+            ERROR_INVALID_AGGREGATOR
+        );
+        self.safe_price_view().set(&safe_view_address);
     }
 
     #[only_owner]

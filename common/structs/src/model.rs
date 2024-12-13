@@ -192,9 +192,20 @@ pub enum ExchangeSource {
 pub struct OracleProvider<M: ManagedTypeApi> {
     pub first_token_id: EgldOrEsdtTokenIdentifier<M>, // EGLD
     pub second_token_id: EgldOrEsdtTokenIdentifier<M>, // none
+    pub tolerance: OraclePriceFluctuation<M>,
     pub contract_address: ManagedAddress<M>,
     pub pricing_method: PricingMethod,
     pub token_type: OracleType,
     pub source: ExchangeSource,
     pub decimals: u8,
+}
+
+
+#[type_abi]
+#[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode)]
+pub struct OraclePriceFluctuation<M: ManagedTypeApi> {
+    pub first_upper_ratio: BigUint<M>,
+    pub first_lower_ratio: BigUint<M>,
+    pub last_upper_ratio: BigUint<M>,
+    pub last_lower_ratio: BigUint<M>,
 }

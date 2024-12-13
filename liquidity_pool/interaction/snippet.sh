@@ -43,7 +43,7 @@ upgrade() {
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 }
 
-LENDING_ADDRESS=erd1qqqqqqqqqqqqqpgqn8hand40d5y40fzt62e8g0lrp42gvqp6ah0suf6k6q
+LENDING_ADDRESS=erd1qqqqqqqqqqqqqpgq4kljp5lwvrg2kakhn5r8yeuj24sngf8cah0sjnz3sd
 
 upgrade_pool() {
     mxpy contract call ${LENDING_ADDRESS} --recall-nonce \

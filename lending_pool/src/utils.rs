@@ -2,12 +2,21 @@ multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
 use crate::{
-    math, oracle, proxy_pool, proxy_price_aggregator::PriceFeed, storage, ERROR_ASSET_NOT_SUPPORTED, ERROR_BORROW_CAP, ERROR_DEBT_CEILING_REACHED, ERROR_MIX_ISOLATED_COLLATERAL, ERROR_NO_POOL_FOUND, ERROR_SUPPLY_CAP
+    math, oracle, proxy_pool, storage, ERROR_ASSET_NOT_SUPPORTED, ERROR_BORROW_CAP,
+    ERROR_DEBT_CEILING_REACHED, ERROR_MIX_ISOLATED_COLLATERAL, ERROR_NO_POOL_FOUND,
+    ERROR_SUPPLY_CAP, ERROR_UNEXPECTED_ANCHOR_TOLERANCES, ERROR_UNEXPECTED_FIRST_TOLERANCE,
+    ERROR_UNEXPECTED_LAST_TOLERANCE,
 };
 
 use common_structs::*;
 
 pub const EGELD_IDENTIFIER: &str = "EGLD-000000";
+
+pub const MIN_FIRST_TOLERANCE: u128 = 5_000_000_000_000_000_000; // 0.50%
+pub const MAX_FIRST_TOLERANCE: u128 = 500_000_000_000_000_000_000; // 50%
+
+pub const MIN_LAST_TOLERANCE: u128 = 12_500_000_000_000_000_000; // 1.5%
+pub const MAX_LAST_TOLERANCE: u128 = 1_000_000_000_000_000_000_000; // 100%
 
 #[multiversx_sc::module]
 pub trait LendingUtilsModule:
@@ -35,6 +44,49 @@ pub trait LendingUtilsModule:
             .typed(proxy_pool::LiquidityPoolProxy)
             .update_indexes(&asset_price.price)
             .sync_call();
+    }
+
+    fn get_range(&self, tolerance: &BigUint) -> (BigUint, BigUint) {
+        let bp = BigUint::from(BP);
+        let upper = &bp + tolerance;
+        let lower = &bp * &bp / &upper;
+
+        (upper, lower)
+    }
+
+    fn get_anchor_tolerances(
+        &self,
+        first_tolerance: &BigUint,
+        last_tolerance: &BigUint,
+    ) -> OraclePriceFluctuation<Self::Api> {
+        require!(
+            first_tolerance >= &BigUint::from(MIN_FIRST_TOLERANCE)
+                && first_tolerance <= &BigUint::from(MAX_FIRST_TOLERANCE),
+            ERROR_UNEXPECTED_FIRST_TOLERANCE
+        );
+
+        require!(
+            last_tolerance >= &BigUint::from(MIN_LAST_TOLERANCE)
+                && last_tolerance <= &BigUint::from(MAX_LAST_TOLERANCE),
+            ERROR_UNEXPECTED_LAST_TOLERANCE
+        );
+
+        require!(
+            last_tolerance >= first_tolerance,
+            ERROR_UNEXPECTED_ANCHOR_TOLERANCES
+        );
+
+        let (first_upper_ratio, first_lower_ratio) = self.get_range(first_tolerance);
+        let (last_upper_ratio, last_lower_ratio) = self.get_range(last_tolerance);
+
+        let tolerances = OraclePriceFluctuation {
+            first_upper_ratio,
+            first_lower_ratio,
+            last_upper_ratio,
+            last_lower_ratio,
+        };
+
+        tolerances
     }
 
     fn get_existing_or_new_deposit_position_for_token(
@@ -226,7 +278,7 @@ pub trait LendingUtilsModule:
             require!(total_borrow + amount <= borrow_cap, ERROR_BORROW_CAP);
         }
     }
-    
+
     fn check_supply_cap(
         &self,
         asset_config: &AssetConfig<Self::Api>,

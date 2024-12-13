@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           47
+// Endpoints:                           53
 // Async Callback:                       1
-// Total number of exported functions:  50
+// Total number of exported functions:  56
 
 #![no_std]
 
@@ -30,7 +30,10 @@ multiversx_sc_wasm_adapter::endpoints! {
         getLiqPoolTemplateAddress => liq_pool_template_address
         createLiquidityPool => create_liquidity_pool
         upgradeLiquidityPool => upgrade_liquidity_pool
+        setTokenOracle => set_token_oracle
+        editTokenOracletTolerance => edit_token_oracle_tolerance
         setAggregator => set_aggregator
+        setSafePriceView => set_safe_price_view
         setLiquidityPoolTemplate => set_liquidity_pool_template
         addEModeCategory => add_e_mode_category
         editEModeCategory => edit_e_mode_category
@@ -56,6 +59,9 @@ multiversx_sc_wasm_adapter::endpoints! {
         getIsolatedAssetDebtUsd => isolated_asset_debt_usd
         getVaultSuppliedAmount => vault_supplied_amount
         getTokenOracle => token_oracle
+        getTokenPriceUSD => get_usd_price
+        getTokenPriceData => get_token_price_data
+        getLastTokenPrice => last_token_price
         getPoolAddress => get_pool_address
         updateIndexes => update_indexes
         canBeLiquidated => can_be_liquidated

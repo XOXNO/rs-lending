@@ -1,4 +1,4 @@
-ADDRESS=erd1qqqqqqqqqqqqqpgqn8hand40d5y40fzt62e8g0lrp42gvqp6ah0suf6k6q
+ADDRESS=erd1qqqqqqqqqqqqqpgq4kljp5lwvrg2kakhn5r8yeuj24sngf8cah0sjnz3sd
 
 PROXY=https://devnet-gateway.xoxno.com
 CHAIN_ID=D
@@ -7,12 +7,14 @@ PROJECT="./output/lending_pool.wasm"
 
 LP_TEMPLATE_ADDRESS=erd1qqqqqqqqqqqqqpgqlpf2f23jx29s6k7ftfccprn5wv7uccyuah0s5zvhn0
 AGGREGATOR_ADDR=erd1qqqqqqqqqqqqqpgq3rcsd0mqz5wtxx0p8yl670vzlr5h0890ah0sa3wp03
+SAFE_PRICE_VIEW_ADDRESS=erd1qqqqqqqqqqqqqpgqcmnum66jxyfpcnvqk5eahj5n3ny4vkfn0n4szjjskv
 
 ACCOUNT_TOKEN_NAME="str:XOXNOLendingAccount"
 ACCOUNT_TOKEN_TICKER="str:BOBERLEND"
 
 ISSUE_COST=50000000000000000
 
+EGLD_TOKEN="str:EGLD"
 LXOXNO_TOKEN="str:LXOXNO-a00540"
 XOXNO_TOKEN="str:XOXNO-589e09"
 MEX_TOKEN="str:MEX-a659d0"
@@ -20,24 +22,25 @@ WETH_TOKEN="str:WETH-bbe4ab"
 USDC_TOKEN="str:USDC-350c4e"
 HTM_TOKEN="str:HTM-23a1da"
 XEGLD_TOKEN="str:XEGLD-23b511"
+LP_XOXNO_TOKEN="str:XOXNOWEGLD-232308"
 
 R_MAX=1000000000000000000000 # 100%
 R_BASE=35000000000000000000 # 2.5%
 R_SLOPE1=250000000000000000000 # 25%
 R_SLOPE2=800000000000000000000 # 80%
-U_OPTIMAL=920000000000000000000 # 92%
-RESERVE_FACTOR=250000000000000000000 # 10%
-LTV=750000000000000000000 # 75%
+U_OPTIMAL=800000000000000000000 # 92%
+RESERVE_FACTOR=350000000000000000000 # 10%
+LTV=550000000000000000000 # 80%
 LTV_EMODE=950000000000000000000 # 95%
-LIQ_THRESOLD=780000000000000000000 # 78%
+LIQ_THRESOLD=600000000000000000000 # 78%
 LIQ_THRESOLD_EMODE=970000000000000000000 # 97%
-LIQ_BONUS=55000000000000000000 # 7.5%
+LIQ_BONUS=100000000000000000000 # 7.5%
 LIQ_BONUS_EMODE=20000000000000000000 # 2%
 LIQ_BASE_FEE=100000000000000000000 # 10%
-BORROW_CAP=20000000000000000000000000 #  100M EGLD
-SUPPLY_CAP=20000000000000000000000000 #  100M EGLD
+BORROW_CAP=50000000000000000000000  #  100M EGLD
+SUPPLY_CAP=50000000000000000000000 #  100M EGLD
 CAN_BE_COLLATERAL=0x01
-CAN_BE_BORROWED=0x01
+CAN_BE_BORROWED=0x00
 IS_ISOLATED=0x00
 DEBT_CEILING_USD=0x00
 FLASH_LOAN_FEE=5000000000000000000 # 0.5%
@@ -48,7 +51,7 @@ CAN_BORROW_IN_ISOLATION=0x00
 deploy() {
     mxpy contract deploy --bytecode=${PROJECT} --recall-nonce \
     --ledger --ledger-account-index=0 --ledger-address-index=0 \
-    --gas-limit=250000000 --outfile="deploy.json" --arguments ${LP_TEMPLATE_ADDRESS} ${AGGREGATOR_ADDR} \
+    --gas-limit=250000000 --outfile="deploy.json" --arguments ${LP_TEMPLATE_ADDRESS} ${AGGREGATOR_ADDR} ${SAFE_PRICE_VIEW_ADDRESS} \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 
     echo ""
@@ -71,10 +74,25 @@ registerAccountToken() {
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 
+setTokenOracle() {
+    CONTRACT_ADDRESS=erd1qqqqqqqqqqqqqpgqkesz5whk008525zhrq45rfym4areg5ef0n4s2yzd75
+    PRICING_METHOD=0
+    TOKEN_TYPE=3
+    SOURCE=1
+    FIRST_TOLERANCE=125000000000000000000
+    LAST_TOLERANCE=150000000000000000000
+    DECIMALS=18
+    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=20000000 \
+    --ledger --ledger-account-index=0 --ledger-address-index=0 \
+    --function="setTokenOracle" --arguments ${LP_XOXNO_TOKEN} ${DECIMALS} ${CONTRACT_ADDRESS} \
+    ${PRICING_METHOD} ${TOKEN_TYPE} ${SOURCE} ${FIRST_TOLERANCE} ${LAST_TOLERANCE} \
+    --proxy=${PROXY} --chain=${CHAIN_ID} --send
+}
+
 create_pool() {
     mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=200000000 \
     --ledger --ledger-account-index=0 --ledger-address-index=0 \
-    --function="createLiquidityPool" --arguments ${XEGLD_TOKEN} ${R_MAX} ${R_BASE} ${R_SLOPE1} ${R_SLOPE2} ${U_OPTIMAL} ${RESERVE_FACTOR} \
+    --function="createLiquidityPool" --arguments ${LP_XOXNO_TOKEN} ${R_MAX} ${R_BASE} ${R_SLOPE1} ${R_SLOPE2} ${U_OPTIMAL} ${RESERVE_FACTOR} \
     ${LTV} ${LIQ_THRESOLD} ${LIQ_BONUS} ${LIQ_BASE_FEE} ${CAN_BE_COLLATERAL} ${CAN_BE_BORROWED} \
     ${IS_ISOLATED} ${DEBT_CEILING_USD} ${FLASH_LOAN_FEE} ${IS_SILOED} ${FLASHLOAN_ENABLED} ${CAN_BORROW_IN_ISOLATION} ${BORROW_CAP} ${SUPPLY_CAP} \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
@@ -103,6 +121,13 @@ setLiquidityPoolTemplate() {
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 
+setSafePriceView() {
+    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=20000000 \
+    --ledger --ledger-account-index=0 --ledger-address-index=0 \
+    --function="setSafePriceView" --arguments ${SAFE_PRICE_VIEW_ADDRESS} \
+    --proxy=${PROXY} --chain=${CHAIN_ID} --send
+}
+
 addEModeCategory() {
     mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=20000000 \
     --ledger --ledger-account-index=0 --ledger-address-index=0 \
@@ -113,7 +138,7 @@ addEModeCategory() {
 addAssetToEModeCategory() {
     mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=20000000 \
     --ledger --ledger-account-index=0 --ledger-address-index=0 \
-    --function="addAssetToEModeCategory" --arguments ${LXOXNO_TOKEN} 0x01 0x01 0x01 \
+    --function="addAssetToEModeCategory" --arguments ${XOXNO_TOKEN} 0x01 0x01 0x01 \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 
@@ -181,4 +206,12 @@ getBorrowAmountForToken() {
 
 getTotalCollateralAvailable() {
     mxpy contract query ${ADDRESS} --function="getTotalCollateralAvailable" --arguments 0x0a --proxy=${PROXY}
+}
+
+getTokenPriceData() {
+    mxpy contract query ${ADDRESS} --function="getTokenPriceData" --arguments ${EGLD_TOKEN} --proxy=${PROXY}
+}
+
+getTokenPriceUSD() {
+    mxpy contract query ${ADDRESS} --function="getTokenPriceUSD" --arguments ${LP_XOXNO_TOKEN} --proxy=${PROXY}
 }

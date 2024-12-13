@@ -36,9 +36,15 @@ pub trait LendingPool:
     + multiversx_sc_modules::default_issue_callbacks::DefaultIssueCallbacksModule
 {
     #[init]
-    fn init(&self, lp_template_address: ManagedAddress, aggregator: ManagedAddress) {
+    fn init(
+        &self,
+        lp_template_address: ManagedAddress,
+        aggregator: ManagedAddress,
+        safe_view_address: ManagedAddress,
+    ) {
         self.liq_pool_template_address().set(&lp_template_address);
         self.price_aggregator_address().set(&aggregator);
+        self.safe_price_view().set(&safe_view_address);
     }
 
     #[upgrade]

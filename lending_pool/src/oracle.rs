@@ -3,8 +3,10 @@ use common_events::{ExchangeSource, OracleProvider, OracleType, PricingMethod, B
 use crate::{
     proxies::{lxoxno_proxy, xegld_proxy},
     proxy_price_aggregator::{PriceAggregatorProxy, PriceFeed},
-    storage, ERROR_INVALID_EXCHANGE_SOURCE, ERROR_INVALID_ORACLE_OVERRIDE_TYPE,
-    ERROR_ORACLE_OVERRIDE_NOT_FOUND, ERROR_PRICE_AGGREGATOR_NOT_SET, ERROR_TOKEN_TICKER_FETCH,
+    proxy_xexchange_pair::{self, State},
+    storage, ERROR_INVALID_EXCHANGE_SOURCE, ERROR_INVALID_ORACLE_TOKEN_TYPE,
+    ERROR_NO_LAST_PRICE_FOUND, ERROR_ORACLE_TOKEN_NOT_FOUND, ERROR_PAIR_NOT_ACTIVE,
+    ERROR_PRICE_AGGREGATOR_NOT_SET, ERROR_TOKEN_TICKER_FETCH,
 };
 
 multiversx_sc::imports!();
@@ -54,40 +56,42 @@ pub trait OracleModule: storage::LendingStorageModule {
     fn get_token_price_in_egld(
         &self,
         token_id: &EgldOrEsdtTokenIdentifier,
-    ) -> (BigUint, PriceFeed<Self::Api>) {
+        egld_price_feed: &PriceFeed<Self::Api>,
+    ) -> BigUint {
         // Get price feeds
         let token_price_feed = self.get_aggregator_price_feed(token_id);
-        let egld_price_feed = self.get_aggregator_price_feed(&EgldOrEsdtTokenIdentifier::egld());
 
         if token_id.is_egld() {
             // For EGLD, return 1/EGLD_PRICE in USD
             // Example: if EGLD is $40, return 0.025 EGLD per USD
             let one_usd = BigUint::from(BP); // 1$ with 21 decimals
-            (
-                self.compute_amount_in_tokens(&one_usd, &egld_price_feed),
-                egld_price_feed,
-            )
+
+            self.compute_amount_in_tokens(&one_usd, &egld_price_feed)
         } else {
             // For other tokens, continue with normal calculation
             let one_token = BigUint::from(10u64).pow(token_price_feed.decimals as u32);
             let one_token_in_usd =
                 self.get_token_amount_in_dollars_raw(&one_token, &token_price_feed);
 
-            (
-                self.compute_amount_in_tokens(&one_token_in_usd, &egld_price_feed),
-                egld_price_feed,
-            )
+            self.compute_amount_in_tokens(&one_token_in_usd, &egld_price_feed)
         }
     }
 
+    #[view(getTokenPriceUSD)]
+    fn get_usd_price(&self, token_id: &EgldOrEsdtTokenIdentifier) -> BigUint {
+        let token_data = self.get_token_price_data(token_id);
+        token_data.price
+    }
+
     // WEGLD
+    #[view(getTokenPriceData)]
     fn get_token_price_data(&self, token_id: &EgldOrEsdtTokenIdentifier) -> PriceFeed<Self::Api> {
         // In case of token_id is WEGLD, we need to use the EGLD oracle the swap happens in the ticker function
         let ticker = self.get_token_ticker(token_id);
         let egld = &EgldOrEsdtTokenIdentifier::egld();
         let egld_ticker = ManagedBuffer::new_from_bytes(EGLD_TICKER);
         let is_egld = ticker == egld_ticker;
-        // Force direction to EGLD for WEGLD or normal EGLD
+        // Force direction to EGLD for WEGLD or normal EGLD  EGLD/USD
         let override_price = if is_egld {
             // WEGLD is EGLD
             self.token_oracle(egld)
@@ -95,7 +99,7 @@ pub trait OracleModule: storage::LendingStorageModule {
             // Fallback the original token_id when not EGLD or WEGLD
             self.token_oracle(token_id)
         };
-        require!(!override_price.is_empty(), ERROR_ORACLE_OVERRIDE_NOT_FOUND);
+        require!(!override_price.is_empty(), ERROR_ORACLE_TOKEN_NOT_FOUND);
         // WEGLD is EGLD
         self.find_price_feed(&override_price.get(), if is_egld { egld } else { token_id })
     }
@@ -118,7 +122,7 @@ pub trait OracleModule: storage::LendingStorageModule {
             return self.get_normal_price_usd_price(configs, original_market_token);
         }
 
-        sc_panic!(ERROR_INVALID_ORACLE_OVERRIDE_TYPE);
+        sc_panic!(ERROR_INVALID_ORACLE_TOKEN_TYPE);
     }
 
     fn get_aggregator_price_feed(
@@ -146,13 +150,17 @@ pub trait OracleModule: storage::LendingStorageModule {
     fn get_normal_price_usd_price(
         &self,
         configs: &OracleProvider<Self::Api>,               // EGLD
-        original_market_token: &EgldOrEsdtTokenIdentifier, // EGLD
+        original_market_token: &EgldOrEsdtTokenIdentifier, // WEGLD
     ) -> PriceFeed<Self::Api> {
-        let result = self.get_normal_price_egld_price(configs, original_market_token);
-        let (egld_equivalent, egld_price_feed) = result.into_tuple();
+        let egld_feed = self.get_aggregator_price_feed(&EgldOrEsdtTokenIdentifier::egld());
+        let egld_equivalent =
+            self.get_normal_price_egld_price(configs, original_market_token, &egld_feed);
 
-        let token_price_in_usd =
-            self.get_token_amount_in_dollars_raw(&egld_equivalent, &egld_price_feed);
+        if original_market_token.is_egld() {
+            return egld_feed;
+        }
+
+        let token_price_in_usd = self.get_token_amount_in_dollars_raw(&egld_equivalent, &egld_feed);
 
         PriceFeed {
             price: token_price_in_usd,
@@ -163,36 +171,100 @@ pub trait OracleModule: storage::LendingStorageModule {
             timestamp: self.blockchain().get_block_timestamp(),
         }
     }
-
+    // USDC/XOXNO -> xoxno = 0.025 WEGLD
     fn get_normal_price_egld_price(
         &self,
         configs: &OracleProvider<Self::Api>,               // EGLD
-        original_market_token: &EgldOrEsdtTokenIdentifier, // EGLD
-    ) -> MultiValue2<BigUint, PriceFeed<Self::Api>> {
-        let (token_price_in_egld, egld_price_feed) =
-            self.get_token_price_in_egld(original_market_token);
+        original_market_token: &EgldOrEsdtTokenIdentifier, // USDC
+        egld_price_feed: &PriceFeed<Self::Api>,
+    ) -> BigUint {
+        let is_egld = original_market_token.is_egld();
 
+        let token_price_in_egld_opt = if configs.pricing_method == PricingMethod::Aggregator
+            || configs.pricing_method == PricingMethod::Mix
+        {
+            OptionalValue::Some(
+                self.get_token_price_in_egld(original_market_token, &egld_price_feed),
+            )
+        } else {
+            OptionalValue::None
+        };
+
+        // 1 usd = 0.0015 EGLD
         let safe_price = if configs.pricing_method == PricingMethod::Safe
             || configs.pricing_method == PricingMethod::Mix
         {
             OptionalValue::Some(self.get_safe_price(
                 configs,
-                original_market_token,
+                original_market_token, // USDC
                 &egld_price_feed,
             ))
         } else {
             OptionalValue::None
         };
 
-        (token_price_in_egld, egld_price_feed).into()
+        let final_price = if safe_price.is_some() && token_price_in_egld_opt.is_some() {
+            let token_price_in_egld = token_price_in_egld_opt.into_option().unwrap();
+            let anchor_price = safe_price.into_option().unwrap();
+            let avg_price = (&token_price_in_egld + &anchor_price).div(&BigUint::from(2u64));
+            let mapper_last_price = self.last_token_price(original_market_token);
+            let tolerances = &configs.tolerance;
+            let anchor_price_result = if self.is_within_anchor(
+                &token_price_in_egld,
+                &anchor_price,
+                &tolerances.first_upper_ratio,
+                &tolerances.first_lower_ratio,
+            ) {
+                mapper_last_price.set(&token_price_in_egld);
+                token_price_in_egld
+            } else if self.is_within_anchor(
+                &token_price_in_egld,
+                &anchor_price,
+                &tolerances.last_upper_ratio,
+                &tolerances.last_lower_ratio,
+            ) {
+                mapper_last_price.set(&avg_price.clone());
+                avg_price.clone()
+            } else {
+                require!(!mapper_last_price.is_empty(), ERROR_NO_LAST_PRICE_FOUND);
+                mapper_last_price.get()
+            };
+            anchor_price_result
+        } else if token_price_in_egld_opt.is_some() {
+            token_price_in_egld_opt.into_option().unwrap()
+        } else if safe_price.is_some() {
+            safe_price.into_option().unwrap()
+        } else {
+            panic!("No price found");
+        };
+
+        if !is_egld {
+            // Return the price in EGLD of any other token
+            return final_price;
+        } else {
+            // When the token is EGLD, we return EGLD = EGLD (1e18)
+            // The above checks are just verification of our aggregator price to match on chain prices accepted ranges
+            return BigUint::from(10u64).pow(configs.decimals as u32);
+        }
+    }
+
+    fn is_within_anchor(
+        &self,
+        aggregator_price: &BigUint,
+        safe_price: &BigUint,
+        upper_bound_ratio: &BigUint,
+        lower_bound_ratio: &BigUint,
+    ) -> bool {
+        let anchor_ratio = safe_price * &BigUint::from(BP) / aggregator_price;
+        &anchor_ratio <= upper_bound_ratio && &anchor_ratio >= lower_bound_ratio
     }
 
     fn get_safe_price(
         &self,
         configs: &OracleProvider<Self::Api>,
-        token_id: &EgldOrEsdtTokenIdentifier,
+        token_id: &EgldOrEsdtTokenIdentifier, // WEGLD
         egld_price_feed: &PriceFeed<Self::Api>,
-    ) -> MultiValue2<BigUint, PriceFeed<Self::Api>> {
+    ) -> BigUint {
         let egld_ticker = ManagedBuffer::new_from_bytes(EGLD_TICKER);
         let first_token_ticker = self.get_token_ticker(&configs.first_token_id);
         let second_token_ticker = self.get_token_ticker(&configs.second_token_id);
@@ -202,7 +274,7 @@ pub trait OracleModule: storage::LendingStorageModule {
         let (token_in, decimals) = if is_first_token_id_egld && token_id.is_egld() {
             let token_data = self.token_oracle(&configs.second_token_id);
 
-            require!(!token_data.is_empty(), ERROR_ORACLE_OVERRIDE_NOT_FOUND);
+            require!(!token_data.is_empty(), ERROR_ORACLE_TOKEN_NOT_FOUND);
 
             let decimals = token_data.get().decimals;
 
@@ -210,7 +282,7 @@ pub trait OracleModule: storage::LendingStorageModule {
         } else if is_second_token_id_egld && token_id.is_egld() {
             let token_data = self.token_oracle(&configs.first_token_id);
 
-            require!(!token_data.is_empty(), ERROR_ORACLE_OVERRIDE_NOT_FOUND);
+            require!(!token_data.is_empty(), ERROR_ORACLE_TOKEN_NOT_FOUND);
 
             let decimals = token_data.get().decimals;
 
@@ -220,6 +292,16 @@ pub trait OracleModule: storage::LendingStorageModule {
         };
 
         let one_token = BigUint::from(10u64).pow(decimals as u32);
+        let pair_status = self
+            .tx()
+            .to(configs.contract_address.clone())
+            .typed(proxy_xexchange_pair::PairProxy)
+            .state()
+            .returns(ReturnsResult)
+            .sync_call();
+
+        require!(pair_status == State::Active, ERROR_PAIR_NOT_ACTIVE);
+
         let result = self
             .safe_price_proxy(self.safe_price_view().get())
             .get_safe_price_by_default_offset(
@@ -234,16 +316,17 @@ pub trait OracleModule: storage::LendingStorageModule {
         ));
 
         if result_ticker == egld_ticker {
-            return (result.amount, egld_price_feed.clone()).into();
+            return result.amount;
         }
 
         let new_config = self.token_oracle(token_id);
-        require!(!new_config.is_empty(), ERROR_ORACLE_OVERRIDE_NOT_FOUND);
+        require!(!new_config.is_empty(), ERROR_ORACLE_TOKEN_NOT_FOUND);
 
         // Can not be WEGLD
         return self.get_normal_price_egld_price(
             &new_config.get(),
             &EgldOrEsdtTokenIdentifier::esdt(result.token_identifier),
+            egld_price_feed,
         );
     }
 
@@ -310,11 +393,12 @@ pub trait OracleModule: storage::LendingStorageModule {
                 .safe_price_proxy(self.safe_price_view().get())
                 .get_lp_tokens_safe_price_by_default_offset(
                     configs.contract_address.clone(),
-                    BigUint::from(1u64).mul(&BigUint::from(10u64).pow(configs.decimals as u32)),
+                    &BigUint::from(10u64).pow(configs.decimals as u32),
                 )
                 .returns(ReturnsResult)
                 .sync_call();
 
+            // WEGLD/XOXNO
             let (first_token, second_token) = tokens.into_tuple();
             let first_token_data: PriceFeed<<Self as ContractBase>::Api> = self
                 .get_token_price_data(&EgldOrEsdtTokenIdentifier::esdt(
@@ -325,8 +409,13 @@ pub trait OracleModule: storage::LendingStorageModule {
                     second_token.token_identifier,
                 ));
 
+            let first_token_usd_price =
+                self.get_token_amount_in_dollars_raw(&first_token.amount, &first_token_data);
+            let second_token_usd_price =
+                self.get_token_amount_in_dollars_raw(&second_token.amount, &second_token_data);
+
             return PriceFeed {
-                price: first_token_data.price + second_token_data.price,
+                price: first_token_usd_price + second_token_usd_price,
                 decimals: configs.decimals,
                 from: self.get_token_ticker(original_market_token),
                 to: ManagedBuffer::new_from_bytes(DOLLAR_TICKER),
@@ -362,6 +451,11 @@ pub trait OracleModule: storage::LendingStorageModule {
             None => sc_panic!(ERROR_TOKEN_TICKER_FETCH),
         }
     }
+
+    // Last token price in EGLD
+    #[view(getLastTokenPrice)]
+    #[storage_mapper("last_token_price")]
+    fn last_token_price(&self, token_id: &EgldOrEsdtTokenIdentifier) -> SingleValueMapper<BigUint>;
 
     #[proxy]
     fn safe_price_proxy(&self, sc_address: ManagedAddress) -> safe_price_proxy::ProxyTo<Self::Api>;

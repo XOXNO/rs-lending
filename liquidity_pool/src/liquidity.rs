@@ -205,7 +205,7 @@ pub trait LiquidityModule:
             &ManagedDecimal::from_raw_units(deposit_position.index.clone(), DECIMAL_PRECISION),
         );
 
-        let total_withdraw = amount_dec + extra_interest;
+        let total_withdraw = amount_dec.clone() + extra_interest;
         // Withdrawal amount = initial wanted amount + Unaccrued interest for that amount (this has to be paid back to the user that requested the withdrawal)
         let mut principal_amount = total_withdraw.clone();
         // Check if there is enough liquidity to cover the withdrawal
@@ -275,7 +275,7 @@ pub trait LiquidityModule:
                 ))
                 .transfer();
         }
-
+        
         self.update_market_state_event(
             storage_cache.timestamp,
             storage_cache.supply_index.into_raw_units(),
