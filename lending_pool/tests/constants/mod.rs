@@ -1,5 +1,5 @@
 use lending_pool::AssetConfig;
-use multiversx_sc::types::{BigUint, TestAddress, TestSCAddress};
+use multiversx_sc::types::{BigUint, EsdtLocalRole, TestAddress, TestSCAddress};
 use multiversx_sc_scenario::{
     api::StaticApi,
     imports::{MxscPath, TestTokenIdentifier},
@@ -29,8 +29,21 @@ pub const DECIMALS: u128 = 1_000_000_000_000_000_000_000;
 
 pub const ACCOUNT_TOKEN: TestTokenIdentifier = TestTokenIdentifier::new("ACC-abcdef");
 
-pub const EGLD_TOKEN: TestTokenIdentifier = TestTokenIdentifier::new("WEGLD-abcdef");
-pub const EGLD_TICKER: &[u8] = b"WEGLD";
+pub const UXOXNO_TOKEN: TestTokenIdentifier = TestTokenIdentifier::new("UXOXNO-abcdef");
+pub const LXOXNO_TOKEN: TestTokenIdentifier = TestTokenIdentifier::new("LXOXNO-abcdef");
+pub const LXOXNO_TICKER: &[u8] = b"LXOXNO";
+pub const LXOXNO_PRICE_IN_DOLLARS: u64 = 1; // $1
+pub const LXOXNO_DECIMALS: usize = 18;
+
+pub const XOXNO_TOKEN: TestTokenIdentifier = TestTokenIdentifier::new("XOXNO-abcdef");
+pub const XOXNO_TICKER: &[u8] = b"XOXNO";
+pub const XOXNO_PRICE_IN_DOLLARS: u64 = 1; // $1
+pub const XOXNO_DECIMALS: usize = 18;
+
+pub const LP_EGLD_TOKEN: TestTokenIdentifier = TestTokenIdentifier::new("LPEGLD-abcdef");
+pub const WEGLD_TOKEN: TestTokenIdentifier = TestTokenIdentifier::new("WEGLD-abcdef");
+pub const EGLD_TOKEN: TestTokenIdentifier = TestTokenIdentifier::new("EGLD-abcdef");
+pub const EGLD_TICKER: &[u8] = b"EGLD";
 pub const EGLD_PRICE_IN_DOLLARS: u64 = 40; // $40
 pub const EGLD_DECIMALS: usize = 18;
 
@@ -50,6 +63,7 @@ pub const USDC_PRICE_IN_DOLLARS: u64 = 1; // $1
 pub const USDC_DECIMALS: usize = 6;
 
 pub const XEGLD_TOKEN: TestTokenIdentifier = TestTokenIdentifier::new("XEGLD-abcdef");
+pub const UNSTAKE_TOKEN: TestTokenIdentifier = TestTokenIdentifier::new("UNSTAKE-abcdef");
 pub const XEGLD_TICKER: &[u8] = b"XEGLD";
 pub const XEGLD_PRICE_IN_DOLLARS: u64 = 50; // $50
 pub const XEGLD_DECIMALS: usize = 18;
@@ -72,7 +86,8 @@ pub const CAPPED_DECIMALS: usize = 8;
 pub const LENDING_POOL_ADDRESS: TestSCAddress = TestSCAddress::new("lending-pool");
 pub const LIQUIDITY_POOL_ADDRESS: TestSCAddress = TestSCAddress::new("liquidity-pool");
 pub const PRICE_AGGREGATOR_ADDRESS: TestSCAddress = TestSCAddress::new("price-aggregator");
-
+pub const EGLD_LIQUID_STAKING_ADDRESS: TestSCAddress = TestSCAddress::new("egld-liquid-staking");
+pub const XOXNO_LIQUID_STAKING_ADDRESS: TestSCAddress = TestSCAddress::new("xoxno-liquid-staking");
 pub const OWNER_ADDRESS: TestAddress = TestAddress::new("owner");
 
 pub const ORACLE_ADDRESS_1: TestAddress = TestAddress::new("oracle1");
@@ -85,6 +100,28 @@ pub const LIQUIDITY_POOL_PATH: MxscPath =
     MxscPath::new("../liquidity_pool/output/liquidity-pool.mxsc.json");
 pub const PRICE_AGGREGATOR_PATH: MxscPath =
     MxscPath::new("../price-aggregator/output/price-aggregator.mxsc.json");
+
+pub const EGLD_LIQUID_STAKING_PATH: MxscPath =
+    MxscPath::new("../proxys/egld_liquid_staking.mxsc.json");
+
+pub const XOXNO_LIQUID_STAKING_PATH: MxscPath =
+    MxscPath::new("../proxys/xoxno_liquid_staking.mxsc.json");
+
+pub const SAFE_PRICE_VIEW_PATH: MxscPath = MxscPath::new("../proxys/safe-price-view.mxsc.json");
+
+pub const PAIR_PATH: MxscPath = MxscPath::new("../proxys/pair-full.mxsc.json");
+
+pub static ESDT_ROLES: &[EsdtLocalRole] = &[
+    EsdtLocalRole::Mint,
+    EsdtLocalRole::Burn,
+    EsdtLocalRole::Transfer,
+];
+
+pub static SFT_ROLES: &[EsdtLocalRole] = &[
+    EsdtLocalRole::NftCreate,
+    EsdtLocalRole::NftAddQuantity,
+    EsdtLocalRole::NftBurn,
+];
 
 pub struct SetupConfig {
     // Basic parameters
@@ -300,8 +337,12 @@ pub fn get_capped_config() -> SetupConfig {
             liquidation_threshold: BigUint::from(LIQ_THRESOLD),
             liquidation_bonus: BigUint::from(LIQ_BONUS),
             liquidation_base_fee: BigUint::from(LIQ_BASE_FEE),
-            borrow_cap: Some(BigUint::from(100u64) * BigUint::from(10u32).pow(CAPPED_DECIMALS as u32)),
-            supply_cap: Some(BigUint::from(150u64) * BigUint::from(10u32).pow(CAPPED_DECIMALS as u32)),
+            borrow_cap: Some(
+                BigUint::from(100u64) * BigUint::from(10u32).pow(CAPPED_DECIMALS as u32),
+            ),
+            supply_cap: Some(
+                BigUint::from(150u64) * BigUint::from(10u32).pow(CAPPED_DECIMALS as u32),
+            ),
             can_be_collateral: true,
             can_be_borrowed: true,
             is_e_mode_enabled: false,

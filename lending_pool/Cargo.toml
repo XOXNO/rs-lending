@@ -8,6 +8,11 @@ publish = false
 [lib]
 path = "src/lib.rs"
 
+[dependencies]
+rs-liquid-xoxno = { git = "https://github.com/XOXNO/rs-liquid-xoxno/" }
+rs-liquid-staking-sc = { git = "https://github.com/XOXNO/rs-liquid-staking-sc", package = "liquid-staking" }
+pair = { git = "https://github.com/mihaieremia/mx-exchange-sc", package = "pair" }
+
 [dependencies.multiversx-sc-modules]
 version = "0.54.6"
 

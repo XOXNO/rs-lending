@@ -314,6 +314,8 @@ pub trait LendingUtilsModule:
             // EGLD sent as multi-esdt payment
             if payment.token_identifier.clone().into_managed_buffer()
                 == ManagedBuffer::from(EGELD_IDENTIFIER)
+                || payment.token_identifier.clone().into_managed_buffer()
+                    == ManagedBuffer::from("EGLD")
             {
                 valid_payments.push(EgldOrEsdtTokenPaymentNew {
                     token_identifier: EgldOrEsdtTokenIdentifier::egld(),

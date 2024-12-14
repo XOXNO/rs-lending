@@ -10,7 +10,14 @@ use multiversx_sc::{
 use multiversx_sc_scenario::{
     api::StaticApi, DebugApi, ScenarioTxRun, ScenarioTxWhitebox, ScenarioWorld, WhiteboxContract,
 };
+use pair::{config::ConfigModule, safe_price_view};
+use rs_liquid_staking_sc::{
+    proxy::proxy_liquid_staking::{self, ScoringConfig},
+    storage::StorageModule,
+};
+use rs_liquid_xoxno::{config::ConfigModule as XoxnoConfigModule, rs_xoxno_proxy};
 use std::ops::Mul;
+use utils::{MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE};
 
 use lending_pool::*;
 use multiversx_sc::types::{
@@ -30,6 +37,14 @@ pub fn world() -> ScenarioWorld {
     blockchain.register_contract(LENDING_POOL_PATH, lending_pool::ContractBuilder);
     blockchain.register_contract(LIQUIDITY_POOL_PATH, liquidity_pool::ContractBuilder);
     blockchain.register_contract(PRICE_AGGREGATOR_PATH, price_aggregator::ContractBuilder);
+    blockchain.register_contract(
+        EGLD_LIQUID_STAKING_PATH,
+        rs_liquid_staking_sc::ContractBuilder,
+    );
+    blockchain.register_contract(XOXNO_LIQUID_STAKING_PATH, rs_liquid_xoxno::ContractBuilder);
+    blockchain.register_contract(PAIR_PATH, pair::ContractBuilder);
+
+    blockchain.register_contract(SAFE_PRICE_VIEW_PATH, pair::ContractBuilder);
 
     blockchain
 }
@@ -50,13 +65,13 @@ pub struct LendingPoolTestState {
     pub xegld_market: ManagedAddress<StaticApi>,
     pub segld_market: ManagedAddress<StaticApi>,
     pub legld_market: ManagedAddress<StaticApi>,
+    pub lp_egld_market: ManagedAddress<StaticApi>,
 }
 
 impl LendingPoolTestState {
     pub fn new() -> Self {
         let mut world = world();
-
-        world.account(OWNER_ADDRESS).nonce(1);
+        setup_owner(&mut world);
         world.current_block().block_timestamp(0);
 
         let (template_address_liquidity_pool, liquidity_pool_whitebox) =
@@ -75,6 +90,7 @@ impl LendingPoolTestState {
             xegld_market,
             segld_market,
             legld_market,
+            lp_egld_market,
         ) = setup_lending_pool(
             &mut world,
             &template_address_liquidity_pool,
@@ -97,12 +113,26 @@ impl LendingPoolTestState {
             xegld_market,
             segld_market,
             legld_market,
+            lp_egld_market,
         }
     }
 
+    pub fn get_usd_price(&mut self, token_id: TestTokenIdentifier) -> u64 {
+        (self
+            .world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .get_usd_price(token_id)
+            .returns(ReturnsResult)
+            .run()
+            / BigUint::from(BP))
+        .to_u64()
+        .unwrap()
+    }
     pub fn add_new_market(
         &mut self,
-        token_id: TestTokenIdentifier,
+        token_id: EgldOrEsdtTokenIdentifier<StaticApi>,
         config: AssetConfig<StaticApi>,
         r_max: u64,
         r_base: u64,
@@ -118,7 +148,7 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::LendingPoolProxy)
             .create_liquidity_pool(
-                EgldOrEsdtTokenIdentifier::esdt(token_id.to_token_identifier()),
+                token_id,
                 r_max,
                 r_base,
                 r_slope1,
@@ -421,7 +451,6 @@ impl LendingPoolTestState {
     // Price aggregator operations
     pub fn submit_price(
         &mut self,
-        price_aggregator_sc: &ManagedAddress<StaticApi>,
         from: &[u8],
         price: u64,
         decimals: usize,
@@ -433,22 +462,11 @@ impl LendingPoolTestState {
             ORACLE_ADDRESS_3,
             ORACLE_ADDRESS_4,
         ];
-        self.world
-            .tx()
-            .from(OWNER_ADDRESS)
-            .to(price_aggregator_sc)
-            .typed(proxy_aggregator::PriceAggregatorProxy)
-            .set_pair_decimals(
-                ManagedBuffer::from(from),
-                ManagedBuffer::from(DOLLAR_TICKER),
-                decimals as u8,
-            )
-            .run();
         for oracle in oracles {
             self.world
                 .tx()
                 .from(oracle)
-                .to(price_aggregator_sc)
+                .to(self.price_aggregator_sc.clone())
                 .typed(proxy_aggregator::PriceAggregatorProxy)
                 .submit(
                     ManagedBuffer::from(from),
@@ -661,15 +679,38 @@ pub fn setup_lending_pool(
     ManagedAddress<StaticApi>,
     ManagedAddress<StaticApi>,
     ManagedAddress<StaticApi>,
+    ManagedAddress<StaticApi>,
 ) {
     let lending_pool_whitebox =
         WhiteboxContract::new(LENDING_POOL_ADDRESS, lending_pool::contract_obj);
+
+    let safe_view_sc = world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .typed(proxy_xexchange_pair::PairProxy)
+        .init(
+            XEGLD_TOKEN.to_token_identifier(),
+            USDC_TOKEN.to_token_identifier(),
+            OWNER_ADDRESS,
+            OWNER_ADDRESS,
+            0u64,
+            0u64,
+            OWNER_ADDRESS,
+            MultiValueEncoded::new(),
+        )
+        .code(SAFE_PRICE_VIEW_PATH)
+        .returns(ReturnsNewManagedAddress)
+        .run();
 
     let lending_sc = world
         .tx()
         .from(OWNER_ADDRESS)
         .typed(proxy_lending_pool::LendingPoolProxy)
-        .init(template_address_liquidity_pool, price_aggregator_sc)
+        .init(
+            template_address_liquidity_pool,
+            price_aggregator_sc,
+            safe_view_sc,
+        )
         .code(LENDING_POOL_PATH)
         .returns(ReturnsNewManagedAddress)
         .run();
@@ -686,14 +727,72 @@ pub fn setup_lending_pool(
                 .set_token_id(ACCOUNT_TOKEN.to_token_identifier());
         });
 
-    let usdc_market = setup_market(world, &lending_sc, USDC_TOKEN, get_usdc_config());
-    let egld_market = setup_market(world, &lending_sc, EGLD_TOKEN, get_egld_config());
-    let xegld_market = setup_market(world, &lending_sc, XEGLD_TOKEN, get_xegld_config());
-    let isolated_market = setup_market(world, &lending_sc, ISOLATED_TOKEN, get_isolated_config());
-    let siloed_market = setup_market(world, &lending_sc, SILOED_TOKEN, get_siloed_config());
-    let capped_market = setup_market(world, &lending_sc, CAPPED_TOKEN, get_capped_config());
-    let segld_market = setup_market(world, &lending_sc, SEGLD_TOKEN, get_segld_config());
-    let legld_market = setup_market(world, &lending_sc, LEGLD_TOKEN, get_legld_config());
+    let (xegld_liquid_staking_sc, xegld_liquid_staking_whitebox) = setup_egld_liquid_staking(world);
+    let (lxoxno_liquid_staking_sc, lxoxno_liquid_staking_whitebox) =
+        setup_xoxno_liquid_staking(world);
+
+    set_oracle_token_data(
+        world,
+        &xegld_liquid_staking_sc,
+        &lending_sc,
+        &lxoxno_liquid_staking_sc,
+    );
+
+    let usdc_market = setup_market(
+        world,
+        &lending_sc,
+        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_token_identifier()),
+        get_usdc_config(),
+    );
+    let egld_market = setup_market(
+        world,
+        &lending_sc,
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
+        get_egld_config(),
+    );
+    let xegld_market = setup_market(
+        world,
+        &lending_sc,
+        EgldOrEsdtTokenIdentifier::esdt(XEGLD_TOKEN.to_token_identifier()),
+        get_xegld_config(),
+    );
+    let isolated_market = setup_market(
+        world,
+        &lending_sc,
+        EgldOrEsdtTokenIdentifier::esdt(ISOLATED_TOKEN.to_token_identifier()),
+        get_isolated_config(),
+    );
+    let siloed_market = setup_market(
+        world,
+        &lending_sc,
+        EgldOrEsdtTokenIdentifier::esdt(SILOED_TOKEN.to_token_identifier()),
+        get_siloed_config(),
+    );
+    let capped_market = setup_market(
+        world,
+        &lending_sc,
+        EgldOrEsdtTokenIdentifier::esdt(CAPPED_TOKEN.to_token_identifier()),
+        get_capped_config(),
+    );
+    let segld_market = setup_market(
+        world,
+        &lending_sc,
+        EgldOrEsdtTokenIdentifier::esdt(SEGLD_TOKEN.to_token_identifier()),
+        get_segld_config(),
+    );
+    let legld_market = setup_market(
+        world,
+        &lending_sc,
+        EgldOrEsdtTokenIdentifier::esdt(LEGLD_TOKEN.to_token_identifier()),
+        get_legld_config(),
+    );
+
+    let lp_egld_market = setup_market(
+        world,
+        &lending_sc,
+        EgldOrEsdtTokenIdentifier::esdt(LP_EGLD_TOKEN.to_token_identifier()),
+        get_legld_config(),
+    );
 
     create_e_mode_category(world, &lending_sc);
 
@@ -701,6 +800,7 @@ pub fn setup_lending_pool(
     add_asset_to_e_mode_category(world, &lending_sc, XEGLD_TOKEN, true, true, 1);
     add_asset_to_e_mode_category(world, &lending_sc, SEGLD_TOKEN, false, true, 1);
     add_asset_to_e_mode_category(world, &lending_sc, LEGLD_TOKEN, false, false, 1);
+
     (
         lending_sc,
         lending_pool_whitebox,
@@ -712,7 +812,380 @@ pub fn setup_lending_pool(
         xegld_market,
         segld_market,
         legld_market,
+        lp_egld_market,
     )
+}
+pub fn set_oracle_token_data(
+    world: &mut ScenarioWorld,
+    xegld_liquid_staking_sc: &ManagedAddress<StaticApi>,
+    lending_sc: &ManagedAddress<StaticApi>,
+    xoxno_liquid_staking_sc: &ManagedAddress<StaticApi>,
+) {
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(lending_sc)
+        .typed(proxy_lending_pool::LendingPoolProxy)
+        .set_token_oracle(
+            XEGLD_TOKEN.to_token_identifier(),
+            18,
+            xegld_liquid_staking_sc,
+            PricingMethod::None,
+            OracleType::Derived,
+            ExchangeSource::XEGLD,
+            BigUint::from(MIN_FIRST_TOLERANCE),
+            BigUint::from(MIN_LAST_TOLERANCE),
+        )
+        .run();
+
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(lending_sc)
+        .typed(proxy_lending_pool::LendingPoolProxy)
+        .set_token_oracle(
+            LXOXNO_TOKEN.to_token_identifier(),
+            18,
+            xoxno_liquid_staking_sc,
+            PricingMethod::None,
+            OracleType::Derived,
+            ExchangeSource::LXOXNO,
+            BigUint::from(MIN_FIRST_TOLERANCE),
+            BigUint::from(MIN_LAST_TOLERANCE),
+        )
+        .run();
+
+    let wegld_usdc_pair_sc = deploy_pair_sc(
+        world,
+        &WEGLD_TOKEN,
+        EGLD_DECIMALS,
+        &USDC_TOKEN,
+        USDC_DECIMALS,
+        &LP_EGLD_TOKEN,
+        EGLD_PRICE_IN_DOLLARS,
+        USDC_PRICE_IN_DOLLARS,
+    );
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(lending_sc)
+        .typed(proxy_lending_pool::LendingPoolProxy)
+        .set_token_oracle(
+            LP_EGLD_TOKEN,
+            EGLD_DECIMALS as u8,
+            &wegld_usdc_pair_sc,
+            PricingMethod::None,
+            OracleType::Lp,
+            ExchangeSource::XExchange,
+            BigUint::from(MIN_FIRST_TOLERANCE),
+            BigUint::from(MIN_LAST_TOLERANCE),
+        )
+        .run();
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(lending_sc)
+        .typed(proxy_lending_pool::LendingPoolProxy)
+        .set_token_oracle(
+            EgldOrEsdtTokenIdentifier::egld(),
+            EGLD_DECIMALS as u8,
+            &wegld_usdc_pair_sc,
+            PricingMethod::Mix,
+            OracleType::Normal,
+            ExchangeSource::XExchange,
+            BigUint::from(MIN_FIRST_TOLERANCE),
+            BigUint::from(MIN_LAST_TOLERANCE),
+        )
+        .run();
+
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(lending_sc)
+        .typed(proxy_lending_pool::LendingPoolProxy)
+        .set_token_oracle(
+            EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
+            EGLD_DECIMALS as u8,
+            &wegld_usdc_pair_sc,
+            PricingMethod::Mix,
+            OracleType::Normal,
+            ExchangeSource::XExchange,
+            BigUint::from(MIN_FIRST_TOLERANCE),
+            BigUint::from(MIN_LAST_TOLERANCE),
+        )
+        .run();
+
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(lending_sc)
+        .typed(proxy_lending_pool::LendingPoolProxy)
+        .set_token_oracle(
+            USDC_TOKEN.to_token_identifier(),
+            USDC_DECIMALS as u8,
+            &wegld_usdc_pair_sc,
+            PricingMethod::Mix,
+            OracleType::Normal,
+            ExchangeSource::XExchange,
+            BigUint::from(MIN_FIRST_TOLERANCE),
+            BigUint::from(MIN_LAST_TOLERANCE),
+        )
+        .run();
+
+    let wegld_isolated_pair_sc = deploy_pair_sc(
+        world,
+        &ISOLATED_TOKEN,
+        ISOLATED_DECIMALS,
+        &WEGLD_TOKEN,
+        EGLD_DECIMALS,
+        &LP_EGLD_TOKEN,
+        ISOLATED_PRICE_IN_DOLLARS,
+        EGLD_PRICE_IN_DOLLARS,
+    );
+
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(lending_sc)
+        .typed(proxy_lending_pool::LendingPoolProxy)
+        .set_token_oracle(
+            ISOLATED_TOKEN.to_token_identifier(),
+            ISOLATED_DECIMALS as u8,
+            &wegld_isolated_pair_sc,
+            PricingMethod::Mix,
+            OracleType::Normal,
+            ExchangeSource::XExchange,
+            BigUint::from(MIN_FIRST_TOLERANCE),
+            BigUint::from(MIN_LAST_TOLERANCE),
+        )
+        .run();
+
+    let wegld_siloed_pair_sc = deploy_pair_sc(
+        world,
+        &WEGLD_TOKEN,
+        EGLD_DECIMALS,
+        &SILOED_TOKEN,
+        SILOED_DECIMALS,
+        &LP_EGLD_TOKEN,
+        EGLD_PRICE_IN_DOLLARS,
+        SILOED_PRICE_IN_DOLLARS,
+    );
+
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(lending_sc)
+        .typed(proxy_lending_pool::LendingPoolProxy)
+        .set_token_oracle(
+            SILOED_TOKEN.to_token_identifier(),
+            SILOED_DECIMALS as u8,
+            &wegld_siloed_pair_sc,
+            PricingMethod::Mix,
+            OracleType::Normal,
+            ExchangeSource::XExchange,
+            BigUint::from(MIN_FIRST_TOLERANCE),
+            BigUint::from(MIN_LAST_TOLERANCE),
+        )
+        .run();
+
+    let wegld_capped_pair_sc = deploy_pair_sc(
+        world,
+        &WEGLD_TOKEN,
+        EGLD_DECIMALS,
+        &CAPPED_TOKEN,
+        CAPPED_DECIMALS,
+        &LP_EGLD_TOKEN,
+        EGLD_PRICE_IN_DOLLARS,
+        CAPPED_PRICE_IN_DOLLARS,
+    );
+
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(lending_sc)
+        .typed(proxy_lending_pool::LendingPoolProxy)
+        .set_token_oracle(
+            CAPPED_TOKEN.to_token_identifier(),
+            CAPPED_DECIMALS as u8,
+            &wegld_capped_pair_sc,
+            PricingMethod::Mix,
+            OracleType::Normal,
+            ExchangeSource::XExchange,
+            BigUint::from(MIN_FIRST_TOLERANCE),
+            BigUint::from(MIN_LAST_TOLERANCE),
+        )
+        .run();
+
+    let wegld_segld_pair_sc = deploy_pair_sc(
+        world,
+        &WEGLD_TOKEN,
+        EGLD_DECIMALS,
+        &SEGLD_TOKEN,
+        SEGLD_DECIMALS,
+        &LP_EGLD_TOKEN,
+        EGLD_PRICE_IN_DOLLARS,
+        SEGLD_PRICE_IN_DOLLARS,
+    );
+
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(lending_sc)
+        .typed(proxy_lending_pool::LendingPoolProxy)
+        .set_token_oracle(
+            SEGLD_TOKEN.to_token_identifier(),
+            SEGLD_DECIMALS as u8,
+            &wegld_segld_pair_sc,
+            PricingMethod::Mix,
+            OracleType::Normal,
+            ExchangeSource::XExchange,
+            BigUint::from(MIN_FIRST_TOLERANCE),
+            BigUint::from(MIN_LAST_TOLERANCE),
+        )
+        .run();
+
+    let wegld_legld_pair_sc = deploy_pair_sc(
+        world,
+        &WEGLD_TOKEN,
+        EGLD_DECIMALS,
+        &LEGLD_TOKEN,
+        LEGLD_DECIMALS,
+        &LP_EGLD_TOKEN,
+        EGLD_PRICE_IN_DOLLARS,
+        LEGLD_PRICE_IN_DOLLARS,
+    );
+
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(lending_sc)
+        .typed(proxy_lending_pool::LendingPoolProxy)
+        .set_token_oracle(
+            LEGLD_TOKEN.to_token_identifier(),
+            LEGLD_DECIMALS as u8,
+            &wegld_legld_pair_sc,
+            PricingMethod::Mix,
+            OracleType::Normal,
+            ExchangeSource::XExchange,
+            BigUint::from(MIN_FIRST_TOLERANCE),
+            BigUint::from(MIN_LAST_TOLERANCE),
+        )
+        .run();
+}
+
+pub fn deploy_pair_sc(
+    world: &mut ScenarioWorld,
+    first_token: &TestTokenIdentifier,
+    first_token_decimals: usize,
+    second_token: &TestTokenIdentifier,
+    second_token_decimals: usize,
+    lp_token: &TestTokenIdentifier,
+    first_token_price_usd: u64,
+    second_token_price_usd: u64,
+) -> ManagedAddress<StaticApi> {
+    let sc = world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .typed(proxy_xexchange_pair::PairProxy)
+        .init(
+            first_token.to_token_identifier(),
+            second_token.to_token_identifier(),
+            OWNER_ADDRESS,
+            OWNER_ADDRESS,
+            0u64,
+            0u64,
+            OWNER_ADDRESS,
+            MultiValueEncoded::new(),
+        )
+        .code(PAIR_PATH)
+        .returns(ReturnsNewManagedAddress)
+        .run();
+
+    world.set_esdt_local_roles(sc.clone(), lp_token.as_bytes(), ESDT_ROLES);
+
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(sc.clone())
+        .whitebox(pair::contract_obj, |sc| {
+            sc.lp_token_identifier().set(lp_token.to_token_identifier());
+        });
+
+    let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
+
+    let (first_amount, second_amount) = calculate_optimal_liquidity(
+        first_token_price_usd,
+        second_token_price_usd,
+        first_token_decimals,
+        second_token_decimals,
+    );
+
+    vec.push(EsdtTokenPayment::new(
+        first_token.to_token_identifier(),
+        0,
+        first_amount,
+    ));
+    vec.push(EsdtTokenPayment::new(
+        second_token.to_token_identifier(),
+        0,
+        second_amount,
+    ));
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(sc.clone())
+        .typed(proxy_xexchange_pair::PairProxy)
+        .add_initial_liquidity()
+        .with_multi_token_transfer(vec)
+        .run();
+
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(sc.clone())
+        .typed(proxy_xexchange_pair::PairProxy)
+        .resume()
+        .run();
+    world.current_block().block_round(1);
+    // Do a small swap to initialize first_token price
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(sc.clone())
+        .typed(proxy_xexchange_pair::PairProxy)
+        .swap_tokens_fixed_input(first_token.to_token_identifier(), BigUint::from(1u64))
+        .single_esdt(
+            &second_token.to_token_identifier(),
+            0u64,
+            &BigUint::from(1000000u64),
+        )
+        .run();
+
+    world.current_block().block_round(10);
+    sc.clone()
+}
+
+pub fn calculate_optimal_liquidity(
+    first_token_price_usd: u64,
+    second_token_price_usd: u64,
+    first_token_decimals: usize,
+    second_token_decimals: usize,
+) -> (BigUint<StaticApi>, BigUint<StaticApi>) {
+    // We want deep liquidity but not too deep to save on gas
+    // Let's use equivalent of $100,000 worth of liquidity
+    const TARGET_LIQUIDITY_USD: u64 = 10_000;
+
+    // Calculate how many tokens we need of each to maintain the price ratio
+    let first_token_amount = TARGET_LIQUIDITY_USD / first_token_price_usd;
+    let second_token_amount = TARGET_LIQUIDITY_USD / second_token_price_usd;
+
+    // Add decimals
+    let first_amount = BigUint::from(first_token_amount)
+        .mul(BigUint::from(10u64).pow(first_token_decimals as u32));
+    let second_amount = BigUint::from(second_token_amount)
+        .mul(BigUint::from(10u64).pow(second_token_decimals as u32));
+
+    (first_amount, second_amount)
 }
 
 pub fn setup_price_aggregator(
@@ -782,6 +1255,7 @@ pub fn setup_price_aggregator(
         USDC_PRICE_IN_DOLLARS,
         USDC_DECIMALS,
     );
+
     submit_price(
         world,
         &price_aggregator_sc,
@@ -812,6 +1286,150 @@ pub fn setup_price_aggregator(
     );
 
     (price_aggregator_sc, price_aggregator_whitebox)
+}
+
+pub fn setup_egld_liquid_staking(
+    world: &mut ScenarioWorld,
+) -> (
+    ManagedAddress<StaticApi>,
+    WhiteboxContract<rs_liquid_staking_sc::ContractObj<DebugApi>>,
+) {
+    let egld_liquid_staking_whitebox = WhiteboxContract::new(
+        EGLD_LIQUID_STAKING_ADDRESS,
+        rs_liquid_staking_sc::contract_obj,
+    );
+
+    let egld_liquid_staking_sc = world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .typed(proxy_liquid_staking::LiquidStakingProxy)
+        .init(
+            EGLD_LIQUID_STAKING_ADDRESS,
+            BigUint::from(0u64),
+            0u64,
+            0u64,
+            BigUint::from(25u64),
+            100usize,
+            0u64,
+        )
+        .code(EGLD_LIQUID_STAKING_PATH)
+        .returns(ReturnsNewManagedAddress)
+        .run();
+
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(egld_liquid_staking_sc.clone())
+        .whitebox(rs_liquid_staking_sc::contract_obj, |sc| {
+            sc.ls_token()
+                .set_token_id(XEGLD_TOKEN.to_token_identifier())
+        });
+
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(egld_liquid_staking_sc.clone())
+        .whitebox(rs_liquid_staking_sc::contract_obj, |sc| {
+            sc.unstake_token()
+                .set_token_id(XEGLD_TOKEN.to_token_identifier())
+        });
+
+    world.set_esdt_local_roles(
+        egld_liquid_staking_sc.clone(),
+        XEGLD_TOKEN.as_bytes(),
+        ESDT_ROLES,
+    );
+    world.set_esdt_local_roles(
+        egld_liquid_staking_sc.clone(),
+        UNSTAKE_TOKEN.as_bytes(),
+        SFT_ROLES,
+    );
+
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(egld_liquid_staking_sc.clone())
+        .typed(proxy_liquid_staking::LiquidStakingProxy)
+        .set_state_active()
+        .run();
+
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(egld_liquid_staking_sc.clone())
+        .typed(proxy_liquid_staking::LiquidStakingProxy)
+        .set_scoring_config(ScoringConfig {
+            min_nodes: 0u64,
+            max_nodes: 100u64,
+            min_apy: 0u64,
+            max_apy: 100u64,
+            stake_weight: 50u64,
+            apy_weight: 25u64,
+            nodes_weight: 25u64,
+            max_score_per_category: 100u64,
+            exponential_base: 2u64,
+            apy_growth_multiplier: 1u64,
+        })
+        .run();
+
+    (egld_liquid_staking_sc, egld_liquid_staking_whitebox)
+}
+
+pub fn setup_xoxno_liquid_staking(
+    world: &mut ScenarioWorld,
+) -> (
+    ManagedAddress<StaticApi>,
+    WhiteboxContract<rs_liquid_xoxno::ContractObj<DebugApi>>,
+) {
+    let xoxno_liquid_staking_whitebox =
+        WhiteboxContract::new(XOXNO_LIQUID_STAKING_ADDRESS, rs_liquid_xoxno::contract_obj);
+
+    let xoxno_liquid_staking_sc = world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .typed(lxoxno_proxy::RsLiquidXoxnoProxy)
+        .init(XOXNO_TOKEN)
+        .code(XOXNO_LIQUID_STAKING_PATH)
+        .returns(ReturnsNewManagedAddress)
+        .run();
+
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(xoxno_liquid_staking_sc.clone())
+        .whitebox(rs_liquid_xoxno::contract_obj, |sc| {
+            sc.main_token().set(XOXNO_TOKEN.to_token_identifier());
+        });
+
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(xoxno_liquid_staking_sc.clone())
+        .whitebox(rs_liquid_xoxno::contract_obj, |sc| {
+            sc.unstake_token()
+                .set_token_id(UXOXNO_TOKEN.to_token_identifier())
+        });
+
+    world.set_esdt_local_roles(
+        xoxno_liquid_staking_sc.clone(),
+        LXOXNO_TOKEN.as_bytes(),
+        ESDT_ROLES,
+    );
+    world.set_esdt_local_roles(
+        xoxno_liquid_staking_sc.clone(),
+        UXOXNO_TOKEN.as_bytes(),
+        SFT_ROLES,
+    );
+
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(xoxno_liquid_staking_sc.clone())
+        .typed(rs_xoxno_proxy::RsLiquidXoxnoProxy)
+        .set_state_active()
+        .run();
+
+    (xoxno_liquid_staking_sc, xoxno_liquid_staking_whitebox)
 }
 
 pub fn submit_price(
@@ -920,7 +1538,7 @@ pub fn add_asset_to_e_mode_category(
 pub fn setup_market(
     world: &mut ScenarioWorld,
     lending_sc: &ManagedAddress<StaticApi>,
-    token: TestTokenIdentifier,
+    token: EgldOrEsdtTokenIdentifier<StaticApi>,
     config: SetupConfig,
 ) -> ManagedAddress<StaticApi> {
     let market_address = world
@@ -929,7 +1547,7 @@ pub fn setup_market(
         .to(lending_sc)
         .typed(proxy_lending_pool::LendingPoolProxy)
         .create_liquidity_pool(
-            token.to_token_identifier(),
+            token,
             BigUint::from(R_MAX),
             BigUint::from(R_BASE),
             BigUint::from(R_SLOPE1),
@@ -968,6 +1586,10 @@ pub fn setup_accounts(
         .account(supplier)
         .nonce(1)
         .esdt_balance(
+            LP_EGLD_TOKEN,
+            BigUint::from(100000000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+        )
+        .esdt_balance(
             EGLD_TOKEN,
             BigUint::from(1000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
         )
@@ -1001,6 +1623,10 @@ pub fn setup_accounts(
         .account(borrower)
         .nonce(1)
         .esdt_balance(
+            LP_EGLD_TOKEN,
+            BigUint::from(100000000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+        )
+        .esdt_balance(
             EGLD_TOKEN,
             BigUint::from(1000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
         )
@@ -1027,5 +1653,47 @@ pub fn setup_accounts(
         .esdt_balance(
             USDC_TOKEN,
             BigUint::from(10000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
+        );
+}
+
+pub fn setup_owner(world: &mut ScenarioWorld) {
+    world
+        .account(OWNER_ADDRESS)
+        .nonce(1)
+        .esdt_balance(
+            WEGLD_TOKEN,
+            BigUint::from(100000000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+        )
+        .esdt_balance(
+            EGLD_TOKEN,
+            BigUint::from(100000000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+        )
+        .esdt_balance(
+            ISOLATED_TOKEN,
+            BigUint::from(100000000u64) * BigUint::from(10u64).pow(ISOLATED_DECIMALS as u32),
+        )
+        .esdt_balance(
+            CAPPED_TOKEN,
+            BigUint::from(100000000u64) * BigUint::from(10u64).pow(CAPPED_DECIMALS as u32),
+        )
+        .esdt_balance(
+            SILOED_TOKEN,
+            BigUint::from(100000000u64) * BigUint::from(10u64).pow(SILOED_DECIMALS as u32),
+        )
+        .esdt_balance(
+            XEGLD_TOKEN,
+            BigUint::from(100000000u64) * BigUint::from(10u64).pow(XEGLD_DECIMALS as u32),
+        )
+        .esdt_balance(
+            SEGLD_TOKEN,
+            BigUint::from(100000000u64) * BigUint::from(10u64).pow(SEGLD_DECIMALS as u32),
+        )
+        .esdt_balance(
+            LEGLD_TOKEN,
+            BigUint::from(100000000u64) * BigUint::from(10u64).pow(LEGLD_DECIMALS as u32),
+        )
+        .esdt_balance(
+            USDC_TOKEN,
+            BigUint::from(100000000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
         );
 }

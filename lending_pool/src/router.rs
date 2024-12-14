@@ -152,7 +152,6 @@ pub trait RouterModule:
     ) {
         let mapper = self.token_oracle(market_token);
         require!(mapper.is_empty(), ERROR_ORACLE_TOKEN_NOT_FOUND);
-
         let first_token_id = match source {
             ExchangeSource::LXOXNO => {
                 let token_id = self

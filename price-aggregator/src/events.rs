@@ -12,6 +12,10 @@ pub trait EventsModule {
         price_feed: &TimestampedPrice<Self::Api>,
     ) {
         let epoch = self.blockchain().get_block_epoch();
+        sc_print!("new_round_event {} {} {}", token_pair.from, token_pair.to, round_id);
+        sc_print!("price_feed.price: {}", price_feed.price);
+        sc_print!("price_feed.timestamp: {}", price_feed.timestamp);
+        sc_print!("price_feed.decimals: {}", price_feed.decimals);
         self.new_round_event(
             &token_pair.from.clone(),
             &token_pair.to.clone(),

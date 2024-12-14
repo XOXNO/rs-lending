@@ -74,6 +74,7 @@ pub trait UtilsModule:
 
             first_submission_timestamp = current_timestamp;
             is_first_submission = true;
+            sc_print!("discard_round_event {}", round_id);
             self.discard_round_event(&token_pair.from.clone(), &token_pair.to.clone(), round_id)
         }
 
@@ -85,6 +86,7 @@ pub trait UtilsModule:
             submissions.insert(caller.clone(), price.clone());
             last_sub_time_mapper.set(current_timestamp);
 
+            sc_print!("accepted {}", round_id);
             self.create_new_round(token_pair.clone(), round_id, submissions, decimals);
             self.add_submission_event(
                 &token_pair.from.clone(),
@@ -93,6 +95,7 @@ pub trait UtilsModule:
                 &price,
             );
         } else {
+            sc_print!("discard_round_event {}", round_id);
             self.emit_discard_submission_event(
                 &token_pair,
                 round_id,

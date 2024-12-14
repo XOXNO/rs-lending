@@ -53,6 +53,7 @@ pub trait ViewsModule:
         require!(self.not_paused(), PAUSED_ERROR);
 
         let token_pair = TokenPair { from, to };
+
         let round_values = self
             .rounds()
             .get(&token_pair)

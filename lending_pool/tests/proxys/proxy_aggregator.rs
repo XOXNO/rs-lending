@@ -314,7 +314,7 @@ pub struct DiscardSubmissionEvent {
 }
 
 #[type_abi]
-#[derive(NestedEncode, NestedDecode, TopEncode, TopDecode)]
+#[derive(NestedEncode, NestedDecode, TopEncode, TopDecode, Clone)]
 pub struct PriceFeed<Api>
 where
     Api: ManagedTypeApi,

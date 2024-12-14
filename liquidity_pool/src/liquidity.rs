@@ -72,7 +72,7 @@ pub trait LiquidityModule:
     ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
 
-        let (deposit_asset, deposit_amount) = self.call_value().single_fungible_esdt();
+        let (deposit_asset, deposit_amount) = self.call_value().egld_or_single_fungible_esdt();
         let deposit_amount_dec = ManagedDecimal::from_raw_units(
             deposit_amount.clone(),
             storage_cache.pool_params.decimals,
@@ -80,7 +80,7 @@ pub trait LiquidityModule:
         let mut ret_deposit_position = deposit_position.clone();
 
         require!(
-            deposit_asset == storage_cache.pool_asset,
+            deposit_asset.eq(&storage_cache.pool_asset),
             ERROR_INVALID_ASSET
         );
 
@@ -204,19 +204,18 @@ pub trait LiquidityModule:
             &storage_cache.supply_index,
             &ManagedDecimal::from_raw_units(deposit_position.index.clone(), DECIMAL_PRECISION),
         );
-
-        let total_withdraw = amount_dec.clone() + extra_interest;
+        let total_withdraw = amount_dec.clone() + extra_interest.clone();
         // Withdrawal amount = initial wanted amount + Unaccrued interest for that amount (this has to be paid back to the user that requested the withdrawal)
-        let mut principal_amount = total_withdraw.clone();
+        let mut principal_amount = amount_dec;
         // Check if there is enough liquidity to cover the withdrawal
 
         require!(
-            &storage_cache.reserves_amount >= &principal_amount,
+            &storage_cache.reserves_amount >= &total_withdraw,
             ERROR_INSUFFICIENT_LIQUIDITY
         );
 
         // Update the reserves amount
-        storage_cache.reserves_amount -= &principal_amount;
+        storage_cache.reserves_amount -= &total_withdraw;
 
         let mut accumulated_interest = ManagedDecimal::from_raw_units(
             deposit_position.accumulated_interest.clone(),
@@ -275,7 +274,7 @@ pub trait LiquidityModule:
                 ))
                 .transfer();
         }
-        
+
         self.update_market_state_event(
             storage_cache.timestamp,
             storage_cache.supply_index.into_raw_units(),
@@ -304,10 +303,12 @@ pub trait LiquidityModule:
 
         self.require_non_zero_address(&initial_caller);
         self.require_amount_greater_than_zero(&received_amount);
+
         require!(
             received_asset == storage_cache.pool_asset,
             ERROR_INVALID_ASSET
         );
+
         let received_amount_dec = ManagedDecimal::from_raw_units(
             received_amount.clone(),
             storage_cache.pool_params.decimals,
@@ -422,11 +423,8 @@ pub trait LiquidityModule:
         asset_usd_price: &BigUint,
     ) {
         let mut storage_cache = StorageCache::new(self);
-
-        require!(
-            borrowed_token == &storage_cache.pool_asset,
-            ERROR_INVALID_ASSET
-        );
+        let asset = storage_cache.pool_asset.clone();
+        require!(borrowed_token == &asset, ERROR_INVALID_ASSET);
 
         let amount_dec =
             ManagedDecimal::from_raw_units(amount.clone(), storage_cache.pool_params.decimals);
@@ -434,7 +432,7 @@ pub trait LiquidityModule:
             &storage_cache.reserves_amount >= &amount_dec,
             ERROR_FLASHLOAN_RESERVE_ASSET
         );
-
+        storage_cache.reserves_amount -= &amount_dec;
         // Calculate flash loan fee
         let flash_loan_fee =
             amount_dec.clone() * ManagedDecimal::from_raw_units(fees.clone(), DECIMAL_PRECISION);
@@ -445,31 +443,29 @@ pub trait LiquidityModule:
         // TODO: Maybe before the execution drop the cache to save the new available liquidity
         // Does it make a difference? I tend to say no.
         // My concern is what if the call does another flashloan in a loop?
+        drop(storage_cache);
         let back_transfers = self
             .tx()
             .to(contract_address)
             .raw_call(endpoint)
             .arguments_raw(arguments)
-            .payment(EgldOrEsdtTokenPayment::new(
-                storage_cache.pool_asset.clone(),
-                0,
-                amount.clone(),
-            ))
+            .payment(EgldOrEsdtTokenPayment::new(asset, 0, amount.clone()))
             .returns(ReturnsBackTransfers)
             .sync_call();
 
+        let mut storage_cache_second = StorageCache::new(self);
         let is_egld = borrowed_token == &EgldOrEsdtTokenIdentifier::egld();
         if is_egld {
             let amount_dec = ManagedDecimal::from_raw_units(
                 back_transfers.total_egld_amount,
-                storage_cache.pool_params.decimals,
+                storage_cache_second.pool_params.decimals,
             );
             require!(
                 amount_dec >= min_required_amount,
                 ERROR_INVALID_FLASHLOAN_REPAYMENT
             );
             let extra_amount = amount_dec - min_required_amount;
-            storage_cache.rewards_reserve += &extra_amount;
+            storage_cache_second.rewards_reserve += &extra_amount;
         } else {
             require!(
                 back_transfers.esdt_payments.len() == 1,
@@ -477,13 +473,13 @@ pub trait LiquidityModule:
             );
             let payment = back_transfers.esdt_payments.get(0);
             require!(
-                &payment.token_identifier == &storage_cache.pool_asset,
+                &payment.token_identifier == &storage_cache_second.pool_asset,
                 ERROR_INVALID_FLASHLOAN_REPAYMENT
             );
 
             let amount_dec = ManagedDecimal::from_raw_units(
                 payment.amount.clone(),
-                storage_cache.pool_params.decimals,
+                storage_cache_second.pool_params.decimals,
             );
 
             require!(
@@ -492,18 +488,30 @@ pub trait LiquidityModule:
             );
 
             let extra_amount = amount_dec - min_required_amount;
-            storage_cache.rewards_reserve += &extra_amount;
+            storage_cache_second.rewards_reserve += &extra_amount;
         }
 
         self.update_market_state_event(
-            storage_cache.timestamp,
-            &storage_cache.supply_index.into_raw_units().clone(),
-            &storage_cache.borrow_index.into_raw_units().clone(),
-            &storage_cache.reserves_amount.into_raw_units().clone(),
-            &storage_cache.supplied_amount.into_raw_units().clone(),
-            &storage_cache.borrowed_amount.into_raw_units().clone(),
-            &storage_cache.rewards_reserve.into_raw_units().clone(),
-            &storage_cache.pool_asset,
+            storage_cache_second.timestamp,
+            &storage_cache_second.supply_index.into_raw_units().clone(),
+            &storage_cache_second.borrow_index.into_raw_units().clone(),
+            &storage_cache_second
+                .reserves_amount
+                .into_raw_units()
+                .clone(),
+            &storage_cache_second
+                .supplied_amount
+                .into_raw_units()
+                .clone(),
+            &storage_cache_second
+                .borrowed_amount
+                .into_raw_units()
+                .clone(),
+            &storage_cache_second
+                .rewards_reserve
+                .into_raw_units()
+                .clone(),
+            &storage_cache_second.pool_asset,
             asset_usd_price,
         );
     }

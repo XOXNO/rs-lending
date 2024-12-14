@@ -1,3 +1,4 @@
+multiversx_sc::imports!();
 use common_events::{ExchangeSource, OracleProvider, OracleType, PricingMethod, BP};
 
 use crate::{
@@ -6,12 +7,9 @@ use crate::{
     proxy_xexchange_pair::{self, State},
     storage, ERROR_INVALID_EXCHANGE_SOURCE, ERROR_INVALID_ORACLE_TOKEN_TYPE,
     ERROR_NO_LAST_PRICE_FOUND, ERROR_ORACLE_TOKEN_NOT_FOUND, ERROR_PAIR_NOT_ACTIVE,
-    ERROR_PRICE_AGGREGATOR_NOT_SET, ERROR_TOKEN_TICKER_FETCH,
+    ERROR_PRICE_AGGREGATOR_NOT_SET,
 };
 
-multiversx_sc::imports!();
-
-const TOKEN_ID_SUFFIX_LEN: usize = 7; // "dash" + 6 random bytes
 const DOLLAR_TICKER: &[u8] = b"USD";
 const EGLD_TICKER: &[u8] = b"EGLD";
 const WEGLD_TICKER: &[u8] = b"WEGLD";
@@ -269,24 +267,21 @@ pub trait OracleModule: storage::LendingStorageModule {
         let first_token_ticker = self.get_token_ticker(&configs.first_token_id);
         let second_token_ticker = self.get_token_ticker(&configs.second_token_id);
         let is_first_token_id_egld = first_token_ticker == egld_ticker;
-        let is_second_token_id_egld = second_token_ticker == egld_ticker;
+        let _is_second_token_id_egld = second_token_ticker == egld_ticker;
 
-        let (token_in, decimals) = if is_first_token_id_egld && token_id.is_egld() {
-            let token_data = self.token_oracle(&configs.second_token_id);
-
-            require!(!token_data.is_empty(), ERROR_ORACLE_TOKEN_NOT_FOUND);
-
-            let decimals = token_data.get().decimals;
-
-            (configs.second_token_id.clone(), decimals)
-        } else if is_second_token_id_egld && token_id.is_egld() {
-            let token_data = self.token_oracle(&configs.first_token_id);
+        let (token_in, decimals) = if token_id.is_egld() {
+            let used_token_id = if is_first_token_id_egld {
+                &configs.second_token_id
+            } else {
+                &configs.first_token_id
+            };
+            let token_data = self.token_oracle(used_token_id);
 
             require!(!token_data.is_empty(), ERROR_ORACLE_TOKEN_NOT_FOUND);
 
             let decimals = token_data.get().decimals;
 
-            (configs.first_token_id.clone(), decimals)
+            (used_token_id.clone(), decimals)
         } else {
             (token_id.clone(), configs.decimals)
         };
@@ -429,26 +424,16 @@ pub trait OracleModule: storage::LendingStorageModule {
 
     fn get_token_ticker(&self, token_id: &EgldOrEsdtTokenIdentifier) -> ManagedBuffer {
         let egld_ticker = ManagedBuffer::new_from_bytes(EGLD_TICKER);
-        if token_id.is_egld() {
+        if token_id.is_egld() || token_id.clone().into_name() == egld_ticker {
             return egld_ticker;
         }
 
-        let as_buffer = token_id.clone().into_name();
+        let result = token_id.as_esdt_option().unwrap().ticker();
 
-        let ticker_start_index = 0;
-        let ticker_end_index = as_buffer.len() - TOKEN_ID_SUFFIX_LEN;
-
-        let result = as_buffer.copy_slice(ticker_start_index, ticker_end_index);
-
-        match result {
-            Some(r) => {
-                if r == ManagedBuffer::new_from_bytes(WEGLD_TICKER) {
-                    return egld_ticker;
-                } else {
-                    return r;
-                }
-            }
-            None => sc_panic!(ERROR_TOKEN_TICKER_FETCH),
+        if result == ManagedBuffer::new_from_bytes(WEGLD_TICKER) {
+            return egld_ticker;
+        } else {
+            return result;
         }
     }
 

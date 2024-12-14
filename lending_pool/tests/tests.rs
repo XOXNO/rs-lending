@@ -22,6 +22,7 @@ fn test_basic_supply_and_borrow() {
     // Setup accounts
     state.world.current_block().block_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
+
     // Test supply
     state.supply_asset(
         &supplier,
@@ -148,6 +149,7 @@ fn test_complete_market_exit() {
         OptionalValue::None,
         false,
     );
+
     // Test borrow
     state.supply_asset(
         &borrower,
@@ -158,6 +160,7 @@ fn test_complete_market_exit() {
         OptionalValue::None,
         false,
     );
+
     state.world.current_block().block_timestamp(6000u64);
     state.borrow_asset(
         &borrower,
@@ -166,10 +169,21 @@ fn test_complete_market_exit() {
         2,
         EGLD_DECIMALS,
     );
+
+
+    state.supply_asset(
+        &OWNER_ADDRESS,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
     // return;
     state.world.current_block().block_timestamp(8000u64);
     state.update_borrows_with_debt(&borrower, 2);
-    state.update_interest_indexes(&supplier, 1);
+    // state.update_interest_indexes(&supplier, 1);
 
     state
         .world
@@ -194,8 +208,10 @@ fn test_complete_market_exit() {
         2,
         EGLD_DECIMALS,
     );
+    let borrow_amount_in_dollars = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+    assert!(borrow_amount_in_dollars == BigUint::zero());
     state.update_borrows_with_debt(&borrower, 2);
-    state.update_interest_indexes(&supplier, 1);
+    // state.update_interest_indexes(&supplier, 1);
     state.world.current_block().block_timestamp(9000u64);
 
     state.withdraw_asset(
@@ -205,8 +221,6 @@ fn test_complete_market_exit() {
         2,
         USDC_DECIMALS,
     );
-    state.world.current_block().block_timestamp(10000u64);
-    state.update_interest_indexes(&supplier, 1);
 
     state
         .world
@@ -221,8 +235,6 @@ fn test_complete_market_exit() {
                 is_vault: false,
             },
         );
-    // let collateral_in_dollars = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
-    // println!("collateral_in_dollars: {:?}", collateral_in_dollars);
 
     state.withdraw_asset(
         &supplier,
@@ -231,6 +243,8 @@ fn test_complete_market_exit() {
         1,
         EGLD_DECIMALS,
     );
+    let collateral_in_dollars = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    println!("collateral_in_dollars: {:?}", collateral_in_dollars);
     return;
 }
 
@@ -1592,4 +1606,65 @@ fn test_interest_accrual_test() {
     println!("final_borrow: {:?}", final_borrow);
     // assert!(final_borrow > initial_borrow);
     // assert!(final_supply > initial_supply);
+}
+
+// Oracle Tests
+#[test]
+fn test_oracle_price_feed_lp() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    setup_accounts(&mut state, supplier, borrower);
+
+    let price = state.get_usd_price(
+        LP_EGLD_TOKEN,
+    );
+    println!("price: {:?}", price);
+}
+
+#[test]
+fn test_oracle_price_feed_isolated() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    setup_accounts(&mut state, supplier, borrower);
+
+    let price = state.get_usd_price(
+        ISOLATED_TOKEN,
+    );
+    println!("price: {:?}", price);
+    state.world.current_block().block_timestamp(20);
+    state.submit_price(
+        ISOLATED_TICKER,
+        1,
+        18,
+        6,
+    );
+    state.world.current_block().block_timestamp(50);
+    state.submit_price(
+        ISOLATED_TICKER,
+        1,
+        18,
+        45,
+    );
+    state.world.current_block().block_timestamp(100);
+    state.submit_price(
+        ISOLATED_TICKER,
+        1,
+        18,
+        100,
+    );
+    state.world.current_block().block_timestamp(150);
+    state.submit_price(
+        ISOLATED_TICKER,
+        1,
+        18,
+        150,
+    );
+    let price = state.get_usd_price(
+        ISOLATED_TOKEN,
+    );
+    println!("price: {:?}", price);
 }

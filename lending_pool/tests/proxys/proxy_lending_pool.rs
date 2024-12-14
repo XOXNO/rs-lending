@@ -46,16 +46,19 @@ where
     pub fn init<
         Arg0: ProxyArg<ManagedAddress<Env::Api>>,
         Arg1: ProxyArg<ManagedAddress<Env::Api>>,
+        Arg2: ProxyArg<ManagedAddress<Env::Api>>,
     >(
         self,
         lp_template_address: Arg0,
         aggregator: Arg1,
+        safe_view_address: Arg2,
     ) -> TxTypedDeploy<Env, From, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_deploy()
             .argument(&lp_template_address)
             .argument(&aggregator)
+            .argument(&safe_view_address)
             .original_result()
     }
 }
@@ -311,6 +314,59 @@ where
             .original_result()
     }
 
+    pub fn set_token_oracle<
+        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+        Arg1: ProxyArg<u8>,
+        Arg2: ProxyArg<ManagedAddress<Env::Api>>,
+        Arg3: ProxyArg<common_structs::PricingMethod>,
+        Arg4: ProxyArg<common_structs::OracleType>,
+        Arg5: ProxyArg<common_structs::ExchangeSource>,
+        Arg6: ProxyArg<BigUint<Env::Api>>,
+        Arg7: ProxyArg<BigUint<Env::Api>>,
+    >(
+        self,
+        market_token: Arg0,
+        decimals: Arg1,
+        contract_address: Arg2,
+        pricing_method: Arg3,
+        token_type: Arg4,
+        source: Arg5,
+        first_tolerance: Arg6,
+        last_tolerance: Arg7,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("setTokenOracle")
+            .argument(&market_token)
+            .argument(&decimals)
+            .argument(&contract_address)
+            .argument(&pricing_method)
+            .argument(&token_type)
+            .argument(&source)
+            .argument(&first_tolerance)
+            .argument(&last_tolerance)
+            .original_result()
+    }
+
+    pub fn edit_token_oracle_tolerance<
+        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+        Arg1: ProxyArg<BigUint<Env::Api>>,
+        Arg2: ProxyArg<BigUint<Env::Api>>,
+    >(
+        self,
+        market_token: Arg0,
+        first_tolerance: Arg1,
+        last_tolerance: Arg2,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("editTokenOracletTolerance")
+            .argument(&market_token)
+            .argument(&first_tolerance)
+            .argument(&last_tolerance)
+            .original_result()
+    }
+
     pub fn set_aggregator<
         Arg0: ProxyArg<ManagedAddress<Env::Api>>,
     >(
@@ -321,6 +377,19 @@ where
             .payment(NotPayable)
             .raw_call("setAggregator")
             .argument(&aggregator)
+            .original_result()
+    }
+
+    pub fn set_safe_price_view<
+        Arg0: ProxyArg<ManagedAddress<Env::Api>>,
+    >(
+        self,
+        safe_view_address: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("setSafePriceView")
+            .argument(&safe_view_address)
             .original_result()
     }
 
@@ -584,6 +653,15 @@ where
             .original_result()
     }
 
+    pub fn safe_price_view(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getSafePriceView")
+            .original_result()
+    }
+
     pub fn asset_config<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
     >(
@@ -650,6 +728,71 @@ where
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getIsolatedAssetDebtUsd")
+            .argument(&token_id)
+            .original_result()
+    }
+
+    pub fn vault_supplied_amount<
+        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+    >(
+        self,
+        token_id: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getVaultSuppliedAmount")
+            .argument(&token_id)
+            .original_result()
+    }
+
+    pub fn token_oracle<
+        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+    >(
+        self,
+        token_id: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::OracleProvider<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getTokenOracle")
+            .argument(&token_id)
+            .original_result()
+    }
+
+    pub fn get_usd_price<
+        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+    >(
+        self,
+        token_id: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getTokenPriceUSD")
+            .argument(&token_id)
+            .original_result()
+    }
+
+    pub fn get_token_price_data<
+        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+    >(
+        self,
+        token_id: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, PriceFeed<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getTokenPriceData")
+            .argument(&token_id)
+            .original_result()
+    }
+
+    pub fn last_token_price<
+        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+    >(
+        self,
+        token_id: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getLastTokenPrice")
             .argument(&token_id)
             .original_result()
     }
@@ -808,4 +951,18 @@ where
             .argument(&account_position)
             .original_result()
     }
+}
+
+#[type_abi]
+#[derive(NestedEncode, NestedDecode, TopEncode, TopDecode, Clone)]
+pub struct PriceFeed<Api>
+where
+    Api: ManagedTypeApi,
+{
+    pub round_id: u32,
+    pub from: ManagedBuffer<Api>,
+    pub to: ManagedBuffer<Api>,
+    pub timestamp: u64,
+    pub price: BigUint<Api>,
+    pub decimals: u8,
 }

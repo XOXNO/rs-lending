@@ -213,5 +213,5 @@ getTokenPriceData() {
 }
 
 getTokenPriceUSD() {
-    mxpy contract query ${ADDRESS} --function="getTokenPriceUSD" --arguments ${LP_XOXNO_TOKEN} --proxy=${PROXY}
+    mxpy contract query ${ADDRESS} --function="getTokenPriceUSD" --arguments ${MEX_TOKEN} --proxy=${PROXY}
 }
