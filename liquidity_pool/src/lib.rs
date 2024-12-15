@@ -61,7 +61,7 @@ pub trait LiquidityPool:
             DECIMAL_PRECISION,
         ));
 
-        self.rewards_reserves().set(BigUint::from(0u64));
+        self.protocol_revenue().set(BigUint::from(0u64));
         self.last_update_timestamp().set(self.blockchain().get_block_timestamp());
     }
 

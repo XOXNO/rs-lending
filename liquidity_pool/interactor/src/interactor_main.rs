@@ -28,7 +28,7 @@ async fn main() {
         "getPoolAsset" => interact.pool_asset().await,
         "getReserves" => interact.reserves().await,
         "getSuppliedAmount" => interact.supplied_amount().await,
-        "getRewardsReserves" => interact.rewards_reserves().await,
+        "getRewardsReserves" => interact.protocol_revenue().await,
         "getTotalBorrow" => interact.borrowed_amount().await,
         "getPoolParams" => interact.pool_params().await,
         "getBorrowIndex" => interact.borrow_index().await,
@@ -220,13 +220,13 @@ impl ContractInteract {
         println!("Result: {result_value:?}");
     }
 
-    async fn rewards_reserves(&mut self) {
+    async fn protocol_revenue(&mut self) {
         let result_value = self
             .interactor
             .query()
             .to(self.state.current_address())
             .typed(proxy::LiquidityPoolProxy)
-            .rewards_reserves()
+            .protocol_revenue()
             .returns(ReturnsResultUnmanaged)
             
             .run()

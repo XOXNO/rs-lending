@@ -41,7 +41,7 @@ pub trait EventsModule {
         #[indexed] reserves: &BigUint,
         #[indexed] supplied_amount: &BigUint,
         #[indexed] borrowed_amount: &BigUint,
-        #[indexed] rewards_reserve: &BigUint,
+        #[indexed] protocol_revenue: &BigUint,
         #[indexed] base_asset: &EgldOrEsdtTokenIdentifier,
         #[indexed] asset_usd_price: &BigUint,
     );

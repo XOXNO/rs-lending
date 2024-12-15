@@ -11,7 +11,7 @@ where
     pub supplied_amount: ManagedDecimal<C::Api, NumDecimals>,
     pub reserves_amount: ManagedDecimal<C::Api, NumDecimals>,
     pub borrowed_amount: ManagedDecimal<C::Api, NumDecimals>,
-    pub rewards_reserve: ManagedDecimal<C::Api, NumDecimals>,
+    pub protocol_revenue: ManagedDecimal<C::Api, NumDecimals>,
     pub timestamp: u64,
     pub pool_asset: EgldOrEsdtTokenIdentifier<C::Api>,
     pub pool_params: PoolParams<C::Api>,
@@ -39,8 +39,8 @@ where
                 sc_ref.borrowed_amount().get(),
                 params.decimals,
             ),
-            rewards_reserve: ManagedDecimal::from_raw_units(
-                sc_ref.rewards_reserves().get(),
+            protocol_revenue: ManagedDecimal::from_raw_units(
+                sc_ref.protocol_revenue().get(),
                 params.decimals,
             ),
             timestamp: sc_ref.blockchain().get_block_timestamp(),
@@ -60,14 +60,35 @@ where
 {
     fn drop(&mut self) {
         // commit changes to storage for the mutable fields
-        self.sc_ref.supplied_amount().set(&self.supplied_amount.into_raw_units().clone());
-        self.sc_ref.reserves().set(&self.reserves_amount.into_raw_units().clone());
-        self.sc_ref.borrowed_amount().set(&self.borrowed_amount.into_raw_units().clone());
-        self.sc_ref.rewards_reserves().set(&self.rewards_reserve.into_raw_units().clone());
+        self.sc_ref
+            .supplied_amount()
+            .set(&self.supplied_amount.into_raw_units().clone());
+        self.sc_ref
+            .reserves()
+            .set(&self.reserves_amount.into_raw_units().clone());
+        self.sc_ref
+            .borrowed_amount()
+            .set(&self.borrowed_amount.into_raw_units().clone());
+        self.sc_ref
+            .protocol_revenue()
+            .set(&self.protocol_revenue.into_raw_units().clone());
         self.sc_ref.borrow_index().set(&self.borrow_index);
         self.sc_ref.supply_index().set(&self.supply_index);
         self.sc_ref
             .last_update_timestamp()
             .set(&self.last_update_timestamp);
+    }
+}
+
+impl<'a, C> StorageCache<'a, C>
+where
+    C: crate::liq_storage::StorageModule,
+{
+    pub fn get_reserves(&self) -> ManagedDecimal<C::Api, NumDecimals> {
+        if self.reserves_amount >= self.protocol_revenue {
+            self.reserves_amount.clone() - self.protocol_revenue.clone()
+        } else {
+            ManagedDecimal::from_raw_units(BigUint::from(0u64), self.pool_params.decimals)
+        }
     }
 }

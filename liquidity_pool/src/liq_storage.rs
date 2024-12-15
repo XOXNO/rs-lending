@@ -19,7 +19,7 @@ pub trait StorageModule {
 
     #[view(getRewardsReserves)]
     #[storage_mapper("rewards_reserves")]
-    fn rewards_reserves(&self) -> SingleValueMapper<BigUint>;
+    fn protocol_revenue(&self) -> SingleValueMapper<BigUint>;
 
     #[view(getTotalBorrow)]
     #[storage_mapper("borrowed_amount")]

@@ -23,7 +23,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         getPoolAsset => pool_asset
         getReserves => reserves
         getSuppliedAmount => supplied_amount
-        getRewardsReserves => rewards_reserves
+        getRewardsReserves => protocol_revenue
         getTotalBorrow => borrowed_amount
         getPoolParams => pool_params
         getBorrowIndex => borrow_index

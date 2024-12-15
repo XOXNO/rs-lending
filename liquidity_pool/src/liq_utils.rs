@@ -112,7 +112,7 @@ pub trait UtilsModule:
             .mul(storage_cache.pool_params.reserve_factor.clone());
 
         // 4. Update reserves
-        storage_cache.rewards_reserve += &revenue;
+        storage_cache.protocol_revenue += &revenue;
 
         // 5. Return suppliers' share
         rewards_increase - revenue

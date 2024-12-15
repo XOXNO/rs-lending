@@ -152,7 +152,7 @@ where
             .original_result()
     }
 
-    pub fn rewards_reserves(
+    pub fn protocol_revenue(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
         self.wrapped_tx

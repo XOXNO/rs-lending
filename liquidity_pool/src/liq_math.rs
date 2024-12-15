@@ -78,12 +78,12 @@ pub trait MathModule {
     fn compute_capital_utilisation(
         &self,
         borrowed_amount: ManagedDecimal<Self::Api, NumDecimals>,
-        total_reserves: ManagedDecimal<Self::Api, NumDecimals>,
+        total_supplied: ManagedDecimal<Self::Api, NumDecimals>,
         decimals: usize,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let zero_dec = ManagedDecimal::from_raw_units(BigUint::zero(), decimals);
 
-        if total_reserves == zero_dec {
+        if total_supplied == zero_dec {
             zero_dec
         } else {
             let utilization_ratio = borrowed_amount
@@ -91,7 +91,7 @@ pub trait MathModule {
                     BigUint::from(BP),
                     DECIMAL_PRECISION,
                 ))
-                .div(total_reserves);
+                .div(total_supplied);
 
             utilization_ratio
         }

@@ -7,6 +7,32 @@ use crate::{oracle, proxy_price_aggregator::PriceFeed, storage, ERROR_NO_COLLATE
 
 #[multiversx_sc::module]
 pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModule {
+    /// Computes the health factor for a position based on weighted collateral and borrowed value
+    /// 
+    /// # Arguments
+    /// * `weighted_collateral_in_dollars` - Total USD value of collateral weighted by liquidation thresholds
+    /// * `borrowed_value_in_dollars` - Total USD value of borrowed assets
+    /// 
+    /// # Returns
+    /// * `BigUint` - Health factor in basis points (10000 = 100%)
+    /// 
+    /// # Examples
+    /// ```
+    /// // Example 1: No borrows
+    /// weighted_collateral = 1000 USD
+    /// borrowed_value = 0 USD
+    /// health_factor = u128::MAX (effectively infinite)
+    /// 
+    /// // Example 2: Healthy position
+    /// weighted_collateral = 150 USD
+    /// borrowed_value = 100 USD
+    /// health_factor = 15000 (150%)
+    /// 
+    /// // Example 3: Unhealthy position
+    /// weighted_collateral = 90 USD
+    /// borrowed_value = 100 USD
+    /// health_factor = 9000 (90%)
+    /// ```
     fn compute_health_factor(
         &self,
         weighted_collateral_in_dollars: &BigUint,
@@ -24,6 +50,32 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
         health_factor
     }
 
+    /// Calculates the maximum amount that can be liquidated in a single transaction
+    /// 
+    /// # Arguments
+    /// * `total_debt_in_dollars` - Total USD value of user's debt
+    /// * `weighted_collateral_in_dollars` - Total USD value of collateral weighted by liquidation thresholds
+    /// * `liquidation_bonus` - Bonus percentage for liquidators in basis points
+    /// 
+    /// # Returns
+    /// * `BigUint` - Maximum USD value that can be liquidated
+    /// 
+    /// # Examples
+    /// ```
+    /// // Example 1: Position slightly unhealthy
+    /// total_debt = 100 USD
+    /// weighted_collateral = 95 USD
+    /// liquidation_bonus = 500 (5%)
+    /// target_hf = 1.05
+    /// required_repayment ≈ 20 USD
+    /// 
+    /// // Example 2: Position deeply unhealthy
+    /// total_debt = 100 USD
+    /// weighted_collateral = 50 USD
+    /// liquidation_bonus = 500 (5%)
+    /// target_hf = 1.05
+    /// required_repayment = 100 USD (full liquidation)
+    /// ```
     fn calculate_max_liquidatable_amount_in_dollars(
         &self,
         total_debt_in_dollars: &BigUint,
@@ -31,9 +83,8 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
         liquidation_bonus: &BigUint,
     ) -> BigUint {
         let bp = BigUint::from(BP);
-
         // Target HF = 1.05 for all liquidations
-        let target_hf = bp.clone() * 105u32 / 100u32; // 1.05
+        let target_hf = bp.clone() + (bp.clone() / &BigUint::from(20u32)); // 1.05
 
         // Calculate required repayment to reach target HF
         let adjusted_debt = total_debt_in_dollars * &target_hf / &bp;
@@ -51,6 +102,36 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
         }
     }
 
+    /// Calculates the maximum amount of a specific collateral asset that can be liquidated
+    /// 
+    /// # Arguments
+    /// * `total_debt_in_dollars` - Total USD value of user's debt
+    /// * `total_collateral_in_dollars` - Total USD value of all collateral
+    /// * `token_to_liquidate` - Token identifier of collateral to liquidate
+    /// * `token_price_data` - Price feed data for the collateral token
+    /// * `liquidatee_account_nonce` - NFT nonce of the account being liquidated
+    /// * `debt_payment_in_usd` - Optional USD value of debt being repaid
+    /// * `liquidation_bonus` - Bonus percentage for liquidators in basis points
+    /// 
+    /// # Returns
+    /// * `BigUint` - Maximum USD value of the specific collateral that can be liquidated
+    /// 
+    /// # Examples
+    /// ```
+    /// // Example 1: Single collateral liquidation
+    /// total_debt = 100 USD
+    /// total_collateral = 95 USD
+    /// available_collateral = 95 USD (EGLD)
+    /// debt_payment = None
+    /// max_liquidatable = min(20 USD, 95 USD) = 20 USD
+    /// 
+    /// // Example 2: Partial liquidation with payment limit
+    /// total_debt = 100 USD
+    /// total_collateral = 95 USD
+    /// available_collateral = 95 USD (EGLD)
+    /// debt_payment = Some(10 USD)
+    /// max_liquidatable = min(20 USD, 95 USD, 10 USD) = 10 USD
+    /// ```
     fn calculate_single_asset_liquidation_amount(
         &self,
         total_debt_in_dollars: &BigUint,
@@ -87,6 +168,31 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
         }
     }
 
+    /// Calculates a dynamic liquidation bonus based on position health
+    /// 
+    /// # Arguments
+    /// * `health_factor` - Current health factor in basis points
+    /// * `initial_bonus` - Base liquidation bonus in basis points
+    /// 
+    /// # Returns
+    /// * `BigUint` - Final liquidation bonus in basis points
+    /// 
+    /// # Examples
+    /// ```
+    /// // Example 1: Slightly unhealthy position
+    /// health_factor = 9500 (95%)
+    /// initial_bonus = 500 (5%)
+    /// health_factor_impact = (10000 - 9500) * 2 = 1000
+    /// bonus_increase = min(1000 * 500 / 10000, 3000) = 50
+    /// final_bonus = 550 (5.5%)
+    /// 
+    /// // Example 2: Very unhealthy position
+    /// health_factor = 5000 (50%)
+    /// initial_bonus = 500 (5%)
+    /// health_factor_impact = (10000 - 5000) * 2 = 10000
+    /// bonus_increase = min(10000 * 500 / 10000, 3000) = 500
+    /// final_bonus = 1000 (10%)
+    /// ```
     fn calculate_dynamic_liquidation_bonus(
         &self,
         health_factor: &BigUint,
@@ -116,6 +222,30 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
         initial_bonus + bonus_increase
     }
 
+    /// Calculates a dynamic protocol fee based on position health
+    /// 
+    /// # Arguments
+    /// * `health_factor` - Current health factor in basis points
+    /// * `base_protocol_fee` - Base protocol fee in basis points
+    /// 
+    /// # Returns
+    /// * `BigUint` - Final protocol fee in basis points
+    /// 
+    /// # Examples
+    /// ```
+    /// // Example 1: Healthy position (HF > 75%)
+    /// health_factor = 8000 (80%)
+    /// base_protocol_fee = 1000 (10%)
+    /// final_fee = 1000 (10%, no reduction)
+    /// 
+    /// // Example 2: Unhealthy position
+    /// health_factor = 6000 (60%)
+    /// base_protocol_fee = 1000 (10%)
+    /// distance = 7500 - 6000 = 1500
+    /// health_factor_impact = 1500 * 2 = 3000
+    /// fee_reduction = min(3000 * 1000 / 10000, 2500) = 300
+    /// final_fee = 700 (7%)
+    /// ```
     fn calculate_dynamic_protocol_fee(
         &self,
         health_factor: &BigUint,

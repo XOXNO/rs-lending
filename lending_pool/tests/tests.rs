@@ -8,7 +8,7 @@ use multiversx_sc_scenario::{
 pub mod constants;
 pub mod proxys;
 pub mod setup;
-
+use std::ops::Mul;
 use constants::*;
 use setup::*;
 
@@ -1667,4 +1667,332 @@ fn test_oracle_price_feed_isolated() {
         ISOLATED_TOKEN,
     );
     println!("price: {:?}", price);
+}
+
+// Vault Position Tests
+#[test]
+fn test_basic_vault_supply_and_borrow() {
+    let mut state = LendingPoolTestState::new();
+    let vault = TestAddress::new("vault");
+    let user = TestAddress::new("user");
+
+    // Setup accounts
+    setup_accounts(&mut state, vault, user);
+
+    // Test vault supply
+    state.supply_asset(
+        &vault,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        true, // is_vault = true
+    );
+
+    // Verify vault position
+    let vault_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);
+    assert_eq!(vault_supplied, BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32)));
+
+    // Test normal user supply and borrow against vault liquidity
+    state.supply_asset(
+        &user,
+        USDC_TOKEN,
+        BigUint::from(5000u64),
+        USDC_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    state.borrow_asset(
+        &vault,
+        USDC_TOKEN,
+        BigUint::from(50u64),
+        1,
+        USDC_DECIMALS,
+    );
+
+    // Verify amounts
+    let borrowed = state.get_borrow_amount_for_token(1, USDC_TOKEN);
+    let collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+
+    assert!(borrowed > BigUint::zero());
+    assert!(collateral > BigUint::zero());
+}
+
+#[test]
+fn test_vault_supply_with_normal_position_error() {
+    let mut state = LendingPoolTestState::new();
+    let vault = TestAddress::new("vault");
+    let user = TestAddress::new("user");
+
+    // Setup accounts
+    setup_accounts(&mut state, vault, user);
+
+    // First create normal position
+    state.supply_asset(
+        &vault,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false, // normal position
+    );
+
+    // Try to supply as vault with same NFT
+    state.supply_asset_error(
+        &vault,
+        USDC_TOKEN,
+        BigUint::from(5000u64),
+        USDC_DECIMALS,
+        OptionalValue::Some(1), // same NFT
+        OptionalValue::None,
+        true, // try as vault
+        ERROR_POSITION_SHOULD_BE_VAULT,
+    );
+}
+
+#[test]
+fn test_vault_supply_and_withdraw() {
+    let mut state = LendingPoolTestState::new();
+    let vault = TestAddress::new("vault");
+    let user = TestAddress::new("user");
+
+    // Setup accounts
+    setup_accounts(&mut state, vault, user);
+
+    // Supply as vault
+    state.supply_asset(
+        &vault,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        true,
+    );
+
+    let initial_vault_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);
+    assert_eq!(initial_vault_supplied, BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32)));
+
+    // Withdraw half
+    state.withdraw_asset(
+        &vault,
+        EGLD_TOKEN,
+        BigUint::from(50u64),
+        1,
+        EGLD_DECIMALS,
+    );
+
+    let after_withdraw_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);
+    assert_eq!(after_withdraw_supplied, BigUint::from(50u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32)));
+}
+
+#[test]
+fn test_vault_supply_cap() {
+    let mut state = LendingPoolTestState::new();
+    let vault = TestAddress::new("vault");
+    let user = TestAddress::new("user");
+
+    // Setup accounts
+    setup_accounts(&mut state, vault, user);
+
+    // Supply as vault up to cap
+    state.supply_asset(
+        &vault,
+        CAPPED_TOKEN,
+        BigUint::from(1u64),
+        CAPPED_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        true,
+    );
+    state.supply_asset(
+        &vault,
+        CAPPED_TOKEN,
+        BigUint::from(1u64),
+        CAPPED_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    // Try to supply more than cap
+    state.supply_asset_error(
+        &vault,
+        CAPPED_TOKEN,
+        BigUint::from(149u64),
+        CAPPED_DECIMALS,
+        OptionalValue::Some(1),
+        OptionalValue::None,
+        true,
+        ERROR_SUPPLY_CAP,
+    );
+}
+
+#[test]
+fn test_vault_liquidation() {
+    let mut state = LendingPoolTestState::new();
+    let vault = TestAddress::new("vault");
+    let user = TestAddress::new("user");
+    let liquidator = TestAddress::new("liquidator");
+
+    // Setup accounts
+    setup_accounts(&mut state, vault, user);
+    state.world.account(liquidator).nonce(1).esdt_balance(
+        USDC_TOKEN,
+        BigUint::from(20000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
+    );
+
+    // Supply as vault
+    state.supply_asset(
+        &vault,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        true,
+    );
+
+    // User supplies collateral and borrows
+    state.supply_asset(
+        &user,
+        USDC_TOKEN,
+        BigUint::from(4000u64),
+        USDC_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    state.borrow_asset(
+        &vault,
+        USDC_TOKEN,
+        BigUint::from(2000u64),
+        1,
+        USDC_DECIMALS,
+    );
+
+    // Advance time and update interest
+    state.world.current_block().block_timestamp(600000000u64);
+    state.update_borrows_with_debt(&vault, 1);
+
+    // Attempt liquidation
+    state.liquidate_account(
+        &liquidator,
+        &EGLD_TOKEN,
+        &USDC_TOKEN,
+        BigUint::from(2000u64),
+        1,
+        USDC_DECIMALS,
+    );
+
+    // Verify vault supplied amount was reduced
+    let vault_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);
+    assert!(vault_supplied < BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32)));
+}
+
+#[test]
+fn test_mixed_vault_and_normal_supply() {
+    let mut state = LendingPoolTestState::new();
+    let vault = TestAddress::new("vault");
+    let user = TestAddress::new("user");
+
+    // Setup accounts
+    setup_accounts(&mut state, vault, user);
+
+    // Supply as vault
+    state.supply_asset(
+        &vault,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        true,
+    );
+
+    // Supply as normal user
+    state.supply_asset(
+        &user,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    // Verify amounts
+    let vault_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);
+    let total_supplied = state.get_collateral_amount_for_token(2, EGLD_TOKEN);
+
+    assert_eq!(vault_supplied, BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32)));
+    assert_eq!(total_supplied, BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32)));
+    // Verify utilization rate includes both supplies
+    let utilization = state.get_market_utilization(state.egld_market.clone());
+    println!("Market utilization with mixed supplies: {:?}", utilization);
+    assert_eq!(utilization.into_raw_units(), &BigUint::from(0u64));
+
+    state.supply_asset(
+        &user,
+        USDC_TOKEN,
+        BigUint::from(6000u64),
+        USDC_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+    state.borrow_asset(
+        &user,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        3,
+        EGLD_DECIMALS,
+    ); 
+    let utilization = state.get_market_utilization(state.egld_market.clone());
+    println!("Market utilization with mixed supplies: {:?}", utilization);
+    assert_eq!(utilization.into_raw_units(), &BigUint::from(1u64).mul(BigUint::from(10u64).pow(DECIMAL_PRECISION as u32)));
+}
+
+#[test]
+fn test_vault_multiple_positions() {
+    let mut state = LendingPoolTestState::new();
+    let vault = TestAddress::new("vault");
+    let user = TestAddress::new("user");
+
+    // Setup accounts
+    setup_accounts(&mut state, vault, user);
+
+    // Supply first position as vault
+    state.supply_asset(
+        &vault,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        true,
+    );
+
+    // Supply second position as vault
+    state.supply_asset(
+        &vault,
+        USDC_TOKEN,
+        BigUint::from(5000u64),
+        USDC_DECIMALS,
+        OptionalValue::Some(1),
+        OptionalValue::None,
+        true,
+    );
+
+    // Verify both positions
+    let egld_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);
+    let usdc_supplied = state.get_vault_supplied_amount(USDC_TOKEN);
+
+    assert_eq!(egld_supplied, BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32)));
+    assert_eq!(usdc_supplied, BigUint::from(5000u64).mul(BigUint::from(10u64).pow(USDC_DECIMALS as u32)));
 }

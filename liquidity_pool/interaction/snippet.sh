@@ -14,6 +14,7 @@ WETH_TOKEN="str:WETH-bbe4ab"
 USDC_TOKEN="str:USDC-350c4e"
 HTM_TOKEN="str:HTM-23a1da"
 XEGLD_TOKEN="str:XEGLD-23b511"
+LP_XOXNO_TOKEN="str:XOXNOWEGLD-232308"
 
 R_MAX=1000000000000000000000 # 100%
 R_BASE=25000000000000000000 # 2.5%
@@ -50,7 +51,7 @@ upgrade_pool() {
     --ledger --ledger-account-index=0 --ledger-address-index=0 \
     --function="upgradeLiquidityPool" \
     --gas-limit=50000000 --outfile="upgrade.json" \
-    --arguments ${XEGLD_TOKEN} ${R_MAX} ${R_BASE} ${R_SLOPE1} ${R_SLOPE2} ${U_OPTIMAL} ${RESERVE_FACTOR} \
+    --arguments ${LP_XOXNO_TOKEN} ${R_MAX} ${R_BASE} ${R_SLOPE1} ${R_SLOPE2} ${U_OPTIMAL} ${RESERVE_FACTOR} \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 }
 # Queries

@@ -11,6 +11,7 @@ use multiversx_sc_scenario::{
     api::StaticApi, DebugApi, ScenarioTxRun, ScenarioTxWhitebox, ScenarioWorld, WhiteboxContract,
 };
 use pair::{config::ConfigModule, safe_price_view};
+use position::PositionModule;
 use rs_liquid_staking_sc::{
     proxy::proxy_liquid_staking::{self, ScoringConfig},
     storage::StorageModule,
@@ -587,6 +588,15 @@ impl LendingPoolTestState {
             });
     }
 
+    pub fn get_vault_supplied_amount(&mut self, token_id: TestTokenIdentifier) -> BigUint<StaticApi> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .vault_supplied_amount(token_id)
+            .returns(ReturnsResult)
+            .run()
+    }
     // View functions
     pub fn get_collateral_amount_for_token(
         &mut self,

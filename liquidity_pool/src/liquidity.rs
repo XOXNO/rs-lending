@@ -30,7 +30,7 @@ pub trait LiquidityModule:
             storage_cache.reserves_amount.into_raw_units(),
             storage_cache.supplied_amount.into_raw_units(),
             storage_cache.borrowed_amount.into_raw_units(),
-            storage_cache.rewards_reserve.into_raw_units(),
+            storage_cache.protocol_revenue.into_raw_units(),
             &storage_cache.pool_asset,
             asset_usd_price,
         );
@@ -54,7 +54,7 @@ pub trait LiquidityModule:
                 storage_cache.reserves_amount.into_raw_units(),
                 storage_cache.supplied_amount.into_raw_units(),
                 storage_cache.borrowed_amount.into_raw_units(),
-                storage_cache.rewards_reserve.into_raw_units(),
+                storage_cache.protocol_revenue.into_raw_units(),
                 &storage_cache.pool_asset,
                 &asset_usd_price.into_option().unwrap(),
             );
@@ -106,7 +106,7 @@ pub trait LiquidityModule:
             storage_cache.reserves_amount.into_raw_units(),
             storage_cache.supplied_amount.into_raw_units(),
             storage_cache.borrowed_amount.into_raw_units(),
-            storage_cache.rewards_reserve.into_raw_units(),
+            storage_cache.protocol_revenue.into_raw_units(),
             &storage_cache.pool_asset,
             asset_usd_price,
         );
@@ -134,7 +134,7 @@ pub trait LiquidityModule:
             storage_cache.pool_params.decimals,
         );
         require!(
-            &storage_cache.reserves_amount >= &borrow_amount_dec,
+            &storage_cache.get_reserves() >= &borrow_amount_dec,
             ERROR_INSUFFICIENT_LIQUIDITY
         );
 
@@ -170,7 +170,7 @@ pub trait LiquidityModule:
             storage_cache.reserves_amount.into_raw_units(),
             storage_cache.supplied_amount.into_raw_units(),
             storage_cache.borrowed_amount.into_raw_units(),
-            storage_cache.rewards_reserve.into_raw_units(),
+            storage_cache.protocol_revenue.into_raw_units(),
             &storage_cache.pool_asset,
             asset_usd_price,
         );
@@ -210,7 +210,7 @@ pub trait LiquidityModule:
         // Check if there is enough liquidity to cover the withdrawal
 
         require!(
-            &storage_cache.reserves_amount >= &total_withdraw,
+            &storage_cache.get_reserves() >= &total_withdraw,
             ERROR_INSUFFICIENT_LIQUIDITY
         );
 
@@ -261,7 +261,7 @@ pub trait LiquidityModule:
                 storage_cache.pool_params.decimals,
             );
 
-            storage_cache.rewards_reserve += &protocol_liquidation_fee_dec;
+            storage_cache.protocol_revenue += &protocol_liquidation_fee_dec;
             storage_cache.reserves_amount += &protocol_liquidation_fee_dec;
             let amount_after_fee = total_withdraw - protocol_liquidation_fee_dec;
 
@@ -282,7 +282,7 @@ pub trait LiquidityModule:
             storage_cache.reserves_amount.into_raw_units(),
             storage_cache.supplied_amount.into_raw_units(),
             storage_cache.borrowed_amount.into_raw_units(),
-            storage_cache.rewards_reserve.into_raw_units(),
+            storage_cache.protocol_revenue.into_raw_units(),
             &storage_cache.pool_asset,
             asset_usd_price,
         );
@@ -376,7 +376,7 @@ pub trait LiquidityModule:
             storage_cache.reserves_amount.into_raw_units(),
             storage_cache.supplied_amount.into_raw_units(),
             storage_cache.borrowed_amount.into_raw_units(),
-            storage_cache.rewards_reserve.into_raw_units(),
+            storage_cache.protocol_revenue.into_raw_units(),
             &storage_cache.pool_asset,
             asset_usd_price,
         );
@@ -394,10 +394,16 @@ pub trait LiquidityModule:
             received_asset == storage_cache.pool_asset,
             ERROR_INVALID_ASSET
         );
-        storage_cache.rewards_reserve += &ManagedDecimal::from_raw_units(
+
+        storage_cache.protocol_revenue += &ManagedDecimal::from_raw_units(
             received_amount.clone(),
             storage_cache.pool_params.decimals,
         );
+        storage_cache.reserves_amount += &ManagedDecimal::from_raw_units(
+            received_amount.clone(),
+            storage_cache.pool_params.decimals,
+        );
+
         self.update_market_state_event(
             storage_cache.timestamp,
             storage_cache.supply_index.into_raw_units(),
@@ -405,7 +411,7 @@ pub trait LiquidityModule:
             storage_cache.reserves_amount.into_raw_units(),
             storage_cache.supplied_amount.into_raw_units(),
             storage_cache.borrowed_amount.into_raw_units(),
-            storage_cache.rewards_reserve.into_raw_units(),
+            storage_cache.protocol_revenue.into_raw_units(),
             &storage_cache.pool_asset,
             asset_usd_price,
         );
@@ -428,10 +434,12 @@ pub trait LiquidityModule:
 
         let amount_dec =
             ManagedDecimal::from_raw_units(amount.clone(), storage_cache.pool_params.decimals);
+
         require!(
-            &storage_cache.reserves_amount >= &amount_dec,
+            &storage_cache.get_reserves() >= &amount_dec,
             ERROR_FLASHLOAN_RESERVE_ASSET
         );
+
         storage_cache.reserves_amount -= &amount_dec;
         // Calculate flash loan fee
         let flash_loan_fee =
@@ -465,7 +473,8 @@ pub trait LiquidityModule:
                 ERROR_INVALID_FLASHLOAN_REPAYMENT
             );
             let extra_amount = amount_dec - min_required_amount;
-            storage_cache_second.rewards_reserve += &extra_amount;
+            storage_cache_second.protocol_revenue += &extra_amount;
+            storage_cache_second.reserves_amount += &extra_amount;
         } else {
             require!(
                 back_transfers.esdt_payments.len() == 1,
@@ -488,7 +497,8 @@ pub trait LiquidityModule:
             );
 
             let extra_amount = amount_dec - min_required_amount;
-            storage_cache_second.rewards_reserve += &extra_amount;
+            storage_cache_second.protocol_revenue += &extra_amount;
+            storage_cache_second.reserves_amount += &extra_amount;
         }
 
         self.update_market_state_event(
@@ -508,7 +518,7 @@ pub trait LiquidityModule:
                 .into_raw_units()
                 .clone(),
             &storage_cache_second
-                .rewards_reserve
+                .protocol_revenue
                 .into_raw_units()
                 .clone(),
             &storage_cache_second.pool_asset,
