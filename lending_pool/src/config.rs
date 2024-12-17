@@ -71,6 +71,7 @@ pub trait ConfigModule:
                 EgldOrEsdtTokenIdentifier::esdt(token_id)
             }
             ExchangeSource::XEGLD => EgldOrEsdtTokenIdentifier::egld(),
+            ExchangeSource::LEGLD => EgldOrEsdtTokenIdentifier::egld(),
             _ => {
                 panic!("Invalid exchange source")
             }
@@ -88,6 +89,7 @@ pub trait ConfigModule:
                 EgldOrEsdtTokenIdentifier::esdt(token_id)
             }
             ExchangeSource::XEGLD => first_token_id.clone(),
+            ExchangeSource::LEGLD => first_token_id.clone(),
             ExchangeSource::LXOXNO => first_token_id.clone(),
             _ => {
                 panic!("Invalid exchange source")

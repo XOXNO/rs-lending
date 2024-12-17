@@ -5,6 +5,10 @@ multiversx_sc::imports!();
 
 #[multiversx_sc::module]
 pub trait LendingStorageModule {
+    #[view(getPoolAllowed)]
+    #[storage_mapper("pool_allowed")]
+    fn pools_allowed(&self) -> UnorderedSetMapper<ManagedAddress>;
+
     /// Get the account token
     /// The storage holds the logic of the account token
     #[view(getAccountToken)]

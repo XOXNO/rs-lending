@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           59
+// Endpoints:                           60
 // Async Callback:                       1
-// Total number of exported functions:  62
+// Total number of exported functions:  63
 
 #![no_std]
 
@@ -45,6 +45,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         editAssetInEModeCategory => edit_asset_in_e_mode_category
         removeAssetFromEModeCategory => remove_asset_from_e_mode_category
         editAssetConfig => edit_asset_config
+        getPoolAllowed => pools_allowed
         getAccountToken => account_token
         getAccountPositions => account_positions
         getAccountAttributes => account_attributes

@@ -225,7 +225,7 @@ pub trait PositionModule:
                 BigUint::zero(),
                 account_nonce,
                 self.blockchain().get_block_timestamp(),
-                BigUint::zero(),
+                BigUint::from(BP),
                 asset_info.liquidation_threshold.clone(),
                 is_vault,
             )
@@ -622,7 +622,7 @@ pub trait PositionModule:
                 BigUint::zero(),
                 account_nonce,
                 self.blockchain().get_block_timestamp(),
-                BigUint::zero(),
+                BigUint::from(BP),
                 asset_info.liquidation_threshold.clone(),
                 is_vault,
             )

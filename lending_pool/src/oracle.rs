@@ -4,7 +4,7 @@ use common_events::{ExchangeSource, OracleProvider, OracleType, PriceFeedShort, 
 
 use crate::{
     contexts::base::StorageCache,
-    proxies::{lxoxno_proxy, xegld_proxy},
+    proxies::{lxoxno_proxy, proxy_legld, xegld_proxy},
     proxy_price_aggregator::PriceAggregatorProxy,
     proxy_xexchange_pair::{self, State},
     storage, ERROR_INVALID_EXCHANGE_SOURCE, ERROR_INVALID_ORACLE_TOKEN_TYPE,
@@ -166,9 +166,25 @@ pub trait OracleModule: storage::LendingStorageModule {
     ) -> PriceFeedShort<Self::Api> {
         match configs.source {
             ExchangeSource::XEGLD => self.get_xegld_derived_price(configs),
+            ExchangeSource::LEGLD => self.get_legld_derived_price(configs),
             ExchangeSource::LXOXNO => self.get_lxoxno_derived_price(configs, storage_cache),
             _ => sc_panic!(ERROR_INVALID_EXCHANGE_SOURCE),
         }
+    }
+
+    fn get_legld_derived_price(
+        &self,
+        configs: &OracleProvider<Self::Api>,
+    ) -> PriceFeedShort<Self::Api> {
+        let ratio = self
+            .tx()
+            .to(configs.contract_address.clone())
+            .typed(proxy_legld::SalsaContractProxy)
+            .token_price()
+            .returns(ReturnsResult)
+            .sync_call();
+
+        self.create_price_feed(ratio, configs.decimals)
     }
 
     fn get_xegld_derived_price(
