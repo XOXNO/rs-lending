@@ -21,7 +21,9 @@ pub trait FactoryModule:
             !self.liq_pool_template_address().is_empty(),
             ERROR_TEMPLATE_EMPTY
         );
-        let decimals = self.get_token_price_data(base_asset);
+
+        let decimals = self.token_oracle(base_asset).get().decimals;
+
         let new_address = self
             .tx()
             .typed(proxy_pool::LiquidityPoolProxy)
@@ -33,7 +35,7 @@ pub trait FactoryModule:
                 r_slope2,
                 u_optimal,
                 reserve_factor,
-                decimals.decimals as usize,
+                decimals as usize,
             )
             .from_source(self.liq_pool_template_address().get())
             .code_metadata(CodeMetadata::UPGRADEABLE)
@@ -65,8 +67,4 @@ pub trait FactoryModule:
             .code_metadata(CodeMetadata::UPGRADEABLE)
             .upgrade_async_call_and_exit();
     }
-
-    #[view(getLiqPoolTemplateAddress)]
-    #[storage_mapper("liq_pool_template_address")]
-    fn liq_pool_template_address(&self) -> SingleValueMapper<ManagedAddress>;
 }

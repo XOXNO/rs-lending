@@ -2,6 +2,7 @@ multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
 use crate::errors::*;
+use common_constants::DECIMAL_PRECISION;
 use common_structs::*;
 
 use super::{contexts::base::StorageCache, liq_math, liq_storage, liq_utils, view};
@@ -9,75 +10,96 @@ use super::{contexts::base::StorageCache, liq_math, liq_storage, liq_utils, view
 #[multiversx_sc::module]
 pub trait LiquidityModule:
     liq_storage::StorageModule
-    + common_tokens::AccountTokenModule
     + liq_utils::UtilsModule
     + common_events::EventsModule
     + liq_math::MathModule
     + view::ViewModule
-    + common_checks::ChecksModule
 {
+    /// Updates the indexes of the pool.
+    ///
+    /// # Parameters
+    /// - `asset_price`: The price of the asset.
     #[only_owner]
     #[endpoint(updateIndexes)]
-    fn update_indexes(&self, asset_usd_price: &BigUint) {
+    fn update_indexes(&self, asset_price: &BigUint) {
         let mut storage_cache = StorageCache::new(self);
 
         self.update_interest_indexes(&mut storage_cache);
 
         self.update_market_state_event(
             storage_cache.timestamp,
-            storage_cache.supply_index.into_raw_units(),
-            storage_cache.borrow_index.into_raw_units(),
-            storage_cache.reserves_amount.into_raw_units(),
-            storage_cache.supplied_amount.into_raw_units(),
-            storage_cache.borrowed_amount.into_raw_units(),
-            storage_cache.protocol_revenue.into_raw_units(),
+            &storage_cache.supply_index,
+            &storage_cache.borrow_index,
+            &storage_cache.reserves_amount,
+            &storage_cache.supplied_amount,
+            &storage_cache.borrowed_amount,
+            &storage_cache.protocol_revenue,
             &storage_cache.pool_asset,
-            asset_usd_price,
+            asset_price,
         );
     }
 
+    /// Updates the position with interest.
+    ///
+    /// # Parameters
+    /// - `position`: The position to update.
+    /// - `asset_price`: The price of the asset, used to update the market state event.
+    ///
+    /// # Returns
+    /// - `AccountPosition<Self::Api>`: The updated position.
     #[only_owner]
     #[endpoint(updatePositionInterest)]
     fn update_position_with_interest(
         &self,
-        position: AccountPosition<Self::Api>,
-        asset_usd_price: OptionalValue<BigUint>,
+        mut position: AccountPosition<Self::Api>,
+        asset_price: OptionalValue<BigUint>,
     ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
-        let account = self.internal_update_position_with_interest(position, &mut storage_cache);
+        self.internal_update_position_with_interest(&mut position, &mut storage_cache);
 
-        if asset_usd_price.is_some() {
+        if asset_price.is_some() {
             self.update_market_state_event(
                 storage_cache.timestamp,
-                storage_cache.supply_index.into_raw_units(),
-                storage_cache.borrow_index.into_raw_units(),
-                storage_cache.reserves_amount.into_raw_units(),
-                storage_cache.supplied_amount.into_raw_units(),
-                storage_cache.borrowed_amount.into_raw_units(),
-                storage_cache.protocol_revenue.into_raw_units(),
+                &storage_cache.supply_index,
+                &storage_cache.borrow_index,
+                &storage_cache.reserves_amount,
+                &storage_cache.supplied_amount,
+                &storage_cache.borrowed_amount,
+                &storage_cache.protocol_revenue,
                 &storage_cache.pool_asset,
-                &asset_usd_price.into_option().unwrap(),
+                &asset_price.into_option().unwrap(),
             );
         }
-        account
+        position
     }
 
+    /// Supplies liquidity to the pool.
+    ///
+    /// # Parameters
+    /// - `deposit_position`: The position to update.
+    /// - `asset_price`: The price of the asset, used to update the market state event.
+    ///
+    /// # Payment
+    /// - `*`: The asset to deposit, has to be the same as the pool asset.
+    ///
+    /// # Returns
+    /// - `AccountPosition<Self::Api>`: The updated position.
     #[only_owner]
     #[payable("*")]
     #[endpoint(supply)]
     fn supply(
         &self,
-        deposit_position: AccountPosition<Self::Api>,
-        asset_usd_price: &BigUint,
+        mut deposit_position: AccountPosition<Self::Api>,
+        asset_price: &BigUint,
     ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
 
         let (deposit_asset, deposit_amount) = self.call_value().egld_or_single_fungible_esdt();
+
         let deposit_amount_dec = ManagedDecimal::from_raw_units(
             deposit_amount.clone(),
             storage_cache.pool_params.decimals,
         );
-        let mut ret_deposit_position = deposit_position.clone();
 
         require!(
             deposit_asset.eq(&storage_cache.pool_asset),
@@ -87,13 +109,12 @@ pub trait LiquidityModule:
         self.update_interest_indexes(&mut storage_cache);
 
         if deposit_position.amount.gt(&BigUint::zero()) {
-            ret_deposit_position =
-                self.internal_update_position_with_interest(deposit_position, &mut storage_cache);
+            self.internal_update_position_with_interest(&mut deposit_position, &mut storage_cache);
         }
 
-        ret_deposit_position.amount += &deposit_amount;
-        ret_deposit_position.timestamp = storage_cache.timestamp;
-        ret_deposit_position.index = storage_cache.supply_index.into_raw_units().clone();
+        deposit_position.amount += &deposit_amount;
+        deposit_position.timestamp = storage_cache.timestamp;
+        deposit_position.index = storage_cache.supply_index.into_raw_units().clone();
 
         storage_cache.reserves_amount += &deposit_amount_dec;
 
@@ -101,19 +122,32 @@ pub trait LiquidityModule:
 
         self.update_market_state_event(
             storage_cache.timestamp,
-            storage_cache.supply_index.into_raw_units(),
-            storage_cache.borrow_index.into_raw_units(),
-            storage_cache.reserves_amount.into_raw_units(),
-            storage_cache.supplied_amount.into_raw_units(),
-            storage_cache.borrowed_amount.into_raw_units(),
-            storage_cache.protocol_revenue.into_raw_units(),
+            &storage_cache.supply_index,
+            &storage_cache.borrow_index,
+            &storage_cache.reserves_amount,
+            &storage_cache.supplied_amount,
+            &storage_cache.borrowed_amount,
+            &storage_cache.protocol_revenue,
             &storage_cache.pool_asset,
-            asset_usd_price,
+            asset_price,
         );
 
-        ret_deposit_position
+        deposit_position
     }
 
+    /// Borrows liquidity from the pool.
+    ///
+    /// # Parameters
+    /// - `initial_caller`: The address of the caller.
+    /// - `borrow_amount`: The amount of the asset to borrow.
+    /// - `existing_borrow_position`: The position to update.
+    /// - `asset_price`: The price of the asset, used to update the market state event.
+    ///
+    /// # Payment
+    /// - `*`: The asset to borrow, has to be the same as the pool asset.
+    ///
+    /// # Returns
+    /// - `AccountPosition<Self::Api>`: The updated position.
     #[only_owner]
     #[payable("*")]
     #[endpoint(borrow)]
@@ -121,14 +155,11 @@ pub trait LiquidityModule:
         &self,
         initial_caller: &ManagedAddress,
         borrow_amount: &BigUint,
-        existing_borrow_position: AccountPosition<Self::Api>,
-        asset_usd_price: &BigUint,
+        mut borrow_position: AccountPosition<Self::Api>,
+        asset_price: &BigUint,
     ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
 
-        let mut ret_borrow_position = existing_borrow_position.clone();
-
-        self.require_non_zero_address(initial_caller);
         let borrow_amount_dec = ManagedDecimal::from_raw_units(
             borrow_amount.clone(),
             storage_cache.pool_params.decimals,
@@ -140,16 +171,13 @@ pub trait LiquidityModule:
 
         self.update_interest_indexes(&mut storage_cache);
 
-        if ret_borrow_position.amount.gt(&BigUint::zero()) {
-            ret_borrow_position = self.internal_update_position_with_interest(
-                existing_borrow_position,
-                &mut storage_cache,
-            );
+        if borrow_position.amount.gt(&BigUint::zero()) {
+            self.internal_update_position_with_interest(&mut borrow_position, &mut storage_cache);
         }
 
-        ret_borrow_position.amount += borrow_amount;
-        ret_borrow_position.timestamp = storage_cache.timestamp;
-        ret_borrow_position.index = storage_cache.borrow_index.into_raw_units().clone();
+        borrow_position.amount += borrow_amount;
+        borrow_position.timestamp = storage_cache.timestamp;
+        borrow_position.index = storage_cache.borrow_index.into_raw_units().clone();
 
         storage_cache.borrowed_amount += borrow_amount_dec.clone();
         storage_cache.reserves_amount -= borrow_amount_dec.clone();
@@ -165,19 +193,31 @@ pub trait LiquidityModule:
 
         self.update_market_state_event(
             storage_cache.timestamp,
-            storage_cache.supply_index.into_raw_units(),
-            storage_cache.borrow_index.into_raw_units(),
-            storage_cache.reserves_amount.into_raw_units(),
-            storage_cache.supplied_amount.into_raw_units(),
-            storage_cache.borrowed_amount.into_raw_units(),
-            storage_cache.protocol_revenue.into_raw_units(),
+            &storage_cache.supply_index,
+            &storage_cache.borrow_index,
+            &storage_cache.reserves_amount,
+            &storage_cache.supplied_amount,
+            &storage_cache.borrowed_amount,
+            &storage_cache.protocol_revenue,
             &storage_cache.pool_asset,
-            asset_usd_price,
+            asset_price,
         );
 
-        ret_borrow_position
+        borrow_position
     }
 
+    /// Withdraws liquidity from the pool.
+    ///
+    /// # Parameters
+    /// - `initial_caller`: The address of the caller.
+    /// - `amount`: The amount of the asset to withdraw.
+    /// - `mut deposit_position`: The position to update.
+    /// - `is_liquidation`: Whether the withdrawal is a liquidation.
+    /// - `protocol_liquidation_fee`: The protocol liquidation fee.
+    /// - `asset_price`: The price of the asset, used to update the market state event.
+    ///
+    /// # Returns
+    /// - `AccountPosition<Self::Api>`: The updated position.
     #[only_owner]
     #[payable("*")]
     #[endpoint(withdraw)]
@@ -188,12 +228,9 @@ pub trait LiquidityModule:
         mut deposit_position: AccountPosition<Self::Api>,
         is_liquidation: bool,
         protocol_liquidation_fee: &BigUint,
-        asset_usd_price: &BigUint,
+        asset_price: &BigUint,
     ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
-
-        self.require_non_zero_address(initial_caller);
-        self.require_amount_greater_than_zero(amount);
 
         self.update_interest_indexes(&mut storage_cache);
         let amount_dec =
@@ -277,32 +314,42 @@ pub trait LiquidityModule:
 
         self.update_market_state_event(
             storage_cache.timestamp,
-            storage_cache.supply_index.into_raw_units(),
-            storage_cache.borrow_index.into_raw_units(),
-            storage_cache.reserves_amount.into_raw_units(),
-            storage_cache.supplied_amount.into_raw_units(),
-            storage_cache.borrowed_amount.into_raw_units(),
-            storage_cache.protocol_revenue.into_raw_units(),
+            &storage_cache.supply_index,
+            &storage_cache.borrow_index,
+            &storage_cache.reserves_amount,
+            &storage_cache.supplied_amount,
+            &storage_cache.borrowed_amount,
+            &storage_cache.protocol_revenue,
             &storage_cache.pool_asset,
-            asset_usd_price,
+            asset_price,
         );
         deposit_position
     }
 
+    /// Repays a borrow position.
+    ///
+    /// # Parameters
+    /// - `initial_caller`: The address of the caller.
+    /// - `mut borrow_position`: The position to update.
+    /// - `asset_price`: The price of the asset, used to update the market state event.
+    ///
+    /// # Payment
+    /// - `*`: The asset to repay, has to be the same as the pool asset.
+    ///
+    /// # Returns
+    /// - `AccountPosition<Self::Api>`: The updated position.
+    /// -  Extra amount is sent back to the caller if the repayment is greater than the total owed.
     #[only_owner]
     #[payable("*")]
     #[endpoint(repay)]
     fn repay(
         &self,
         initial_caller: ManagedAddress,
-        borrow_position: AccountPosition<Self::Api>,
-        asset_usd_price: &BigUint,
+        mut borrow_position: AccountPosition<Self::Api>,
+        asset_price: &BigUint,
     ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
         let (received_asset, received_amount) = self.call_value().egld_or_single_fungible_esdt();
-
-        self.require_non_zero_address(&initial_caller);
-        self.require_amount_greater_than_zero(&received_amount);
 
         require!(
             received_asset == storage_cache.pool_asset,
@@ -314,17 +361,16 @@ pub trait LiquidityModule:
             storage_cache.pool_params.decimals,
         );
         self.update_interest_indexes(&mut storage_cache);
-        let mut ret_borrow_position =
-            self.internal_update_position_with_interest(borrow_position, &mut storage_cache);
+        self.internal_update_position_with_interest(&mut borrow_position, &mut storage_cache);
 
         let total_owed_with_interest = ManagedDecimal::from_raw_units(
-            ret_borrow_position.get_total_amount().clone(),
+            borrow_position.get_total_amount().clone(),
             storage_cache.pool_params.decimals,
         );
 
         if received_amount_dec >= total_owed_with_interest {
             // Full repayment
-            let extra_amount = received_amount - ret_borrow_position.get_total_amount();
+            let extra_amount = received_amount - borrow_position.get_total_amount();
             if extra_amount > BigUint::zero() {
                 self.tx()
                     .to(&initial_caller)
@@ -337,15 +383,15 @@ pub trait LiquidityModule:
             }
             // Reduce borrowed by principal
             storage_cache.borrowed_amount -= &ManagedDecimal::from_raw_units(
-                ret_borrow_position.amount.clone(),
+                borrow_position.amount.clone(),
                 storage_cache.pool_params.decimals,
             );
             // Add full payment (principal + interest) to reserves
 
             storage_cache.reserves_amount += &total_owed_with_interest;
 
-            ret_borrow_position.amount = BigUint::zero();
-            ret_borrow_position.accumulated_interest = BigUint::zero();
+            borrow_position.amount = BigUint::zero();
+            borrow_position.accumulated_interest = BigUint::zero();
         } else {
             // Partial repayment
             let total_debt = total_owed_with_interest.clone();
@@ -353,15 +399,15 @@ pub trait LiquidityModule:
             let principal_portion = received_amount_dec
                 .clone()
                 .mul(ManagedDecimal::from_raw_units(
-                    ret_borrow_position.amount.clone(),
+                    borrow_position.amount.clone(),
                     storage_cache.pool_params.decimals,
                 ))
                 .div(total_debt);
             let interest_portion = received_amount_dec.clone() - principal_portion.clone();
 
             // Reduce position amounts
-            ret_borrow_position.amount -= &principal_portion.into_raw_units().clone();
-            ret_borrow_position.accumulated_interest -= &interest_portion.into_raw_units().clone();
+            borrow_position.amount -= &principal_portion.into_raw_units().clone();
+            borrow_position.accumulated_interest -= &interest_portion.into_raw_units().clone();
 
             // Update storage
             storage_cache.borrowed_amount -= &principal_portion;
@@ -371,52 +417,30 @@ pub trait LiquidityModule:
 
         self.update_market_state_event(
             storage_cache.timestamp,
-            storage_cache.supply_index.into_raw_units(),
-            storage_cache.borrow_index.into_raw_units(),
-            storage_cache.reserves_amount.into_raw_units(),
-            storage_cache.supplied_amount.into_raw_units(),
-            storage_cache.borrowed_amount.into_raw_units(),
-            storage_cache.protocol_revenue.into_raw_units(),
+            &storage_cache.supply_index,
+            &storage_cache.borrow_index,
+            &storage_cache.reserves_amount,
+            &storage_cache.supplied_amount,
+            &storage_cache.borrowed_amount,
+            &storage_cache.protocol_revenue,
             &storage_cache.pool_asset,
-            asset_usd_price,
+            asset_price,
         );
 
-        ret_borrow_position
+        borrow_position
     }
 
-    #[payable("*")]
+    /// Handles a flash loan.
+    ///
+    /// # Parameters
+    /// - `borrowed_token`: The token to borrow.
+    /// - `amount`: The amount of the token to borrow.
+    /// - `contract_address`: The address of the contract to call.
+    /// - `endpoint`: The endpoint to call.
+    /// - `arguments`: The arguments to pass to the endpoint.
+    /// - `fees`: The fees to pay for the flash loan.
+    /// - `asset_price`: The price of the asset, used to update the market state event.
     #[only_owner]
-    #[endpoint(vaultRewards)]
-    fn vault_rewards(&self, asset_usd_price: &BigUint) {
-        let (received_asset, received_amount) = self.call_value().egld_or_single_fungible_esdt();
-        let mut storage_cache = StorageCache::new(self);
-        require!(
-            received_asset == storage_cache.pool_asset,
-            ERROR_INVALID_ASSET
-        );
-
-        storage_cache.protocol_revenue += &ManagedDecimal::from_raw_units(
-            received_amount.clone(),
-            storage_cache.pool_params.decimals,
-        );
-        storage_cache.reserves_amount += &ManagedDecimal::from_raw_units(
-            received_amount.clone(),
-            storage_cache.pool_params.decimals,
-        );
-
-        self.update_market_state_event(
-            storage_cache.timestamp,
-            storage_cache.supply_index.into_raw_units(),
-            storage_cache.borrow_index.into_raw_units(),
-            storage_cache.reserves_amount.into_raw_units(),
-            storage_cache.supplied_amount.into_raw_units(),
-            storage_cache.borrowed_amount.into_raw_units(),
-            storage_cache.protocol_revenue.into_raw_units(),
-            &storage_cache.pool_asset,
-            asset_usd_price,
-        );
-    }
-
     #[endpoint(flashLoan)]
     fn flash_loan(
         &self,
@@ -426,7 +450,7 @@ pub trait LiquidityModule:
         endpoint: ManagedBuffer<Self::Api>,
         arguments: ManagedArgBuffer<Self::Api>,
         fees: &BigUint,
-        asset_usd_price: &BigUint,
+        asset_price: &BigUint,
     ) {
         let mut storage_cache = StorageCache::new(self);
         let asset = storage_cache.pool_asset.clone();
@@ -448,9 +472,6 @@ pub trait LiquidityModule:
         // Calculate minimum required amount to be paid back
         let min_required_amount = amount_dec + flash_loan_fee;
 
-        // TODO: Maybe before the execution drop the cache to save the new available liquidity
-        // Does it make a difference? I tend to say no.
-        // My concern is what if the call does another flashloan in a loop?
         drop(storage_cache);
         let back_transfers = self
             .tx()
@@ -503,26 +524,98 @@ pub trait LiquidityModule:
 
         self.update_market_state_event(
             storage_cache_second.timestamp,
-            &storage_cache_second.supply_index.into_raw_units().clone(),
-            &storage_cache_second.borrow_index.into_raw_units().clone(),
-            &storage_cache_second
-                .reserves_amount
-                .into_raw_units()
-                .clone(),
-            &storage_cache_second
-                .supplied_amount
-                .into_raw_units()
-                .clone(),
-            &storage_cache_second
-                .borrowed_amount
-                .into_raw_units()
-                .clone(),
-            &storage_cache_second
-                .protocol_revenue
-                .into_raw_units()
-                .clone(),
+            &storage_cache_second.supply_index,
+            &storage_cache_second.borrow_index,
+            &storage_cache_second.reserves_amount,
+            &storage_cache_second.supplied_amount,
+            &storage_cache_second.borrowed_amount,
+            &storage_cache_second.protocol_revenue,
             &storage_cache_second.pool_asset,
-            asset_usd_price,
+            asset_price,
         );
+    }
+
+    /// Adds vault liquidation rewards to the pool.
+    ///
+    /// # Parameters
+    /// - `asset_price`: The price of the asset, used to update the market state event.
+    ///
+    /// # Payment
+    /// - `*`: The asset to add, has to be the same as the pool asset.
+    #[payable("*")]
+    #[only_owner]
+    #[endpoint(addVaultLiquidationRewards)]
+    fn add_vault_liquidation_rewards(&self, asset_price: &BigUint) {
+        let (received_asset, received_amount) = self.call_value().egld_or_single_fungible_esdt();
+        let mut storage_cache = StorageCache::new(self);
+        require!(
+            received_asset == storage_cache.pool_asset,
+            ERROR_INVALID_ASSET
+        );
+
+        storage_cache.protocol_revenue += &ManagedDecimal::from_raw_units(
+            received_amount.clone(),
+            storage_cache.pool_params.decimals,
+        );
+
+        storage_cache.reserves_amount += &ManagedDecimal::from_raw_units(
+            received_amount.clone(),
+            storage_cache.pool_params.decimals,
+        );
+
+        self.update_market_state_event(
+            storage_cache.timestamp,
+            &storage_cache.supply_index,
+            &storage_cache.borrow_index,
+            &storage_cache.reserves_amount,
+            &storage_cache.supplied_amount,
+            &storage_cache.borrowed_amount,
+            &storage_cache.protocol_revenue,
+            &storage_cache.pool_asset,
+            asset_price,
+        );
+    }
+
+    /// Claims the revenue of the pool.
+    ///
+    /// # Parameters
+    /// - `asset_price`: The price of the asset, used to update the market state event.
+    ///
+    /// # Returns
+    /// - `EgldOrEsdtTokenPayment<Self::Api>`: The payment of the revenue.
+    #[only_owner]
+    #[endpoint(claimRevenue)]
+    fn claim_revenue(&self, asset_price: &BigUint) -> EgldOrEsdtTokenPayment<Self::Api> {
+        let mut storage_cache = StorageCache::new(self);
+        self.update_interest_indexes(&mut storage_cache);
+
+        let revenue = storage_cache.available_revenue();
+
+        storage_cache.protocol_revenue -= revenue.clone();
+        storage_cache.reserves_amount -= revenue.clone();
+
+        let revenue_biguint = revenue.into_raw_units().clone();
+
+        let payment =
+            EgldOrEsdtTokenPayment::new(storage_cache.pool_asset.clone(), 0, revenue_biguint);
+
+        self.tx()
+            .to(self.blockchain().get_owner_address())
+            .payment(&payment)
+            .transfer_if_not_empty();
+
+        self.update_market_state_event(
+            storage_cache.timestamp,
+            &storage_cache.supply_index,
+            &storage_cache.borrow_index,
+            &storage_cache.reserves_amount,
+            &storage_cache.supplied_amount,
+            &storage_cache.borrowed_amount,
+            &storage_cache.protocol_revenue,
+            &storage_cache.pool_asset,
+            asset_price,
+        );
+
+        payment
     }
 }

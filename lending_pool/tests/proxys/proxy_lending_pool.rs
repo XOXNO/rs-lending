@@ -43,15 +43,23 @@ where
     From: TxFrom<Env>,
     Gas: TxGas<Env>,
 {
+    /// Initializes the lending pool contract 
+    ///  
+    /// # Arguments 
+    /// * `lp_template_address` - Address of the liquidity pool template contract 
+    /// * `aggregator` - Address of the price aggregator contract 
+    /// * `safe_view_address` - Address of the safe price view contract 
     pub fn init<
         Arg0: ProxyArg<ManagedAddress<Env::Api>>,
         Arg1: ProxyArg<ManagedAddress<Env::Api>>,
         Arg2: ProxyArg<ManagedAddress<Env::Api>>,
+        Arg3: ProxyArg<ManagedAddress<Env::Api>>,
     >(
         self,
         lp_template_address: Arg0,
         aggregator: Arg1,
         safe_view_address: Arg2,
+        accumulator_address: Arg3,
     ) -> TxTypedDeploy<Env, From, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
@@ -59,6 +67,7 @@ where
             .argument(&lp_template_address)
             .argument(&aggregator)
             .argument(&safe_view_address)
+            .argument(&accumulator_address)
             .original_result()
     }
 }
@@ -91,6 +100,32 @@ where
     To: TxTo<Env>,
     Gas: TxGas<Env>,
 {
+    /// Supplies collateral to the lending pool 
+    ///  
+    /// # Arguments 
+    /// * `is_vault` - Whether this supply is for a vault position 
+    /// * `e_mode_category` - Optional e-mode category to use 
+    ///  
+    /// # Payment 
+    /// Accepts 1-2 ESDT payments: 
+    /// - Optional account NFT (if user has an existing position) 
+    /// - Collateral token to supply 
+    ///  
+    /// # Flow 
+    /// 1. Validates payments and extracts tokens 
+    /// 2. Gets/creates position and NFT attributes, returns NFT to owner 
+    /// 3. Validates e-mode constraints 
+    /// 4. Validates vault consistency 
+    /// 5. Validates isolated collateral rules 
+    /// 6. Checks supply caps 
+    /// 7. Updates position 
+    /// 8. Emits event 
+    ///  
+    /// # Example 
+    /// ``` 
+    /// Supply 100 EGLD as collateral 
+    /// supply(false, OptionalValue::None) 
+    /// ``` 
     pub fn supply<
         Arg0: ProxyArg<bool>,
         Arg1: ProxyArg<OptionalValue<u8>>,
@@ -106,6 +141,31 @@ where
             .original_result()
     }
 
+    /// Withdraws collateral from the lending pool 
+    ///  
+    /// # Arguments 
+    /// * `withdraw_token_id` - Token identifier to withdraw 
+    /// * `amount` - Amount to withdraw 
+    ///  
+    /// # Payment 
+    /// Requires account NFT payment 
+    ///  
+    /// # Flow 
+    /// 1. Validates payment and parameters 
+    /// 2. Processes withdrawal 
+    /// 3. Validates health factor after withdrawal 
+    /// 4. Handles NFT (burns or returns) 
+    ///  
+    /// # Example 
+    /// ``` 
+    /// // Withdraw 50 EGLD using account NFT 
+    /// ESDTTransfer { 
+    ///   token: "LEND-123456", // Account NFT 
+    ///   nonce: 1, 
+    ///   amount: 1 
+    /// } 
+    /// withdraw("EGLD-123456", 50_000_000_000_000_000_000) // 50 EGLD 
+    /// ``` 
     pub fn withdraw<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
@@ -121,6 +181,36 @@ where
             .original_result()
     }
 
+    /// Borrows an asset from the lending pool 
+    ///  
+    /// # Arguments 
+    /// * `asset_to_borrow` - Token identifier to borrow 
+    /// * `amount` - Amount to borrow 
+    ///  
+    /// # Payment 
+    /// Requires account NFT payment 
+    ///  
+    /// # Flow 
+    /// 1. Validates payment and parameters 
+    /// 2. Gets NFT attributes and asset config 
+    /// 3. Updates positions with latest interest 
+    /// 4. Validates borrowing constraints 
+    /// 5. Checks borrow cap 
+    /// 6. Validates collateral sufficiency 
+    /// 7. Processes borrow 
+    /// 8. Emits event 
+    /// 9. Returns NFT 
+    ///  
+    /// # Example 
+    /// ``` 
+    /// // Borrow 1000 USDC using account NFT 
+    /// ESDTTransfer { 
+    ///   token: "LEND-123456", // Account NFT 
+    ///   nonce: 1, 
+    ///   amount: 1 
+    /// } 
+    /// borrow("USDC-123456", 1_000_000_000) // 1000 USDC 
+    /// ``` 
     pub fn borrow<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
@@ -136,6 +226,28 @@ where
             .original_result()
     }
 
+    /// Repays borrowed assets 
+    ///  
+    /// # Arguments 
+    /// * `account_nonce` - NFT nonce of the account position to repay 
+    ///  
+    /// # Payment 
+    /// Accepts EGLD or single ESDT payment of the debt token 
+    ///  
+    /// # Flow 
+    /// 1. Updates positions with latest interest 
+    /// 2. Validates payment and parameters 
+    /// 3. Processes repayment 
+    ///  
+    /// # Example 
+    /// ``` 
+    /// // Repay 500 USDC for account position 
+    /// ESDTTransfer { 
+    ///   token: "USDC-123456", 
+    ///   amount: 500_000_000 // 500 USDC 
+    /// } 
+    /// repay(1) // Account NFT nonce 
+    /// ``` 
     pub fn repay<
         Arg0: ProxyArg<u64>,
     >(
@@ -148,6 +260,32 @@ where
             .original_result()
     }
 
+    /// Liquidates an unhealthy position 
+    ///  
+    /// # Arguments 
+    /// * `liquidatee_account_nonce` - NFT nonce of the account to liquidate 
+    /// * `collateral_to_receive` - Token identifier of collateral to receive 
+    ///  
+    /// # Payment 
+    /// Accepts EGLD or single ESDT payment of the debt token 
+    ///  
+    /// # Flow 
+    /// 1. Validates payment and parameters 
+    /// 2. Processes liquidation: 
+    ///    - Calculates liquidation amounts 
+    ///    - Updates positions 
+    ///    - Transfers tokens 
+    ///    - Emits events 
+    ///  
+    /// # Example 
+    /// ``` 
+    /// // Liquidate position by repaying 1000 USDC debt 
+    /// ESDTTransfer { 
+    ///   token: "USDC-123456", 
+    ///   amount: 1_000_000_000 // 1000 USDC 
+    /// } 
+    /// liquidate(1, "EGLD-123456") // Get EGLD collateral 
+    /// ``` 
     pub fn liquidate<
         Arg0: ProxyArg<u64>,
         Arg1: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
@@ -163,6 +301,32 @@ where
             .original_result()
     }
 
+    /// Executes a flash loan 
+    ///  
+    /// # Arguments 
+    /// * `borrowed_token` - Token identifier to borrow 
+    /// * `amount` - Amount to borrow 
+    /// * `contract_address` - Address of contract to receive funds 
+    /// * `endpoint` - Endpoint to call on receiving contract 
+    /// * `arguments` - Arguments to pass to endpoint 
+    ///  
+    /// # Flow 
+    /// 1. Validates flash loan is enabled for asset 
+    /// 2. Validates contract is on same shard 
+    /// 3. Executes flash loan through pool: 
+    ///    - Transfers tokens to contract 
+    ///    - Calls specified endpoint 
+    ///    - Verifies repayment with fee 
+    ///  
+    /// # Example 
+    /// ``` 
+    /// flashLoan( 
+    ///   "USDC-123456", // Token 
+    ///   1_000_000_000, // 1000 USDC 
+    ///   "erd1...",     // Contract address 
+    ///   "execute",     // Endpoint 
+    ///   []            // No arguments 
+    /// ``` 
     pub fn flash_loan<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
@@ -188,7 +352,27 @@ where
             .original_result()
     }
 
-    pub fn sync_account_positions<
+    /// Synchronizes account positions with latest interest rates 
+    ///  
+    /// # Arguments 
+    /// * `account_nonce` - NFT nonce of the account to sync 
+    ///  
+    /// # Returns 
+    /// * `MultiValue2<ManagedVec<AccountPosition>, ManagedVec<AccountPosition>>` 
+    ///   - Updated deposit positions 
+    ///   - Updated borrow positions 
+    ///  
+    /// # Flow 
+    /// 1. Validates account exists 
+    /// 2. Updates borrow positions with accumulated interest 
+    /// 3. Updates deposit positions with accumulated interest 
+    ///  
+    /// # Example 
+    /// ``` 
+    /// let (deposits, borrows) = updateAccountPositions(1); 
+    /// // deposits and borrows contain updated position data 
+    /// ``` 
+    pub fn update_account_positions<
         Arg0: ProxyArg<u64>,
     >(
         self,
@@ -196,17 +380,30 @@ where
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValue2<ManagedVec<Env::Api, common_structs::AccountPosition<Env::Api>>, ManagedVec<Env::Api, common_structs::AccountPosition<Env::Api>>>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("syncAccountPositions")
+            .raw_call("updateAccountPositions")
             .argument(&account_nonce)
             .original_result()
     }
 
-    pub fn liq_pool_template_address(
+    /// Updates interest rate indexes for a given asset 
+    ///  
+    /// # Arguments 
+    /// * `token_id` - Token identifier to update indexes for 
+    ///  
+    /// # Flow 
+    /// 1. Gets pool address for token 
+    /// 2. Gets current asset price 
+    /// 3. Calls pool to update indexes with current price 
+    pub fn update_indexes<
+        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+    >(
         self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
+        token_id: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getLiqPoolTemplateAddress")
+            .raw_call("updateIndexes")
+            .argument(&token_id)
             .original_result()
     }
 
@@ -314,6 +511,34 @@ where
             .original_result()
     }
 
+    pub fn claim_revenue<
+        Arg0: ProxyArg<MultiValueEncoded<Env::Api, EgldOrEsdtTokenIdentifier<Env::Api>>>,
+    >(
+        self,
+        assets: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("claimRevenue")
+            .argument(&assets)
+            .original_result()
+    }
+
+    pub fn register_account_token<
+        Arg0: ProxyArg<ManagedBuffer<Env::Api>>,
+        Arg1: ProxyArg<ManagedBuffer<Env::Api>>,
+    >(
+        self,
+        token_name: Arg0,
+        ticker: Arg1,
+    ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
+        self.wrapped_tx
+            .raw_call("registerAccountToken")
+            .argument(&token_name)
+            .argument(&ticker)
+            .original_result()
+    }
+
     pub fn set_token_oracle<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg1: ProxyArg<u8>,
@@ -360,7 +585,7 @@ where
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("editTokenOracletTolerance")
+            .raw_call("editTokenOracleTolerance")
             .argument(&market_token)
             .argument(&first_tolerance)
             .argument(&last_tolerance)
@@ -377,6 +602,19 @@ where
             .payment(NotPayable)
             .raw_call("setAggregator")
             .argument(&aggregator)
+            .original_result()
+    }
+
+    pub fn set_accumulator<
+        Arg0: ProxyArg<ManagedAddress<Env::Api>>,
+    >(
+        self,
+        accumulator: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("setAccumulator")
+            .argument(&accumulator)
             .original_result()
     }
 
@@ -522,8 +760,8 @@ where
         Arg10: ProxyArg<bool>,
         Arg11: ProxyArg<bool>,
         Arg12: ProxyArg<bool>,
-        Arg13: ProxyArg<OptionalValue<BigUint<Env::Api>>>,
-        Arg14: ProxyArg<OptionalValue<BigUint<Env::Api>>>,
+        Arg13: ProxyArg<BigUint<Env::Api>>,
+        Arg14: ProxyArg<BigUint<Env::Api>>,
     >(
         self,
         asset: Arg0,
@@ -563,21 +801,6 @@ where
             .original_result()
     }
 
-    pub fn register_account_token<
-        Arg0: ProxyArg<ManagedBuffer<Env::Api>>,
-        Arg1: ProxyArg<ManagedBuffer<Env::Api>>,
-    >(
-        self,
-        token_name: Arg0,
-        ticker: Arg1,
-    ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
-        self.wrapped_tx
-            .raw_call("registerAccountToken")
-            .argument(&token_name)
-            .argument(&ticker)
-            .original_result()
-    }
-
     pub fn account_token(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, TokenIdentifier<Env::Api>> {
@@ -593,6 +816,19 @@ where
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getAccountPositions")
+            .original_result()
+    }
+
+    pub fn account_attributes<
+        Arg0: ProxyArg<u64>,
+    >(
+        self,
+        nonce: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::NftAccountAttributes> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getAccountAttributes")
+            .argument(&nonce)
             .original_result()
     }
 
@@ -622,6 +858,24 @@ where
             .original_result()
     }
 
+    pub fn liq_pool_template_address(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getLiqPoolTemplateAddress")
+            .original_result()
+    }
+
+    pub fn accumulator_address(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getAccumulatorAddress")
+            .original_result()
+    }
+
     pub fn pools_map<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
     >(
@@ -632,15 +886,6 @@ where
             .payment(NotPayable)
             .raw_call("getPoolsMap")
             .argument(&token_id)
-            .original_result()
-    }
-
-    pub fn pools_allowed(
-        self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValueEncoded<Env::Api, ManagedAddress<Env::Api>>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getPoolAllowed")
             .original_result()
     }
 
@@ -671,6 +916,19 @@ where
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getAssetConfig")
+            .argument(&asset)
+            .original_result()
+    }
+
+    pub fn asset_ltv<
+        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+    >(
+        self,
+        asset: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getAssetLTV")
             .argument(&asset)
             .original_result()
     }
@@ -758,32 +1016,6 @@ where
             .original_result()
     }
 
-    pub fn get_usd_price<
-        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-    >(
-        self,
-        token_id: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getTokenPriceUSD")
-            .argument(&token_id)
-            .original_result()
-    }
-
-    pub fn get_token_price_data<
-        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-    >(
-        self,
-        token_id: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, PriceFeed<Env::Api>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getTokenPriceData")
-            .argument(&token_id)
-            .original_result()
-    }
-
     pub fn last_token_price<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
     >(
@@ -797,6 +1029,32 @@ where
             .original_result()
     }
 
+    pub fn get_token_price_data<
+        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+        Arg1: ProxyArg<common_structs::PriceFeedShort<Env::Api>>,
+    >(
+        self,
+        token_id: Arg0,
+        egld_price_feed: Arg1,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::PriceFeedShort<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getTokenPriceData")
+            .argument(&token_id)
+            .argument(&egld_price_feed)
+            .original_result()
+    }
+
+    /// Gets the liquidity pool address for a given asset 
+    ///  
+    /// # Arguments 
+    /// * `asset` - Token identifier of the asset 
+    ///  
+    /// # Returns 
+    /// * `ManagedAddress` - Address of the liquidity pool 
+    ///  
+    /// # Errors 
+    /// * `ERROR_NO_POOL_FOUND` - If no pool exists for the asset 
     pub fn get_pool_address<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
     >(
@@ -810,19 +1068,41 @@ where
             .original_result()
     }
 
-    pub fn update_indexes<
-        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+    pub fn get_all_markets<
+        Arg0: ProxyArg<MultiValueEncoded<Env::Api, EgldOrEsdtTokenIdentifier<Env::Api>>>,
     >(
         self,
-        token_id: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        tokens: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedVec<Env::Api, common_structs::AssetExtendedConfigView<Env::Api>>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("updateIndexes")
-            .argument(&token_id)
+            .raw_call("getAllMarkets")
+            .argument(&tokens)
             .original_result()
     }
 
+    /// Checks if an account position can be liquidated 
+    ///  
+    /// # Arguments 
+    /// * `account_position` - NFT nonce of the account position 
+    ///  
+    /// # Returns 
+    /// * `bool` - True if position can be liquidated (health factor < 100%) 
+    ///  
+    /// # Example 
+    /// ``` 
+    /// // Position 1: Healthy 
+    /// // Collateral: $150 weighted 
+    /// // Borrows: $100 
+    /// // Health Factor: 150% (15000 bp) 
+    /// can_be_liquidated(1) = false 
+    ///  
+    /// // Position 2: Unhealthy 
+    /// // Collateral: $90 weighted 
+    /// // Borrows: $100 
+    /// // Health Factor: 90% (9000 bp) 
+    /// can_be_liquidated(2) = true 
+    /// ``` 
     pub fn can_be_liquidated<
         Arg0: ProxyArg<u64>,
     >(
@@ -836,6 +1116,26 @@ where
             .original_result()
     }
 
+    /// Gets the current health factor for an account position 
+    ///  
+    /// # Arguments 
+    /// * `account_position` - NFT nonce of the account position 
+    ///  
+    /// # Returns 
+    /// * `BigUint` - Health factor in basis points (10000 = 100%) 
+    ///  
+    /// # Example 
+    /// ``` 
+    /// // Position with: 
+    /// // Collateral: 100 EGLD @ $100 each = $10,000 
+    /// // Liquidation threshold: 80% 
+    /// // Weighted collateral: $8,000 
+    ///  
+    /// // Borrows: 5000 USDC @ $1 each = $5,000 
+    ///  
+    /// // Health Factor = $8,000 * 10000 / $5,000 = 16000 (160%) 
+    /// get_health_factor(1) = 16000 
+    /// ``` 
     pub fn get_health_factor<
         Arg0: ProxyArg<u64>,
     >(
@@ -849,6 +1149,35 @@ where
             .original_result()
     }
 
+    /// Calculates maximum amount of collateral that can be liquidated 
+    ///  
+    /// # Arguments 
+    /// * `account_position` - NFT nonce of the account position 
+    /// * `collateral_asset` - Token identifier of collateral to liquidate 
+    /// * `in_usd` - Whether to return amount in USD (true) or token units (false) 
+    ///  
+    /// # Returns 
+    /// * `BigUint` - Maximum liquidatable amount in USD or token units 
+    ///  
+    /// # Errors 
+    /// * `ERROR_HEALTH_FACTOR` - If position is not liquidatable (HF >= 100%) 
+    ///  
+    /// # Example 
+    /// ``` 
+    /// // Position: 
+    /// // Collateral: 100 EGLD @ $100 each = $10,000 
+    /// // Borrows: 9000 USDC @ $1 each = $9,000 
+    /// // Health Factor: 90% (unhealthy) 
+    /// // Liquidation Bonus: 10% 
+    ///  
+    /// // In USD: 
+    /// get_max_liquidate_amount_for_collateral(1, "EGLD-123456", true) = 5000 
+    /// // Can liquidate $5,000 worth of collateral 
+    ///  
+    /// // In EGLD: 
+    /// get_max_liquidate_amount_for_collateral(1, "EGLD-123456", false) = 50 
+    /// // Can liquidate 50 EGLD 
+    /// ``` 
     pub fn get_max_liquidate_amount_for_collateral<
         Arg0: ProxyArg<u64>,
         Arg1: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
@@ -857,17 +1186,36 @@ where
         self,
         account_position: Arg0,
         collateral_asset: Arg1,
-        in_usd: Arg2,
+        in_egld: Arg2,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getMaxLiquidateAmountForCollateral")
             .argument(&account_position)
             .argument(&collateral_asset)
-            .argument(&in_usd)
+            .argument(&in_egld)
             .original_result()
     }
 
+    /// Gets the collateral amount for a specific token 
+    ///  
+    /// # Arguments 
+    /// * `account_position` - NFT nonce of the account position 
+    /// * `token_id` - Token identifier to check 
+    ///  
+    /// # Returns 
+    /// * `BigUint` - Amount of token supplied as collateral 
+    ///  
+    /// # Example 
+    /// ``` 
+    /// // Position has: 
+    /// // - 100 EGLD supplied 
+    /// // - 1000 USDC supplied 
+    ///  
+    /// get_collateral_amount_for_token(1, "EGLD-123456") = 100_000_000_000_000_000_000 
+    /// get_collateral_amount_for_token(1, "USDC-123456") = 1_000_000_000 
+    /// get_collateral_amount_for_token(1, "USDT-123456") = 0 // No USDT supplied 
+    /// ``` 
     pub fn get_collateral_amount_for_token<
         Arg0: ProxyArg<u64>,
         Arg1: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
@@ -884,6 +1232,25 @@ where
             .original_result()
     }
 
+    /// Gets the borrowed amount for a specific token 
+    ///  
+    /// # Arguments 
+    /// * `account_position` - NFT nonce of the account position 
+    /// * `token_id` - Token identifier to check 
+    ///  
+    /// # Returns 
+    /// * `BigUint` - Amount of token borrowed 
+    ///  
+    /// # Example 
+    /// ``` 
+    /// // Position has: 
+    /// // - 50 EGLD borrowed 
+    /// // - 500 USDC borrowed 
+    ///  
+    /// get_borrow_amount_for_token(1, "EGLD-123456") = 50_000_000_000_000_000_000 
+    /// get_borrow_amount_for_token(1, "USDC-123456") = 500_000_000 
+    /// get_borrow_amount_for_token(1, "USDT-123456") = 0 // No USDT borrowed 
+    /// ``` 
     pub fn get_borrow_amount_for_token<
         Arg0: ProxyArg<u64>,
         Arg1: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
@@ -900,7 +1267,23 @@ where
             .original_result()
     }
 
-    pub fn get_total_borrow_in_dollars<
+    /// Gets total value of borrowed assets in USD 
+    ///  
+    /// # Arguments 
+    /// * `account_position` - NFT nonce of the account position 
+    ///  
+    /// # Returns 
+    /// * `BigUint` - Total USD value of all borrowed assets 
+    ///  
+    /// # Example 
+    /// ``` 
+    /// // Position has: 
+    /// // - 50 EGLD borrowed @ $100 each = $5,000 
+    /// // - 500 USDC borrowed @ $1 each = $500 
+    ///  
+    /// get_total_borrow_in_egld(1) = 5_500_000_000 // $5,500 
+    /// ``` 
+    pub fn get_total_borrow_in_egld<
         Arg0: ProxyArg<u64>,
     >(
         self,
@@ -908,12 +1291,28 @@ where
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getTotalBorrowInDollars")
+            .raw_call("getTotalBorrowInEgld")
             .argument(&account_position)
             .original_result()
     }
 
-    pub fn get_total_collateral_in_dollars<
+    /// Gets total value of collateral assets in USD 
+    ///  
+    /// # Arguments 
+    /// * `account_position` - NFT nonce of the account position 
+    ///  
+    /// # Returns 
+    /// * `BigUint` - Total USD value of all collateral assets (unweighted) 
+    ///  
+    /// # Example 
+    /// ``` 
+    /// // Position has: 
+    /// // - 100 EGLD supplied @ $100 each = $10,000 
+    /// // - 1000 USDC supplied @ $1 each = $1,000 
+    ///  
+    /// get_total_collateral_in_dollars(1) = 11_000_000_000 // $11,000 
+    /// ``` 
+    pub fn get_total_collateral_in_egld<
         Arg0: ProxyArg<u64>,
     >(
         self,
@@ -921,11 +1320,27 @@ where
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getTotalCollateralInDollars")
+            .raw_call("getTotalCollateralInEgld")
             .argument(&account_position)
             .original_result()
     }
 
+    /// Gets total value of collateral available for liquidation in USD 
+    ///  
+    /// # Arguments 
+    /// * `account_nonce` - NFT nonce of the account position 
+    ///  
+    /// # Returns 
+    /// * `BigUint` - Total USD value of collateral weighted by liquidation thresholds 
+    ///  
+    /// # Example 
+    /// ``` 
+    /// // Position has: 
+    /// // - 100 EGLD @ $100 each = $10,000, threshold 80% = $8,000 
+    /// // - 1000 USDC @ $1 each = $1,000, threshold 85% = $850 
+    ///  
+    /// get_liquidation_collateral_available(1) = 8_850_000_000 // $8,850 
+    /// ``` 
     pub fn get_liquidation_collateral_available<
         Arg0: ProxyArg<u64>,
     >(
@@ -939,7 +1354,23 @@ where
             .original_result()
     }
 
-    pub fn get_ltv_collateral_in_dollars<
+    /// Gets total value of collateral weighted by LTV ratios in USD 
+    ///  
+    /// # Arguments 
+    /// * `account_position` - NFT nonce of the account position 
+    ///  
+    /// # Returns 
+    /// * `BigUint` - Total USD value of collateral weighted by LTV ratios 
+    ///  
+    /// # Example 
+    /// ``` 
+    /// // Position has: 
+    /// // - 100 EGLD @ $100 each = $10,000, LTV 75% = $7,500 
+    /// // - 1000 USDC @ $1 each = $1,000, LTV 80% = $800 
+    ///  
+    /// get_ltv_collateral_in_dollars(1) = 8_300_000_000 // $8,300 
+    /// ``` 
+    pub fn get_ltv_collateral_in_egld<
         Arg0: ProxyArg<u64>,
     >(
         self,
@@ -947,22 +1378,34 @@ where
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getLtvCollateralInDollars")
+            .raw_call("getLtvCollateralInEgld")
             .argument(&account_position)
             .original_result()
     }
-}
 
-#[type_abi]
-#[derive(NestedEncode, NestedDecode, TopEncode, TopDecode, Clone)]
-pub struct PriceFeed<Api>
-where
-    Api: ManagedTypeApi,
-{
-    pub round_id: u32,
-    pub from: ManagedBuffer<Api>,
-    pub to: ManagedBuffer<Api>,
-    pub timestamp: u64,
-    pub price: BigUint<Api>,
-    pub decimals: u8,
+    pub fn get_usd_price<
+        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+    >(
+        self,
+        token_id: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getTokenPriceUSD")
+            .argument(&token_id)
+            .original_result()
+    }
+
+    pub fn get_egld_price<
+        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+    >(
+        self,
+        token_id: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getTokenPriceEGLD")
+            .argument(&token_id)
+            .original_result()
+    }
 }

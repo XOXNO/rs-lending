@@ -1,10 +1,12 @@
 multiversx_sc::imports!();
+use common_constants::BP;
 use common_events::{
-    AccountPosition, AssetConfig, EgldOrEsdtTokenPaymentNew, NftAccountAttributes, BP,
+    AccountPosition, AssetConfig, EgldOrEsdtTokenPaymentNew, NftAccountAttributes,
 };
+use common_structs::PriceFeedShort;
 
 use crate::{
-    math, oracle, proxy_pool, proxy_price_aggregator::PriceFeed, storage, utils, views,
+    contexts::base::StorageCache, math, oracle, proxy_pool, storage, utils, views,
     ERROR_ASSET_NOT_BORROWABLE_IN_ISOLATION, ERROR_ASSET_NOT_BORROWABLE_IN_SILOED,
     ERROR_CANNOT_USE_EMODE_WITH_ISOLATED_ASSETS, ERROR_EMODE_CATEGORY_NOT_FOUND,
     ERROR_HEALTH_FACTOR, ERROR_HEALTH_FACTOR_WITHDRAW, ERROR_INSUFFICIENT_COLLATERAL,
@@ -15,12 +17,10 @@ use crate::{
 #[multiversx_sc::module]
 pub trait ValidationModule:
     storage::LendingStorageModule
-    + common_checks::ChecksModule
     + utils::LendingUtilsModule
     + common_events::EventsModule
     + math::LendingMathModule
     + oracle::OracleModule
-    + common_tokens::AccountTokenModule
     + views::ViewsModule
 {
     /// Validates supply payment and handles NFT return
@@ -58,18 +58,12 @@ pub trait ValidationModule:
         // Validate the collateral payment token
         self.require_asset_supported(&collateral_payment.token_identifier);
         self.require_amount_greater_than_zero(&collateral_payment.amount);
-        self.require_non_zero_address(&self.blockchain().get_caller());
+        self.require_non_zero_address(caller);
 
         let account_token = if payments.len() == 2 {
             let token = payments.get(0);
             let token_id = token.token_identifier.clone().unwrap_esdt();
             self.account_token().require_same_token(&token_id);
-
-            // Return NFT to owner after validation
-            self.tx()
-                .to(caller)
-                .single_esdt(&token_id, token.token_nonce, &token.amount)
-                .transfer();
 
             Some(token)
         } else {
@@ -246,7 +240,7 @@ pub trait ValidationModule:
         amount: &BigUint,
         initial_caller: &ManagedAddress,
     ) {
-        self.lending_account_token_valid(account_token);
+        self.account_token().require_same_token(account_token);
         self.require_non_zero_address(initial_caller);
         self.require_asset_supported(withdraw_token_id);
         self.require_amount_greater_than_zero(amount);
@@ -257,17 +251,29 @@ pub trait ValidationModule:
     /// # Arguments
     /// * `account_nonce` - NFT nonce of the account position
     /// * `is_liquidation` - Whether this is a liquidation withdrawal
+    /// * `egld_price_feed` - Price feed for EGLD
     ///
     /// For normal withdrawals:
     /// - Calculates new health factor
     /// - Ensures it stays above 100%
     /// Skips check for liquidation withdrawals
-    fn validate_withdraw_health_factor(&self, account_nonce: u64, is_liquidation: bool) {
+    fn validate_withdraw_health_factor(
+        &self,
+        account_nonce: u64,
+        is_liquidation: bool,
+        storage_cache: &mut StorageCache<Self>,
+    ) {
         if !is_liquidation {
-            let collateral_in_dollars = self.get_liquidation_collateral_available(account_nonce);
-            let borrowed_dollars = self.get_total_borrow_in_dollars(account_nonce);
-            let health_factor =
-                self.compute_health_factor(&collateral_in_dollars, &borrowed_dollars);
+            let borrow_positions = self.borrow_positions(account_nonce);
+            let len = borrow_positions.len();
+            if len == 0 {
+                return;
+            }
+
+            let collateral_in_egld = self.get_liquidation_collateral_available(account_nonce);
+            let borrowed_egld = self
+                .get_total_borrow_in_egld_vec(&borrow_positions.values().collect(), storage_cache);
+            let health_factor = self.compute_health_factor(&collateral_in_egld, &borrowed_egld);
 
             // Make sure the health factor is greater than 100% when is a normal withdraw
             require!(
@@ -300,7 +306,8 @@ pub trait ValidationModule:
     ) {
         self.require_asset_supported(asset_to_borrow);
         self.lending_account_in_the_market(nft_token.token_nonce);
-        self.lending_account_token_valid(&nft_token.token_identifier);
+        self.account_token()
+            .require_same_token(&nft_token.token_identifier);
         self.require_amount_greater_than_zero(amount);
         self.require_non_zero_address(initial_caller);
     }
@@ -368,20 +375,20 @@ pub trait ValidationModule:
     /// Validates collateral sufficiency for borrow
     ///
     /// # Arguments
-    /// * `ltv_collateral_in_dollars` - USD value of collateral weighted by LTV
-    /// * `borrowed_amount_in_dollars` - Current USD value of borrows
-    /// * `amount_to_borrow_in_dollars` - USD value of new borrow
+    /// * `ltv_collateral_in_egld` - EGLD value of collateral weighted by LTV
+    /// * `borrowed_amount_in_egld` - Current EGLD value of borrows
+    /// * `amount_to_borrow_in_egld` - EGLD value of new borrow
     ///
     /// Ensures sufficient collateral value (weighted by LTV)
     /// to cover existing and new borrows
     fn validate_borrow_collateral(
         &self,
-        ltv_collateral_in_dollars: &BigUint,
-        borrowed_amount_in_dollars: &BigUint,
-        amount_to_borrow_in_dollars: &BigUint,
+        ltv_collateral_in_egld: &BigUint,
+        borrowed_amount_in_egld: &BigUint,
+        amount_to_borrow_in_egld: &BigUint,
     ) {
         require!(
-            ltv_collateral_in_dollars > &(borrowed_amount_in_dollars + amount_to_borrow_in_dollars),
+            ltv_collateral_in_egld > &(borrowed_amount_in_egld + amount_to_borrow_in_egld),
             ERROR_INSUFFICIENT_COLLATERAL
         );
     }
@@ -395,32 +402,40 @@ pub trait ValidationModule:
     /// * `borrow_positions` - Current borrow positions
     ///
     /// # Returns
-    /// * `(BigUint, PriceFeed)` - Tuple containing:
-    ///   - USD value of borrow amount
+    /// * `(BigUint, PriceFeedShort)` - Tuple containing:
+    ///   - EGLD value of borrow amount
     ///   - Price feed data for borrowed asset
     ///
-    /// Calculates USD values and validates collateral sufficiency
+    /// Calculates EGLD values and validates collateral sufficiency
     fn validate_and_get_borrow_amounts(
         &self,
         asset_to_borrow: &EgldOrEsdtTokenIdentifier,
         amount: &BigUint,
         collateral_positions: &ManagedVec<AccountPosition<Self::Api>>,
         borrow_positions: &ManagedVec<AccountPosition<Self::Api>>,
-    ) -> (BigUint, PriceFeed<Self::Api>) {
-        let asset_data_feed = self.get_token_price_data(asset_to_borrow);
-        let amount_to_borrow_in_dollars =
-            self.get_token_amount_in_dollars_raw(amount, &asset_data_feed);
-        let ltv_collateral_in_dollars =
-            self.get_ltv_collateral_in_dollars_vec(collateral_positions);
-        let borrowed_amount_in_dollars = self.get_total_borrow_in_dollars_vec(borrow_positions);
-
-        self.validate_borrow_collateral(
-            &ltv_collateral_in_dollars,
-            &borrowed_amount_in_dollars,
-            &amount_to_borrow_in_dollars,
+        storage_cache: &mut StorageCache<Self>,
+        asset_config: &AssetConfig<Self::Api>,
+        nft_attributes: &NftAccountAttributes,
+    ) -> (BigUint, PriceFeedShort<Self::Api>) {
+        let asset_data_feed = self.get_token_price_data(asset_to_borrow, storage_cache);
+        let amount_to_borrow_in_egld = self.get_token_amount_in_egld_raw(amount, &asset_data_feed);
+        let ltv_collateral_in_egld = self.get_ltv_collateral_in_egld_vec(
+            collateral_positions,
+            storage_cache,
+            &asset_config.ltv,
+            nft_attributes.e_mode_category,
         );
 
-        (amount_to_borrow_in_dollars, asset_data_feed)
+        let borrowed_amount_in_egld =
+            self.get_total_borrow_in_egld_vec(borrow_positions, storage_cache);
+
+        self.validate_borrow_collateral(
+            &ltv_collateral_in_egld,
+            &borrowed_amount_in_egld,
+            &amount_to_borrow_in_egld,
+        );
+
+        (amount_to_borrow_in_egld, asset_data_feed)
     }
 
     /// Validates repay payment parameters
@@ -478,44 +493,37 @@ pub trait ValidationModule:
     /// * `repay_amount` - Amount being repaid
     /// * `borrow_position` - Position being repaid
     /// * `debt_token_price_data` - Price data for debt token
-    /// * `repay_amount_in_usd` - Optional USD value of repayment
+    /// * `repay_amount_in_egld` - Optional EGLD value of repayment
     ///
     /// # Returns
-    /// * `BigUint` - USD value of principal being repaid
+    /// * `BigUint` - EGLD value of principal being repaid
     ///
     /// Calculates:
-    /// - USD value of repayment
+    /// - EGLD value of repayment
     /// - Interest portion
     /// - Principal portion
     /// Handles partial repayments
     fn validate_and_get_repay_amounts(
         &self,
-        repay_amount: &BigUint,
         borrow_position: &AccountPosition<Self::Api>,
-        debt_token_price_data: &PriceFeed<Self::Api>,
-        repay_amount_in_usd: Option<BigUint>,
+        debt_token_price_data: &PriceFeedShort<Self::Api>,
+        amount_to_repay_in_egld: BigUint,
     ) -> BigUint {
-        let amount_to_repay_in_dollars = if let Some(usd_amount) = repay_amount_in_usd {
-            usd_amount
-        } else {
-            self.get_token_amount_in_dollars_raw(repay_amount, debt_token_price_data)
-        };
-
-        let interest_usd_amount = self.get_token_amount_in_dollars_raw(
+        let interest_egld_amount = self.get_token_amount_in_egld_raw(
             &borrow_position.accumulated_interest,
             debt_token_price_data,
         );
-        let total_principal_borrowed_usd_amount =
-            self.get_token_amount_in_dollars_raw(&borrow_position.amount, debt_token_price_data);
+        let total_principal_borrowed_egld_amount =
+            self.get_token_amount_in_egld_raw(&borrow_position.amount, debt_token_price_data);
 
-        let principal_usd_amount = if amount_to_repay_in_dollars > interest_usd_amount {
-            (&amount_to_repay_in_dollars - &interest_usd_amount)
-                .min(total_principal_borrowed_usd_amount)
+        let principal_egld_amount = if amount_to_repay_in_egld > interest_egld_amount {
+            (&amount_to_repay_in_egld - &interest_egld_amount)
+                .min(total_principal_borrowed_egld_amount)
         } else {
             BigUint::from(0u64)
         };
 
-        principal_usd_amount
+        principal_egld_amount
     }
 
     /// Validates liquidation payment parameters
@@ -544,8 +552,8 @@ pub trait ValidationModule:
     /// Validates liquidation health factor
     ///
     /// # Arguments
-    /// * `collateral_in_dollars` - USD value of collateral
-    /// * `borrowed_dollars` - USD value of borrows
+    /// * `collateral_in_egld` - EGLD value of collateral
+    /// * `borrowed_egld` - EGLD value of borrows
     ///
     /// # Returns
     /// * `BigUint` - Current health factor
@@ -553,10 +561,10 @@ pub trait ValidationModule:
     /// Calculates health factor and ensures it's below liquidation threshold
     fn validate_liquidation_health_factor(
         &self,
-        collateral_in_dollars: &BigUint,
-        borrowed_dollars: &BigUint,
+        collateral_in_egld: &BigUint,
+        borrowed_egld: &BigUint,
     ) -> BigUint {
-        let health_factor = self.compute_health_factor(collateral_in_dollars, borrowed_dollars);
+        let health_factor = self.compute_health_factor(collateral_in_egld, borrowed_egld);
         require!(health_factor < BigUint::from(BP), ERROR_HEALTH_FACTOR);
         health_factor
     }

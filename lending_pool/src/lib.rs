@@ -4,6 +4,7 @@ multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
 pub mod config;
+pub mod contexts;
 pub mod errors;
 pub mod factory;
 pub mod math;
@@ -15,8 +16,9 @@ pub mod storage;
 pub mod utils;
 pub mod validation;
 pub mod views;
+
 pub use common_structs::*;
-pub use common_tokens::*;
+use contexts::base::StorageCache;
 pub use errors::*;
 pub use proxies::*;
 
@@ -26,8 +28,6 @@ pub trait LendingPool:
     + router::RouterModule
     + config::ConfigModule
     + common_events::EventsModule
-    + common_checks::ChecksModule
-    + common_tokens::AccountTokenModule
     + storage::LendingStorageModule
     + oracle::OracleModule
     + position::PositionModule
@@ -49,10 +49,12 @@ pub trait LendingPool:
         lp_template_address: ManagedAddress,
         aggregator: ManagedAddress,
         safe_view_address: ManagedAddress,
+        accumulator_address: ManagedAddress,
     ) {
         self.liq_pool_template_address().set(&lp_template_address);
         self.price_aggregator_address().set(&aggregator);
         self.safe_price_view().set(&safe_view_address);
+        self.accumulator_address().set(&accumulator_address);
     }
 
     #[upgrade]
@@ -71,7 +73,7 @@ pub trait LendingPool:
     ///
     /// # Flow
     /// 1. Validates payments and extracts tokens
-    /// 2. Gets/creates position and NFT attributes
+    /// 2. Gets/creates position and NFT attributes, returns NFT to owner
     /// 3. Validates e-mode constraints
     /// 4. Validates vault consistency
     /// 5. Validates isolated collateral rules
@@ -146,7 +148,10 @@ pub trait LendingPool:
             is_vault,
         );
 
-        let asset_data_feed = self.get_token_price_data(&collateral_payment.token_identifier);
+        let mut storage_cache = StorageCache::new(self);
+        let asset_data_feed =
+            self.get_token_price_data(&collateral_payment.token_identifier, &mut storage_cache);
+
         // 8. Update position and get updated state
         let updated_position = self.update_supply_position(
             account_nonce,
@@ -210,6 +215,8 @@ pub trait LendingPool:
             self.get_account_attributes(account_token.token_nonce, &account_token.token_identifier);
 
         // 2. Process withdrawal
+
+        let mut storage_cache = StorageCache::new(self);
         self.internal_withdraw(
             account_token.token_nonce,
             withdraw_token_id,
@@ -217,11 +224,12 @@ pub trait LendingPool:
             &initial_caller,
             false, // not liquidation
             &BigUint::zero(),
+            &mut storage_cache,
             OptionalValue::Some(attributes),
         );
 
         // 3. Validate health factor after withdrawal
-        self.validate_withdraw_health_factor(account_token.token_nonce, false);
+        self.validate_withdraw_health_factor(account_token.token_nonce, false, &mut storage_cache);
 
         // 4. Handle NFT (burn or return)
         self.handle_nft_after_withdraw(account_token, &initial_caller);
@@ -272,8 +280,12 @@ pub trait LendingPool:
         let mut asset_config = self.asset_config(&asset_to_borrow).get();
 
         // 3. Update positions with latest interest
-        let collaterals = self.update_collateral_with_interest(nft_token.token_nonce, false);
-        let borrows = self.update_borrows_with_debt(nft_token.token_nonce, false);
+
+        let mut storage_cache = StorageCache::new(self);
+        let collaterals =
+            self.update_collateral_with_interest(nft_token.token_nonce, &mut storage_cache, false);
+        let borrows =
+            self.update_borrows_with_debt(nft_token.token_nonce, &mut storage_cache, false);
 
         // 4. Validate borrowing constraints
         self.validate_borrow_asset(&asset_config, &asset_to_borrow, &nft_attributes, &borrows);
@@ -290,16 +302,26 @@ pub trait LendingPool:
         // 6. Check borrow cap
         self.check_borrow_cap(&asset_config, &amount, &asset_to_borrow);
 
-        // 7. Validate collateral and get amounts in dollars
-        let (amount_to_borrow_in_dollars, asset_data_feed) =
-            self.validate_and_get_borrow_amounts(&asset_to_borrow, &amount, &collaterals, &borrows);
+        // 7. Validate collateral and get amounts in egld
+        let (amount_to_borrow_in_egld, asset_data_feed) = self.validate_and_get_borrow_amounts(
+            &asset_to_borrow,
+            &amount,
+            &collaterals,
+            &borrows,
+            &mut storage_cache,
+            &asset_config,
+            &nft_attributes,
+        );
 
         // 8. Process borrow
         let updated_position = self.handle_borrow_position(
             nft_token.token_nonce,
             &asset_to_borrow,
             &amount,
-            &amount_to_borrow_in_dollars,
+            &self.get_token_amount_in_dollars_raw(
+                &amount_to_borrow_in_egld,
+                &storage_cache.egld_price_feed,
+            ),
             &initial_caller,
             &asset_config,
             &nft_attributes,
@@ -349,10 +371,12 @@ pub trait LendingPool:
         let initial_caller = self.blockchain().get_caller();
 
         // 1. Update positions with latest interest
-        self.update_borrows_with_debt(account_nonce, false);
+        let mut storage_cache = StorageCache::new(self);
+        self.update_borrows_with_debt(account_nonce, &mut storage_cache, false);
 
         // 2. Validate payment and parameters
         self.validate_repay_payment(&repay_token_id, &repay_amount, account_nonce);
+        let price_data = self.get_token_price_data(&repay_token_id, &mut storage_cache);
 
         // 3. Process repay
         self.internal_repay(
@@ -360,8 +384,9 @@ pub trait LendingPool:
             &repay_token_id,
             &repay_amount,
             &initial_caller,
-            None,
-            None,
+            self.get_token_amount_in_egld_raw(&repay_amount, &price_data),
+            &price_data,
+            &mut storage_cache,
         );
     }
 
@@ -461,7 +486,10 @@ pub trait LendingPool:
             .get_shard_of_address(&self.blockchain().get_sc_address());
 
         require!(shard_id == current_shard_id, ERROR_INVALID_SHARD);
-        let asset_data = self.get_token_price_data(borrowed_token);
+
+        let mut storage_cache = StorageCache::new(self);
+        let asset_data = self.get_token_price_data(borrowed_token, &mut storage_cache);
+
         self.tx()
             .to(pool_address)
             .typed(proxy_pool::LiquidityPoolProxy)
@@ -495,18 +523,44 @@ pub trait LendingPool:
     ///
     /// # Example
     /// ```
-    /// let (deposits, borrows) = syncAccountPositions(1);
+    /// let (deposits, borrows) = updateAccountPositions(1);
     /// // deposits and borrows contain updated position data
     /// ```
-    #[endpoint(syncAccountPositions)]
-    fn sync_account_positions(
+    #[endpoint(updateAccountPositions)]
+    fn update_account_positions(
         &self,
         account_nonce: u64,
     ) -> MultiValue2<ManagedVec<AccountPosition<Self::Api>>, ManagedVec<AccountPosition<Self::Api>>>
     {
         self.lending_account_in_the_market(account_nonce);
-        let borrow_positions = self.update_borrows_with_debt(account_nonce, true);
-        let deposit_positions = self.update_collateral_with_interest(account_nonce, true);
+
+        let mut storage_cache = StorageCache::new(self);
+        let borrow_positions =
+            self.update_borrows_with_debt(account_nonce, &mut storage_cache, true);
+        let deposit_positions =
+            self.update_collateral_with_interest(account_nonce, &mut storage_cache, true);
         (deposit_positions, borrow_positions).into()
+    }
+
+    /// Updates interest rate indexes for a given asset
+    ///
+    /// # Arguments
+    /// * `token_id` - Token identifier to update indexes for
+    ///
+    /// # Flow
+    /// 1. Gets pool address for token
+    /// 2. Gets current asset price
+    /// 3. Calls pool to update indexes with current price
+    #[endpoint(updateIndexes)]
+    fn update_indexes(&self, token_id: EgldOrEsdtTokenIdentifier) {
+        let pool_address = self.get_pool_address(&token_id);
+
+        let mut storage_cache = StorageCache::new(self);
+        let asset_price = self.get_token_price_data(&token_id, &mut storage_cache);
+        self.tx()
+            .to(pool_address)
+            .typed(proxy_pool::LiquidityPoolProxy)
+            .update_indexes(&asset_price.price)
+            .sync_call();
     }
 }

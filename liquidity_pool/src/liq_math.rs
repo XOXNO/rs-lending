@@ -1,4 +1,4 @@
-use common_structs::*;
+use common_constants::{BP, DECIMAL_PRECISION};
 
 multiversx_sc::imports!();
 
@@ -59,6 +59,15 @@ pub trait MathModule {
         }
     }
 
+    /// Computes the deposit rate based on the current utilization.
+    ///
+    /// # Parameters
+    /// - `u_current`: The current utilization ratio.
+    /// - `borrow_rate`: The borrow rate.
+    /// - `reserve_factor`: The reserve factor.
+    ///
+    /// # Returns
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The computed deposit rate.
     fn compute_deposit_rate(
         &self,
         u_current: ManagedDecimal<Self::Api, NumDecimals>,
@@ -75,6 +84,15 @@ pub trait MathModule {
         deposit_rate_dec
     }
 
+    /// Computes the capital utilization of the pool.
+    ///
+    /// # Parameters
+    /// - `borrowed_amount`: The amount of the asset borrowed.
+    /// - `total_supplied`: The total amount of the asset supplied.
+    /// - `decimals`: The number of decimals of the asset.
+    ///
+    /// # Returns
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The capital utilization.
     fn compute_capital_utilisation(
         &self,
         borrowed_amount: ManagedDecimal<Self::Api, NumDecimals>,
@@ -97,16 +115,26 @@ pub trait MathModule {
         }
     }
 
+    /// Computes the interest earned on a position.
+    /// The formula is: amount * current_index / initial_index = interest
+    ///
+    /// # Parameters
+    /// - `amount`: The amount of the asset.
+    /// - `current_index`: The current market index.
+    /// - `account_position_index`: The initial position index.
+    ///
+    /// # Returns
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The interest earned.
     fn compute_interest(
         &self,
-        amount: ManagedDecimal<Self::Api, NumDecimals>,
+        amount: ManagedDecimal<Self::Api, NumDecimals>, // Amount of the asset
         current_index: &ManagedDecimal<Self::Api, NumDecimals>, // Market index
-        initial_index: &ManagedDecimal<Self::Api, NumDecimals>, // Account position index
+        account_position_index: &ManagedDecimal<Self::Api, NumDecimals>, // Account position index
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let new_amount = amount
             .clone()
             .mul(current_index.clone())
-            .div(initial_index.clone());
+            .div(account_position_index.clone());
 
         new_amount - amount
     }

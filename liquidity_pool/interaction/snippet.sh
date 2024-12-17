@@ -16,6 +16,7 @@ HTM_TOKEN="str:HTM-23a1da"
 XEGLD_TOKEN="str:XEGLD-23b511"
 LP_XOXNO_TOKEN="str:XOXNOWEGLD-232308"
 
+
 R_MAX=1000000000000000000000 # 100%
 R_BASE=25000000000000000000 # 2.5%
 R_SLOPE1=150000000000000000000 # 15%
@@ -24,6 +25,18 @@ U_OPTIMAL=750000000000000000000 # 80%
 RESERVE_FACTOR=250000000000000000000 # 15%
 
 DECIMALS=18
+
+LENDING_ADDRESS=erd1qqqqqqqqqqqqqpgq4kljp5lwvrg2kakhn5r8yeuj24sngf8cah0sjnz3sd
+
+upgrade_pool() {
+    mxpy contract call ${LENDING_ADDRESS} --recall-nonce \
+    --ledger --ledger-account-index=0 --ledger-address-index=0 \
+    --function="upgradeLiquidityPool" \
+    --gas-limit=50000000 --outfile="upgrade.json" \
+    --arguments ${LP_XOXNO_TOKEN} ${R_MAX} ${R_BASE} ${R_SLOPE1} ${R_SLOPE2} ${U_OPTIMAL} ${RESERVE_FACTOR} \
+    --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
+}
+
 deploy() {
     mxpy contract deploy --bytecode=${PROJECT} \
     --ledger --ledger-account-index=0 --ledger-address-index=0 \
@@ -44,16 +57,6 @@ upgrade() {
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 }
 
-LENDING_ADDRESS=erd1qqqqqqqqqqqqqpgq4kljp5lwvrg2kakhn5r8yeuj24sngf8cah0sjnz3sd
-
-upgrade_pool() {
-    mxpy contract call ${LENDING_ADDRESS} --recall-nonce \
-    --ledger --ledger-account-index=0 --ledger-address-index=0 \
-    --function="upgradeLiquidityPool" \
-    --gas-limit=50000000 --outfile="upgrade.json" \
-    --arguments ${LP_XOXNO_TOKEN} ${R_MAX} ${R_BASE} ${R_SLOPE1} ${R_SLOPE2} ${U_OPTIMAL} ${RESERVE_FACTOR} \
-    --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
-}
 # Queries
 
 get_lend_token() {

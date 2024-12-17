@@ -1,4 +1,5 @@
-use lending_pool::{errors::*, NftAccountAttributes, DECIMAL_PRECISION};
+use common_constants::DECIMAL_PRECISION;
+use lending_pool::{errors::*, NftAccountAttributes};
 use multiversx_sc::types::ManagedDecimal;
 use multiversx_sc_scenario::{
     api::StaticApi,
@@ -8,9 +9,9 @@ use multiversx_sc_scenario::{
 pub mod constants;
 pub mod proxys;
 pub mod setup;
-use std::ops::Mul;
 use constants::*;
 use setup::*;
+use std::ops::Mul;
 
 // Basic Operations
 #[test]
@@ -169,7 +170,6 @@ fn test_complete_market_exit() {
         2,
         EGLD_DECIMALS,
     );
-
 
     state.supply_asset(
         &OWNER_ADDRESS,
@@ -1366,15 +1366,15 @@ fn test_liquidation_and_left_bad_debt() {
         USDC_DECIMALS,
     );
 
-    let borrow_amount_in_dollars = state.get_total_borrow_in_dollars(2);
-    let collateral_in_dollars = state.get_collateral_amount_for_token(2, EGLD_TOKEN);
+    let borrow_amount_in_egld = state.get_total_borrow_in_egld(2);
+    let collateral_in_egld = state.get_total_collateral_in_egld(2);
 
     let health = state.get_account_health_factor(2);
     println!("health: {:?}", health);
-    println!("collateral_in_dollars: {:?}", collateral_in_dollars);
-    println!("borrow_amount_in_dollars: {:?}", borrow_amount_in_dollars);
-    assert!(borrow_amount_in_dollars > 0);
-    assert!(collateral_in_dollars == BigUint::from(0u64));
+    println!("collateral_in_egld: {:?}", collateral_in_egld);
+    println!("borrow_amount_in_egld: {:?}", borrow_amount_in_egld);
+    assert!(borrow_amount_in_egld > 0);
+    assert!(collateral_in_egld == 0);
 
     // Repay the bad debt, usually the protocol will do this
     state.repay_asset(
@@ -1384,9 +1384,9 @@ fn test_liquidation_and_left_bad_debt() {
         2,
         USDC_DECIMALS,
     );
-    let borrow_amount_in_dollars = state.get_total_borrow_in_dollars(2);
-    println!("borrow_amount_in_dollars: {:?}", borrow_amount_in_dollars);
-    assert!(borrow_amount_in_dollars == 0);
+    let borrow_amount_in_egld = state.get_total_borrow_in_egld(2);
+    println!("borrow_amount_in_egld: {:?}", borrow_amount_in_egld);
+    assert!(borrow_amount_in_egld == 0);
 }
 
 #[test]
@@ -1617,56 +1617,29 @@ fn test_oracle_price_feed_lp() {
 
     setup_accounts(&mut state, supplier, borrower);
 
-    let price = state.get_usd_price(
-        LP_EGLD_TOKEN,
-    );
+    let price = state.get_usd_price(LP_EGLD_TOKEN);
     println!("price: {:?}", price);
 }
 
 #[test]
-fn test_oracle_price_feed_isolated() {
+fn test_oracle_price_feed_isolated_failed_no_last_price() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
 
     setup_accounts(&mut state, supplier, borrower);
 
-    let price = state.get_usd_price(
-        ISOLATED_TOKEN,
-    );
+    let price = state.get_usd_price(ISOLATED_TOKEN);
     println!("price: {:?}", price);
     state.world.current_block().block_timestamp(20);
-    state.submit_price(
-        ISOLATED_TICKER,
-        1,
-        18,
-        6,
-    );
+    state.submit_price(ISOLATED_TICKER, 1, 18, 6);
     state.world.current_block().block_timestamp(50);
-    state.submit_price(
-        ISOLATED_TICKER,
-        1,
-        18,
-        45,
-    );
+    state.submit_price(ISOLATED_TICKER, 1, 18, 45);
     state.world.current_block().block_timestamp(100);
-    state.submit_price(
-        ISOLATED_TICKER,
-        1,
-        18,
-        100,
-    );
+    state.submit_price(ISOLATED_TICKER, 1, 18, 100);
     state.world.current_block().block_timestamp(150);
-    state.submit_price(
-        ISOLATED_TICKER,
-        1,
-        18,
-        150,
-    );
-    let price = state.get_usd_price(
-        ISOLATED_TOKEN,
-    );
-    println!("price: {:?}", price);
+    state.submit_price(ISOLATED_TICKER, 1, 18, 150);
+    state.get_usd_price_error(ISOLATED_TOKEN, ERROR_NO_LAST_PRICE_FOUND);
 }
 
 // Vault Position Tests
@@ -1692,7 +1665,10 @@ fn test_basic_vault_supply_and_borrow() {
 
     // Verify vault position
     let vault_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);
-    assert_eq!(vault_supplied, BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32)));
+    assert_eq!(
+        vault_supplied,
+        BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32))
+    );
 
     // Test normal user supply and borrow against vault liquidity
     state.supply_asset(
@@ -1705,13 +1681,7 @@ fn test_basic_vault_supply_and_borrow() {
         false,
     );
 
-    state.borrow_asset(
-        &vault,
-        USDC_TOKEN,
-        BigUint::from(50u64),
-        1,
-        USDC_DECIMALS,
-    );
+    state.borrow_asset(&vault, USDC_TOKEN, BigUint::from(50u64), 1, USDC_DECIMALS);
 
     // Verify amounts
     let borrowed = state.get_borrow_amount_for_token(1, USDC_TOKEN);
@@ -1775,19 +1745,19 @@ fn test_vault_supply_and_withdraw() {
     );
 
     let initial_vault_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);
-    assert_eq!(initial_vault_supplied, BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32)));
-
-    // Withdraw half
-    state.withdraw_asset(
-        &vault,
-        EGLD_TOKEN,
-        BigUint::from(50u64),
-        1,
-        EGLD_DECIMALS,
+    assert_eq!(
+        initial_vault_supplied,
+        BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32))
     );
 
+    // Withdraw half
+    state.withdraw_asset(&vault, EGLD_TOKEN, BigUint::from(50u64), 1, EGLD_DECIMALS);
+
     let after_withdraw_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);
-    assert_eq!(after_withdraw_supplied, BigUint::from(50u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32)));
+    assert_eq!(
+        after_withdraw_supplied,
+        BigUint::from(50u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32))
+    );
 }
 
 #[test]
@@ -1868,13 +1838,7 @@ fn test_vault_liquidation() {
         false,
     );
 
-    state.borrow_asset(
-        &vault,
-        USDC_TOKEN,
-        BigUint::from(2000u64),
-        1,
-        USDC_DECIMALS,
-    );
+    state.borrow_asset(&vault, USDC_TOKEN, BigUint::from(2000u64), 1, USDC_DECIMALS);
 
     // Advance time and update interest
     state.world.current_block().block_timestamp(600000000u64);
@@ -1892,7 +1856,9 @@ fn test_vault_liquidation() {
 
     // Verify vault supplied amount was reduced
     let vault_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);
-    assert!(vault_supplied < BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32)));
+    assert!(
+        vault_supplied < BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32))
+    );
 }
 
 #[test]
@@ -1930,8 +1896,14 @@ fn test_mixed_vault_and_normal_supply() {
     let vault_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);
     let total_supplied = state.get_collateral_amount_for_token(2, EGLD_TOKEN);
 
-    assert_eq!(vault_supplied, BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32)));
-    assert_eq!(total_supplied, BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32)));
+    assert_eq!(
+        vault_supplied,
+        BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32))
+    );
+    assert_eq!(
+        total_supplied,
+        BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32))
+    );
     // Verify utilization rate includes both supplies
     let utilization = state.get_market_utilization(state.egld_market.clone());
     println!("Market utilization with mixed supplies: {:?}", utilization);
@@ -1946,16 +1918,13 @@ fn test_mixed_vault_and_normal_supply() {
         OptionalValue::None,
         false,
     );
-    state.borrow_asset(
-        &user,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        3,
-        EGLD_DECIMALS,
-    ); 
+    state.borrow_asset(&user, EGLD_TOKEN, BigUint::from(100u64), 3, EGLD_DECIMALS);
     let utilization = state.get_market_utilization(state.egld_market.clone());
     println!("Market utilization with mixed supplies: {:?}", utilization);
-    assert_eq!(utilization.into_raw_units(), &BigUint::from(1u64).mul(BigUint::from(10u64).pow(DECIMAL_PRECISION as u32)));
+    assert_eq!(
+        utilization.into_raw_units(),
+        &BigUint::from(1u64).mul(BigUint::from(10u64).pow(DECIMAL_PRECISION as u32))
+    );
 }
 
 #[test]
@@ -1993,6 +1962,12 @@ fn test_vault_multiple_positions() {
     let egld_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);
     let usdc_supplied = state.get_vault_supplied_amount(USDC_TOKEN);
 
-    assert_eq!(egld_supplied, BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32)));
-    assert_eq!(usdc_supplied, BigUint::from(5000u64).mul(BigUint::from(10u64).pow(USDC_DECIMALS as u32)));
+    assert_eq!(
+        egld_supplied,
+        BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32))
+    );
+    assert_eq!(
+        usdc_supplied,
+        BigUint::from(5000u64).mul(BigUint::from(10u64).pow(USDC_DECIMALS as u32))
+    );
 }

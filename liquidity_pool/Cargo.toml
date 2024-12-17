@@ -14,11 +14,8 @@ version = "0.54.6"
 [dependencies.common-structs]
 path = "../common/structs"
 
-[dependencies.common-checks]
-path = "../common/checks"
-
-[dependencies.common-tokens]
-path = "../common/tokens"
+[dependencies.common-constants]
+path = "../common/constants"
 
 [dependencies.common-events]
 path = "../common/events"

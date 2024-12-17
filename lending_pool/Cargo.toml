@@ -8,11 +8,6 @@ publish = false
 [lib]
 path = "src/lib.rs"
 
-[dependencies]
-rs-liquid-xoxno = { git = "https://github.com/XOXNO/rs-liquid-xoxno/" }
-rs-liquid-staking-sc = { git = "https://github.com/XOXNO/rs-liquid-staking-sc", package = "liquid-staking" }
-pair = { git = "https://github.com/mihaieremia/mx-exchange-sc", package = "pair" }
-
 [dependencies.multiversx-sc-modules]
 version = "0.54.6"
 
@@ -25,19 +20,19 @@ path = "../liquidity_pool"
 [dependencies.common-structs]
 path = "../common/structs"
 
-[dependencies.common-checks]
-path = "../common/checks"
-
-[dependencies.common-tokens]
-path = "../common/tokens"
-
 [dependencies.common-events]
 path = "../common/events"
+
+[dependencies.common-constants]
+path = "../common/constants"
 
 [dev-dependencies]
 num-bigint = "0.4.2"
 num-traits = "0.2"
 hex = "0.4"
+rs-liquid-xoxno = { git = "https://github.com/XOXNO/rs-liquid-xoxno" }
+rs-liquid-staking-sc = { git = "https://github.com/XOXNO/rs-liquid-staking-sc", package = "liquid-staking" }
+pair = { git = "https://github.com/mihaieremia/mx-exchange-sc", package = "pair" }
 
 [dev-dependencies.multiversx-sc-scenario]
 version = "0.54.6"

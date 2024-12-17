@@ -8,6 +8,7 @@ PROJECT="./output/lending_pool.wasm"
 LP_TEMPLATE_ADDRESS=erd1qqqqqqqqqqqqqpgqlpf2f23jx29s6k7ftfccprn5wv7uccyuah0s5zvhn0
 AGGREGATOR_ADDR=erd1qqqqqqqqqqqqqpgq3rcsd0mqz5wtxx0p8yl670vzlr5h0890ah0sa3wp03
 SAFE_PRICE_VIEW_ADDRESS=erd1qqqqqqqqqqqqqpgqcmnum66jxyfpcnvqk5eahj5n3ny4vkfn0n4szjjskv
+ACCUMULATOR_ADDRESS=erd1qqqqqqqqqqqqqpgqyxfc4r5fmw2ljcgwxj2nuzv72y9ryvyhah0sgn5vv2
 
 ACCOUNT_TOKEN_NAME="str:XOXNOLendingAccount"
 ACCOUNT_TOKEN_TICKER="str:BOBERLEND"
@@ -128,6 +129,13 @@ setSafePriceView() {
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 
+setAccumulator() {
+    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=20000000 \
+    --ledger --ledger-account-index=0 --ledger-address-index=0 \
+    --function="setAccumulator" --arguments ${ACCUMULATOR_ADDRESS} \
+    --proxy=${PROXY} --chain=${CHAIN_ID} --send
+}
+
 addEModeCategory() {
     mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=20000000 \
     --ledger --ledger-account-index=0 --ledger-address-index=0 \
@@ -182,6 +190,14 @@ repay() {
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 
+# ${XEGLD_TOKEN} ${XOXNO_TOKEN} ${MEX_TOKEN} ${WETH_TOKEN} ${USDC_TOKEN} ${HTM_TOKEN} ${LP_XOXNO_TOKEN}
+claimRevenue() {
+    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=600000000 \
+    --ledger --ledger-account-index=0 --ledger-address-index=0 \
+    --function="claimRevenue" --arguments ${XEGLD_TOKEN} ${LXOXNO_TOKEN} ${XOXNO_TOKEN} ${MEX_TOKEN} ${WETH_TOKEN} ${USDC_TOKEN} ${HTM_TOKEN} ${LP_XOXNO_TOKEN} \
+    --proxy=${PROXY} --chain=${CHAIN_ID} --send
+}
+
 # Queries
 
 get_pool_address() {
@@ -213,5 +229,9 @@ getTokenPriceData() {
 }
 
 getTokenPriceUSD() {
-    mxpy contract query ${ADDRESS} --function="getTokenPriceUSD" --arguments ${MEX_TOKEN} --proxy=${PROXY}
+    mxpy contract query ${ADDRESS} --function="getTokenPriceUSD" --arguments ${XOXNO_TOKEN} --proxy=${PROXY}
+}
+
+getTokenPriceEGLD() {
+    mxpy contract query ${ADDRESS} --function="getTokenPriceEGLD" --arguments ${XOXNO_TOKEN} --proxy=${PROXY}
 }

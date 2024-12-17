@@ -1,5 +1,8 @@
 use crate::{constants::*, proxys::*};
-use lending_pool::{AccountTokenModule, BP};
+use common_constants::{DECIMAL_PRECISION, EGLD_TICKER, MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE};
+
+use contexts::base::StorageCache;
+
 use multiversx_sc::{
     imports::OptionalValue,
     types::{
@@ -10,7 +13,7 @@ use multiversx_sc::{
 use multiversx_sc_scenario::{
     api::StaticApi, DebugApi, ScenarioTxRun, ScenarioTxWhitebox, ScenarioWorld, WhiteboxContract,
 };
-use pair::{config::ConfigModule, safe_price_view};
+use pair::config::ConfigModule;
 use position::PositionModule;
 use rs_liquid_staking_sc::{
     proxy::proxy_liquid_staking::{self, ScoringConfig},
@@ -18,7 +21,7 @@ use rs_liquid_staking_sc::{
 };
 use rs_liquid_xoxno::{config::ConfigModule as XoxnoConfigModule, rs_xoxno_proxy};
 use std::ops::Mul;
-use utils::{MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE};
+use storage::LendingStorageModule;
 
 use lending_pool::*;
 use multiversx_sc::types::{
@@ -130,6 +133,16 @@ impl LendingPoolTestState {
             / BigUint::from(BP))
         .to_u64()
         .unwrap()
+    }
+
+    pub fn get_usd_price_error(&mut self, token_id: TestTokenIdentifier, error_message: &[u8]) {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .get_usd_price(token_id)
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
     }
     pub fn add_new_market(
         &mut self,
@@ -450,13 +463,7 @@ impl LendingPoolTestState {
     }
 
     // Price aggregator operations
-    pub fn submit_price(
-        &mut self,
-        from: &[u8],
-        price: u64,
-        decimals: usize,
-        timestamp: u64,
-    ) -> () {
+    pub fn submit_price(&mut self, from: &[u8], price: u64, decimals: usize, timestamp: u64) -> () {
         let oracles = vec![
             ORACLE_ADDRESS_1,
             ORACLE_ADDRESS_2,
@@ -574,7 +581,8 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .whitebox(lending_pool::contract_obj, |sc| {
-                sc.update_borrows_with_debt(account_position, true);
+                let mut storage_cache = StorageCache::new(&sc);
+                sc.update_borrows_with_debt(account_position, &mut storage_cache, true);
             });
     }
 
@@ -584,11 +592,15 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .whitebox(lending_pool::contract_obj, |sc| {
-                sc.update_collateral_with_interest(account_position, true);
+                let mut storage_cache = StorageCache::new(&sc);
+                sc.update_collateral_with_interest(account_position, &mut storage_cache, true);
             });
     }
 
-    pub fn get_vault_supplied_amount(&mut self, token_id: TestTokenIdentifier) -> BigUint<StaticApi> {
+    pub fn get_vault_supplied_amount(
+        &mut self,
+        token_id: TestTokenIdentifier,
+    ) -> BigUint<StaticApi> {
         self.world
             .query()
             .to(self.lending_sc.clone())
@@ -645,30 +657,32 @@ impl LendingPoolTestState {
             .run()
     }
 
-    pub fn get_total_borrow_in_dollars(&mut self, account_position: u64) -> u64 {
+    pub fn get_total_borrow_in_egld(&mut self, account_position: u64) -> u64 {
         let borrow_amount = self
             .world
             .query()
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::LendingPoolProxy)
-            .get_total_borrow_in_dollars(account_position)
+            .get_total_borrow_in_egld(account_position)
             .returns(ReturnsResult)
             .run();
 
-        (borrow_amount / BigUint::from(BP)).to_u64().unwrap()
+        (borrow_amount / BigUint::from(10u64).pow(EGLD_DECIMALS as u32))
+            .to_u64()
+            .unwrap()
     }
 
-    pub fn get_total_collateral_in_dollars(&mut self, account_position: u64) -> u64 {
-        let collateral_amount_usd = self
+    pub fn get_total_collateral_in_egld(&mut self, account_position: u64) -> u64 {
+        let collateral_amount_egld = self
             .world
             .query()
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::LendingPoolProxy)
-            .get_total_collateral_in_dollars(account_position)
+            .get_total_collateral_in_egld(account_position)
             .returns(ReturnsResult)
             .run();
 
-        (collateral_amount_usd / BigUint::from(BP))
+        (collateral_amount_egld / BigUint::from(10u64).pow(EGLD_DECIMALS as u32))
             .to_u64()
             .unwrap()
     }
@@ -719,7 +733,8 @@ pub fn setup_lending_pool(
         .init(
             template_address_liquidity_pool,
             price_aggregator_sc,
-            safe_view_sc,
+            safe_view_sc.clone(),
+            safe_view_sc.clone(),
         )
         .code(LENDING_POOL_PATH)
         .returns(ReturnsNewManagedAddress)
@@ -737,9 +752,8 @@ pub fn setup_lending_pool(
                 .set_token_id(ACCOUNT_TOKEN.to_token_identifier());
         });
 
-    let (xegld_liquid_staking_sc, xegld_liquid_staking_whitebox) = setup_egld_liquid_staking(world);
-    let (lxoxno_liquid_staking_sc, lxoxno_liquid_staking_whitebox) =
-        setup_xoxno_liquid_staking(world);
+    let (xegld_liquid_staking_sc, _) = setup_egld_liquid_staking(world);
+    let (lxoxno_liquid_staking_sc, _) = setup_xoxno_liquid_staking(world);
 
     set_oracle_token_data(
         world,

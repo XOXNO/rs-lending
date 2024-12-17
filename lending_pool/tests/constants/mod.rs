@@ -43,7 +43,6 @@ pub const XOXNO_DECIMALS: usize = 18;
 pub const LP_EGLD_TOKEN: TestTokenIdentifier = TestTokenIdentifier::new("LPEGLD-abcdef");
 pub const WEGLD_TOKEN: TestTokenIdentifier = TestTokenIdentifier::new("WEGLD-abcdef");
 pub const EGLD_TOKEN: TestTokenIdentifier = TestTokenIdentifier::new("EGLD-abcdef");
-pub const EGLD_TICKER: &[u8] = b"EGLD";
 pub const EGLD_PRICE_IN_DOLLARS: u64 = 40; // $40
 pub const EGLD_DECIMALS: usize = 18;
 

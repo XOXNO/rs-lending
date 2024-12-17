@@ -3,11 +3,6 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
-pub const SECONDS_PER_YEAR: u64 = 31_556_926;
-pub const BP: u128 = 1_000_000_000_000_000_000_000; // Represents 100%
-pub const DECIMAL_PRECISION: usize = 21;
-pub const MAX_BONUS: u128 = 300_000_000_000_000_000_000; // Represents 30% basis points
-
 #[type_abi]
 #[derive(TopEncode, TopDecode)]
 pub struct PoolParams<M: ManagedTypeApi> {
@@ -18,15 +13,6 @@ pub struct PoolParams<M: ManagedTypeApi> {
     pub u_optimal: ManagedDecimal<M, NumDecimals>,
     pub reserve_factor: ManagedDecimal<M, NumDecimals>,
     pub decimals: usize,
-}
-
-#[type_abi]
-#[derive(NestedEncode, NestedDecode, TopEncode, TopDecode, Clone)]
-pub enum UpdateAssetParamsType {
-    None,
-    LTV,
-    LiquidationBonus,
-    LiquidationThreshold,
 }
 
 #[type_abi]
@@ -50,7 +36,6 @@ pub struct AccountPosition<M: ManagedTypeApi> {
     pub timestamp: u64,
     pub index: BigUint<M>,
     pub is_vault: bool,
-
     pub entry_liquidation_threshold: BigUint<M>,
 }
 
@@ -117,6 +102,15 @@ pub struct AssetConfig<M: ManagedTypeApi> {
 
     // Isolation mode borrow flags (Usully for stablecoins)
     pub can_borrow_in_isolation: bool,
+}
+
+#[type_abi]
+#[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode)]
+pub struct AssetExtendedConfigView<M: ManagedTypeApi> {
+    pub asset_config: AssetConfig<M>,
+    pub market_address: ManagedAddress<M>,
+    pub egld_price: BigUint<M>,
+    pub usd_price: BigUint<M>,
 }
 
 #[type_abi]
@@ -197,6 +191,16 @@ pub struct OracleProvider<M: ManagedTypeApi> {
     pub pricing_method: PricingMethod,
     pub token_type: OracleType,
     pub source: ExchangeSource,
+    pub decimals: u8,
+}
+
+#[type_abi]
+#[derive(NestedEncode, NestedDecode, TopEncode, TopDecode, Clone)]
+pub struct PriceFeedShort<Api>
+where
+    Api: ManagedTypeApi,
+{
+    pub price: BigUint<Api>,
     pub decimals: u8,
 }
 

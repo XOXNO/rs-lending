@@ -1,26 +1,17 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
+use crate::contexts::base::StorageCache;
 use crate::{
-    math, oracle, proxy_pool, storage, ERROR_ASSET_NOT_SUPPORTED, ERROR_BORROW_CAP,
+    math, oracle, proxy_pool, storage, ERROR_ACCOUNT_NOT_IN_THE_MARKET, ERROR_ADDRESS_IS_ZERO,
+    ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO, ERROR_ASSET_NOT_SUPPORTED, ERROR_BORROW_CAP,
     ERROR_DEBT_CEILING_REACHED, ERROR_NO_POOL_FOUND, ERROR_UNEXPECTED_ANCHOR_TOLERANCES,
     ERROR_UNEXPECTED_FIRST_TOLERANCE, ERROR_UNEXPECTED_LAST_TOLERANCE,
 };
-
+use common_constants::{
+    BP, EGLD_IDENTIFIER, MAX_FIRST_TOLERANCE, MAX_LAST_TOLERANCE, MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE
+};
 use common_structs::*;
-
-/// EGLD token identifier constant
-pub const EGELD_IDENTIFIER: &str = "EGLD-000000";
-
-/// Minimum first tolerance for oracle price fluctuation (0.50%)
-pub const MIN_FIRST_TOLERANCE: u128 = 5_000_000_000_000_000_000;
-/// Maximum first tolerance for oracle price fluctuation (50%)
-pub const MAX_FIRST_TOLERANCE: u128 = 500_000_000_000_000_000_000;
-
-/// Minimum last tolerance for oracle price fluctuation (1.5%)
-pub const MIN_LAST_TOLERANCE: u128 = 12_500_000_000_000_000_000;
-/// Maximum last tolerance for oracle price fluctuation (100%)
-pub const MAX_LAST_TOLERANCE: u128 = 1_000_000_000_000_000_000_000;
 
 #[multiversx_sc::module]
 pub trait LendingUtilsModule:
@@ -30,13 +21,13 @@ pub trait LendingUtilsModule:
     + common_events::EventsModule
 {
     /// Gets the liquidity pool address for a given asset
-    /// 
+    ///
     /// # Arguments
     /// * `asset` - Token identifier of the asset
-    /// 
+    ///
     /// # Returns
     /// * `ManagedAddress` - Address of the liquidity pool
-    /// 
+    ///
     /// # Errors
     /// * `ERROR_NO_POOL_FOUND` - If no pool exists for the asset
     #[view(getPoolAddress)]
@@ -48,37 +39,16 @@ pub trait LendingUtilsModule:
         pool_address
     }
 
-    /// Updates interest rate indexes for a given asset
-    /// 
-    /// # Arguments
-    /// * `token_id` - Token identifier to update indexes for
-    /// 
-    /// # Flow
-    /// 1. Gets pool address for token
-    /// 2. Gets current asset price
-    /// 3. Calls pool to update indexes with current price
-    #[endpoint(updateIndexes)]
-    fn update_indexes(&self, token_id: EgldOrEsdtTokenIdentifier) {
-        let pool_address = self.get_pool_address(&token_id);
-
-        let asset_price = self.get_token_price_data(&token_id);
-        self.tx()
-            .to(pool_address)
-            .typed(proxy_pool::LiquidityPoolProxy)
-            .update_indexes(&asset_price.price)
-            .sync_call();
-    }
-
     /// Calculates upper and lower bounds for a given tolerance
-    /// 
+    ///
     /// # Arguments
     /// * `tolerance` - Tolerance value in basis points
-    /// 
+    ///
     /// # Returns
     /// * `(BigUint, BigUint)` - Tuple containing:
     ///   - Upper bound (BP + tolerance)
     ///   - Lower bound (BP * BP / upper)
-    /// 
+    ///
     /// # Example
     /// ```
     /// // For 5% tolerance (500 basis points)
@@ -95,25 +65,25 @@ pub trait LendingUtilsModule:
     }
 
     /// Validates and calculates oracle price fluctuation tolerances
-    /// 
+    ///
     /// # Arguments
     /// * `first_tolerance` - Initial tolerance for price deviation
     /// * `last_tolerance` - Maximum allowed tolerance
-    /// 
+    ///
     /// # Returns
     /// * `OraclePriceFluctuation` - Struct containing upper/lower bounds for both tolerances
-    /// 
+    ///
     /// # Errors
     /// * `ERROR_UNEXPECTED_FIRST_TOLERANCE` - If first tolerance is out of range
     /// * `ERROR_UNEXPECTED_LAST_TOLERANCE` - If last tolerance is out of range
     /// * `ERROR_UNEXPECTED_ANCHOR_TOLERANCES` - If last tolerance is less than first
-    /// 
+    ///
     /// # Example
     /// ```
     /// // For 5% first tolerance and 10% last tolerance
     /// first_tolerance = 500 (5%)
     /// last_tolerance = 1000 (10%)
-    /// 
+    ///
     /// Returns:
     /// OraclePriceFluctuation {
     ///   first_upper_ratio: 10500,  // 105%
@@ -157,128 +127,136 @@ pub trait LendingUtilsModule:
         tolerances
     }
 
-    /// Calculates total weighted collateral value in USD for liquidation
-    /// 
+    /// Calculates total weighted collateral value in EGLD for liquidation
+    ///
     /// # Arguments
     /// * `positions` - Vector of account positions
-    /// 
+    ///
     /// # Returns
-    /// * `BigUint` - Total USD value weighted by liquidation thresholds
-    /// 
+    /// * `BigUint` - Total EGLD value weighted by liquidation thresholds
+    ///
     /// # Example
     /// ```
     /// // Position 1: 100 EGLD, threshold 80%
     /// // Position 2: 1000 USDC, threshold 85%
-    /// 
+    ///
     /// EGLD price = $100
     /// EGLD value = 100 * $100 * 0.80 = $8,000
-    /// 
+    ///
     /// USDC price = $1
     /// USDC value = 1000 * $1 * 0.85 = $850
-    /// 
+    ///
     /// Total = $8,850
     /// ```
-    fn get_liquidation_collateral_in_dollars_vec(
+    fn get_liquidation_collateral_in_egld_vec(
         &self,
         positions: &ManagedVec<AccountPosition<Self::Api>>,
+        storage_cache: &mut StorageCache<Self>,
     ) -> BigUint {
-        let mut weighted_collateral_in_dollars = BigUint::zero();
+        let mut weighted_collateral_in_egld = BigUint::zero();
 
         for dp in positions {
-            let position_value_in_dollars =
-                self.get_token_amount_in_dollars(&dp.token_id, &dp.get_total_amount());
+            let position_value_in_egld =
+                self.get_token_amount_in_egld(&dp.token_id, &dp.get_total_amount(), storage_cache);
 
-            weighted_collateral_in_dollars +=
-                position_value_in_dollars * &dp.entry_liquidation_threshold / BigUint::from(BP);
+            weighted_collateral_in_egld +=
+                position_value_in_egld * &dp.entry_liquidation_threshold / BigUint::from(BP);
         }
 
-        weighted_collateral_in_dollars
+        weighted_collateral_in_egld
     }
 
-    /// Calculates total weighted collateral value in USD for LTV
-    /// 
+    /// Calculates total weighted collateral value in EGLD for LTV
+    ///
     /// # Arguments
     /// * `positions` - Vector of account positions
-    /// 
+    ///
     /// # Returns
-    /// * `BigUint` - Total USD value weighted by LTV ratios
-    /// 
+    /// * `BigUint` - Total EGLD value weighted by LTV ratios
+    ///
     /// # Example
     /// ```
     /// // Position 1: 100 EGLD, LTV 75%
     /// // Position 2: 1000 USDC, LTV 80%
-    /// 
+    ///
     /// EGLD price = $100
     /// EGLD value = 100 * $100 * 0.75 = $7,500
-    /// 
+    ///
     /// USDC price = $1
     /// USDC value = 1000 * $1 * 0.80 = $800
-    /// 
+    ///
     /// Total = $8,300
     /// ```
-    fn get_ltv_collateral_in_dollars_vec(
+    fn get_ltv_collateral_in_egld_vec(
         &self,
         positions: &ManagedVec<AccountPosition<Self::Api>>,
+        storage_cache: &mut StorageCache<Self>,
+        global_ltv: &BigUint,
+        e_mode_category: u8,
     ) -> BigUint {
-        let mut weighted_collateral_in_dollars = BigUint::zero();
+        let mut weighted_collateral_in_egld = BigUint::zero();
 
         for dp in positions {
-            let position_value_in_dollars =
-                self.get_token_amount_in_dollars(&dp.token_id, &dp.get_total_amount());
-            let asset_config = self.asset_config(&dp.token_id).get();
+            let position_value_in_egld =
+                self.get_token_amount_in_egld(&dp.token_id, &dp.get_total_amount(), storage_cache);
+            let ltv = if e_mode_category > 0 {
+                global_ltv
+            } else {
+                &self.asset_ltv(&dp.token_id).get()
+            };
 
-            weighted_collateral_in_dollars +=
-                &position_value_in_dollars * &asset_config.ltv / BigUint::from(BP);
+            weighted_collateral_in_egld += &position_value_in_egld * ltv / BigUint::from(BP);
         }
 
-        weighted_collateral_in_dollars
+        weighted_collateral_in_egld
     }
 
     /// Calculates total borrow value in USD
-    /// 
+    ///
     /// # Arguments
     /// * `positions` - Vector of account positions
-    /// 
+    ///
     /// # Returns
     /// * `BigUint` - Total USD value of borrowed assets
-    /// 
+    ///
     /// # Example
     /// ```
     /// // Position 1: 50 EGLD borrowed
     /// // Position 2: 500 USDC borrowed
-    /// 
+    ///
     /// EGLD price = $100
     /// EGLD value = 50 * $100 = $5,000
-    /// 
+    ///
     /// USDC price = $1
     /// USDC value = 500 * $1 = $500
-    /// 
+    ///
     /// Total = $5,500
     /// ```
-    fn get_total_borrow_in_dollars_vec(
+    fn get_total_borrow_in_egld_vec(
         &self,
         positions: &ManagedVec<AccountPosition<Self::Api>>,
+        storage_cache: &mut StorageCache<Self>,
     ) -> BigUint {
-        let mut total_borrow_in_dollars = BigUint::zero();
+        let mut total_borrow_in_egld = BigUint::zero();
 
         for bp in positions {
-            total_borrow_in_dollars +=
-                self.get_token_amount_in_dollars(&bp.token_id, &bp.get_total_amount());
+            total_borrow_in_egld +=
+                self.get_token_amount_in_egld(&bp.token_id, &bp.get_total_amount(), storage_cache);
         }
 
-        total_borrow_in_dollars
+        total_borrow_in_egld
     }
 
     /// Validates that a new borrow doesn't exceed isolated asset debt ceiling
-    /// 
+    ///
     /// # Arguments
     /// * `asset_config` - Asset configuration
     /// * `token_id` - Token identifier
     /// * `amount_to_borrow_in_dollars` - USD value of new borrow
-    /// 
+    ///
     /// # Errors
     /// * `ERROR_DEBT_CEILING_REACHED` - If new borrow would exceed debt ceiling
-    /// 
+    ///
     /// # Example
     /// ```
     /// // Asset: USDC
@@ -305,17 +283,17 @@ pub trait LendingUtilsModule:
     }
 
     /// Updates isolated asset debt tracking
-    /// 
+    ///
     /// # Arguments
     /// * `token_id` - Token identifier
-    /// * `amount_to_borrow_in_dollars` - USD value to add/subtract
+    /// * `amount_in_usd` - USD value to add/subtract
     /// * `is_increase` - Whether to increase or decrease debt
-    /// 
+    ///
     /// # Flow
     /// 1. Skips if amount is zero
     /// 2. Updates debt tracking storage
     /// 3. Emits debt ceiling event
-    /// 
+    ///
     /// # Example
     /// ```
     /// // Increase debt by $100,000
@@ -328,41 +306,77 @@ pub trait LendingUtilsModule:
     fn update_isolated_debt_usd(
         &self,
         token_id: &EgldOrEsdtTokenIdentifier,
-        amount_to_borrow_in_dollars: &BigUint,
+        amount_in_usd: &BigUint,
         is_increase: bool,
     ) {
-        if amount_to_borrow_in_dollars.eq(&BigUint::from(0u64)) {
+        if amount_in_usd.eq(&BigUint::from(0u64)) {
             return;
         }
 
         let map = self.isolated_asset_debt_usd(token_id);
 
         if is_increase {
-            map.update(|debt| *debt += amount_to_borrow_in_dollars);
+            map.update(|debt| *debt += amount_in_usd);
         } else {
-            map.update(|debt| *debt -= amount_to_borrow_in_dollars.min(&debt.clone()));
+            map.update(|debt| *debt -= amount_in_usd.min(&debt.clone()));
         }
 
         self.update_debt_ceiling_event(token_id, map.get());
     }
 
     /// Validates that an asset is supported by the protocol
-    /// 
+    ///
     /// # Arguments
     /// * `asset` - Token identifier to check
-    /// 
+    ///
     /// # Errors
     /// * `ERROR_ASSET_NOT_SUPPORTED` - If asset has no liquidity pool
     fn require_asset_supported(&self, asset: &EgldOrEsdtTokenIdentifier) {
         require!(!self.pools_map(asset).is_empty(), ERROR_ASSET_NOT_SUPPORTED);
     }
 
+    /// Validates that an account is in the market
+    ///
+    /// # Arguments
+    /// * `nonce` - Account nonce
+    ///
+    /// # Errors
+    /// * `ERROR_ACCOUNT_NOT_IN_THE_MARKET` - If account is not in the market
+    fn lending_account_in_the_market(&self, nonce: u64) {
+        require!(
+            self.account_positions().contains(&nonce),
+            ERROR_ACCOUNT_NOT_IN_THE_MARKET
+        );
+    }
+
+    /// Validates that an amount is greater than zero
+    ///
+    /// # Arguments
+    /// * `amount` - Amount to validate
+    ///
+    /// # Errors
+    /// * `ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO` - If amount is not greater than zero
+    fn require_amount_greater_than_zero(&self, amount: &BigUint) {
+        require!(amount > &0, ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO);
+    }
+
+    /// Validates that an address is not zero
+    ///
+    /// # Arguments
+    /// * `address` - Address to validate
+    ///
+    /// # Errors
+    /// * `ERROR_ADDRESS_IS_ZERO` - If address is zero
+    fn require_non_zero_address(&self, address: &ManagedAddress) {
+        require!(!address.is_zero(), ERROR_ADDRESS_IS_ZERO);
+    }
+
     /// Gets NFT attributes for an account position
-    /// 
+    ///
     /// # Arguments
     /// * `account_nonce` - NFT nonce of the position
     /// * `token_id` - NFT token identifier
-    /// 
+    ///
     /// # Returns
     /// * `NftAccountAttributes` - Decoded NFT attributes
     fn get_account_attributes(
@@ -380,15 +394,15 @@ pub trait LendingUtilsModule:
     }
 
     /// Validates that a new borrow doesn't exceed asset borrow cap
-    /// 
+    ///
     /// # Arguments
     /// * `asset_config` - Asset configuration
     /// * `amount` - Amount to borrow
     /// * `asset` - Token identifier
-    /// 
+    ///
     /// # Errors
     /// * `ERROR_BORROW_CAP` - If new borrow would exceed cap
-    /// 
+    ///
     /// # Example
     /// ```
     /// // Asset: EGLD
@@ -426,7 +440,7 @@ pub trait LendingUtilsModule:
             let payment = payments.get(i);
             // EGLD sent as multi-esdt payment
             if payment.token_identifier.clone().into_managed_buffer()
-                == ManagedBuffer::from(EGELD_IDENTIFIER)
+                == ManagedBuffer::from(EGLD_IDENTIFIER)
                 || payment.token_identifier.clone().into_managed_buffer()
                     == ManagedBuffer::from("EGLD")
             {

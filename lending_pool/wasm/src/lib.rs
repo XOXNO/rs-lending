@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           53
+// Endpoints:                           59
 // Async Callback:                       1
-// Total number of exported functions:  56
+// Total number of exported functions:  62
 
 #![no_std]
 
@@ -26,13 +26,16 @@ multiversx_sc_wasm_adapter::endpoints! {
         repay => repay
         liquidate => liquidate
         flashLoan => flash_loan
-        syncAccountPositions => sync_account_positions
-        getLiqPoolTemplateAddress => liq_pool_template_address
+        updateAccountPositions => update_account_positions
+        updateIndexes => update_indexes
         createLiquidityPool => create_liquidity_pool
         upgradeLiquidityPool => upgrade_liquidity_pool
+        claimRevenue => claim_revenue
+        registerAccountToken => register_account_token
         setTokenOracle => set_token_oracle
-        editTokenOracletTolerance => edit_token_oracle_tolerance
+        editTokenOracleTolerance => edit_token_oracle_tolerance
         setAggregator => set_aggregator
+        setAccumulator => set_accumulator
         setSafePriceView => set_safe_price_view
         setLiquidityPoolTemplate => set_liquidity_pool_template
         addEModeCategory => add_e_mode_category
@@ -42,16 +45,18 @@ multiversx_sc_wasm_adapter::endpoints! {
         editAssetInEModeCategory => edit_asset_in_e_mode_category
         removeAssetFromEModeCategory => remove_asset_from_e_mode_category
         editAssetConfig => edit_asset_config
-        registerAccountToken => register_account_token
         getAccountToken => account_token
         getAccountPositions => account_positions
+        getAccountAttributes => account_attributes
         getDepositPositions => deposit_positions
         getBorrowPositions => borrow_positions
+        getLiqPoolTemplateAddress => liq_pool_template_address
+        getAccumulatorAddress => accumulator_address
         getPoolsMap => pools_map
-        getPoolAllowed => pools_allowed
         getPriceAggregatorAddress => price_aggregator_address
         getSafePriceView => safe_price_view
         getAssetConfig => asset_config
+        getAssetLTV => asset_ltv
         lastEModeCategoryId => last_e_mode_category_id
         getEModes => e_mode_category
         getAssetEModes => asset_e_modes
@@ -59,20 +64,21 @@ multiversx_sc_wasm_adapter::endpoints! {
         getIsolatedAssetDebtUsd => isolated_asset_debt_usd
         getVaultSuppliedAmount => vault_supplied_amount
         getTokenOracle => token_oracle
-        getTokenPriceUSD => get_usd_price
-        getTokenPriceData => get_token_price_data
         getLastTokenPrice => last_token_price
         getPoolAddress => get_pool_address
-        updateIndexes => update_indexes
+        getAllMarkets => get_all_markets
         canBeLiquidated => can_be_liquidated
         getHealthFactor => get_health_factor
         getMaxLiquidateAmountForCollateral => get_max_liquidate_amount_for_collateral
         getCollateralAmountForToken => get_collateral_amount_for_token
         getBorrowAmountForToken => get_borrow_amount_for_token
-        getTotalBorrowInDollars => get_total_borrow_in_dollars
-        getTotalCollateralInDollars => get_total_collateral_in_dollars
+        getTotalBorrowInEgld => get_total_borrow_in_egld
+        getTotalCollateralInEgld => get_total_collateral_in_egld
         getLiquidationCollateralAvailable => get_liquidation_collateral_available
-        getLtvCollateralInDollars => get_ltv_collateral_in_dollars
+        getLtvCollateralInEgld => get_ltv_collateral_in_egld
+        getTokenPriceData => get_token_price_data_view
+        getTokenPriceUSD => get_usd_price
+        getTokenPriceEGLD => get_egld_price
     )
 }
 

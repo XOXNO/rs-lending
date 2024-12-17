@@ -3,6 +3,7 @@ multiversx_sc::derive_imports!();
 
 use crate::{contexts::base::StorageCache, liq_math, liq_storage, view};
 
+use common_constants::{BP, DECIMAL_PRECISION, SECONDS_PER_YEAR};
 use common_structs::*;
 
 #[multiversx_sc::module]
@@ -55,6 +56,12 @@ pub trait UtilsModule:
         interest_factor_dec
     }
 
+    /// Updates the borrow index for the given storage cache.
+    ///
+    /// # Parameters
+    /// - `borrow_rate`: The borrow rate.
+    /// - `delta_timestamp`: The time difference in seconds, between the last update and the current timestamp.
+    /// - `storage_cache`: The storage cache to update.
     fn update_borrow_index(
         &self,
         borrow_rate: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -69,6 +76,11 @@ pub trait UtilsModule:
             .mul_with_precision(interest_factor, DECIMAL_PRECISION);
     }
 
+    /// Updates the supply index for the given storage cache.
+    ///
+    /// # Parameters
+    /// - `rewards_increase`: The total interest earned (compound) for the suppliers.
+    /// - `storage_cache`: The storage cache to update.
     fn update_supply_index(
         &self,
         rewards_increase: ManagedDecimal<Self::Api, NumDecimals>,
@@ -81,9 +93,8 @@ pub trait UtilsModule:
             )
         {
             // Convert rewards to an index increase factor
-            let rewards_factor: ManagedDecimal<<Self as ContractBase>::Api, _> =
-                rewards_increase.clone() / storage_cache.supplied_amount.clone()
-                    + ManagedDecimal::from_raw_units(BigUint::from(BP), DECIMAL_PRECISION);
+            let rewards_factor = rewards_increase.clone() / storage_cache.supplied_amount.clone()
+                + ManagedDecimal::from_raw_units(BigUint::from(BP), DECIMAL_PRECISION);
 
             storage_cache.supply_index = storage_cache
                 .supply_index
@@ -92,6 +103,15 @@ pub trait UtilsModule:
         }
     }
 
+    /// Updates the rewards reserves for the given storage cache.
+    ///
+    /// # Parameters
+    /// - `borrow_rate`: The borrow rate.
+    /// - `delta_timestamp`: The time difference in seconds, between the last update and the current timestamp.
+    /// - `storage_cache`: The storage cache to update.
+    ///
+    /// # Returns
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total interest earned (compound) for the suppliers.
     fn update_rewards_reserves(
         &self,
         borrow_rate: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -118,13 +138,12 @@ pub trait UtilsModule:
         rewards_increase - revenue
     }
 
-    fn get_timestamp_diff(&self, initial_timestamp: u64, current_timestamp: u64) -> u64 {
-        current_timestamp - initial_timestamp
-    }
-
+    /// Updates the interest indexes for the given storage cache.
+    ///
+    /// # Parameters
+    /// - `storage_cache`: The storage cache to update.
     fn update_interest_indexes(&self, storage_cache: &mut StorageCache<Self>) {
-        let delta_timestamp =
-            self.get_timestamp_diff(storage_cache.last_update_timestamp, storage_cache.timestamp);
+        let delta_timestamp = storage_cache.timestamp - storage_cache.last_update_timestamp;
 
         if delta_timestamp > 0 {
             let borrow_rate = self.get_borrow_rate_internal(storage_cache);
@@ -137,11 +156,16 @@ pub trait UtilsModule:
         }
     }
 
+    /// Updates the position with interest for the given storage cache.
+    ///
+    /// # Parameters
+    /// - `position`: The position to update.
+    /// - `storage_cache`: The storage cache to update.
     fn internal_update_position_with_interest(
         &self,
-        mut position: AccountPosition<Self::Api>,
+        position: &mut AccountPosition<Self::Api>,
         storage_cache: &mut StorageCache<Self>,
-    ) -> AccountPosition<Self::Api> {
+    ) {
         self.update_interest_indexes(storage_cache);
         let is_supply = position.deposit_type == AccountPositionType::Deposit;
 
@@ -175,7 +199,5 @@ pub trait UtilsModule:
                 OptionalValue::None,
             );
         }
-
-        position
     }
 }

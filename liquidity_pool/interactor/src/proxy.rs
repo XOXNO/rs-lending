@@ -228,12 +228,12 @@ where
         Arg0: ProxyArg<BigUint<Env::Api>>,
     >(
         self,
-        asset_usd_price: Arg0,
+        asset_price: Arg0,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("updateIndexes")
-            .argument(&asset_usd_price)
+            .argument(&asset_price)
             .original_result()
     }
 
@@ -243,13 +243,13 @@ where
     >(
         self,
         position: Arg0,
-        asset_usd_price: Arg1,
+        asset_price: Arg1,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::AccountPosition<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("updatePositionInterest")
             .argument(&position)
-            .argument(&asset_usd_price)
+            .argument(&asset_price)
             .original_result()
     }
 
@@ -259,12 +259,12 @@ where
     >(
         self,
         deposit_position: Arg0,
-        asset_usd_price: Arg1,
+        asset_price: Arg1,
     ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPosition<Env::Api>> {
         self.wrapped_tx
             .raw_call("supply")
             .argument(&deposit_position)
-            .argument(&asset_usd_price)
+            .argument(&asset_price)
             .original_result()
     }
 
@@ -278,14 +278,14 @@ where
         initial_caller: Arg0,
         borrow_amount: Arg1,
         existing_borrow_position: Arg2,
-        asset_usd_price: Arg3,
+        asset_price: Arg3,
     ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPosition<Env::Api>> {
         self.wrapped_tx
             .raw_call("borrow")
             .argument(&initial_caller)
             .argument(&borrow_amount)
             .argument(&existing_borrow_position)
-            .argument(&asset_usd_price)
+            .argument(&asset_price)
             .original_result()
     }
 
@@ -303,7 +303,7 @@ where
         deposit_position: Arg2,
         is_liquidation: Arg3,
         protocol_liquidation_fee: Arg4,
-        asset_usd_price: Arg5,
+        asset_price: Arg5,
     ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPosition<Env::Api>> {
         self.wrapped_tx
             .raw_call("withdraw")
@@ -312,7 +312,7 @@ where
             .argument(&deposit_position)
             .argument(&is_liquidation)
             .argument(&protocol_liquidation_fee)
-            .argument(&asset_usd_price)
+            .argument(&asset_price)
             .original_result()
     }
 
@@ -324,25 +324,13 @@ where
         self,
         initial_caller: Arg0,
         borrow_position: Arg1,
-        asset_usd_price: Arg2,
+        asset_price: Arg2,
     ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPosition<Env::Api>> {
         self.wrapped_tx
             .raw_call("repay")
             .argument(&initial_caller)
             .argument(&borrow_position)
-            .argument(&asset_usd_price)
-            .original_result()
-    }
-
-    pub fn vault_rewards<
-        Arg0: ProxyArg<BigUint<Env::Api>>,
-    >(
-        self,
-        asset_usd_price: Arg0,
-    ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
-        self.wrapped_tx
-            .raw_call("vaultRewards")
-            .argument(&asset_usd_price)
+            .argument(&asset_price)
             .original_result()
     }
 
@@ -362,7 +350,7 @@ where
         endpoint: Arg3,
         arguments: Arg4,
         fees: Arg5,
-        asset_usd_price: Arg6,
+        asset_price: Arg6,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
@@ -373,7 +361,32 @@ where
             .argument(&endpoint)
             .argument(&arguments)
             .argument(&fees)
-            .argument(&asset_usd_price)
+            .argument(&asset_price)
+            .original_result()
+    }
+
+    pub fn add_vault_liquidation_rewards<
+        Arg0: ProxyArg<BigUint<Env::Api>>,
+    >(
+        self,
+        asset_price: Arg0,
+    ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
+        self.wrapped_tx
+            .raw_call("addVaultLiquidationRewards")
+            .argument(&asset_price)
+            .original_result()
+    }
+
+    pub fn claim_revenue<
+        Arg0: ProxyArg<BigUint<Env::Api>>,
+    >(
+        self,
+        asset_price: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, EgldOrEsdtTokenPayment<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("claimRevenue")
+            .argument(&asset_price)
             .original_result()
     }
 

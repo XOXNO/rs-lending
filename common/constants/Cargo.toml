@@ -1,14 +1,11 @@
 [package]
-name    = "common-events"
+name    = "common-constants"
 version = "0.0.0"
 authors = ["Mihai Eremin <mihai@xoxno.com>"]
 edition = "2018"
 
 [lib]
-path = "src/events.rs"
-
-[dependencies.common-structs]
-path = "../structs"
+path = "src/constants.rs"
 
 [dependencies.multiversx-sc]
 version = "0.54.6"

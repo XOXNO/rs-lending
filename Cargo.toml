@@ -5,8 +5,7 @@ members = [
     "lending_pool",
     "lending_pool/meta",
     "common/structs",
-    "common/checks",
-    "common/tokens",
+    "common/constants",
     "common/events",
     "price-aggregator",
     "price-aggregator/meta"
