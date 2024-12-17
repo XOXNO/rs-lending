@@ -179,6 +179,7 @@ pub enum ExchangeSource {
     XExchange,
     LXOXNO,
     XEGLD,
+    LEGLD,
 }
 
 #[type_abi]
