@@ -25,8 +25,6 @@ pub static ERROR_TEMPLATE_EMPTY: &[u8] = b"Liquidity pool contract template is e
 
 pub static ERROR_TOKEN_TICKER_FETCH: &[u8] = b"Failed to get token ticker.";
 
-pub static ERROR_INSUFFICIENT_LIQUIDITY: &[u8] = b"Insufficient liquidity in pool";
-
 pub static ERROR_COLLATERAL_NOT_FOUND: &[u8] = b"Collateral not found to liquidate.";
 
 pub static ERROR_PRICE_AGGREGATOR_NOT_SET: &[u8] = b"Price aggregator not set.";
@@ -72,6 +70,8 @@ pub static ERROR_FLASHLOAN_NOT_ENABLED: &[u8] = b"Flashloan not enabled for this
 
 pub static ERROR_INVALID_SHARD: &[u8] = b"Invalid shard for flashloan.";
 
+pub static ERROR_INVALID_ENDPOINT: &[u8] = b"Invalid endpoint for flashloan.";
+
 pub static ERROR_SUPPLY_CAP: &[u8] = b"Supply cap reached.";
 
 pub static ERROR_BORROW_CAP: &[u8] = b"Borrow cap reached.";
@@ -99,3 +99,12 @@ pub static ERROR_ACCOUNT_NOT_IN_THE_MARKET: &[u8] = b"Account not in the market.
 pub static ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO: &[u8] = b"Amount must be greater than zero.";
 
 pub static ERROR_ADDRESS_IS_ZERO: &[u8] = b"Address is zero.";
+
+pub static ERROR_LIQUIDATED_AMOUNT_AFTER_FEES_LESS_THAN_MIN_AMOUNT_TO_RECEIVE: &[u8] =
+    b"Liquidated amount after fees is less than min amount to receive.";
+
+pub static ERROR_EMODE_CATEGORY_DEPRECATED: &[u8] = b"E-mode category deprecated.";
+
+pub static ERROR_POSITION_NOT_FOUND: &[u8] = b"Position not found.";
+
+pub static ERROR_ENABLE_VAULT_MODE_FAILED: &[u8] = b"Enable vault mode failed.";

@@ -2,6 +2,7 @@ multiversx_sc::imports!();
 
 use crate::{oracle, storage, ERROR_NO_COLLATERAL_TOKEN};
 use common_constants::{BP, MAX_BONUS};
+use common_events::NftAccountAttributes;
 use common_structs::PriceFeedShort;
 
 #[multiversx_sc::module]
@@ -193,9 +194,24 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
     fn calculate_dynamic_liquidation_bonus(
         &self,
         health_factor: &BigUint,
-        initial_bonus: BigUint,
+        initial_bonus: &BigUint,
+        nft_attributes: &NftAccountAttributes,
     ) -> BigUint {
         let bp = BigUint::from(BP);
+
+        let final_bonus = if nft_attributes.e_mode_category == 0 {
+            initial_bonus
+        } else {
+            let category = self
+                .e_mode_category()
+                .get(&nft_attributes.e_mode_category)
+                .unwrap();
+            if category.is_deprecated {
+                initial_bonus
+            } else {
+                &category.liquidation_bonus.clone()
+            }
+        };
 
         // Multiply by 2 to increase the bonus for more unhealthy positions
         let health_factor_impact = (&bp - health_factor).mul(2u64);
@@ -206,11 +222,11 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
         // Calculate bonus increase based on how unhealthy the position is
         // More unhealthy = bigger bonus to incentivize quick liquidation
         let bonus_increase = BigUint::min(
-            &health_factor_impact * &initial_bonus / bp,
+            &health_factor_impact * final_bonus / bp,
             max_bonus_increase,
         );
 
-        initial_bonus + bonus_increase
+        final_bonus + &bonus_increase
     }
 
     /// Calculates a dynamic protocol fee based on position health

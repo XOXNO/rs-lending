@@ -1,7 +1,7 @@
 multiversx_sc::imports!();
 use common_constants::BP;
 use common_events::{
-    AccountPosition, AssetConfig, EgldOrEsdtTokenPaymentNew, NftAccountAttributes,
+    AccountPosition, AssetConfig, EModeCategory, EgldOrEsdtTokenPaymentNew, NftAccountAttributes,
 };
 use common_structs::PriceFeedShort;
 
@@ -90,45 +90,48 @@ pub trait ValidationModule:
         token_id: &EgldOrEsdtTokenIdentifier,
         asset_info: &AssetConfig<Self::Api>,
         nft_attributes: &NftAccountAttributes,
-        e_mode_category: OptionalValue<u8>,
-    ) {
+    ) -> Option<EModeCategory<Self::Api>> {
         // 1. Validate isolated asset constraints
         require!(
             !(asset_info.is_isolated && nft_attributes.e_mode_category != 0),
             ERROR_CANNOT_USE_EMODE_WITH_ISOLATED_ASSETS
         );
 
-        // 2. Get the effective e-mode category
-        let effective_category = if nft_attributes.e_mode_category != 0 {
-            // For existing positions, use the NFT's category
-            nft_attributes.e_mode_category
-        } else if !asset_info.is_isolated && asset_info.is_e_mode_enabled {
-            // For new positions, use the provided category if valid
-            e_mode_category.into_option().unwrap_or(0)
-        } else {
-            0
-        };
-
         // 3. Validate e-mode if active
-        if effective_category != 0 {
+        if nft_attributes.e_mode_category != 0 {
             // Validate category exists
             require!(
-                self.e_mode_category().contains_key(&effective_category),
+                self.e_mode_category()
+                    .contains_key(&nft_attributes.e_mode_category),
                 ERROR_EMODE_CATEGORY_NOT_FOUND
             );
 
+            let category = self
+                .e_mode_category()
+                .get(&nft_attributes.e_mode_category)
+                .unwrap();
+
+            if category.is_deprecated {
+                return Some(category);
+            }
+
             // Validate asset supports this e-mode
             require!(
-                self.asset_e_modes(token_id).contains(&effective_category),
+                self.asset_e_modes(token_id)
+                    .contains(&nft_attributes.e_mode_category),
                 ERROR_EMODE_CATEGORY_NOT_FOUND
             );
 
             // Validate asset has configuration for this e-mode
             require!(
-                self.e_mode_assets(effective_category)
+                self.e_mode_assets(nft_attributes.e_mode_category)
                     .contains_key(token_id),
                 ERROR_EMODE_CATEGORY_NOT_FOUND
             );
+
+            return Some(category);
+        } else {
+            None
         }
     }
 
@@ -262,6 +265,7 @@ pub trait ValidationModule:
         account_nonce: u64,
         is_liquidation: bool,
         storage_cache: &mut StorageCache<Self>,
+        safety_factor: Option<BigUint>,
     ) {
         if !is_liquidation {
             let borrow_positions = self.borrow_positions(account_nonce);
@@ -269,15 +273,24 @@ pub trait ValidationModule:
             if len == 0 {
                 return;
             }
-
-            let collateral_in_egld = self.get_liquidation_collateral_available(account_nonce);
+            let deposit_positions = self.deposit_positions(account_nonce);
+            let collateral_in_egld = self.get_liquidation_collateral_in_egld_vec(
+                &deposit_positions.values().collect(),
+                storage_cache,
+            );
             let borrowed_egld = self
                 .get_total_borrow_in_egld_vec(&borrow_positions.values().collect(), storage_cache);
             let health_factor = self.compute_health_factor(&collateral_in_egld, &borrowed_egld);
 
             // Make sure the health factor is greater than 100% when is a normal withdraw
+            let health_factor_with_safety_factor = if let Some(safety_factor_value) = safety_factor
+            {
+                BigUint::from(BP) + (BigUint::from(BP) / safety_factor_value)
+            } else {
+                BigUint::from(BP)
+            };
             require!(
-                health_factor >= BigUint::from(BP),
+                health_factor >= health_factor_with_safety_factor,
                 ERROR_HEALTH_FACTOR_WITHDRAW
             );
         }
@@ -414,17 +427,11 @@ pub trait ValidationModule:
         collateral_positions: &ManagedVec<AccountPosition<Self::Api>>,
         borrow_positions: &ManagedVec<AccountPosition<Self::Api>>,
         storage_cache: &mut StorageCache<Self>,
-        asset_config: &AssetConfig<Self::Api>,
-        nft_attributes: &NftAccountAttributes,
     ) -> (BigUint, PriceFeedShort<Self::Api>) {
         let asset_data_feed = self.get_token_price_data(asset_to_borrow, storage_cache);
         let amount_to_borrow_in_egld = self.get_token_amount_in_egld_raw(amount, &asset_data_feed);
-        let ltv_collateral_in_egld = self.get_ltv_collateral_in_egld_vec(
-            collateral_positions,
-            storage_cache,
-            &asset_config.ltv,
-            nft_attributes.e_mode_category,
-        );
+        let ltv_collateral_in_egld =
+            self.get_ltv_collateral_in_egld_vec(collateral_positions, storage_cache);
 
         let borrowed_amount_in_egld =
             self.get_total_borrow_in_egld_vec(borrow_positions, storage_cache);

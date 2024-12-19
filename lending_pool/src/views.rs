@@ -138,9 +138,13 @@ pub trait ViewsModule:
         require!(health_factor < bp, ERROR_HEALTH_FACTOR);
 
         let asset_config = self.asset_config(collateral_asset).get();
+        let nft_attributes = self.account_attributes(account_position).get();
         // Calculate collateral to receive with bonus
-        let bonus_rate = self
-            .calculate_dynamic_liquidation_bonus(&health_factor, asset_config.liquidation_bonus);
+        let bonus_rate = self.calculate_dynamic_liquidation_bonus(
+            &health_factor,
+            &asset_config.liquidation_bonus,
+            &nft_attributes,
+        );
 
         let mut storage_cache = StorageCache::new(self);
         let feed = self.get_token_price_data(collateral_asset, &mut storage_cache);
@@ -329,22 +333,11 @@ pub trait ViewsModule:
     #[view(getLtvCollateralInEgld)]
     fn get_ltv_collateral_in_egld(&self, account_position: u64) -> BigUint {
         let deposit_positions = self.deposit_positions(account_position);
-        let account_attributes = self.account_attributes(account_position).get();
         let mut storage_cache = StorageCache::new(self);
-        let global_ltv = if account_attributes.e_mode_category > 0 {
-            self.e_mode_category()
-                .get(&account_attributes.e_mode_category)
-                .unwrap()
-                .ltv
-        } else {
-            BigUint::zero()
-        };
 
         self.get_ltv_collateral_in_egld_vec(
             &deposit_positions.values().collect(),
             &mut storage_cache,
-            &global_ltv,
-            account_attributes.e_mode_category,
         )
     }
 

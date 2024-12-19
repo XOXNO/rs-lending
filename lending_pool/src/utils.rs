@@ -9,7 +9,8 @@ use crate::{
     ERROR_UNEXPECTED_FIRST_TOLERANCE, ERROR_UNEXPECTED_LAST_TOLERANCE,
 };
 use common_constants::{
-    BP, EGLD_IDENTIFIER, MAX_FIRST_TOLERANCE, MAX_LAST_TOLERANCE, MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE
+    BP, EGLD_IDENTIFIER, MAX_FIRST_TOLERANCE, MAX_LAST_TOLERANCE, MIN_FIRST_TOLERANCE,
+    MIN_LAST_TOLERANCE,
 };
 use common_structs::*;
 
@@ -191,21 +192,15 @@ pub trait LendingUtilsModule:
         &self,
         positions: &ManagedVec<AccountPosition<Self::Api>>,
         storage_cache: &mut StorageCache<Self>,
-        global_ltv: &BigUint,
-        e_mode_category: u8,
     ) -> BigUint {
         let mut weighted_collateral_in_egld = BigUint::zero();
 
         for dp in positions {
             let position_value_in_egld =
                 self.get_token_amount_in_egld(&dp.token_id, &dp.get_total_amount(), storage_cache);
-            let ltv = if e_mode_category > 0 {
-                global_ltv
-            } else {
-                &self.asset_ltv(&dp.token_id).get()
-            };
 
-            weighted_collateral_in_egld += &position_value_in_egld * ltv / BigUint::from(BP);
+            weighted_collateral_in_egld +=
+                &position_value_in_egld * &dp.entry_ltv / BigUint::from(BP);
         }
 
         weighted_collateral_in_egld

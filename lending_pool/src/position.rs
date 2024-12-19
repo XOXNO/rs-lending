@@ -1,15 +1,17 @@
 multiversx_sc::imports!();
 use common_constants::BP;
-use common_events::{AccountPosition, AssetConfig, NftAccountAttributes};
+use common_events::{
+    AccountPosition, AssetConfig, EModeCategory, EgldOrEsdtTokenPaymentNew, NftAccountAttributes,
+};
 use common_events::{AccountPositionType, PriceFeedShort};
 
 use crate::contexts::base::StorageCache;
-use crate::oracle;
-use crate::proxy_pool;
 use crate::storage;
 use crate::utils;
 use crate::validation;
 use crate::{math, views};
+use crate::{oracle, ERROR_LIQUIDATED_AMOUNT_AFTER_FEES_LESS_THAN_MIN_AMOUNT_TO_RECEIVE};
+use crate::{proxy_pool, ERROR_EMODE_CATEGORY_DEPRECATED};
 
 #[multiversx_sc::module]
 pub trait PositionModule:
@@ -147,6 +149,8 @@ pub trait PositionModule:
 
         self.account_positions()
             .insert(nft_token_payment.token_nonce);
+        self.account_attributes(nft_token_payment.token_nonce)
+            .set(attributes.clone());
 
         (nft_token_payment, attributes.clone())
     }
@@ -227,6 +231,7 @@ pub trait PositionModule:
                 self.blockchain().get_block_timestamp(),
                 BigUint::from(BP),
                 asset_info.liquidation_threshold.clone(),
+                asset_info.ltv.clone(),
                 is_vault,
             )
         }
@@ -250,8 +255,7 @@ pub trait PositionModule:
     fn update_supply_position(
         &self,
         account_nonce: u64,
-        token_id: &EgldOrEsdtTokenIdentifier,
-        amount: &BigUint,
+        collateral_payment: &EgldOrEsdtTokenPaymentNew<Self::Api>,
         asset_info: &AssetConfig<Self::Api>,
         is_vault: bool,
         asset_data_feed: &PriceFeedShort<Self::Api>,
@@ -259,19 +263,34 @@ pub trait PositionModule:
         let mut deposit_position = self.get_existing_or_new_deposit_position_for_token(
             account_nonce,
             asset_info,
-            token_id,
+            &collateral_payment.token_identifier,
             is_vault,
         );
 
+        if deposit_position.entry_ltv != asset_info.ltv {
+            deposit_position.entry_ltv = asset_info.ltv.clone();
+        }
+
         if is_vault {
-            self.update_vault_position(&mut deposit_position, amount, token_id);
+            self.update_vault_position(
+                &mut deposit_position,
+                &collateral_payment.amount,
+                &collateral_payment.token_identifier,
+            );
         } else {
-            self.update_market_position(&mut deposit_position, amount, token_id, &asset_data_feed);
+            self.update_market_position(
+                &mut deposit_position,
+                &collateral_payment.amount,
+                &collateral_payment.token_identifier,
+                &asset_data_feed,
+            );
         }
 
         // Update storage with the latest position
-        self.deposit_positions(account_nonce)
-            .insert(token_id.clone(), deposit_position.clone());
+        self.deposit_positions(account_nonce).insert(
+            collateral_payment.token_identifier.clone(),
+            deposit_position.clone(),
+        );
 
         deposit_position
     }
@@ -349,7 +368,18 @@ pub trait PositionModule:
         asset_info: &mut AssetConfig<Self::Api>,
         e_mode_category_id: u8,
         token_id: &EgldOrEsdtTokenIdentifier,
+        category: Option<EModeCategory<Self::Api>>,
     ) {
+        if category.is_some() {
+            require!(
+                !category.unwrap().is_deprecated,
+                ERROR_EMODE_CATEGORY_DEPRECATED
+            );
+        } else if e_mode_category_id > 0 {
+            let category = self.e_mode_category().get(&e_mode_category_id).unwrap();
+            require!(!category.is_deprecated, ERROR_EMODE_CATEGORY_DEPRECATED);
+        };
+
         if !asset_info.is_isolated && asset_info.is_e_mode_enabled && e_mode_category_id > 0 {
             let category_data = self.e_mode_category().get(&e_mode_category_id).unwrap();
             let asset_emode_config = self
@@ -394,6 +424,7 @@ pub trait PositionModule:
         liquidation_fee: &BigUint,
         storage_cache: &mut StorageCache<Self>,
         attributes: OptionalValue<NftAccountAttributes>,
+        min_amount_to_receive: Option<BigUint>,
     ) -> AccountPosition<Self::Api> {
         let pool_address = self.get_pool_address(withdraw_token_id);
         let mut dep_pos_map = self.deposit_positions(account_nonce);
@@ -412,6 +443,14 @@ pub trait PositionModule:
             amount = dp.get_total_amount();
         }
 
+        let liquidated_amount_after_fees = &(&amount - liquidation_fee);
+        if min_amount_to_receive.is_some() && is_liquidation {
+            require!(
+                liquidated_amount_after_fees >= &min_amount_to_receive.unwrap(),
+                ERROR_LIQUIDATED_AMOUNT_AFTER_FEES_LESS_THAN_MIN_AMOUNT_TO_RECEIVE
+            );
+        }
+
         let asset_data = self.get_token_price_data(withdraw_token_id, storage_cache);
         let deposit_position = if dp.is_vault {
             let last_value = self.vault_supplied_amount(withdraw_token_id).update(|am| {
@@ -427,7 +466,7 @@ pub trait PositionModule:
                     initial_caller,
                     &withdraw_token_id.clone().unwrap_esdt(),
                     0,
-                    &(&amount - liquidation_fee),
+                    liquidated_amount_after_fees,
                 );
 
                 self.tx()
@@ -624,6 +663,7 @@ pub trait PositionModule:
                 self.blockchain().get_block_timestamp(),
                 BigUint::from(BP),
                 asset_info.liquidation_threshold.clone(),
+                asset_info.ltv.clone(),
                 is_vault,
             )
         }
@@ -782,14 +822,10 @@ pub trait PositionModule:
     /// * `BigUint` - Amount that goes to the protocol as fee
     fn calculate_liquidation_fees(
         &self,
-        collateral_amount_after_bonus: &BigUint,
-        collateral_amount_before_bonus: &BigUint,
+        liq_bonus_amount: &BigUint,
         asset_config: &AssetConfig<Self::Api>,
         health_factor: &BigUint,
     ) -> BigUint {
-        // Calculate the bonus amount (difference between after and before bonus amounts)
-        let liq_bonus_amount = collateral_amount_after_bonus - collateral_amount_before_bonus;
-
         // Calculate dynamic protocol fee based on health factor
         let dynamic_fee = self.calculate_dynamic_protocol_fee(
             health_factor,
@@ -814,7 +850,7 @@ pub trait PositionModule:
     ///   - health_factor: Current health factor
     ///   - debt_to_repay_amount: Amount of debt to repay
     ///   - collateral_amount_after_bonus: Collateral amount including bonus
-    ///   - collateral_amount_before_bonus: Original collateral amount
+    ///   - bonus_amount: Bonus amount
     ///   - repay_amount_in_egld: EGLD value of repayment
     ///   - debt_token_price_data: Price data for debt token
     ///
@@ -828,11 +864,12 @@ pub trait PositionModule:
         initial_caller: &ManagedAddress,
         asset_config_collateral: &AssetConfig<Self::Api>,
         storage_cache: &mut StorageCache<Self>,
+        nft_attributes: &NftAccountAttributes,
     ) -> (
         BigUint,                   // health_factor
         BigUint,                   // debt_to_repay_amount
         BigUint,                   // collateral_amount_after_bonus
-        BigUint,                   // collateral_amount_before_bonus
+        BigUint,                   // bonus_amount
         BigUint,                   // repay_amount_in_egld
         PriceFeedShort<Self::Api>, // debt_token_price_data
     ) {
@@ -858,7 +895,8 @@ pub trait PositionModule:
 
         let bonus_rate = self.calculate_dynamic_liquidation_bonus(
             &health_factor,
-            asset_config_collateral.liquidation_bonus.clone(),
+            &asset_config_collateral.liquidation_bonus,
+            nft_attributes,
         );
 
         // Calculate liquidation amount using Dutch auction mechanism
@@ -902,15 +940,18 @@ pub trait PositionModule:
         // Calculate collateral amounts
         let collateral_amount_before_bonus =
             self.compute_amount_in_tokens(&liquidation_amount_egld, &collateral_token_price_data);
+
         let collateral_amount_after_bonus = &collateral_amount_before_bonus
             * &(&BigUint::from(BP) + &bonus_rate)
             / &BigUint::from(BP);
+
+        let bonus_amount = &collateral_amount_after_bonus - &collateral_amount_before_bonus;
 
         (
             health_factor,
             debt_to_repay_amount,
             collateral_amount_after_bonus,
-            collateral_amount_before_bonus,
+            bonus_amount,
             debt_payment_in_egld,
             debt_token_price_data,
         )
@@ -934,16 +975,17 @@ pub trait PositionModule:
         liquidatee_account_nonce: u64,
         debt_payment: EgldOrEsdtTokenPayment<Self::Api>,
         collateral_to_receive: &EgldOrEsdtTokenIdentifier,
+        min_amount_to_receive: OptionalValue<BigUint>,
         initial_caller: &ManagedAddress,
     ) {
-        let asset_config_collateral = self.asset_config(collateral_to_receive).get();
         let mut storage_cache = StorageCache::new(self);
-
+        let asset_config_collateral = self.asset_config(collateral_to_receive).get();
+        let nft_attributes = self.account_attributes(liquidatee_account_nonce).get();
         let (
             health_factor,
             debt_to_repay_amount,
             collateral_amount_after_bonus,
-            collateral_amount_before_bonus,
+            bonus_amount,
             repay_amount_in_egld,
             debt_token_price_data,
         ) = self.handle_liquidation(
@@ -953,6 +995,7 @@ pub trait PositionModule:
             initial_caller,
             &asset_config_collateral,
             &mut storage_cache,
+            &nft_attributes,
         );
 
         // Repay debt
@@ -968,8 +1011,7 @@ pub trait PositionModule:
 
         // Calculate protocol fee using pre-calculated values
         let protocol_fee_amount = self.calculate_liquidation_fees(
-            &collateral_amount_after_bonus,
-            &collateral_amount_before_bonus,
+            &bonus_amount,
             &asset_config_collateral,
             &health_factor,
         );
@@ -983,7 +1025,8 @@ pub trait PositionModule:
             true,
             &protocol_fee_amount,
             &mut storage_cache,
-            OptionalValue::None,
+            OptionalValue::Some(nft_attributes),
+            min_amount_to_receive.into_option(),
         );
     }
 }

@@ -209,8 +209,12 @@ getPoolAllowed() {
     mxpy contract query ${ADDRESS} --function="getPoolAllowed" --proxy=${PROXY}
 }
 
-getLtvCollateralInDollars() {
-    mxpy contract query ${ADDRESS} --function="getLtvCollateralInDollars" --arguments 0x02 --proxy=${PROXY}
+getLtvCollateralInEgld() {
+    mxpy contract query ${ADDRESS} --function="getLtvCollateralInEgld" --arguments 0x1d --proxy=${PROXY}
+}
+
+getTotalBorrowInEgld() {
+    mxpy contract query ${ADDRESS} --function="getTotalBorrowInEgld" --arguments 0x1d --proxy=${PROXY}
 }
 
 getCollateralAmountForToken() {

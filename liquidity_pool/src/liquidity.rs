@@ -164,6 +164,7 @@ pub trait LiquidityModule:
             borrow_amount.clone(),
             storage_cache.pool_params.decimals,
         );
+
         require!(
             &storage_cache.get_reserves() >= &borrow_amount_dec,
             ERROR_INSUFFICIENT_LIQUIDITY

@@ -37,6 +37,7 @@ pub struct AccountPosition<M: ManagedTypeApi> {
     pub index: BigUint<M>,
     pub is_vault: bool,
     pub entry_liquidation_threshold: BigUint<M>,
+    pub entry_ltv: BigUint<M>,
 }
 
 impl<M: ManagedTypeApi> AccountPosition<M> {
@@ -49,6 +50,7 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
         timestamp: u64,
         index: BigUint<M>,
         entry_liquidation_threshold: BigUint<M>,
+        entry_ltv: BigUint<M>,
         is_vault: bool,
     ) -> Self {
         AccountPosition {
@@ -61,6 +63,7 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
             index,
             is_vault,
             entry_liquidation_threshold,
+            entry_ltv,
         }
     }
 
@@ -120,6 +123,7 @@ pub struct EModeCategory<M: ManagedTypeApi> {
     pub ltv: BigUint<M>,
     pub liquidation_threshold: BigUint<M>,
     pub liquidation_bonus: BigUint<M>,
+    pub is_deprecated: bool,
 }
 
 #[type_abi]
@@ -204,7 +208,6 @@ where
     pub price: BigUint<Api>,
     pub decimals: u8,
 }
-
 
 #[type_abi]
 #[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode)]

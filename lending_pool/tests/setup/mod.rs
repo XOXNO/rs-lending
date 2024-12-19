@@ -457,7 +457,11 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::LendingPoolProxy)
-            .liquidate(account_nonce, collateral_to_liquidate.to_token_identifier())
+            .liquidate(
+                account_nonce,
+                collateral_to_liquidate.to_token_identifier(),
+                OptionalValue::<BigUint<StaticApi>>::None,
+            )
             .esdt(transfer)
             .run();
     }

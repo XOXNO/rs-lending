@@ -195,6 +195,7 @@ pub trait ConfigModule:
             ltv,
             liquidation_threshold,
             liquidation_bonus,
+            is_deprecated: false,
         };
 
         map.set(category.id);
@@ -233,9 +234,12 @@ pub trait ConfigModule:
         for asset in &assets {
             self.remove_asset_from_e_mode_category(asset, category_id);
         }
+        let mut old_info = map.get(&category_id).unwrap();
+        old_info.is_deprecated = true;
 
-        let removed_category = map.remove(&category_id);
-        self.update_e_mode_category_event(&removed_category.unwrap());
+        self.update_e_mode_category_event(&old_info);
+
+        map.insert(category_id, old_info);
     }
 
     #[only_owner]

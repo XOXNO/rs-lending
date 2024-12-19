@@ -111,11 +111,10 @@ pub trait LendingPool:
         );
 
         // 4. Validate e-mode constraints first
-        self.validate_e_mode_constraints(
+        let category = self.validate_e_mode_constraints(
             &collateral_payment.token_identifier,
             &asset_info,
             &nft_attributes,
-            e_mode_category,
         );
 
         // 5. Update asset config if NFT has active e-mode
@@ -123,6 +122,7 @@ pub trait LendingPool:
             &mut asset_info,
             nft_attributes.e_mode_category,
             &collateral_payment.token_identifier,
+            category,
         );
 
         require!(
@@ -155,8 +155,7 @@ pub trait LendingPool:
         // 8. Update position and get updated state
         let updated_position = self.update_supply_position(
             account_nonce,
-            &collateral_payment.token_identifier,
-            &collateral_payment.amount,
+            &collateral_payment,
             &asset_info,
             is_vault,
             &asset_data_feed,
@@ -226,10 +225,16 @@ pub trait LendingPool:
             &BigUint::zero(),
             &mut storage_cache,
             OptionalValue::Some(attributes),
+            Option::None,
         );
 
         // 3. Validate health factor after withdrawal
-        self.validate_withdraw_health_factor(account_token.token_nonce, false, &mut storage_cache);
+        self.validate_withdraw_health_factor(
+            account_token.token_nonce,
+            false,
+            &mut storage_cache,
+            None,
+        );
 
         // 4. Handle NFT (burn or return)
         self.handle_nft_after_withdraw(account_token, &initial_caller);
@@ -295,6 +300,7 @@ pub trait LendingPool:
             &mut asset_config,
             nft_attributes.e_mode_category,
             &asset_to_borrow,
+            None,
         );
 
         require!(asset_config.can_be_borrowed, ERROR_ASSET_NOT_BORROWABLE);
@@ -309,19 +315,18 @@ pub trait LendingPool:
             &collaterals,
             &borrows,
             &mut storage_cache,
-            &asset_config,
-            &nft_attributes,
         );
 
+        let usd_amount = self.get_token_amount_in_dollars_raw(
+            &amount_to_borrow_in_egld,
+            &storage_cache.egld_price_feed,
+        );
         // 8. Process borrow
         let updated_position = self.handle_borrow_position(
             nft_token.token_nonce,
             &asset_to_borrow,
             &amount,
-            &self.get_token_amount_in_dollars_raw(
-                &amount_to_borrow_in_egld,
-                &storage_cache.egld_price_feed,
-            ),
+            &usd_amount,
             &initial_caller,
             &asset_config,
             &nft_attributes,
@@ -422,6 +427,7 @@ pub trait LendingPool:
         &self,
         liquidatee_account_nonce: u64,
         collateral_to_receive: &EgldOrEsdtTokenIdentifier,
+        min_amount_to_receive: OptionalValue<BigUint>,
     ) {
         let payment = self.call_value().egld_or_single_fungible_esdt();
         let initial_caller = self.blockchain().get_caller();
@@ -436,6 +442,7 @@ pub trait LendingPool:
             liquidatee_account_nonce,
             debt_payment,
             collateral_to_receive,
+            min_amount_to_receive,
             &initial_caller,
         );
     }
@@ -480,12 +487,22 @@ pub trait LendingPool:
 
         let pool_address = self.get_pool_address(borrowed_token);
 
-        let shard_id = self.blockchain().get_shard_of_address(contract_address);
+        let destination_shard_id = self.blockchain().get_shard_of_address(contract_address);
         let current_shard_id = self
             .blockchain()
             .get_shard_of_address(&self.blockchain().get_sc_address());
 
-        require!(shard_id == current_shard_id, ERROR_INVALID_SHARD);
+        require!(
+            destination_shard_id == current_shard_id,
+            ERROR_INVALID_SHARD
+        );
+
+        self.require_amount_greater_than_zero(amount);
+
+        require!(
+            !self.blockchain().is_builtin_function(&endpoint) && !endpoint.is_empty(),
+            ERROR_INVALID_ENDPOINT
+        );
 
         let mut storage_cache = StorageCache::new(self);
         let asset_data = self.get_token_price_data(borrowed_token, &mut storage_cache);
@@ -540,6 +557,268 @@ pub trait LendingPool:
         let deposit_positions =
             self.update_collateral_with_interest(account_nonce, &mut storage_cache, true);
         (deposit_positions, borrow_positions).into()
+    }
+
+    /// Disables vault for a given account that has vault enabled
+    /// # Arguments
+    /// * `account_nonce` - NFT nonce of the account to disable vault for
+    ///
+    /// # Flow
+    /// 1. Validates account exists
+    /// 2. Validates account token
+    /// 3. Iterates over borrow positions
+    /// 4. Disables vault for each borrow position
+    /// 5. Iterates over deposit positions
+    /// 6. Disables vault for each deposit position and move funds to the market shared pool
+    /// 7. Emits event for each position
+    ///
+    /// ```
+    #[endpoint(disableVault)]
+    fn disable_vault(&self) {
+        let nft_token = self.call_value().single_esdt();
+        self.lending_account_in_the_market(nft_token.token_nonce);
+        self.account_token()
+            .require_same_token(&nft_token.token_identifier);
+
+        let mut storage_cache = StorageCache::new(self);
+        let deposit_positions = self.deposit_positions(nft_token.token_nonce);
+        let borrow_positions = self.borrow_positions(nft_token.token_nonce);
+
+        for mut bp in borrow_positions.values() {
+            if bp.is_vault {
+                bp.is_vault = false;
+                self.update_position_event(
+                    &BigUint::zero(),
+                    &bp,
+                    OptionalValue::None,
+                    OptionalValue::None,
+                    OptionalValue::None,
+                );
+                // Update storage with the latest position
+                self.borrow_positions(nft_token.token_nonce)
+                    .insert(bp.token_id.clone(), bp);
+            }
+        }
+
+        for mut dp in deposit_positions.values() {
+            if dp.is_vault {
+                dp.is_vault = false;
+                let pool_address = self.get_pool_address(&dp.token_id);
+
+                let asset_data_feed = self.get_token_price_data(&dp.token_id, &mut storage_cache);
+                let old_amount = dp.amount.clone();
+                let last_value = self.vault_supplied_amount(&dp.token_id).update(|am| {
+                    *am -= &old_amount;
+                    am.clone()
+                });
+
+                self.update_vault_supplied_amount_event(&dp.token_id, last_value);
+                // Reset the amount to 0 to avoid double increase from the market shared pool
+                // It also avoid giving the user interest of the funds that are being moved to the market shared pool
+                dp.amount = BigUint::zero();
+                dp = self
+                    .tx()
+                    .to(pool_address)
+                    .typed(proxy_pool::LiquidityPoolProxy)
+                    .supply(dp.clone(), &asset_data_feed.price)
+                    .payment(EgldOrEsdtTokenPayment::new(dp.token_id, 0, old_amount))
+                    .returns(ReturnsResult)
+                    .sync_call();
+
+                // Update storage with the latest position
+                self.deposit_positions(nft_token.token_nonce)
+                    .insert(dp.token_id.clone(), dp.clone());
+
+                self.update_position_event(
+                    &BigUint::zero(),
+                    &dp,
+                    OptionalValue::None,
+                    OptionalValue::None,
+                    OptionalValue::None,
+                );
+            }
+        }
+    }
+
+    /// Enables vault for a given account that has vault disabled
+    /// # Arguments
+    /// * `account_nonce` - NFT nonce of the account to enable vault for
+    ///
+    /// # Flow
+    /// 1. Validates account exists
+    /// 2. Validates account token
+    /// 3. Iterates over borrow positions
+    /// 4. Enables vault for each borrow position
+    /// 5. Iterates over deposit positions
+    /// 6. Enables vault for each deposit position and move funds from shared pool to the controller vault
+    /// 7. Emits event for each position
+    #[endpoint(enableVault)]
+    fn enable_vault(&self) {
+        let nft_token = self.call_value().single_esdt();
+        self.lending_account_in_the_market(nft_token.token_nonce);
+        self.account_token()
+            .require_same_token(&nft_token.token_identifier);
+
+        let mut storage_cache = StorageCache::new(self);
+        let deposit_positions = self.deposit_positions(nft_token.token_nonce);
+        let borrow_positions = self.borrow_positions(nft_token.token_nonce);
+        let controller_sc = self.blockchain().get_sc_address();
+
+        for mut bp in borrow_positions.values() {
+            if !bp.is_vault {
+                bp.is_vault = true;
+                self.update_position_event(
+                    &BigUint::zero(),
+                    &bp,
+                    OptionalValue::None,
+                    OptionalValue::None,
+                    OptionalValue::None,
+                );
+                // Update storage with the latest position
+                self.borrow_positions(nft_token.token_nonce)
+                    .insert(bp.token_id.clone(), bp.clone());
+            }
+        }
+
+        for mut dp in deposit_positions.values() {
+            let asset_address = self.get_pool_address(&dp.token_id);
+            if !dp.is_vault {
+                let feed = self.get_token_price_data(&dp.token_id, &mut storage_cache);
+                dp = self
+                    .tx()
+                    .to(&asset_address)
+                    .typed(proxy_pool::LiquidityPoolProxy)
+                    .update_position_with_interest(&dp, OptionalValue::Some(feed.price.clone()))
+                    .returns(ReturnsResult)
+                    .sync_call();
+
+                let total_amount_with_interest = dp.get_total_amount();
+
+                dp = self
+                    .tx()
+                    .to(&asset_address)
+                    .typed(proxy_pool::LiquidityPoolProxy)
+                    .withdraw(
+                        &controller_sc,
+                        total_amount_with_interest.clone(),
+                        dp,
+                        false,
+                        BigUint::zero(),
+                        &feed.price,
+                    )
+                    .returns(ReturnsResult)
+                    .sync_call();
+
+                require!(
+                    dp.get_total_amount() == BigUint::zero(),
+                    ERROR_ENABLE_VAULT_MODE_FAILED
+                );
+
+                dp.is_vault = true;
+                dp.amount = total_amount_with_interest.clone();
+
+                let last_value = self.vault_supplied_amount(&dp.token_id).update(|am| {
+                    *am += &total_amount_with_interest;
+                    am.clone()
+                });
+
+                self.update_vault_supplied_amount_event(&dp.token_id, last_value);
+                self.deposit_positions(nft_token.token_nonce)
+                    .insert(dp.token_id.clone(), dp.clone());
+
+                self.update_position_event(
+                    &BigUint::zero(),
+                    &dp,
+                    OptionalValue::None,
+                    OptionalValue::None,
+                    OptionalValue::None,
+                );
+            }
+        }
+    }
+
+    /// Updates the LTV for a given asset and account positions
+    ///
+    /// # Arguments
+    /// * `token_id` - Token identifier to update LTV for
+    /// * `account_nonces` - Nonces of the accounts to update LTV for
+    ///
+    /// # Flow
+    /// 1. Validates asset is supported
+    /// 2. Iterates over account positions
+    /// 3. Updates LTV if necessary
+    /// 4. Emits event if LTV is updated
+    #[endpoint(updatePositionThreshold)]
+    fn update_position_threshold(
+        &self,
+        token_id: EgldOrEsdtTokenIdentifier,
+        is_ltv: bool,
+        account_nonces: MultiValueEncoded<u64>,
+    ) {
+        self.require_asset_supported(&token_id);
+
+        let asset_config = self.asset_config(&token_id).get();
+        let mut storage_cache = StorageCache::new(self);
+        for account_nonce in account_nonces {
+            self.lending_account_in_the_market(account_nonce);
+            let mut deposit_positions = self.deposit_positions(account_nonce);
+            let dp_option = deposit_positions.get(&token_id);
+
+            require!(dp_option.is_some(), ERROR_POSITION_NOT_FOUND);
+
+            let nft_attributes = self.account_attributes(account_nonce).get();
+
+            let threshold = if nft_attributes.e_mode_category > 0 {
+                let e_mode_category = self.e_mode_category().get(&nft_attributes.e_mode_category);
+
+                if is_ltv {
+                    e_mode_category.unwrap().ltv.clone()
+                } else {
+                    e_mode_category.unwrap().liquidation_threshold.clone()
+                }
+            } else {
+                if is_ltv {
+                    asset_config.ltv.clone()
+                } else {
+                    asset_config.liquidation_threshold.clone()
+                }
+            };
+
+            let mut dp = dp_option.unwrap();
+
+            let current_threshold = if is_ltv {
+                &dp.entry_ltv
+            } else {
+                &dp.entry_liquidation_threshold
+            };
+
+            if current_threshold != &threshold {
+                if is_ltv {
+                    dp.entry_ltv = threshold;
+                } else {
+                    dp.entry_liquidation_threshold = threshold;
+                }
+
+                deposit_positions.insert(dp.token_id.clone(), dp.clone());
+
+                if !is_ltv {
+                    self.validate_withdraw_health_factor(
+                        account_nonce,
+                        false,
+                        &mut storage_cache,
+                        Some(BigUint::from(20u64)),
+                    );
+                }
+
+                self.update_position_event(
+                    &BigUint::zero(),
+                    &dp,
+                    OptionalValue::None,
+                    OptionalValue::None,
+                    OptionalValue::None,
+                );
+            }
+        }
     }
 
     /// Updates interest rate indexes for a given asset
