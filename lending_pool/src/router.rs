@@ -70,8 +70,6 @@ pub trait RouterModule:
         self.pools_map(&base_asset).set(address.clone());
         self.pools_allowed().insert(address.clone());
 
-        self.asset_ltv(&base_asset).set(ltv.clone());
-
         let asset_config = &AssetConfig {
             ltv,
             liquidation_threshold,

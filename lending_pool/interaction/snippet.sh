@@ -1,4 +1,4 @@
-ADDRESS=erd1qqqqqqqqqqqqqpgq4kljp5lwvrg2kakhn5r8yeuj24sngf8cah0sjnz3sd
+ADDRESS=erd1qqqqqqqqqqqqqpgqemcp8my3qw3lw39hx8fnkt2wvj4vqdqwah0sh5nzfw
 
 PROXY=https://devnet-gateway.xoxno.com
 CHAIN_ID=D
@@ -53,7 +53,7 @@ CAN_BORROW_IN_ISOLATION=0x00
 deploy() {
     mxpy contract deploy --bytecode=${PROJECT} --recall-nonce \
     --ledger --ledger-account-index=0 --ledger-address-index=0 \
-    --gas-limit=250000000 --outfile="deploy.json" --arguments ${LP_TEMPLATE_ADDRESS} ${AGGREGATOR_ADDR} ${SAFE_PRICE_VIEW_ADDRESS} \
+    --gas-limit=250000000 --outfile="deploy.json" --arguments ${LP_TEMPLATE_ADDRESS} ${AGGREGATOR_ADDR} ${SAFE_PRICE_VIEW_ADDRESS} ${ACCUMULATOR_ADDRESS} \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 
     echo ""
@@ -147,7 +147,7 @@ addEModeCategory() {
 addAssetToEModeCategory() {
     mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=20000000 \
     --ledger --ledger-account-index=0 --ledger-address-index=0 \
-    --function="addAssetToEModeCategory" --arguments ${XOXNO_TOKEN} 0x01 0x01 0x01 \
+    --function="addAssetToEModeCategory" --arguments ${LXOXNO_TOKEN} 0x01 0x01 0x01 \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 
@@ -222,7 +222,7 @@ getCollateralAmountForToken() {
 }
 
 getBorrowAmountForToken() {
-    mxpy contract query ${ADDRESS} --function="getBorrowAmountForToken" --arguments 0x0e ${XEGLD_TOKEN} --proxy=${PROXY}
+    mxpy contract query ${ADDRESS} --function="getBorrowAmountForToken" --arguments 0x06 ${USDC_TOKEN} --proxy=${PROXY}
 }
 
 getTotalCollateralAvailable() {
@@ -238,5 +238,5 @@ getTokenPriceUSD() {
 }
 
 getTokenPriceEGLD() {
-    mxpy contract query ${ADDRESS} --function="getTokenPriceEGLD" --arguments ${XOXNO_TOKEN} --proxy=${PROXY}
+    mxpy contract query ${ADDRESS} --function="getTokenPriceEGLD" --arguments ${XEGLD_TOKEN} --proxy=${PROXY}
 }

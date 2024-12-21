@@ -58,7 +58,15 @@ pub trait PositionModule:
                 .update_position_with_interest(bp.clone(), price)
                 .returns(ReturnsResult)
                 .sync_call();
-
+            if fetch_price {
+                self.update_position_event(
+                    &BigUint::zero(),
+                    &latest_position,
+                    OptionalValue::None,
+                    OptionalValue::None,
+                    OptionalValue::None,
+                );
+            }
             positions.push(latest_position.clone());
             self.borrow_positions(account_position)
                 .insert(bp.token_id, latest_position);
@@ -102,7 +110,15 @@ pub trait PositionModule:
                     .update_position_with_interest(dp.clone(), price)
                     .returns(ReturnsResult)
                     .sync_call();
-
+                if fetch_price {
+                    self.update_position_event(
+                        &BigUint::zero(),
+                        &latest_position,
+                        OptionalValue::None,
+                        OptionalValue::None,
+                        OptionalValue::None,
+                    );
+                }
                 self.deposit_positions(account_position)
                     .insert(dp.token_id, latest_position.clone());
                 positions.push(latest_position);
@@ -511,10 +527,10 @@ pub trait PositionModule:
             attributes,
         );
 
-        if deposit_position.amount == 0 {
-            dep_pos_map.remove(withdraw_token_id);
-        } else {
+        if deposit_position.get_total_amount().gt(&BigUint::from(0u64)) {
             dep_pos_map.insert(withdraw_token_id.clone(), deposit_position.clone());
+        } else {
+            dep_pos_map.remove(withdraw_token_id);
         }
 
         deposit_position
@@ -710,7 +726,7 @@ pub trait PositionModule:
 
         // Update storage
         let mut borrow_positions = self.borrow_positions(account_nonce);
-        if updated_position.amount.gt(&BigUint::from(0u64)) {
+        if updated_position.get_total_amount().gt(&BigUint::from(0u64)) {
             borrow_positions.insert(repay_token_id.clone(), updated_position.clone());
         } else {
             borrow_positions.remove(repay_token_id);
@@ -979,6 +995,7 @@ pub trait PositionModule:
         initial_caller: &ManagedAddress,
     ) {
         let mut storage_cache = StorageCache::new(self);
+        storage_cache.allow_unsafe_price = false;
         let asset_config_collateral = self.asset_config(collateral_to_receive).get();
         let nft_attributes = self.account_attributes(liquidatee_account_nonce).get();
         let (

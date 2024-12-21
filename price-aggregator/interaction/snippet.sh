@@ -45,9 +45,9 @@ pause() {
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 
-FROM="str:MEX"
+FROM="str:WETH"
 TO="str:USD"
-PRICE=20421531211656000 # 55 USD
+PRICE=2866250000000000000000000 # 55 USD
 
 DECIMALS=18
 

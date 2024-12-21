@@ -590,12 +590,19 @@ pub trait LiquidityModule:
         let mut storage_cache = StorageCache::new(self);
         self.update_interest_indexes(&mut storage_cache);
 
-        let revenue = storage_cache.available_revenue();
+        let revenue_biguint = if storage_cache.borrowed_amount.into_raw_units() == &BigUint::zero()
+            && storage_cache.supplied_amount.into_raw_units() == &BigUint::zero()
+        {
+            storage_cache.protocol_revenue -= &storage_cache.protocol_revenue.clone();
+            storage_cache.reserves_amount -= &storage_cache.reserves_amount.clone();
 
-        storage_cache.protocol_revenue -= revenue.clone();
-        storage_cache.reserves_amount -= revenue.clone();
-
-        let revenue_biguint = revenue.into_raw_units().clone();
+            storage_cache.reserves_amount.into_raw_units().clone()
+        } else {
+            let rvn = storage_cache.available_revenue();
+            storage_cache.protocol_revenue -= rvn.clone();
+            storage_cache.reserves_amount -= rvn.clone();
+            rvn.into_raw_units().clone()
+        };
 
         let payment =
             EgldOrEsdtTokenPayment::new(storage_cache.pool_asset.clone(), 0, revenue_biguint);

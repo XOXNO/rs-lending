@@ -9,7 +9,7 @@ use crate::{
     proxy_xexchange_pair::{self, State},
     storage, ERROR_INVALID_EXCHANGE_SOURCE, ERROR_INVALID_ORACLE_TOKEN_TYPE,
     ERROR_NO_LAST_PRICE_FOUND, ERROR_ORACLE_TOKEN_NOT_FOUND, ERROR_PAIR_NOT_ACTIVE,
-    ERROR_PRICE_AGGREGATOR_NOT_SET,
+    ERROR_PRICE_AGGREGATOR_NOT_SET, ERROR_UN_SAFE_PRICE_NOT_ALLOWED,
 };
 
 #[multiversx_sc::module]
@@ -259,10 +259,7 @@ pub trait OracleModule: storage::LendingStorageModule {
         }
 
         let new_token_id = EgldOrEsdtTokenIdentifier::esdt(result.token_identifier);
-        let new_config = self.token_oracle(&new_token_id);
-        require!(!new_config.is_empty(), ERROR_ORACLE_TOKEN_NOT_FOUND);
-
-        self.find_price_feed(&new_config.get(), &new_token_id, storage_cache)
+        self.get_token_price_data(&new_token_id, storage_cache)
             .price
     }
 
@@ -323,8 +320,11 @@ pub trait OracleModule: storage::LendingStorageModule {
                 mapper_last_price.set(&avg_price);
                 avg_price
             } else {
-                require!(!mapper_last_price.is_empty(), ERROR_NO_LAST_PRICE_FOUND);
-                mapper_last_price.get()
+                require!(
+                    storage_cache.allow_unsafe_price,
+                    ERROR_UN_SAFE_PRICE_NOT_ALLOWED
+                );
+                anchor_price
             }
         } else if token_price_in_egld_opt.is_some() {
             token_price_in_egld_opt.into_option().unwrap()

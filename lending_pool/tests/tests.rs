@@ -5,7 +5,7 @@ use multiversx_sc_scenario::{
     api::StaticApi,
     imports::{BigUint, OptionalValue, TestAddress},
 };
-
+use std::ops::Div;
 pub mod constants;
 pub mod proxys;
 pub mod setup;
@@ -245,6 +245,20 @@ fn test_complete_market_exit() {
     );
     let collateral_in_dollars = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
     println!("collateral_in_dollars: {:?}", collateral_in_dollars);
+    assert!(collateral_in_dollars == BigUint::zero());
+    // state.claim_revenue(EGLD_TOKEN);
+    state.withdraw_asset(
+        &OWNER_ADDRESS,
+        EGLD_TOKEN,
+        BigUint::from(105u64),
+        3,
+        EGLD_DECIMALS,
+    );
+
+    let collateral_in_dollars = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    println!("collateral_in_dollars: {:?}", collateral_in_dollars);
+    assert!(collateral_in_dollars == BigUint::zero());
+    // state.claim_revenue(EGLD_TOKEN);
     return;
 }
 
@@ -309,12 +323,161 @@ fn test_interest_accrual() {
     // Verify interest accrual
     let final_borrow = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
     let final_supply = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
-    println!("final_borrow: {:?}", final_borrow);
-    println!("initial_borrow: {:?}", initial_borrow);
-    println!("final_supply: {:?}", final_supply);
-    println!("initial_supply: {:?}", initial_supply);
+
     assert!(final_borrow > initial_borrow);
     assert!(final_supply > initial_supply);
+    println!(
+        "borrow_rate: {:?}",
+        state.get_market_borrow_rate(state.egld_market.clone())
+    );
+    println!(
+        "supply_rate: {:?}",
+        state.get_market_supply_rate(state.egld_market.clone())
+    );
+    println!(
+        "final_borrow: {:?}",
+        final_borrow
+            .div(10u64.pow(EGLD_DECIMALS as u32))
+            .to_u64()
+            .unwrap()
+    );
+    println!(
+        "initial_borrow: {:?}",
+        initial_borrow
+            .div(10u64.pow(EGLD_DECIMALS as u32))
+            .to_u64()
+            .unwrap()
+    );
+    println!("final_supply: {:?}", final_supply);
+    println!(
+        "initial_supply: {:?}",
+        initial_supply
+            .div(10u64.pow(EGLD_DECIMALS as u32))
+            .to_u64()
+            .unwrap()
+    );
+}
+
+#[test]
+fn test_interest_accrual_two_suppliers_at_different_times() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    // Setup initial state
+    state.world.current_block().block_timestamp(0);
+    setup_accounts(&mut state, supplier, borrower);
+
+    // Initial supply and borrow
+    state.supply_asset(
+        &supplier,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+    state.supply_asset(
+        &borrower,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+    state.supply_asset(
+        &borrower,
+        USDC_TOKEN,
+        BigUint::from(10000u64),
+        USDC_DECIMALS,
+        OptionalValue::Some(2),
+        OptionalValue::None,
+        false,
+    );
+    state.borrow_asset(
+        &borrower,
+        EGLD_TOKEN,
+        BigUint::from(200u64),
+        2,
+        EGLD_DECIMALS,
+    );
+    let utilization_ratio = state.get_market_utilization(state.egld_market.clone());
+    println!("utilization_ratio: {:?}", utilization_ratio);
+
+    // Record initial amounts
+    let initial_supply_borrower = state.get_collateral_amount_for_token(2, EGLD_TOKEN);
+    let initial_supply_supplier = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+
+    // Simulate hourly updates for 2 years
+    for day in 1..=365*2 {
+        state
+            .world
+            .current_block()
+            .block_timestamp(day * SECONDS_PER_DAY);
+    }
+    state.update_interest_indexes(&borrower, 2);
+    state.update_borrows_with_debt(&borrower, 2);
+    state.update_interest_indexes(&supplier, 1);
+    // Verify interest accrual
+    let final_supply_borrower = state.get_collateral_amount_for_token(2, EGLD_TOKEN);
+    let final_supply_supplier = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    let final_borrow_borrower = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+    println!(
+        "final_borrow_borrower: {:?}",
+        final_borrow_borrower
+            .clone()
+            .div(10u64.pow(EGLD_DECIMALS as u32))
+            .to_u64()
+            .unwrap(),
+    );
+    assert!(final_supply_borrower > initial_supply_borrower);
+    assert!(final_supply_supplier > initial_supply_supplier);
+    println!(
+        "borrow_rate: {:?}",
+        state.get_market_borrow_rate(state.egld_market.clone())
+    );
+    println!(
+        "supply_rate: {:?}",
+        state.get_market_supply_rate(state.egld_market.clone())
+    );
+
+    println!(
+        "initial_supply_borrower: {:?} | final_supply_borrower: {:?}",
+        initial_supply_borrower
+            .clone()
+            .div(10u64.pow(EGLD_DECIMALS as u32))
+            .to_u64()
+            .unwrap(),
+        final_supply_borrower
+            .clone()
+            .div(10u64.pow(EGLD_DECIMALS as u32))
+            .to_u64()
+            .unwrap()
+    );
+    println!(
+        "hex_initial_supply_borrower: {:?} | hex_final_supply_borrower: {:?}",
+        initial_supply_borrower, final_supply_borrower
+    );
+
+    println!(
+        "initial_supply_supplier: {:?} | final_supply_supplier: {:?}",
+        initial_supply_supplier
+            .clone()
+            .div(10u64.pow(EGLD_DECIMALS as u32))
+            .to_u64()
+            .unwrap(),
+        final_supply_supplier
+            .clone()
+            .div(10u64.pow(EGLD_DECIMALS as u32))
+            .to_u64()
+            .unwrap()
+    );
+    println!(
+        "hex_initial_supply_supplier: {:?} | hex_final_supply_supplier: {:?}",
+        initial_supply_supplier, final_supply_supplier
+    );
 }
 
 #[test]
@@ -1621,26 +1784,26 @@ fn test_oracle_price_feed_lp() {
     println!("price: {:?}", price);
 }
 
-#[test]
-fn test_oracle_price_feed_isolated_failed_no_last_price() {
-    let mut state = LendingPoolTestState::new();
-    let supplier = TestAddress::new("supplier");
-    let borrower = TestAddress::new("borrower");
+// #[test]
+// fn test_oracle_price_feed_isolated_failed_no_last_price() {
+//     let mut state = LendingPoolTestState::new();
+//     let supplier = TestAddress::new("supplier");
+//     let borrower = TestAddress::new("borrower");
 
-    setup_accounts(&mut state, supplier, borrower);
+//     setup_accounts(&mut state, supplier, borrower);
 
-    let price = state.get_usd_price(ISOLATED_TOKEN);
-    println!("price: {:?}", price);
-    state.world.current_block().block_timestamp(20);
-    state.submit_price(ISOLATED_TICKER, 1, 18, 6);
-    state.world.current_block().block_timestamp(50);
-    state.submit_price(ISOLATED_TICKER, 1, 18, 45);
-    state.world.current_block().block_timestamp(100);
-    state.submit_price(ISOLATED_TICKER, 1, 18, 100);
-    state.world.current_block().block_timestamp(150);
-    state.submit_price(ISOLATED_TICKER, 1, 18, 150);
-    state.get_usd_price_error(ISOLATED_TOKEN, ERROR_NO_LAST_PRICE_FOUND);
-}
+//     let price = state.get_usd_price(ISOLATED_TOKEN);
+//     println!("price: {:?}", price);
+//     state.world.current_block().block_timestamp(20);
+//     state.submit_price(ISOLATED_TICKER, 1, 18, 6);
+//     state.world.current_block().block_timestamp(50);
+//     state.submit_price(ISOLATED_TICKER, 1, 18, 45);
+//     state.world.current_block().block_timestamp(100);
+//     state.submit_price(ISOLATED_TICKER, 1, 18, 100);
+//     state.world.current_block().block_timestamp(150);
+//     state.submit_price(ISOLATED_TICKER, 1, 18, 150);
+//     state.get_usd_price_error(ISOLATED_TOKEN, ERROR_NO_LAST_PRICE_FOUND);
+// }
 
 // Vault Position Tests
 #[test]

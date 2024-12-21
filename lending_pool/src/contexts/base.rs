@@ -11,6 +11,7 @@ where
     pub prices: ManagedMap<C::Api>,
     pub decimals: ManagedMap<C::Api>,
     pub egld_price_feed: PriceFeedShort<C::Api>,
+    pub allow_unsafe_price: bool,
 }
 
 impl<'a, C> StorageCache<'a, C>
@@ -23,6 +24,7 @@ where
             prices: ManagedMap::new(),
             decimals: ManagedMap::new(),
             egld_price_feed: sc_ref.get_aggregator_price_feed(&EgldOrEsdtTokenIdentifier::egld()),
+            allow_unsafe_price: true,
         }
     }
 }

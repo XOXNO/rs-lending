@@ -94,13 +94,6 @@ pub trait LendingStorageModule {
         asset: &EgldOrEsdtTokenIdentifier,
     ) -> SingleValueMapper<AssetConfig<Self::Api>>;
 
-    /// Get the asset LTV
-    /// The storage holds the LTV of an asset
-    /// The LTV is used to get the LTV of an asset
-    #[view(getAssetLTV)]
-    #[storage_mapper("asset_ltv")]
-    fn asset_ltv(&self, asset: &EgldOrEsdtTokenIdentifier) -> SingleValueMapper<BigUint>;
-
     /// Get the last e-mode category id
     /// The storage holds the id of the last e-mode category
     /// The id is used to get the last e-mode category

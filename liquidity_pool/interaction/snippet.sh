@@ -26,14 +26,14 @@ RESERVE_FACTOR=250000000000000000000 # 15%
 
 DECIMALS=18
 
-LENDING_ADDRESS=erd1qqqqqqqqqqqqqpgq4kljp5lwvrg2kakhn5r8yeuj24sngf8cah0sjnz3sd
+LENDING_ADDRESS=erd1qqqqqqqqqqqqqpgqemcp8my3qw3lw39hx8fnkt2wvj4vqdqwah0sh5nzfw
 
 upgrade_pool() {
     mxpy contract call ${LENDING_ADDRESS} --recall-nonce \
     --ledger --ledger-account-index=0 --ledger-address-index=0 \
     --function="upgradeLiquidityPool" \
     --gas-limit=50000000 --outfile="upgrade.json" \
-    --arguments ${LP_XOXNO_TOKEN} ${R_MAX} ${R_BASE} ${R_SLOPE1} ${R_SLOPE2} ${U_OPTIMAL} ${RESERVE_FACTOR} \
+    --arguments ${XEGLD_TOKEN} ${R_MAX} ${R_BASE} ${R_SLOPE1} ${R_SLOPE2} ${U_OPTIMAL} ${RESERVE_FACTOR} \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 }
 

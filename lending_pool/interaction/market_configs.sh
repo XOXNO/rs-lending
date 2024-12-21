@@ -1,104 +1,216 @@
 #!/bin/bash
 
-# Define market configurations as associative arrays
-declare -A XEGLD_MARKET=(
-    [token_id]="XEGLD-23b511"
-    [ltv]="750000000000000000000"              # 80%
-    [liquidation_threshold]="780000000000000000000"  # 85%
-    [liquidation_bonus]="55000000000000000000"  # 5%
-    [borrow_cap]="20000000000000000000000000"  # 1 WEGLD
-    [supply_cap]="20000000000000000000000000" # 10 WEGLD
-    [base_rate]="35000000000000000000"         # 1%
-    [slope1]="250000000000000000000"          # 20%
-    [slope2]="800000000000000000000"          # 50%
-    [optimal_utilization]="920000000000000000000" # 80%
-    [reserve_factor]="250000000000000000000" # 10%
-    [can_be_collateral]="0x01"
-    [can_be_borrowed]="0x01"
-    [is_isolated]="0x00"
-    [debt_ceiling_usd]="0x00"
-    [flash_loan_fee]="5000000000000000000" # 0.5%
-    [is_siloed]="0x00"
-    [flashloan_enabled]="0x01"
-    [can_borrow_in_isolation]="0x00"
-    [oracle_address]="erd1qqqqqqqqqqqqqpgqhe8t5jewej4q8dzxeyj4edqg49cqpwc4pys2n8v9w"
-    [oracle_method]="Mix"
-    [oracle_type]="Normal"
-    [oracle_source]="XExchange"
-    [oracle_decimals]="18"
-)
+# Environment variables
+ADDRESS=${ADDRESS:-"erd1qqqqqqqqqqqqqpgqemcp8my3qw3lw39hx8fnkt2wvj4vqdqwah0sh5nzfw"}
+PROXY=${PROXY:-"https://devnet-gateway.xoxno.com"}
+CHAIN_ID=${CHAIN_ID:-"D"}
 
-declare -A USDC_MARKET=(
-    [token_id]="USDC-abcdef"
-    [ltv]="8500"
-    [liquidation_threshold]="9000"
-    [liquidation_bonus]="500"
-    [borrow_cap]="1000000"    # 1 USDC
-    [supply_cap]="10000000"   # 10 USDC
-    [base_rate]="50"          # 0.5%
-    [slope1]="1000"           # 10%
-    [slope2]="4000"           # 40%
-    [optimal_utilization]="9000" # 90%
-    [oracle_first_token]="USDC-abcdef"
-    [oracle_second_token]=""
-    [oracle_address]="erd1qqqqqqqqqqqqqpgqhe8t5jewej4q8dzxeyj4edqg49cqpwc4pys2n8v9w"
-    [oracle_method]="Aggregator"
-    [oracle_type]="Normal"
-    [oracle_source]="None"
-    [oracle_decimals]="6"
-)
+# Check if jq is installed
+if ! command -v jq &> /dev/null; then
+    echo "Error: jq is required but not installed."
+    echo "Please install jq first:"
+    echo "  macOS: brew install jq"
+    echo "  Linux: sudo apt-get install jq"
+    exit 1
+fi
 
-# Add more market configurations as needed
+CONFIG_FILE="market_configs.json"
 
-# Function to get market configuration
-get_market_config() {
-    local market_name=$1
-    local var_name="${market_name}_MARKET"
-    declare -n market_config=$var_name
-    echo "${market_config[@]}"
-}
-
-# Function to create market
-create_market() {
-    local market_name=$1
-    local var_name="${market_name}_MARKET"
-    declare -n market_config=$var_name
-
-    # Call the mxpy contract call with the market configuration
-    mxpy --verbose contract call ${ADDRESS} \
-        --proxy=${PROXY} \
-        --chain=${CHAIN_ID} \
-        --recall-nonce \
-        --gas-limit=600000000 \
-        --function="createMarket" \
-        --arguments \
-            ${market_config[token_id]} \
-            ${market_config[ltv]} \
-            ${market_config[liquidation_threshold]} \
-            ${market_config[liquidation_bonus]} \
-            ${market_config[borrow_cap]} \
-            ${market_config[supply_cap]} \
-            ${market_config[base_rate]} \
-            ${market_config[slope1]} \
-            ${market_config[slope2]} \
-            ${market_config[optimal_utilization]} \
-            ${market_config[oracle_first_token]} \
-            ${market_config[oracle_second_token]} \
-            ${market_config[oracle_address]} \
-            ${market_config[oracle_method]} \
-            ${market_config[oracle_type]} \
-            ${market_config[oracle_source]} \
-            ${market_config[oracle_decimals]} \
-        --send \
-        --pem=${WALLET}
+# Function to get config value
+get_config_value() {
+    local market=$1
+    local field=$2
+    jq -r ".[\"$market\"][\"$field\"]" "$CONFIG_FILE"
 }
 
 # Function to list available markets
 list_markets() {
     echo "Available markets:"
-    echo "- WEGLD"
-    echo "- USDC"
-    # Add more markets as they are configured
+    jq -r 'keys[]' "$CONFIG_FILE" | sed 's/^/- /'
+}
+
+# Function to build market arguments
+build_market_args() {
+    local market_name=$1
+    local -a args=()
+    
+    # Token configuration
+    args+=("str:$(get_config_value "$market_name" "token_id")")
+
+    # Interest rate parameters
+    args+=("$(get_config_value "$market_name" "max_rate")")
+    args+=("$(get_config_value "$market_name" "base_rate")")
+    args+=("$(get_config_value "$market_name" "slope1")")
+    args+=("$(get_config_value "$market_name" "slope2")")
+    args+=("$(get_config_value "$market_name" "optimal_utilization")")
+    args+=("$(get_config_value "$market_name" "reserve_factor")")
+
+    # Risk parameters
+    args+=("$(get_config_value "$market_name" "ltv")")
+    args+=("$(get_config_value "$market_name" "liquidation_threshold")")
+    args+=("$(get_config_value "$market_name" "liquidation_bonus")")
+    args+=("$(get_config_value "$market_name" "liquidation_base_fee")")
+    
+    # Flags
+    args+=("$(get_config_value "$market_name" "can_be_collateral")")
+    args+=("$(get_config_value "$market_name" "can_be_borrowed")")
+    args+=("$(get_config_value "$market_name" "is_isolated")")
+    args+=("$(get_config_value "$market_name" "debt_ceiling_usd")")
+    args+=("$(get_config_value "$market_name" "flash_loan_fee")")
+    args+=("$(get_config_value "$market_name" "is_siloed")")
+    args+=("$(get_config_value "$market_name" "flashloan_enabled")")
+    args+=("$(get_config_value "$market_name" "can_borrow_in_isolation")")
+
+    # Caps
+    args+=("$(get_config_value "$market_name" "borrow_cap")")
+    args+=("$(get_config_value "$market_name" "supply_cap")")
+    
+    
+    echo "${args[@]}"
+}
+
+# Function to build market arguments 
+build_market_upgrade_args() {
+    local market_name=$1
+    local -a args=()
+    
+    # Token configuration
+    args+=("str:$(get_config_value "$market_name" "token_id")")
+
+    # Interest rate parameters
+    args+=("$(get_config_value "$market_name" "max_rate")")
+    args+=("$(get_config_value "$market_name" "base_rate")")
+    args+=("$(get_config_value "$market_name" "slope1")")
+    args+=("$(get_config_value "$market_name" "slope2")")
+    args+=("$(get_config_value "$market_name" "optimal_utilization")")
+    args+=("$(get_config_value "$market_name" "reserve_factor")")
+
+    echo "${args[@]}"
+}
+
+create_oracle_args() {
+    local market_name=$1
+    local -a args=()
+
+    args+=("str:$(get_config_value "$market_name" "token_id")")
+    args+=("$(get_config_value "$market_name" "oracle_decimals")")
+    args+=("$(get_config_value "$market_name" "oracle_address")")
+    args+=("$(get_config_value "$market_name" "oracle_method")")
+    args+=("$(get_config_value "$market_name" "oracle_type")")
+    args+=("$(get_config_value "$market_name" "oracle_source")")
+    args+=("$(get_config_value "$market_name" "first_tolerance")")
+    args+=("$(get_config_value "$market_name" "last_tolerance")")
+    echo "${args[@]}"
+}
+
+# Function to create token oracle
+create_token_oracle() {
+    local market_name=$1
+    
+    echo "Creating token oracle for ${market_name}..."
+    echo "Token ID: $(get_config_value "$market_name" "token_id")"
+    
+    local args=( $(create_oracle_args "$market_name") )
+    echo "${args[@]}"
+    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=20000000 \
+    --ledger --ledger-account-index=0 --ledger-address-index=0 \
+    --function="setTokenOracle" --arguments "${args[@]}" \
+    --proxy=${PROXY} --chain=${CHAIN_ID} --send
+}
+
+upgrade_market() {
+     local market_name=$1
+    
+    echo "Creating market for ${market_name}..."
+    echo "Token ID: $(get_config_value "$market_name" "token_id")"
+    
+    local args=( $(build_market_upgrade_args "$market_name") )
+
+    mxpy contract call ${ADDRESS} --recall-nonce \
+    --ledger --ledger-account-index=0 --ledger-address-index=0 \
+    --gas-limit=50000000 \
+    --function="upgradeLiquidityPool" --arguments "${args[@]}" \
+    --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
+}
+
+# Function to create market
+create_market() {
+    local market_name=$1
+    
+    echo "Creating market for ${market_name}..."
+    echo "Token ID: $(get_config_value "$market_name" "token_id")"
+    
+    local args=( $(build_market_args "$market_name") )
+    
+    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=100000000 \
+    --ledger --ledger-account-index=0 --ledger-address-index=0 \
+    --function="createLiquidityPool" --arguments "${args[@]}" \
+    --proxy=${PROXY} --chain=${CHAIN_ID} --send
+}
+
+# Function to format percentage
+format_percentage() {
+    local value=$1
+    # Calculate percentage with high precision
+    local result=$(echo "scale=3; $value/10^21 * 100" | bc)
+    
+    # If the number starts with a dot, add a leading zero
+    if [[ $result == .* ]]; then
+        result="0$result"
+    fi
+    
+    # Remove trailing zeros after decimal point, but keep at least one decimal if it's a decimal number
+    result=$(echo $result | sed 's/\.0*$\|0*$//')
+    
+    # If no decimal point in result, add .0
+    if [[ $result != *.* ]]; then
+        result="$result.0"
+    fi
+    
+    echo $result
+}
+
+# Function to format token amount
+format_token_amount() {
+    local value=$1
+    local decimals=$2
+    local result=$(echo "scale=4; $value/10^$decimals" | bc)
+    # Remove trailing zeros after decimal point
+    echo $result | sed 's/\.0\+$\|0\+$//'
+}
+
+# Function to show market configuration
+show_market_config() {
+    local market=$1
+    local decimals=$(get_config_value "$market" "oracle_decimals")
+    
+    echo "${market} Market Configuration:"
+    echo "Token ID: $(get_config_value "$market" "token_id")"
+    echo "LTV: $(format_percentage $(get_config_value "$market" "ltv"))%"
+    echo "Liquidation Threshold: $(format_percentage $(get_config_value "$market" "liquidation_threshold"))%"
+    echo "Liquidation Bonus: $(format_percentage $(get_config_value "$market" "liquidation_bonus"))%"
+    echo "Liquidation Base Fee: $(format_percentage $(get_config_value "$market" "liquidation_base_fee"))%"
+    echo "Borrow Cap: $(format_token_amount $(get_config_value "$market" "borrow_cap") $decimals) ${market}"
+    echo "Supply Cap: $(format_token_amount $(get_config_value "$market" "supply_cap") $decimals) ${market}"
+    echo "Base Rate: $(format_percentage $(get_config_value "$market" "base_rate"))%"
+    echo "Max Rate: $(format_percentage $(get_config_value "$market" "max_rate"))%"
+    echo "Slope1: $(format_percentage $(get_config_value "$market" "slope1"))%"
+    echo "Slope2: $(format_percentage $(get_config_value "$market" "slope2"))%"
+    echo "Optimal Utilization: $(format_percentage $(get_config_value "$market" "optimal_utilization"))%"
+    echo "Reserve Factor: $(format_percentage $(get_config_value "$market" "reserve_factor"))%"
+    echo "Can Be Collateral: $(get_config_value "$market" "can_be_collateral")"
+    echo "Can Be Borrowed: $(get_config_value "$market" "can_be_borrowed")"
+    echo "Is Isolated: $(get_config_value "$market" "is_isolated")"
+    echo "Debt Ceiling: $(format_token_amount $(get_config_value "$market" "debt_ceiling_usd") 21) USD"
+    echo "Flash Loan Fee: $(format_percentage $(get_config_value "$market" "flash_loan_fee"))%"
+    echo "Is Siloed: $(get_config_value "$market" "is_siloed")"
+    echo "Flashloan Enabled: $(get_config_value "$market" "flashloan_enabled")"
+    echo "Can Borrow In Isolation: $(get_config_value "$market" "can_borrow_in_isolation")"
+    echo "Oracle Address: $(get_config_value "$market" "oracle_address")"
+    echo "Oracle Method: $(get_config_value "$market" "oracle_method")"
+    echo "Oracle Type: $(get_config_value "$market" "oracle_type")"
+    echo "Oracle Source: $(get_config_value "$market" "oracle_source")"
+    echo "Oracle Decimals: $decimals"
 }
 
 # Main CLI interface
@@ -111,6 +223,22 @@ case "$1" in
         fi
         create_market "$2"
         ;;
+    "upgrade_market")
+        if [ -z "$2" ]; then
+            echo "Please specify a market name"
+            list_markets
+            exit 1
+        fi
+        upgrade_market "$2"
+        ;;
+    "create_oracle")
+        if [ -z "$2" ]; then
+            echo "Please specify a market name"
+            list_markets
+            exit 1
+        fi
+        create_token_oracle "$2"
+        ;; 
     "list")
         list_markets
         ;;
@@ -120,7 +248,7 @@ case "$1" in
             list_markets
             exit 1
         fi
-        get_market_config "$2"
+        show_market_config "$2"
         ;;
     *)
         echo "Usage: $0 {create|list|show} [market_name]"

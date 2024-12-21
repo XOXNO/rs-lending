@@ -315,6 +315,20 @@ impl LendingPoolTestState {
             .run();
     }
 
+    pub fn claim_revenue(&mut self, token_id: TestTokenIdentifier) {
+        let mut array = MultiValueEncoded::new();
+        array.push(EgldOrEsdtTokenIdentifier::esdt(
+            token_id.to_token_identifier(),
+        ));
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .claim_revenue(array)
+            .run();
+    }
+
     // Withdraw asset
     pub fn withdraw_asset(
         &mut self,

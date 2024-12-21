@@ -92,6 +92,9 @@ pub static ERROR_PAIR_NOT_ACTIVE: &[u8] = b"Pair not active.";
 
 pub static ERROR_NO_LAST_PRICE_FOUND: &[u8] = b"No last price found.";
 
+pub static ERROR_UN_SAFE_PRICE_NOT_ALLOWED: &[u8] =
+    b"The price is out the safety range for such action, oracles will sync in few minutes.";
+
 pub static ERROR_NO_ACCUMULATOR_FOUND: &[u8] = b"No accumulator found.";
 
 pub static ERROR_ACCOUNT_NOT_IN_THE_MARKET: &[u8] = b"Account not in the market.";

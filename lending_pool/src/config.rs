@@ -370,8 +370,6 @@ pub trait ConfigModule:
 
         let old_config = map.get();
 
-        self.asset_ltv(&asset).set(ltv.clone());
-
         let new_config = &AssetConfig {
             ltv,
             liquidation_threshold,

@@ -216,6 +216,7 @@ pub trait LendingPool:
         // 2. Process withdrawal
 
         let mut storage_cache = StorageCache::new(self);
+        storage_cache.allow_unsafe_price = false;
         self.internal_withdraw(
             account_token.token_nonce,
             withdraw_token_id,
@@ -287,6 +288,9 @@ pub trait LendingPool:
         // 3. Update positions with latest interest
 
         let mut storage_cache = StorageCache::new(self);
+
+        storage_cache.allow_unsafe_price = false;
+
         let collaterals =
             self.update_collateral_with_interest(nft_token.token_nonce, &mut storage_cache, false);
         let borrows =
@@ -473,6 +477,8 @@ pub trait LendingPool:
     ///   "execute",     // Endpoint
     ///   []            // No arguments
     /// ```
+    ///
+    #[payable("*")]
     #[endpoint(flashLoan)]
     fn flash_loan(
         &self,
@@ -573,6 +579,7 @@ pub trait LendingPool:
     /// 7. Emits event for each position
     ///
     /// ```
+    #[payable("*")]
     #[endpoint(disableVault)]
     fn disable_vault(&self) {
         let nft_token = self.call_value().single_esdt();
@@ -638,6 +645,11 @@ pub trait LendingPool:
                 );
             }
         }
+
+        self.tx()
+            .to(self.blockchain().get_caller())
+            .esdt(nft_token)
+            .transfer();
     }
 
     /// Enables vault for a given account that has vault disabled
@@ -652,6 +664,8 @@ pub trait LendingPool:
     /// 5. Iterates over deposit positions
     /// 6. Enables vault for each deposit position and move funds from shared pool to the controller vault
     /// 7. Emits event for each position
+    ///
+    #[payable("*")]
     #[endpoint(enableVault)]
     fn enable_vault(&self) {
         let nft_token = self.call_value().single_esdt();
@@ -735,6 +749,10 @@ pub trait LendingPool:
                 );
             }
         }
+        self.tx()
+            .to(self.blockchain().get_caller())
+            .esdt(nft_token)
+            .transfer();
     }
 
     /// Updates the LTV for a given asset and account positions
@@ -831,15 +849,16 @@ pub trait LendingPool:
     /// 2. Gets current asset price
     /// 3. Calls pool to update indexes with current price
     #[endpoint(updateIndexes)]
-    fn update_indexes(&self, token_id: EgldOrEsdtTokenIdentifier) {
-        let pool_address = self.get_pool_address(&token_id);
-
+    fn update_indexes(&self, assets: MultiValueEncoded<EgldOrEsdtTokenIdentifier>) {
         let mut storage_cache = StorageCache::new(self);
-        let asset_price = self.get_token_price_data(&token_id, &mut storage_cache);
-        self.tx()
-            .to(pool_address)
-            .typed(proxy_pool::LiquidityPoolProxy)
-            .update_indexes(&asset_price.price)
-            .sync_call();
+        for asset in assets {
+            let pool_address = self.get_pool_address(&asset);
+            let asset_price = self.get_token_price_data(&asset, &mut storage_cache);
+            self.tx()
+                .to(pool_address)
+                .typed(proxy_pool::LiquidityPoolProxy)
+                .update_indexes(&asset_price.price)
+                .sync_call();
+        }
     }
 }

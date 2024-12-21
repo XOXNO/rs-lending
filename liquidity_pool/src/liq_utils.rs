@@ -32,28 +32,9 @@ pub trait UtilsModule:
         // Convert `delta_timestamp` to ManagedDecimal
         let delta_dec = ManagedDecimal::from_raw_units(BigUint::from(delta_timestamp), 0);
         // Calculate x = (rate * delta_timestamp) / SECONDS_PER_YEAR
-        let x = rate_dec.mul(delta_dec).div(seconds_per_year_dec);
-        // Calculate terms using Taylor series expansion
-        let term1 = x.clone(); // x
-        let term2 = x
-            .clone()
-            .mul_with_precision(x.clone(), DECIMAL_PRECISION)
-            .div(ManagedDecimal::from_raw_units(BigUint::from(2u32), 0)); // x²/2
-        let term3 = x
-            .clone()
-            .mul_with_precision(x.clone(), DECIMAL_PRECISION)
-            .mul_with_precision(x.clone(), DECIMAL_PRECISION)
-            .div(ManagedDecimal::from_raw_units(BigUint::from(6u32), 0)); // x³/6
-        let term4 = x
-            .clone()
-            .mul_with_precision(x.clone(), DECIMAL_PRECISION)
-            .mul_with_precision(x.clone(), DECIMAL_PRECISION)
-            .mul_with_precision(x.clone(), DECIMAL_PRECISION)
-            .div(ManagedDecimal::from_raw_units(BigUint::from(24u32), 0)); // x⁴/24
-                                                                           // Final formula: 1 + x + x²/2! + x³/3! + x⁴/4!
-        let interest_factor_dec = bp.clone().add(term1).add(term2).add(term3).add(term4);
-        // Convert the ManagedDecimal back to BigUint
-        interest_factor_dec
+        let x = rate_dec.mul(delta_dec).div(seconds_per_year_dec).add(bp);
+
+        x
     }
 
     /// Updates the borrow index for the given storage cache.
@@ -190,14 +171,6 @@ pub trait UtilsModule:
             position.accumulated_interest += accumulated_interest;
             position.timestamp = storage_cache.timestamp;
             position.index = index.into_raw_units().clone();
-
-            self.update_position_event(
-                accumulated_interest,
-                &position,
-                OptionalValue::None,
-                OptionalValue::None,
-                OptionalValue::None,
-            );
         }
     }
 }
