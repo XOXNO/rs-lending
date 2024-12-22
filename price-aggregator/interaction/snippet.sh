@@ -25,7 +25,7 @@ deploy() {
 upgrade() {
     mxpy contract upgrade ${ADDRESS} --bytecode=${PROJECT} --recall-nonce \
     --ledger --ledger-account-index=0 --ledger-address-index=0 \
-    --arguments ${LP_TEMPLATE_ADDRESS} --gas-limit=${GAS_LIMIT} --outfile="upgrade.json" \
+    --gas-limit=100000000 --outfile="upgrade.json" \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 }
 
@@ -45,9 +45,9 @@ pause() {
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 
-FROM="str:WETH"
+FROM="str:HTM"
 TO="str:USD"
-PRICE=2866250000000000000000000 # 55 USD
+PRICE=2511787316092230200000 # 55 USD
 
 DECIMALS=18
 

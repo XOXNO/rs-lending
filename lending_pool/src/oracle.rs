@@ -1,12 +1,20 @@
 multiversx_sc::imports!();
-use common_constants::{BP, EGLD_TICKER, USD_TICKER, WEGLD_TICKER};
+use common_constants::{
+    BP, EGLD_TICKER, PRICE_AGGREGATOR_ROUNDS_STORAGE_KEY, PRICE_AGGREGATOR_STATUS_STORAGE_KEY,
+    STATE_PAIR_STORAGE_KEY, USD_TICKER, WEGLD_TICKER,
+};
 use common_events::{ExchangeSource, OracleProvider, OracleType, PriceFeedShort, PricingMethod};
+use multiversx_sc::storage::StorageKey;
+use price_aggregator::{
+    // errors::{PAUSED_ERROR, TOKEN_PAIR_NOT_FOUND_ERROR},
+    structs::{TimestampedPrice, TokenPair},
+};
 
 use crate::{
     contexts::base::StorageCache,
     proxies::{lxoxno_proxy, proxy_legld, xegld_proxy},
-    proxy_price_aggregator::PriceAggregatorProxy,
-    proxy_xexchange_pair::{self, State},
+    proxy_price_aggregator::{PriceAggregatorProxy, PriceFeed},
+    proxy_xexchange_pair::State,
     storage, ERROR_INVALID_EXCHANGE_SOURCE, ERROR_INVALID_ORACLE_TOKEN_TYPE,
     ERROR_NO_LAST_PRICE_FOUND, ERROR_ORACLE_TOKEN_NOT_FOUND, ERROR_PAIR_NOT_ACTIVE,
     ERROR_PRICE_AGGREGATOR_NOT_SET, ERROR_UN_SAFE_PRICE_NOT_ALLOWED,
@@ -182,7 +190,7 @@ pub trait OracleModule: storage::LendingStorageModule {
             .typed(proxy_legld::SalsaContractProxy)
             .token_price()
             .returns(ReturnsResult)
-            .sync_call();
+            .sync_call_readonly();
 
         self.create_price_feed(ratio, configs.decimals)
     }
@@ -197,7 +205,7 @@ pub trait OracleModule: storage::LendingStorageModule {
             .typed(xegld_proxy::LiquidStakingProxy)
             .get_exchange_rate()
             .returns(ReturnsResult)
-            .sync_call();
+            .sync_call_readonly();
 
         self.create_price_feed(ratio, configs.decimals)
     }
@@ -213,12 +221,20 @@ pub trait OracleModule: storage::LendingStorageModule {
             .typed(lxoxno_proxy::RsLiquidXoxnoProxy)
             .get_exchange_rate()
             .returns(ReturnsResult)
-            .sync_call();
+            .sync_call_readonly();
 
         let token_data = self.get_token_price_data(&configs.first_token_id, storage_cache);
         let egld_price = self.get_token_amount_in_egld_raw(&ratio, &token_data);
 
         self.create_price_feed(egld_price, token_data.decimals)
+    }
+
+    fn get_pair_state(&self, pair: &ManagedAddress) -> State {
+        SingleValueMapper::<_, _, ManagedAddress>::new_from_address(
+            pair.clone(),
+            StorageKey::new(STATE_PAIR_STORAGE_KEY),
+        )
+        .get()
     }
 
     // Safe Price Functions
@@ -231,13 +247,7 @@ pub trait OracleModule: storage::LendingStorageModule {
         let egld_ticker = ManagedBuffer::new_from_bytes(EGLD_TICKER);
 
         let one_token = BigUint::from(10u64).pow(configs.decimals as u32);
-        let pair_status = self
-            .tx()
-            .to(configs.contract_address.clone())
-            .typed(proxy_xexchange_pair::PairProxy)
-            .state()
-            .returns(ReturnsResult)
-            .sync_call();
+        let pair_status = self.get_pair_state(&configs.contract_address);
 
         require!(pair_status == State::Active, ERROR_PAIR_NOT_ACTIVE);
 
@@ -248,7 +258,7 @@ pub trait OracleModule: storage::LendingStorageModule {
                 EsdtTokenPayment::new(token_id.clone().unwrap_esdt(), 0, one_token),
             )
             .returns(ReturnsResult)
-            .sync_call();
+            .sync_call_readonly();
 
         let result_ticker = self.get_token_ticker(&EgldOrEsdtTokenIdentifier::esdt(
             result.token_identifier.clone(),
@@ -347,7 +357,8 @@ pub trait OracleModule: storage::LendingStorageModule {
         storage_cache: &mut StorageCache<Self>,
     ) -> BigUint {
         // Get price feeds
-        let token_price_feed = self.get_aggregator_price_feed(token_id);
+        let token_price_feed =
+            self.get_aggregator_price_feed(token_id, &storage_cache.price_aggregator_sc);
 
         // For other tokens, continue with normal calculation
         let one_egld = BigUint::from(10u64).pow(storage_cache.egld_price_feed.decimals as u32);
@@ -404,7 +415,7 @@ pub trait OracleModule: storage::LendingStorageModule {
                     &BigUint::from(10u64).pow(configs.decimals as u32),
                 )
                 .returns(ReturnsResult)
-                .sync_call();
+                .sync_call_readonly();
 
             let (first_token, second_token) = tokens.into_tuple();
             let first_token_data = self.get_token_price_data(
@@ -434,24 +445,79 @@ pub trait OracleModule: storage::LendingStorageModule {
     fn get_aggregator_price_feed(
         &self,
         token_id: &EgldOrEsdtTokenIdentifier,
+        price_aggregator_sc: &ManagedAddress,
     ) -> PriceFeedShort<Self::Api> {
         let from_ticker = self.get_token_ticker(token_id);
-        let price_aggregator_address = self.price_aggregator_address();
 
         require!(
-            !price_aggregator_address.is_empty(),
+            !price_aggregator_sc.is_zero(),
             ERROR_PRICE_AGGREGATOR_NOT_SET
         );
 
+        // require!(
+        //     !self.get_aggregator_status(price_aggregator_sc),
+        //     PAUSED_ERROR
+        // );
+
+        // let token_pair = TokenPair {
+        //     from: from_ticker,
+        //     to: ManagedBuffer::new_from_bytes(USD_TICKER),
+        // };
+
+        // let round_values =
+        //     self.token_oracle_prices_round(&token_pair.from, &token_pair.to, price_aggregator_sc);
+
+        // require!(!round_values.is_empty(), TOKEN_PAIR_NOT_FOUND_ERROR);
+
+        // let price_feed = self.make_price_feed(token_pair, round_values);
+
         let price_feed = self
             .tx()
-            .to(price_aggregator_address.get())
+            .to(price_aggregator_sc)
             .typed(PriceAggregatorProxy)
             .latest_price_feed(from_ticker, ManagedBuffer::new_from_bytes(USD_TICKER))
             .returns(ReturnsResult)
-            .sync_call();
+            .sync_call_readonly();
 
         self.create_price_feed(price_feed.price, price_feed.decimals)
+    }
+
+    fn token_oracle_prices_round(
+        &self,
+        from: &ManagedBuffer,
+        to: &ManagedBuffer,
+        address: &ManagedAddress,
+    ) -> VecMapper<TimestampedPrice<Self::Api>, ManagedAddress> {
+        let mut key = StorageKey::new(PRICE_AGGREGATOR_ROUNDS_STORAGE_KEY);
+        key.append_item(from);
+        key.append_item(to);
+        VecMapper::<_, _, ManagedAddress>::new_from_address(address.clone(), key)
+    }
+
+    fn get_aggregator_status(&self, address: &ManagedAddress) -> bool {
+        SingleValueMapper::<_, _, ManagedAddress>::new_from_address(
+            address.clone(),
+            StorageKey::new(PRICE_AGGREGATOR_STATUS_STORAGE_KEY),
+        )
+        .get()
+    }
+
+    fn make_price_feed(
+        &self,
+        token_pair: TokenPair<Self::Api>,
+        round_values: VecMapper<TimestampedPrice<Self::Api>, ManagedAddress>,
+    ) -> PriceFeed<Self::Api> {
+        let round_id: usize = round_values.len();
+        let last_price = round_values.get(round_id);
+
+        PriceFeed {
+            round_id: round_id as u32,
+            from: token_pair.from,
+            to: token_pair.to,
+            timestamp: last_price.timestamp,
+            price: last_price.price,
+            decimals: last_price.decimals,
+        }
     }
 
     #[proxy]

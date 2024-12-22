@@ -229,6 +229,19 @@ getTotalCollateralAvailable() {
     mxpy contract query ${ADDRESS} --function="getTotalCollateralAvailable" --arguments 0x0a --proxy=${PROXY}
 }
 
+
+canBeLiquidated() {
+    mxpy contract query ${ADDRESS} --function="canBeLiquidated" --arguments 0x06 --proxy=${PROXY}
+}
+
+getMaxLiquidateAmountForCollateral() {
+    mxpy contract query ${ADDRESS} --function="getMaxLiquidateAmountForCollateral" --arguments 0x06 ${HTM_TOKEN} 0x01 --proxy=${PROXY}
+}
+
+getHealthFactor() {
+    mxpy contract query ${ADDRESS} --function="getHealthFactor" --arguments 0x06 --proxy=${PROXY}
+}
+
 getTokenPriceData() {
     mxpy contract query ${ADDRESS} --function="getTokenPriceData" --arguments ${EGLD_TOKEN} --proxy=${PROXY}
 }

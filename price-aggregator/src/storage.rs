@@ -22,7 +22,9 @@ pub trait StorageModule {
     #[storage_mapper("rounds")]
     fn rounds(
         &self,
-    ) -> MapStorageMapper<TokenPair<Self::Api>, VecMapper<TimestampedPrice<Self::Api>>>;
+        from: &ManagedBuffer,
+        to: &ManagedBuffer,
+    ) -> VecMapper<TimestampedPrice<Self::Api>>;
 
     #[storage_mapper("first_submission_timestamp")]
     fn first_submission_timestamp(

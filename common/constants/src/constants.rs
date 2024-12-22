@@ -28,3 +28,13 @@ pub const BP: u128 = 1_000_000_000_000_000_000_000; // Represents 100%
 pub const DECIMAL_PRECISION: usize = 21;
 /// Maximum bonus
 pub const MAX_BONUS: u128 = 300_000_000_000_000_000_000; // Represents 30% basis points
+
+pub static TOTAL_BORROWED_AMOUNT_STORAGE_KEY: &[u8] = b"borrowed_amount";
+
+pub static TOTAL_SUPPLY_AMOUNT_STORAGE_KEY: &[u8] = b"supplied_amount";
+
+pub static STATE_PAIR_STORAGE_KEY: &[u8] = b"state";
+
+pub static PRICE_AGGREGATOR_ROUNDS_STORAGE_KEY: &[u8] = b"rounds";
+
+pub static PRICE_AGGREGATOR_STATUS_STORAGE_KEY: &[u8] = b"pause_module:paused";

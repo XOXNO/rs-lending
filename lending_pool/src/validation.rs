@@ -1,14 +1,15 @@
 multiversx_sc::imports!();
-use common_constants::BP;
+use common_constants::{BP, TOTAL_BORROWED_AMOUNT_STORAGE_KEY, TOTAL_SUPPLY_AMOUNT_STORAGE_KEY};
 use common_events::{
     AccountPosition, AssetConfig, EModeCategory, EgldOrEsdtTokenPaymentNew, NftAccountAttributes,
 };
 use common_structs::PriceFeedShort;
+use multiversx_sc::storage::StorageKey;
 
 use crate::{
-    contexts::base::StorageCache, math, oracle, proxy_pool, storage, utils, views,
+    contexts::base::StorageCache, math, oracle, storage, utils, views,
     ERROR_ASSET_NOT_BORROWABLE_IN_ISOLATION, ERROR_ASSET_NOT_BORROWABLE_IN_SILOED,
-    ERROR_CANNOT_USE_EMODE_WITH_ISOLATED_ASSETS, ERROR_EMODE_CATEGORY_NOT_FOUND,
+    ERROR_BORROW_CAP, ERROR_CANNOT_USE_EMODE_WITH_ISOLATED_ASSETS, ERROR_EMODE_CATEGORY_NOT_FOUND,
     ERROR_HEALTH_FACTOR, ERROR_HEALTH_FACTOR_WITHDRAW, ERROR_INSUFFICIENT_COLLATERAL,
     ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS, ERROR_MIX_ISOLATED_COLLATERAL,
     ERROR_POSITION_SHOULD_BE_VAULT, ERROR_SUPPLY_CAP,
@@ -182,6 +183,59 @@ pub trait ValidationModule:
         }
     }
 
+    /// Validates that a new borrow doesn't exceed asset borrow cap
+    ///
+    /// # Arguments
+    /// * `asset_config` - Asset configuration
+    /// * `amount` - Amount to borrow
+    /// * `asset` - Token identifier
+    ///
+    /// # Errors
+    /// * `ERROR_BORROW_CAP` - If new borrow would exceed cap
+    ///
+    /// # Example
+    /// ```
+    /// // Asset: EGLD
+    /// // Current borrows: 900 EGLD
+    /// // Borrow cap: 1000 EGLD
+    /// // New borrow: 150 EGLD
+    /// // Result: Error - cap exceeded
+    /// ```
+    fn check_borrow_cap(
+        &self,
+        asset_config: &AssetConfig<Self::Api>,
+        amount: &BigUint,
+        asset: &EgldOrEsdtTokenIdentifier,
+    ) {
+        if asset_config.borrow_cap.is_some() {
+            let pool = self.pools_map(asset).get();
+            let borrow_cap = asset_config.borrow_cap.clone().unwrap();
+            let total_borrow = self.get_total_borrow(pool).get();
+
+            require!(total_borrow + amount <= borrow_cap, ERROR_BORROW_CAP);
+        }
+    }
+
+    fn get_total_borrow(
+        &self,
+        pair_address: ManagedAddress,
+    ) -> SingleValueMapper<BigUint, ManagedAddress> {
+        SingleValueMapper::<_, _, ManagedAddress>::new_from_address(
+            pair_address,
+            StorageKey::new(TOTAL_BORROWED_AMOUNT_STORAGE_KEY),
+        )
+    }
+
+    fn get_total_supply(
+        &self,
+        pair_address: ManagedAddress,
+    ) -> SingleValueMapper<BigUint, ManagedAddress> {
+        SingleValueMapper::<_, _, ManagedAddress>::new_from_address(
+            pair_address,
+            StorageKey::new(TOTAL_SUPPLY_AMOUNT_STORAGE_KEY),
+        )
+    }
+
     /// Validates supply cap constraints
     ///
     /// # Arguments
@@ -203,15 +257,8 @@ pub trait ValidationModule:
         // Only check supply cap if
         if asset_info.supply_cap.is_some() {
             let pool_address = self.get_pool_address(token_id);
-            let market_supplied = self
-                .tx()
-                .to(pool_address)
-                .typed(proxy_pool::LiquidityPoolProxy)
-                .get_total_capital()
-                .returns(ReturnsResult)
-                .sync_call();
+            let mut total_supplied = self.get_total_supply(pool_address).get();
 
-            let mut total_supplied = market_supplied.into_raw_units().clone();
             if is_vault {
                 let vault_supplied_amount = self.vault_supplied_amount(token_id).get();
                 total_supplied += vault_supplied_amount;

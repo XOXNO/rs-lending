@@ -3,10 +3,10 @@ multiversx_sc::derive_imports!();
 
 use crate::contexts::base::StorageCache;
 use crate::{
-    math, oracle, proxy_pool, storage, ERROR_ACCOUNT_NOT_IN_THE_MARKET, ERROR_ADDRESS_IS_ZERO,
-    ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO, ERROR_ASSET_NOT_SUPPORTED, ERROR_BORROW_CAP,
-    ERROR_DEBT_CEILING_REACHED, ERROR_NO_POOL_FOUND, ERROR_UNEXPECTED_ANCHOR_TOLERANCES,
-    ERROR_UNEXPECTED_FIRST_TOLERANCE, ERROR_UNEXPECTED_LAST_TOLERANCE,
+    math, oracle, storage, ERROR_ACCOUNT_NOT_IN_THE_MARKET, ERROR_ADDRESS_IS_ZERO,
+    ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO, ERROR_ASSET_NOT_SUPPORTED, ERROR_DEBT_CEILING_REACHED,
+    ERROR_NO_POOL_FOUND, ERROR_UNEXPECTED_ANCHOR_TOLERANCES, ERROR_UNEXPECTED_FIRST_TOLERANCE,
+    ERROR_UNEXPECTED_LAST_TOLERANCE,
 };
 use common_constants::{
     BP, EGLD_IDENTIFIER, MAX_FIRST_TOLERANCE, MAX_LAST_TOLERANCE, MIN_FIRST_TOLERANCE,
@@ -386,45 +386,6 @@ pub trait LendingUtilsModule:
         );
 
         data.decode_attributes::<NftAccountAttributes>()
-    }
-
-    /// Validates that a new borrow doesn't exceed asset borrow cap
-    ///
-    /// # Arguments
-    /// * `asset_config` - Asset configuration
-    /// * `amount` - Amount to borrow
-    /// * `asset` - Token identifier
-    ///
-    /// # Errors
-    /// * `ERROR_BORROW_CAP` - If new borrow would exceed cap
-    ///
-    /// # Example
-    /// ```
-    /// // Asset: EGLD
-    /// // Current borrows: 900 EGLD
-    /// // Borrow cap: 1000 EGLD
-    /// // New borrow: 150 EGLD
-    /// // Result: Error - cap exceeded
-    /// ```
-    fn check_borrow_cap(
-        &self,
-        asset_config: &AssetConfig<Self::Api>,
-        amount: &BigUint,
-        asset: &EgldOrEsdtTokenIdentifier,
-    ) {
-        if asset_config.borrow_cap.is_some() {
-            let pool = self.pools_map(asset).get();
-            let borrow_cap = asset_config.borrow_cap.clone().unwrap();
-            let total_borrow = self
-                .tx()
-                .to(pool)
-                .typed(proxy_pool::LiquidityPoolProxy)
-                .borrowed_amount()
-                .returns(ReturnsResult)
-                .sync_call();
-
-            require!(total_borrow + amount <= borrow_cap, ERROR_BORROW_CAP);
-        }
     }
 
     fn get_multi_payments(&self) -> ManagedVec<EgldOrEsdtTokenPaymentNew<Self::Api>> {

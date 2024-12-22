@@ -50,9 +50,9 @@ pub trait UtilsModule:
         let last_sub_time_mapper = self.last_submission_timestamp(&token_pair);
 
         let mut round_id = 0;
-        let wrapped_rounds = self.rounds().get(&token_pair);
-        if wrapped_rounds.is_some() {
-            round_id = wrapped_rounds.unwrap().len() + 1;
+        let wrapped_rounds = self.rounds(&token_pair.from, &token_pair.to).len();
+        if wrapped_rounds > 0 {
+            round_id = wrapped_rounds + 1;
         }
 
         let current_timestamp = self.blockchain().get_block_timestamp();
@@ -154,10 +154,7 @@ pub trait UtilsModule:
             self.first_submission_timestamp(&token_pair).clear();
             self.last_submission_timestamp(&token_pair).clear();
 
-            self.rounds()
-                .entry(token_pair.clone())
-                .or_default()
-                .get()
+            self.rounds(&token_pair.from, &token_pair.to)
                 .push(&price_feed);
             self.emit_new_round_event(&token_pair, round_id, &price_feed);
         }

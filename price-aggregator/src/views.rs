@@ -36,13 +36,18 @@ pub trait ViewsModule:
     }
 
     #[view(latestRoundData)]
-    fn latest_round_data(&self) -> MultiValueEncoded<PriceFeed<Self::Api>> {
+    fn latest_round_data(
+        &self,
+        pairs: MultiValueEncoded<TokenPair<Self::Api>>,
+    ) -> MultiValueEncoded<PriceFeed<Self::Api>> {
         self.require_not_paused();
-        require!(!self.rounds().is_empty(), "no completed rounds");
 
         let mut result = MultiValueEncoded::new();
-        for (token_pair, round_values) in self.rounds().iter() {
-            result.push(self.make_price_feed(token_pair, round_values));
+        for token_pair in pairs {
+            let round_values = self.rounds(&token_pair.from, &token_pair.to);
+            if round_values.len() > 0 {
+                result.push(self.make_price_feed(token_pair, round_values));
+            }
         }
 
         result
@@ -52,12 +57,10 @@ pub trait ViewsModule:
     fn latest_price_feed(&self, from: ManagedBuffer, to: ManagedBuffer) -> PriceFeed<Self::Api> {
         require!(self.not_paused(), PAUSED_ERROR);
 
-        let token_pair = TokenPair { from, to };
+        let round_values = self.rounds(&from, &to);
+        require!(!round_values.is_empty(), TOKEN_PAIR_NOT_FOUND_ERROR);
 
-        let round_values = self
-            .rounds()
-            .get(&token_pair)
-            .unwrap_or_else(|| sc_panic!(TOKEN_PAIR_NOT_FOUND_ERROR));
+        let token_pair = TokenPair { from, to };
         let feed = self.make_price_feed(token_pair, round_values);
         feed
     }
