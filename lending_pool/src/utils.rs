@@ -3,7 +3,7 @@ multiversx_sc::derive_imports!();
 
 use crate::contexts::base::StorageCache;
 use crate::{
-    math, oracle, storage, ERROR_ACCOUNT_NOT_IN_THE_MARKET, ERROR_ADDRESS_IS_ZERO,
+    math, oracle, proxy_pool, storage, ERROR_ACCOUNT_NOT_IN_THE_MARKET, ERROR_ADDRESS_IS_ZERO,
     ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO, ERROR_ASSET_NOT_SUPPORTED, ERROR_DEBT_CEILING_REACHED,
     ERROR_NO_POOL_FOUND, ERROR_UNEXPECTED_ANCHOR_TOLERANCES, ERROR_UNEXPECTED_FIRST_TOLERANCE,
     ERROR_UNEXPECTED_LAST_TOLERANCE,
@@ -157,11 +157,10 @@ pub trait LendingUtilsModule:
         let mut weighted_collateral_in_egld = BigUint::zero();
 
         for dp in positions {
-            let position_value_in_egld =
-                self.get_token_amount_in_egld(&dp.token_id, &dp.get_total_amount(), storage_cache);
-
             weighted_collateral_in_egld +=
-                position_value_in_egld * &dp.entry_liquidation_threshold / BigUint::from(BP);
+                self.get_token_amount_in_egld(&dp.token_id, &dp.get_total_amount(), storage_cache)
+                    * &dp.entry_liquidation_threshold
+                    / BigUint::from(BP);
         }
 
         weighted_collateral_in_egld
@@ -386,6 +385,21 @@ pub trait LendingUtilsModule:
         );
 
         data.decode_attributes::<NftAccountAttributes>()
+    }
+
+    fn update_position(
+        &self,
+        asset_address: &ManagedAddress,
+        position: &mut AccountPosition<Self::Api>,
+        price: OptionalValue<BigUint>,
+    ) {
+        *position = self
+            .tx()
+            .to(asset_address)
+            .typed(proxy_pool::LiquidityPoolProxy)
+            .update_position_with_interest(position.clone(), price)
+            .returns(ReturnsResult)
+            .sync_call();
     }
 
     fn get_multi_payments(&self) -> ManagedVec<EgldOrEsdtTokenPaymentNew<Self::Api>> {

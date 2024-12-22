@@ -43,7 +43,7 @@ pub trait PositionModule:
         let borrow_positions = self.borrow_positions(account_position);
         let mut positions: ManagedVec<Self::Api, AccountPosition<Self::Api>> = ManagedVec::new();
 
-        for bp in borrow_positions.values() {
+        for mut bp in borrow_positions.values() {
             let asset_address = self.get_pool_address(&bp.token_id);
             let price = if fetch_price {
                 let result = self.get_token_price_data(&bp.token_id, storage_cache);
@@ -51,25 +51,21 @@ pub trait PositionModule:
             } else {
                 OptionalValue::None
             };
-            let latest_position = self
-                .tx()
-                .to(asset_address)
-                .typed(proxy_pool::LiquidityPoolProxy)
-                .update_position_with_interest(bp.clone(), price)
-                .returns(ReturnsResult)
-                .sync_call();
+
+            self.update_position(&asset_address, &mut bp, price);
+
             if fetch_price {
                 self.update_position_event(
                     &BigUint::zero(),
-                    &latest_position,
+                    &bp,
                     OptionalValue::None,
                     OptionalValue::None,
                     OptionalValue::None,
                 );
             }
-            positions.push(latest_position.clone());
+            positions.push(bp.clone());
             self.borrow_positions(account_position)
-                .insert(bp.token_id, latest_position);
+                .insert(bp.token_id.clone(), bp);
         }
         positions
     }
@@ -94,7 +90,7 @@ pub trait PositionModule:
     ) -> ManagedVec<AccountPosition<Self::Api>> {
         let deposit_positions = self.deposit_positions(account_position);
         let mut positions: ManagedVec<Self::Api, AccountPosition<Self::Api>> = ManagedVec::new();
-        for dp in deposit_positions.values() {
+        for mut dp in deposit_positions.values() {
             let asset_address = self.get_pool_address(&dp.token_id);
             if !dp.is_vault {
                 let price = if fetch_price {
@@ -103,25 +99,20 @@ pub trait PositionModule:
                 } else {
                     OptionalValue::None
                 };
-                let latest_position = self
-                    .tx()
-                    .to(asset_address)
-                    .typed(proxy_pool::LiquidityPoolProxy)
-                    .update_position_with_interest(dp.clone(), price)
-                    .returns(ReturnsResult)
-                    .sync_call();
+                self.update_position(&asset_address, &mut dp, price);
+
                 if fetch_price {
                     self.update_position_event(
                         &BigUint::zero(),
-                        &latest_position,
+                        &dp,
                         OptionalValue::None,
                         OptionalValue::None,
                         OptionalValue::None,
                     );
                 }
                 self.deposit_positions(account_position)
-                    .insert(dp.token_id, latest_position.clone());
-                positions.push(latest_position);
+                    .insert(dp.token_id.clone(), dp.clone());
+                positions.push(dp);
             } else {
                 positions.push(dp.clone());
             }
@@ -288,7 +279,7 @@ pub trait PositionModule:
         }
 
         if is_vault {
-            self.update_vault_position(
+            self.increase_vault_position(
                 &mut deposit_position,
                 &collateral_payment.amount,
                 &collateral_payment.token_identifier,
@@ -343,18 +334,17 @@ pub trait PositionModule:
             .sync_call();
     }
 
-    /// Updates vault position directly in storage
+    /// Increase vault position directly in storage
     ///
     /// # Arguments
     /// * `position` - Current position to update
     /// * `amount` - Amount being deposited
     /// * `token_id` - Token identifier
     ///
-    /// Updates vault supplied amount in storage and position balance.
+    /// Increase vault supplied amount in storage and position balance.
     /// Used for vault positions that don't accrue interest.
     /// Emits event for tracking vault deposits.
-    #[inline]
-    fn update_vault_position(
+    fn increase_vault_position(
         &self,
         position: &mut AccountPosition<Self::Api>,
         amount: &BigUint,
@@ -492,8 +482,6 @@ pub trait PositionModule:
                     .egld_or_single_esdt(withdraw_token_id, 0, liquidation_fee)
                     .returns(ReturnsResult)
                     .sync_call();
-
-                dp.clone()
             } else {
                 self.send().direct_esdt(
                     initial_caller,
@@ -501,8 +489,8 @@ pub trait PositionModule:
                     0,
                     &amount,
                 );
-                dp.clone()
-            }
+            };
+            dp
         } else {
             self.tx()
                 .to(pool_address)
@@ -707,17 +695,17 @@ pub trait PositionModule:
         repay_token_id: &EgldOrEsdtTokenIdentifier,
         repay_amount: &BigUint,
         initial_caller: &ManagedAddress,
-        borrow_position: AccountPosition<Self::Api>,
+        borrow_position: &mut AccountPosition<Self::Api>,
         debt_token_price_data: &PriceFeedShort<Self::Api>,
-    ) -> AccountPosition<Self::Api> {
+    ) {
         let asset_address = self.get_pool_address(repay_token_id);
-        let updated_position = self
+        *borrow_position = self
             .tx()
             .to(asset_address)
             .typed(proxy_pool::LiquidityPoolProxy)
             .repay(
                 initial_caller,
-                borrow_position,
+                borrow_position.clone(),
                 &debt_token_price_data.price,
             )
             .egld_or_single_esdt(repay_token_id, 0, repay_amount)
@@ -726,13 +714,11 @@ pub trait PositionModule:
 
         // Update storage
         let mut borrow_positions = self.borrow_positions(account_nonce);
-        if updated_position.get_total_amount().gt(&BigUint::from(0u64)) {
-            borrow_positions.insert(repay_token_id.clone(), updated_position.clone());
+        if borrow_position.get_total_amount().gt(&BigUint::from(0u64)) {
+            borrow_positions.insert(repay_token_id.clone(), borrow_position.clone());
         } else {
             borrow_positions.remove(repay_token_id);
         }
-
-        updated_position
     }
 
     /// Updates isolated mode debt tracking after repayment
@@ -744,16 +730,39 @@ pub trait PositionModule:
     /// For isolated positions (single collateral), updates the debt ceiling
     /// tracking for the collateral token. This ensures the debt ceiling
     /// is properly decreased when debt is repaid in isolated mode.
-    fn handle_isolated_repay(&self, account_nonce: u64, principal_usd_amount: &BigUint) {
+    fn handle_isolated_repay(
+        &self,
+        account_nonce: u64,
+        borrow_position: &mut AccountPosition<Self::Api>,
+        debt_token_price_data: &PriceFeedShort<Self::Api>,
+        repay_amount_in_egld: &BigUint,
+        storage_cache: &mut StorageCache<Self>,
+    ) {
         let collaterals_map = self.deposit_positions(account_nonce);
         if collaterals_map.len() == 1 {
             let (collateral_token_id, _) = collaterals_map.iter().next().unwrap();
             let asset_config = self.asset_config(&collateral_token_id).get();
 
             if asset_config.is_isolated {
+                // 3. Calculate repay amounts
+                let asset_address = self.pools_map(&borrow_position.token_id).get();
+                self.update_position(
+                    &asset_address,
+                    borrow_position,
+                    OptionalValue::Some(debt_token_price_data.price.clone()),
+                );
+                let principal_egld_amount = self.validate_and_get_repay_amounts(
+                    &borrow_position,
+                    &debt_token_price_data,
+                    repay_amount_in_egld,
+                );
+
                 self.update_isolated_debt_usd(
                     &collateral_token_id,
-                    principal_usd_amount,
+                    &self.get_token_amount_in_dollars_raw(
+                        &principal_egld_amount,
+                        &storage_cache.egld_price_feed,
+                    ),
                     false, // is_decrease
                 );
             }
@@ -788,38 +797,31 @@ pub trait PositionModule:
         storage_cache: &mut StorageCache<Self>,
     ) {
         // 1. Validate position exists
-        let borrow_position = self.validate_repay_position(account_nonce, repay_token_id);
+        let mut borrow_position = self.validate_repay_position(account_nonce, repay_token_id);
 
-        // 3. Calculate repay amounts
-        let principal_egld_amount = self.validate_and_get_repay_amounts(
-            &borrow_position,
-            &debt_token_price_data,
-            repay_amount_in_egld,
-        );
-
-        // 4. Handle isolated mode debt update
+        // 2. Handle isolated mode debt update
         self.handle_isolated_repay(
             account_nonce,
-            &self.get_token_amount_in_dollars_raw(
-                &principal_egld_amount,
-                &storage_cache.egld_price_feed,
-            ),
+            &mut borrow_position,
+            &debt_token_price_data,
+            &repay_amount_in_egld,
+            storage_cache,
         );
 
-        // 5. Process repay and update position
-        let updated_position = self.handle_repay_position(
+        // 3. Process repay and update position
+        self.handle_repay_position(
             account_nonce,
             repay_token_id,
             repay_amount,
             initial_caller,
-            borrow_position,
+            &mut borrow_position,
             &debt_token_price_data,
         );
 
-        // 6. Emit event
+        // 4. Emit event
         self.update_position_event(
             repay_amount,
-            &updated_position,
+            &borrow_position,
             OptionalValue::Some(debt_token_price_data.price.clone()),
             OptionalValue::Some(initial_caller.clone()),
             OptionalValue::None,

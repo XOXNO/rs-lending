@@ -561,7 +561,7 @@ pub trait ValidationModule:
         &self,
         borrow_position: &AccountPosition<Self::Api>,
         debt_token_price_data: &PriceFeedShort<Self::Api>,
-        amount_to_repay_in_egld: BigUint,
+        amount_to_repay_in_egld: &BigUint,
     ) -> BigUint {
         let interest_egld_amount = self.get_token_amount_in_egld_raw(
             &borrow_position.accumulated_interest,
@@ -570,8 +570,8 @@ pub trait ValidationModule:
         let total_principal_borrowed_egld_amount =
             self.get_token_amount_in_egld_raw(&borrow_position.amount, debt_token_price_data);
 
-        let principal_egld_amount = if amount_to_repay_in_egld > interest_egld_amount {
-            (&amount_to_repay_in_egld - &interest_egld_amount)
+        let principal_egld_amount = if amount_to_repay_in_egld > &interest_egld_amount {
+            (amount_to_repay_in_egld - &interest_egld_amount)
                 .min(total_principal_borrowed_egld_amount)
         } else {
             BigUint::from(0u64)

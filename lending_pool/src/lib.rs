@@ -381,7 +381,6 @@ pub trait LendingPool:
 
         // 1. Update positions with latest interest
         let mut storage_cache = StorageCache::new(self);
-        self.update_borrows_with_debt(account_nonce, &mut storage_cache, false);
 
         // 2. Validate payment and parameters
         self.validate_repay_payment(&repay_token_id, &repay_amount, account_nonce);
@@ -698,13 +697,11 @@ pub trait LendingPool:
             let asset_address = self.get_pool_address(&dp.token_id);
             if !dp.is_vault {
                 let feed = self.get_token_price_data(&dp.token_id, &mut storage_cache);
-                dp = self
-                    .tx()
-                    .to(&asset_address)
-                    .typed(proxy_pool::LiquidityPoolProxy)
-                    .update_position_with_interest(&dp, OptionalValue::Some(feed.price.clone()))
-                    .returns(ReturnsResult)
-                    .sync_call();
+                self.update_position(
+                    &asset_address,
+                    &mut dp,
+                    OptionalValue::Some(feed.price.clone()),
+                );
 
                 let total_amount_with_interest = dp.get_total_amount();
 
