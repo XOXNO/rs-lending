@@ -373,7 +373,7 @@ pub trait LendingUtilsModule:
     ///
     /// # Returns
     /// * `NftAccountAttributes` - Decoded NFT attributes
-    fn get_account_attributes(
+    fn get_nft_attributes(
         &self,
         account_nonce: u64,
         token_id: &TokenIdentifier<Self::Api>,

@@ -60,7 +60,7 @@ pub trait LendingPool:
     #[upgrade]
     fn upgrade(&self) {}
 
-    /// Supplies collateral to the lending pool
+    /// Supplies collaterals to the lending pool
     ///
     /// # Arguments
     /// * `is_vault` - Whether this supply is for a vault position
@@ -89,86 +89,93 @@ pub trait LendingPool:
     #[payable("*")]
     #[endpoint(supply)]
     fn supply(&self, is_vault: bool, e_mode_category: OptionalValue<u8>) {
+        let mut storage_cache = StorageCache::new(self);
         let payments = self.get_multi_payments();
         let initial_caller = self.blockchain().get_caller();
 
         // 1. Validate payments and extract tokens
-        let (collateral_payment, account_token) =
-            self.validate_supply_payment(&initial_caller, &payments);
+        let (collaterals, account_token) = self.validate_supply_payment(&initial_caller, &payments);
 
-        // 2. Get asset info and validate it can be used as collateral
-        let mut asset_info = self
-            .asset_config(&collateral_payment.token_identifier)
-            .get();
+        let first_collateral = collaterals.get(0);
+        let first_asset_info = self.asset_config(&first_collateral.token_identifier).get();
 
         // 3. Get or create position and NFT attributes
         let (account_nonce, nft_attributes) = self.get_or_create_supply_position(
             &initial_caller,
-            asset_info.is_isolated,
+            first_asset_info.is_isolated,
             is_vault,
             e_mode_category.clone(),
-            account_token.map(|t| t.token_nonce),
-        );
-
-        // 4. Validate e-mode constraints first
-        let category = self.validate_e_mode_constraints(
-            &collateral_payment.token_identifier,
-            &asset_info,
-            &nft_attributes,
-        );
-
-        // 5. Update asset config if NFT has active e-mode
-        self.update_asset_config_for_e_mode(
-            &mut asset_info,
-            nft_attributes.e_mode_category,
-            &collateral_payment.token_identifier,
-            category,
-        );
-
-        require!(
-            asset_info.can_be_collateral,
-            ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL
+            account_token.clone(),
         );
 
         self.validate_vault_consistency(&nft_attributes, is_vault);
 
-        // 6. Validate isolated collateral
-        self.validate_isolated_collateral(
-            account_nonce,
-            &collateral_payment.token_identifier,
-            &asset_info,
-            &nft_attributes,
-        );
+        for collateral in &collaterals {
+            // 2. Get asset info and validate it can be used as collateral
+            let mut asset_info = if collateral.token_identifier == first_collateral.token_identifier
+            {
+                first_asset_info.clone()
+            } else {
+                self.asset_config(&collateral.token_identifier).get()
+            };
 
-        // 7. Check supply caps
-        self.check_supply_cap(
-            &asset_info,
-            &collateral_payment.amount,
-            &collateral_payment.token_identifier,
-            is_vault,
-        );
+            // 4. Validate e-mode constraints first
+            let category = self.validate_e_mode_constraints(
+                &collateral.token_identifier,
+                &asset_info,
+                &nft_attributes,
+            );
 
-        let mut storage_cache = StorageCache::new(self);
-        let asset_data_feed =
-            self.get_token_price_data(&collateral_payment.token_identifier, &mut storage_cache);
+            // 5. Update asset config if NFT has active e-mode
+            self.update_asset_config_for_e_mode(
+                &mut asset_info,
+                nft_attributes.e_mode_category,
+                &collateral.token_identifier,
+                category,
+            );
 
-        // 8. Update position and get updated state
-        let updated_position = self.update_supply_position(
-            account_nonce,
-            &collateral_payment,
-            &asset_info,
-            is_vault,
-            &asset_data_feed,
-        );
+            require!(
+                asset_info.can_be_collateral,
+                ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL
+            );
 
-        // 9. Emit event
-        self.update_position_event(
-            &collateral_payment.amount,
-            &updated_position,
-            OptionalValue::Some(asset_data_feed.price),
-            OptionalValue::Some(initial_caller),
-            OptionalValue::Some(nft_attributes),
-        );
+            // 6. Validate isolated collateral
+            self.validate_isolated_collateral(
+                account_nonce,
+                &collateral.token_identifier,
+                &asset_info,
+                &nft_attributes,
+            );
+
+            // 7. Check supply caps
+            self.check_supply_cap(
+                &asset_info,
+                &collateral.amount,
+                &collateral.token_identifier,
+                is_vault,
+            );
+
+            let asset_data_feed =
+                self.get_token_price_data(&collateral.token_identifier, &mut storage_cache);
+
+            // 8. Update position and get updated state
+            let updated_position = self.update_supply_position(
+                account_nonce,
+                &collateral,
+                &asset_info,
+                is_vault,
+                &asset_data_feed,
+            );
+
+            // 9. Emit event
+            self.update_position_event(
+                &collateral.amount,
+                &updated_position,
+                OptionalValue::Some(asset_data_feed.price),
+                OptionalValue::Some(&initial_caller),
+                OptionalValue::Some(&nft_attributes),
+            );
+        }
     }
 
     /// Withdraws collateral from the lending pool
@@ -198,38 +205,38 @@ pub trait LendingPool:
     /// ```
     #[payable("*")]
     #[endpoint(withdraw)]
-    fn withdraw(&self, withdraw_token_id: &EgldOrEsdtTokenIdentifier, amount: &BigUint) {
+    fn withdraw(&self, collaterals: MultiValueEncoded<EgldOrEsdtTokenPayment<Self::Api>>) {
         let account_token = self.call_value().single_esdt();
         let initial_caller = self.blockchain().get_caller();
-
-        // 1. Validate payment and parameters
-        self.validate_withdraw_payment(
-            &account_token.token_identifier,
-            withdraw_token_id,
-            amount,
-            &initial_caller,
-        );
-
+        // 1. Validate global params
+        self.account_token()
+            .require_same_token(&account_token.token_identifier);
+        self.require_non_zero_address(&initial_caller);
         let attributes =
-            self.get_account_attributes(account_token.token_nonce, &account_token.token_identifier);
-
-        // 2. Process withdrawal
+            self.get_nft_attributes(account_token.token_nonce, &account_token.token_identifier);
 
         let mut storage_cache = StorageCache::new(self);
         storage_cache.allow_unsafe_price = false;
-        self.internal_withdraw(
-            account_token.token_nonce,
-            withdraw_token_id,
-            amount.clone(),
-            &initial_caller,
-            false, // not liquidation
-            &BigUint::zero(),
-            &mut storage_cache,
-            OptionalValue::Some(attributes),
-            Option::None,
-        );
 
-        // 3. Validate health factor after withdrawal
+        for collateral in collaterals {
+            // 2. Validate payment and parameters
+            self.validate_withdraw_payment(&collateral.token_identifier, &collateral.amount);
+
+            // 3. Process withdrawal
+            self.internal_withdraw(
+                account_token.token_nonce,
+                &collateral.token_identifier,
+                collateral.amount,
+                &initial_caller,
+                false, // not liquidation
+                &BigUint::zero(),
+                &mut storage_cache,
+                &attributes,
+                Option::None,
+            );
+        }
+
+        // 4. Validate health factor after withdrawal
         self.validate_withdraw_health_factor(
             account_token.token_nonce,
             false,
@@ -237,7 +244,7 @@ pub trait LendingPool:
             None,
         );
 
-        // 4. Handle NFT (burn or return)
+        // 5. Handle NFT (burn or return)
         self.handle_nft_after_withdraw(account_token, &initial_caller);
     }
 
@@ -273,81 +280,125 @@ pub trait LendingPool:
     /// ```
     #[payable("*")]
     #[endpoint(borrow)]
-    fn borrow(&self, asset_to_borrow: EgldOrEsdtTokenIdentifier, amount: BigUint) {
+    fn borrow(&self, borrowed_tokens: MultiValueEncoded<EgldOrEsdtTokenPayment<Self::Api>>) {
         let nft_token = self.call_value().single_esdt();
         let initial_caller = self.blockchain().get_caller();
-
-        // 1. Validate payment and parameters
-        self.validate_borrow_payment(&nft_token, &asset_to_borrow, &amount, &initial_caller);
-
-        // 2. Get NFT attributes and asset config
-        let nft_attributes =
-            self.get_account_attributes(nft_token.token_nonce, &nft_token.token_identifier);
-        let mut asset_config = self.asset_config(&asset_to_borrow).get();
-
-        // 3. Update positions with latest interest
 
         let mut storage_cache = StorageCache::new(self);
 
         storage_cache.allow_unsafe_price = false;
 
+        // 1. Update positions with latest interest
         let collaterals =
             self.update_collateral_with_interest(nft_token.token_nonce, &mut storage_cache, false);
-        let borrows =
-            self.update_borrows_with_debt(nft_token.token_nonce, &mut storage_cache, false);
-
-        // 4. Validate borrowing constraints
-        self.validate_borrow_asset(&asset_config, &asset_to_borrow, &nft_attributes, &borrows);
-
-        // 5. Update asset config if in e-mode
-        self.update_asset_config_for_e_mode(
-            &mut asset_config,
-            nft_attributes.e_mode_category,
-            &asset_to_borrow,
-            None,
-        );
-
-        require!(asset_config.can_be_borrowed, ERROR_ASSET_NOT_BORROWABLE);
-
-        // 6. Check borrow cap
-        self.check_borrow_cap(&asset_config, &amount, &asset_to_borrow);
-
-        // 7. Validate collateral and get amounts in egld
-        let (amount_to_borrow_in_egld, asset_data_feed) = self.validate_and_get_borrow_amounts(
-            &asset_to_borrow,
-            &amount,
-            &collaterals,
-            &borrows,
-            &mut storage_cache,
-        );
-
-        let usd_amount = self.get_token_amount_in_dollars_raw(
-            &amount_to_borrow_in_egld,
-            &storage_cache.egld_price_feed,
-        );
-        // 8. Process borrow
-        let updated_position = self.handle_borrow_position(
+        let length_of_borrows = borrowed_tokens.len();
+        let require_borrow_index_checks = length_of_borrows > 1;
+        let (mut borrows, mut borrow_index_mapper) = self.update_borrows_with_debt(
             nft_token.token_nonce,
-            &asset_to_borrow,
-            &amount,
-            &usd_amount,
-            &initial_caller,
-            &asset_config,
-            &nft_attributes,
-            &collaterals,
-            &asset_data_feed,
+            &mut storage_cache,
+            false,
+            require_borrow_index_checks,
         );
 
-        // 9. Emit event
-        self.update_position_event(
-            &amount,
-            &updated_position,
-            OptionalValue::Some(asset_data_feed.price),
-            OptionalValue::Some(initial_caller.clone()),
-            OptionalValue::Some(nft_attributes),
-        );
+        // 2. Get NFT attributes
+        let attributes =
+            self.get_nft_attributes(nft_token.token_nonce, &nft_token.token_identifier);
 
-        // 10. Return NFT to owner
+        self.validate_borrow_account(&nft_token, &initial_caller);
+        for borrowed_token in borrowed_tokens {
+            // 3. Validate asset supported
+            self.require_asset_supported(&borrowed_token.token_identifier);
+            self.require_amount_greater_than_zero(&borrowed_token.amount);
+
+            // 4. Get asset configs
+            let mut asset_config = self.asset_config(&borrowed_token.token_identifier).get();
+
+            // 5. Validate borrowing constraints
+            self.validate_borrow_asset(
+                &asset_config,
+                &borrowed_token.token_identifier,
+                &attributes,
+                &borrows,
+            );
+
+            // 6. Update asset config if in e-mode
+            self.update_asset_config_for_e_mode(
+                &mut asset_config,
+                attributes.e_mode_category,
+                &borrowed_token.token_identifier,
+                None,
+            );
+
+            require!(asset_config.can_be_borrowed, ERROR_ASSET_NOT_BORROWABLE);
+
+            // 7. Check borrow cap
+            self.check_borrow_cap(
+                &asset_config,
+                &borrowed_token.amount,
+                &borrowed_token.token_identifier,
+            );
+
+            // 8. Validate collateral and get amounts in egld
+            let (amount_to_borrow_in_egld, asset_data_feed) = self.validate_and_get_borrow_amounts(
+                &borrowed_token.token_identifier,
+                &borrowed_token.amount,
+                &collaterals,
+                &borrows,
+                &mut storage_cache,
+            );
+
+            let usd_amount = self.get_token_amount_in_dollars_raw(
+                &amount_to_borrow_in_egld,
+                &storage_cache.egld_price_feed,
+            );
+
+            // 9. Process borrow
+            let updated_position = self.handle_borrow_position(
+                nft_token.token_nonce,
+                &borrowed_token.token_identifier,
+                &borrowed_token.amount,
+                &usd_amount,
+                &initial_caller,
+                &asset_config,
+                &attributes,
+                &collaterals,
+                &asset_data_feed,
+            );
+            // 10. Emit event
+            self.update_position_event(
+                &borrowed_token.amount,
+                &updated_position,
+                OptionalValue::Some(asset_data_feed.price),
+                OptionalValue::Some(&initial_caller),
+                OptionalValue::Some(&attributes),
+            );
+
+            // In case of bulk borrows we need to update the borrows array position that is used to check the eligibility of LTV vs total borrow.
+            if require_borrow_index_checks {
+                let token_buffer = &updated_position.token_id.clone().into_name();
+                let existing_borrow = borrow_index_mapper.contains(&token_buffer);
+                if existing_borrow {
+                    let index = borrow_index_mapper
+                        .get(&token_buffer)
+                        .parse_as_u64()
+                        .unwrap() as usize;
+                    let pos = borrows.get(index);
+                    require!(
+                        &pos.token_id == &updated_position.token_id,
+                        ERROR_INVALID_BULK_BORROW_TICKER
+                    );
+                    let _ = borrows.set(index, updated_position);
+                } else {
+                    borrows.push(updated_position);
+                    let last_index = borrows.len() - 1;
+                    borrow_index_mapper.put(
+                        &token_buffer,
+                        &ManagedBuffer::new_from_bytes(&last_index.to_be_bytes()),
+                    )
+                }
+            }
+        }
+        // 12. Return NFT to owner
         self.tx().to(&initial_caller).esdt(nft_token).transfer();
     }
 
@@ -376,26 +427,32 @@ pub trait LendingPool:
     #[payable("*")]
     #[endpoint(repay)]
     fn repay(&self, account_nonce: u64) {
-        let (repay_token_id, repay_amount) = self.call_value().egld_or_single_fungible_esdt();
+        let payments = self.get_multi_payments();
         let initial_caller = self.blockchain().get_caller();
 
         // 1. Update positions with latest interest
         let mut storage_cache = StorageCache::new(self);
 
         // 2. Validate payment and parameters
-        self.validate_repay_payment(&repay_token_id, &repay_amount, account_nonce);
-        let price_data = self.get_token_price_data(&repay_token_id, &mut storage_cache);
+        self.lending_account_in_the_market(account_nonce);
+        let attributes = self.account_attributes(account_nonce).get();
+        for payment in &payments {
+            self.validate_repay_payment(&payment.token_identifier, &payment.amount);
+            let price_data =
+                self.get_token_price_data(&payment.token_identifier, &mut storage_cache);
 
-        // 3. Process repay
-        self.internal_repay(
-            account_nonce,
-            &repay_token_id,
-            &repay_amount,
-            &initial_caller,
-            self.get_token_amount_in_egld_raw(&repay_amount, &price_data),
-            &price_data,
-            &mut storage_cache,
-        );
+            // 3. Process repay
+            self.internal_repay(
+                account_nonce,
+                &payment.token_identifier,
+                &payment.amount,
+                &initial_caller,
+                self.get_token_amount_in_egld_raw(&payment.amount, &price_data),
+                &price_data,
+                &mut storage_cache,
+                &attributes,
+            );
+        }
     }
 
     /// Liquidates an unhealthy position
@@ -557,8 +614,8 @@ pub trait LendingPool:
         self.lending_account_in_the_market(account_nonce);
 
         let mut storage_cache = StorageCache::new(self);
-        let borrow_positions =
-            self.update_borrows_with_debt(account_nonce, &mut storage_cache, true);
+        let (borrow_positions, _) =
+            self.update_borrows_with_debt(account_nonce, &mut storage_cache, true, false);
         let deposit_positions =
             self.update_collateral_with_interest(account_nonce, &mut storage_cache, true);
         (deposit_positions, borrow_positions).into()

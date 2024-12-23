@@ -19,6 +19,8 @@ pub static ERROR_ASSET_ALREADY_SUPPORTED: &[u8] = b"Asset already supported.";
 
 pub static ERROR_INVALID_TICKER: &[u8] = b"Invalid ticker provided.";
 
+pub static ERROR_INVALID_BULK_BORROW_TICKER: &[u8] = b"Invalid bulk borrow ticker provided.";
+
 pub static ERROR_NO_POOL_FOUND: &[u8] = b"No pool found for this asset.";
 
 pub static ERROR_TEMPLATE_EMPTY: &[u8] = b"Liquidity pool contract template is empty.";

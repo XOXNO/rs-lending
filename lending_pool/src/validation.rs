@@ -46,32 +46,26 @@ pub trait ValidationModule:
         caller: &ManagedAddress,
         payments: &ManagedVec<EgldOrEsdtTokenPaymentNew<Self::Api>>,
     ) -> (
-        EgldOrEsdtTokenPaymentNew<Self::Api>,
+        ManagedVec<EgldOrEsdtTokenPaymentNew<Self::Api>>,
         Option<EgldOrEsdtTokenPaymentNew<Self::Api>>,
     ) {
-        require!(
-            payments.len() == 2 || payments.len() == 1,
-            ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS
-        );
-
-        let collateral_payment = payments.get(payments.len() - 1).clone();
+        require!(payments.len() >= 1, ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS);
 
         // Validate the collateral payment token
-        self.require_asset_supported(&collateral_payment.token_identifier);
-        self.require_amount_greater_than_zero(&collateral_payment.amount);
         self.require_non_zero_address(caller);
 
-        let account_token = if payments.len() == 2 {
-            let token = payments.get(0);
-            let token_id = token.token_identifier.clone().unwrap_esdt();
-            self.account_token().require_same_token(&token_id);
+        let account_nft = payments.get(0);
 
-            Some(token)
+        if self.account_token().get_token_id() == account_nft.token_identifier {
+            require!(payments.len() >= 2, ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS);
+
+            (
+                payments.slice(1, payments.len()).unwrap(),
+                Some(account_nft),
+            )
         } else {
-            None
-        };
-
-        (collateral_payment, account_token)
+            (payments.clone(), None)
+        }
     }
 
     /// Validates e-mode constraints for a position
@@ -285,13 +279,9 @@ pub trait ValidationModule:
     /// - Amount is greater than zero
     fn validate_withdraw_payment(
         &self,
-        account_token: &TokenIdentifier<Self::Api>,
         withdraw_token_id: &EgldOrEsdtTokenIdentifier,
         amount: &BigUint,
-        initial_caller: &ManagedAddress,
     ) {
-        self.account_token().require_same_token(account_token);
-        self.require_non_zero_address(initial_caller);
         self.require_asset_supported(withdraw_token_id);
         self.require_amount_greater_than_zero(amount);
     }
@@ -357,19 +347,15 @@ pub trait ValidationModule:
     /// - NFT token is valid
     /// - Amount is greater than zero
     /// - Caller address is valid
-    fn validate_borrow_payment(
+    fn validate_borrow_account(
         &self,
         nft_token: &EsdtTokenPayment<Self::Api>,
-        asset_to_borrow: &EgldOrEsdtTokenIdentifier,
-        amount: &BigUint,
         initial_caller: &ManagedAddress,
     ) {
-        self.require_asset_supported(asset_to_borrow);
         self.lending_account_in_the_market(nft_token.token_nonce);
         self.account_token()
             .require_same_token(&nft_token.token_identifier);
-        self.require_amount_greater_than_zero(amount);
-        self.require_non_zero_address(initial_caller);
+        self.require_non_zero_address(&initial_caller);
     }
 
     /// Validates borrowing constraints for an asset
@@ -507,9 +493,7 @@ pub trait ValidationModule:
         &self,
         repay_token_id: &EgldOrEsdtTokenIdentifier,
         repay_amount: &BigUint,
-        account_nonce: u64,
     ) {
-        self.lending_account_in_the_market(account_nonce);
         self.require_asset_supported(repay_token_id);
         self.require_amount_greater_than_zero(repay_amount);
     }

@@ -73,7 +73,7 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
 }
 
 #[type_abi]
-#[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode)]
+#[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode, Clone)]
 pub struct AssetConfig<M: ManagedTypeApi> {
     // Basic parameters
     pub ltv: BigUint<M>,
