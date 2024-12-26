@@ -6,8 +6,8 @@ use contexts::base::StorageCache;
 use multiversx_sc::{
     imports::OptionalValue,
     types::{
-        BigUint, ManagedAddress, ManagedBuffer, ManagedDecimal, MultiValueEncoded,
-        ReturnsNewManagedAddress, ReturnsResult, TestTokenIdentifier,
+        BigUint, EgldOrEsdtTokenPayment, ManagedAddress, ManagedBuffer, ManagedDecimal,
+        MultiValueEncoded, ReturnsNewManagedAddress, ReturnsResult, TestTokenIdentifier,
     },
 };
 use multiversx_sc_scenario::{
@@ -171,8 +171,8 @@ impl LendingPoolTestState {
                 reserve_factor,
                 config.ltv,
                 config.liquidation_threshold,
-                config.liquidation_bonus,
-                config.liquidation_base_fee,
+                config.liquidation_base_bonus,
+                config.liquidation_max_fee,
                 config.can_be_collateral,
                 config.can_be_borrowed,
                 config.is_isolated,
@@ -345,13 +345,20 @@ impl LendingPoolTestState {
         );
 
         let amount_to_withdraw = amount.mul(BigUint::from(10u64).pow(decimals as u32));
-
+        let asset = EgldOrEsdtTokenPayment::new(
+            EgldOrEsdtTokenIdentifier::esdt(token_id.to_token_identifier()),
+            0,
+            amount_to_withdraw,
+        );
+        let mut array: MultiValueEncoded<StaticApi, EgldOrEsdtTokenPayment<StaticApi>> =
+            MultiValueEncoded::new();
+        array.push(asset);
         self.world
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::LendingPoolProxy)
-            .withdraw(token_id.to_token_identifier(), amount_to_withdraw)
+            .withdraw(array)
             .esdt(transfer)
             .run();
     }
@@ -372,13 +379,20 @@ impl LendingPoolTestState {
         );
 
         let amount_to_withdraw = amount.mul(BigUint::from(10u64).pow(decimals as u32));
-
+        let asset = EgldOrEsdtTokenPayment::new(
+            EgldOrEsdtTokenIdentifier::esdt(token_id.to_token_identifier()),
+            0,
+            amount_to_withdraw,
+        );
+        let mut array: MultiValueEncoded<StaticApi, EgldOrEsdtTokenPayment<StaticApi>> =
+            MultiValueEncoded::new();
+        array.push(asset);
         self.world
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::LendingPoolProxy)
-            .withdraw(token_id.to_token_identifier(), amount_to_withdraw)
+            .withdraw(array)
             .esdt(transfer)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
@@ -392,15 +406,20 @@ impl LendingPoolTestState {
         account_nonce: u64,
         decimals: usize,
     ) {
+        let asset = EgldOrEsdtTokenPayment::new(
+            EgldOrEsdtTokenIdentifier::esdt(asset_to_borrow.to_token_identifier()),
+            0,
+            amount * BigUint::from(10u64.pow(decimals as u32)),
+        );
+        let mut array: MultiValueEncoded<StaticApi, EgldOrEsdtTokenPayment<StaticApi>> =
+            MultiValueEncoded::new();
+        array.push(asset);
         self.world
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::LendingPoolProxy)
-            .borrow(
-                asset_to_borrow,
-                amount * BigUint::from(10u64.pow(decimals as u32)),
-            )
+            .borrow(array)
             .esdt(TestEsdtTransfer(ACCOUNT_TOKEN, account_nonce, 1u64))
             .run();
     }
@@ -414,15 +433,20 @@ impl LendingPoolTestState {
         decimals: usize,
         error_message: &[u8],
     ) {
+        let asset = EgldOrEsdtTokenPayment::new(
+            EgldOrEsdtTokenIdentifier::esdt(asset_to_borrow.to_token_identifier()),
+            0,
+            amount * BigUint::from(10u64.pow(decimals as u32)),
+        );
+        let mut array: MultiValueEncoded<StaticApi, EgldOrEsdtTokenPayment<StaticApi>> =
+            MultiValueEncoded::new();
+        array.push(asset);
         self.world
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::LendingPoolProxy)
-            .borrow(
-                asset_to_borrow,
-                amount * BigUint::from(10u64.pow(decimals as u32)),
-            )
+            .borrow(array)
             .esdt(TestEsdtTransfer(ACCOUNT_TOKEN, account_nonce, 1u64))
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
@@ -600,7 +624,7 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .whitebox(lending_pool::contract_obj, |sc| {
                 let mut storage_cache = StorageCache::new(&sc);
-                sc.update_borrows_with_debt(account_position, &mut storage_cache, true);
+                sc.update_borrows_with_debt(account_position, &mut storage_cache, true, false);
             });
     }
 
@@ -1598,8 +1622,8 @@ pub fn setup_market(
             BigUint::from(RESERVE_FACTOR),
             config.config.ltv,
             config.config.liquidation_threshold,
-            config.config.liquidation_bonus,
-            config.config.liquidation_base_fee,
+            config.config.liquidation_base_bonus,
+            config.config.liquidation_max_fee,
             config.config.can_be_collateral,
             config.config.can_be_borrowed,
             config.config.is_isolated,

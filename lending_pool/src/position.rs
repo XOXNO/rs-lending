@@ -412,7 +412,7 @@ pub trait PositionModule:
             asset_info.can_be_borrowed = asset_emode_config.can_be_borrowed;
             asset_info.ltv = category_data.ltv;
             asset_info.liquidation_threshold = category_data.liquidation_threshold;
-            asset_info.liquidation_bonus = category_data.liquidation_bonus;
+            asset_info.liquidation_base_bonus = category_data.liquidation_bonus;
         }
     }
 
@@ -862,7 +862,7 @@ pub trait PositionModule:
         // Calculate dynamic protocol fee based on health factor
         let dynamic_fee = self.calculate_dynamic_protocol_fee(
             health_factor,
-            asset_config.liquidation_base_fee.clone(),
+            asset_config.liquidation_max_fee.clone(),
         );
 
         // Calculate protocol's share of the bonus based on dynamic fee
@@ -919,28 +919,22 @@ pub trait PositionModule:
         let (borrow_positions, _) =
             self.update_borrows_with_debt(liquidatee_account_nonce, storage_cache, false, false);
 
-        let collateral_in_egld =
-            self.get_liquidation_collateral_in_egld_vec(&collateral_positions, storage_cache);
+        let (weighted_collateral_in_egld, total_collateral_in_egld, _) =
+            self.get_summary_collateral_in_egld_vec(&collateral_positions, storage_cache);
         let borrowed_egld = self.get_total_borrow_in_egld_vec(&borrow_positions, storage_cache);
 
         let health_factor =
-            self.validate_liquidation_health_factor(&collateral_in_egld, &borrowed_egld);
-
-        let bonus_rate = self.calculate_dynamic_liquidation_bonus(
-            &health_factor,
-            &asset_config_collateral.liquidation_bonus,
-            nft_attributes,
-        );
+            self.validate_liquidation_health_factor(&weighted_collateral_in_egld, &borrowed_egld);
 
         // Calculate liquidation amount using Dutch auction mechanism
-        let liquidation_amount_egld = self.calculate_single_asset_liquidation_amount(
+        let (liquidation_amount_egld, bonus_rate) = self.calculate_single_asset_liquidation_amount(
             &borrowed_egld,
-            &collateral_in_egld,
+            &total_collateral_in_egld,
             collateral_to_receive,
-            &collateral_token_price_data,
             liquidatee_account_nonce,
             OptionalValue::Some(debt_payment_in_egld.clone()),
-            &bonus_rate,
+            &asset_config_collateral.liquidation_base_bonus,
+            &health_factor,
         );
 
         // Handle excess debt payment if any
@@ -967,7 +961,7 @@ pub trait PositionModule:
                     0,
                     excess,
                 ))
-                .transfer();
+                .transfer_if_not_empty();
         }
 
         // Calculate collateral amounts

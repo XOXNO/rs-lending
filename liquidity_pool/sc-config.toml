@@ -10,6 +10,4 @@ path = "../lending_pool/src/proxies/proxy_pool.rs"
 [[proxy]]
 path = "../lending_pool/tests/proxys/proxy_liquidity_pool.rs"
 
-[[proxy]]
-path = "interactor/src/proxy.rs"
  

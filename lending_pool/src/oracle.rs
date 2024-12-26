@@ -190,7 +190,7 @@ pub trait OracleModule: storage::LendingStorageModule {
             .typed(proxy_legld::SalsaContractProxy)
             .token_price()
             .returns(ReturnsResult)
-            .sync_call_readonly();
+            .sync_call();
 
         self.create_price_feed(ratio, configs.decimals)
     }
@@ -205,7 +205,7 @@ pub trait OracleModule: storage::LendingStorageModule {
             .typed(xegld_proxy::LiquidStakingProxy)
             .get_exchange_rate()
             .returns(ReturnsResult)
-            .sync_call_readonly();
+            .sync_call();
 
         self.create_price_feed(ratio, configs.decimals)
     }
@@ -221,7 +221,7 @@ pub trait OracleModule: storage::LendingStorageModule {
             .typed(lxoxno_proxy::RsLiquidXoxnoProxy)
             .get_exchange_rate()
             .returns(ReturnsResult)
-            .sync_call_readonly();
+            .sync_call();
 
         let token_data = self.get_token_price_data(&configs.first_token_id, storage_cache);
         let egld_price = self.get_token_amount_in_egld_raw(&ratio, &token_data);
@@ -258,7 +258,7 @@ pub trait OracleModule: storage::LendingStorageModule {
                 EsdtTokenPayment::new(token_id.clone().unwrap_esdt(), 0, one_token),
             )
             .returns(ReturnsResult)
-            .sync_call_readonly();
+            .sync_call();
 
         let result_ticker = self.get_token_ticker(&EgldOrEsdtTokenIdentifier::esdt(
             result.token_identifier.clone(),
@@ -415,7 +415,7 @@ pub trait OracleModule: storage::LendingStorageModule {
                     &BigUint::from(10u64).pow(configs.decimals as u32),
                 )
                 .returns(ReturnsResult)
-                .sync_call_readonly();
+                .sync_call();
 
             let (first_token, second_token) = tokens.into_tuple();
             let first_token_data = self.get_token_price_data(
@@ -477,7 +477,7 @@ pub trait OracleModule: storage::LendingStorageModule {
             .typed(PriceAggregatorProxy)
             .latest_price_feed(from_ticker, ManagedBuffer::new_from_bytes(USD_TICKER))
             .returns(ReturnsResult)
-            .sync_call_readonly();
+            .sync_call();
 
         self.create_price_feed(price_feed.price, price_feed.decimals)
     }

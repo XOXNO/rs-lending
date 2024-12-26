@@ -122,53 +122,49 @@ pub trait ViewsModule:
     /// get_max_liquidate_amount_for_collateral(1, "EGLD-123456", false) = 50
     /// // Can liquidate 50 EGLD
     /// ```
-    #[view(getMaxLiquidateAmountForCollateral)]
-    fn get_max_liquidate_amount_for_collateral(
-        &self,
-        account_position: u64,
-        collateral_asset: &EgldOrEsdtTokenIdentifier,
-        in_egld: bool,
-    ) -> BigUint {
-        let bp = BigUint::from(BP);
+    // #[view(getMaxLiquidateAmountForCollateral)]
+    // fn get_max_liquidate_amount_for_collateral(
+    //     &self,
+    //     account_position: u64,
+    //     collateral_asset: &EgldOrEsdtTokenIdentifier,
+    //     in_egld: bool,
+    // ) -> BigUint {
+    //     let bp = BigUint::from(BP);
 
-        let borrowed_egld = self.get_total_borrow_in_egld(account_position);
-        let collateral_in_egld = self.get_liquidation_collateral_available(account_position);
-        let health_factor = self.compute_health_factor(&collateral_in_egld, &borrowed_egld);
+    //     let borrowed_egld = self.get_total_borrow_in_egld(account_position);
+    //     let collateral_in_egld = self.get_liquidation_collateral_available(account_position);
+    //     let health_factor = self.compute_health_factor(&collateral_in_egld, &borrowed_egld);
 
-        require!(health_factor < bp, ERROR_HEALTH_FACTOR);
+    //     require!(health_factor < bp, ERROR_HEALTH_FACTOR);
 
-        let asset_config = self.asset_config(collateral_asset).get();
-        let nft_attributes = self.account_attributes(account_position).get();
-        // Calculate collateral to receive with bonus
-        let bonus_rate = self.calculate_dynamic_liquidation_bonus(
-            &health_factor,
-            &asset_config.liquidation_bonus,
-            &nft_attributes,
-        );
+    //     let asset_config = self.asset_config(collateral_asset).get();
+    //     let nft_attributes = self.account_attributes(account_position).get();
+    //     // Calculate collateral to receive with bonus
 
-        let mut storage_cache = StorageCache::new(self);
-        let feed = self.get_token_price_data(collateral_asset, &mut storage_cache);
+    //     let mut storage_cache = StorageCache::new(self);
+    //     let feed = self.get_token_price_data(collateral_asset, &mut storage_cache);
 
-        // Calculate liquidation amount using Dutch auction mechanism
-        let liquidation_amount_egld = self.calculate_single_asset_liquidation_amount(
-            &borrowed_egld,
-            &collateral_in_egld,
-            collateral_asset,
-            &feed,
-            account_position,
-            OptionalValue::None,
-            &bonus_rate,
-        );
-        // Convert USD value to collateral token amount
-        let collateral_amount_before_bonus =
-            self.compute_amount_in_tokens(&liquidation_amount_egld, &feed);
+    //     // Calculate liquidation amount using Dutch auction mechanism
+    //     let (liquidation_amount_egld, liq_bonus) = self.calculate_single_asset_liquidation_amount(
+    //         &borrowed_egld,
+    //         &collateral_in_egld,
+    //         collateral_asset,
+    //         &feed,
+    //         account_position,
+    //         OptionalValue::None,
+    //         &asset_config.liquidation_base_bonus,
+    //         &health_factor,
+    //     );
+    //     // Convert USD value to collateral token amount
+    //     let collateral_amount_before_bonus =
+    //         self.compute_amount_in_tokens(&liquidation_amount_egld, &feed);
 
-        if in_egld {
-            liquidation_amount_egld
-        } else {
-            collateral_amount_before_bonus
-        }
-    }
+    //     if in_egld {
+    //         liquidation_amount_egld
+    //     } else {
+    //         collateral_amount_before_bonus
+    //     }
+    // }
 
     /// Gets the collateral amount for a specific token
     ///
@@ -308,10 +304,11 @@ pub trait ViewsModule:
     fn get_liquidation_collateral_available(&self, account_nonce: u64) -> BigUint {
         let deposit_positions = self.deposit_positions(account_nonce);
         let mut storage_cache = StorageCache::new(self);
-        self.get_liquidation_collateral_in_egld_vec(
+        let (weighted_collateral, _, _) = self.get_summary_collateral_in_egld_vec(
             &deposit_positions.values().collect(),
             &mut storage_cache,
-        )
+        );
+        weighted_collateral
     }
 
     /// Gets total value of collateral weighted by LTV ratios in USD
@@ -334,11 +331,11 @@ pub trait ViewsModule:
     fn get_ltv_collateral_in_egld(&self, account_position: u64) -> BigUint {
         let deposit_positions = self.deposit_positions(account_position);
         let mut storage_cache = StorageCache::new(self);
-
-        self.get_ltv_collateral_in_egld_vec(
+        let (_, _, ltv_collateral_in_egld) = self.get_summary_collateral_in_egld_vec(
             &deposit_positions.values().collect(),
             &mut storage_cache,
-        )
+        );
+        ltv_collateral_in_egld
     }
 
     #[view(getTokenPriceData)]

@@ -78,8 +78,8 @@ pub struct AssetConfig<M: ManagedTypeApi> {
     // Basic parameters
     pub ltv: BigUint<M>,
     pub liquidation_threshold: BigUint<M>,
-    pub liquidation_bonus: BigUint<M>,
-    pub liquidation_base_fee: BigUint<M>,
+    pub liquidation_base_bonus: BigUint<M>,
+    pub liquidation_max_fee: BigUint<M>,
 
     // Caps
     pub borrow_cap: Option<BigUint<M>>, // Maximum amount that can be borrowed across all users

@@ -229,7 +229,6 @@ getTotalCollateralAvailable() {
     mxpy contract query ${ADDRESS} --function="getTotalCollateralAvailable" --arguments 0x0a --proxy=${PROXY}
 }
 
-
 canBeLiquidated() {
     mxpy contract query ${ADDRESS} --function="canBeLiquidated" --arguments 0x06 --proxy=${PROXY}
 }

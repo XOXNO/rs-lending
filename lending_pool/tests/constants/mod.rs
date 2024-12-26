@@ -20,7 +20,7 @@ pub const U_OPTIMAL: u128 = 800_000_000_000_000_000_000; // 80%
 pub const RESERVE_FACTOR: u128 = 300_000_000_000_000_000_000; // 30%
 pub const LIQ_THRESOLD: u128 = 800_000_000_000_000_000_000; // 80%
 pub const E_MODE_LIQ_THRESOLD: u128 = 850_000_000_000_000_000_000; // 85%
-pub const LIQ_BONUS: u128 = 100_000_000_000_000_000_000; // 10%
+pub const LIQ_BONUS: u128 = 10_000_000_000_000_000_000; // 1%
 pub const E_MODE_LIQ_BONUS: u128 = 50_000_000_000_000_000_000; // 5%
 
 pub const LIQ_BASE_FEE: u128 = 50_000_000_000_000_000_000; // 5%
@@ -138,8 +138,8 @@ pub fn get_usdc_config() -> SetupConfig {
         config: AssetConfig {
             ltv: BigUint::from(LTV),
             liquidation_threshold: BigUint::from(LIQ_THRESOLD),
-            liquidation_bonus: BigUint::from(LIQ_BONUS),
-            liquidation_base_fee: BigUint::from(LIQ_BASE_FEE),
+            liquidation_base_bonus: BigUint::from(LIQ_BONUS),
+            liquidation_max_fee: BigUint::from(LIQ_BASE_FEE),
             borrow_cap: Option::None,
             supply_cap: Option::None,
             can_be_collateral: true,
@@ -166,8 +166,8 @@ pub fn get_egld_config() -> SetupConfig {
         config: AssetConfig {
             ltv: BigUint::from(LTV),
             liquidation_threshold: BigUint::from(LIQ_THRESOLD),
-            liquidation_bonus: BigUint::from(LIQ_BONUS),
-            liquidation_base_fee: BigUint::from(LIQ_BASE_FEE),
+            liquidation_base_bonus: BigUint::from(LIQ_BONUS),
+            liquidation_max_fee: BigUint::from(LIQ_BASE_FEE),
             borrow_cap: None,
             supply_cap: None,
             can_be_collateral: true,
@@ -194,8 +194,8 @@ pub fn get_xegld_config() -> SetupConfig {
         config: AssetConfig {
             ltv: BigUint::from(LTV),
             liquidation_threshold: BigUint::from(LIQ_THRESOLD),
-            liquidation_bonus: BigUint::from(LIQ_BONUS),
-            liquidation_base_fee: BigUint::from(LIQ_BASE_FEE),
+            liquidation_base_bonus: BigUint::from(LIQ_BONUS),
+            liquidation_max_fee: BigUint::from(LIQ_BASE_FEE),
             borrow_cap: None,
             supply_cap: None,
             can_be_collateral: true,
@@ -222,8 +222,8 @@ pub fn get_segld_config() -> SetupConfig {
         config: AssetConfig {
             ltv: BigUint::from(LTV),
             liquidation_threshold: BigUint::from(LIQ_THRESOLD),
-            liquidation_bonus: BigUint::from(LIQ_BONUS),
-            liquidation_base_fee: BigUint::from(LIQ_BASE_FEE),
+            liquidation_base_bonus: BigUint::from(LIQ_BONUS),
+            liquidation_max_fee: BigUint::from(LIQ_BASE_FEE),
             borrow_cap: None,
             supply_cap: None,
             can_be_collateral: true,
@@ -250,8 +250,8 @@ pub fn get_legld_config() -> SetupConfig {
         config: AssetConfig {
             ltv: BigUint::from(LTV),
             liquidation_threshold: BigUint::from(LIQ_THRESOLD),
-            liquidation_bonus: BigUint::from(LIQ_BONUS),
-            liquidation_base_fee: BigUint::from(LIQ_BASE_FEE),
+            liquidation_base_bonus: BigUint::from(LIQ_BONUS),
+            liquidation_max_fee: BigUint::from(LIQ_BASE_FEE),
             borrow_cap: None,
             supply_cap: None,
             can_be_collateral: true,
@@ -278,8 +278,8 @@ pub fn get_isolated_config() -> SetupConfig {
         config: AssetConfig {
             ltv: BigUint::from(LTV),
             liquidation_threshold: BigUint::from(LIQ_THRESOLD),
-            liquidation_bonus: BigUint::from(LIQ_BONUS),
-            liquidation_base_fee: BigUint::from(LIQ_BASE_FEE),
+            liquidation_base_bonus: BigUint::from(LIQ_BONUS),
+            liquidation_max_fee: BigUint::from(LIQ_BASE_FEE),
             borrow_cap: None,
             supply_cap: None,
             can_be_collateral: true,
@@ -306,8 +306,8 @@ pub fn get_siloed_config() -> SetupConfig {
         config: AssetConfig {
             ltv: BigUint::from(LTV),
             liquidation_threshold: BigUint::from(LIQ_THRESOLD),
-            liquidation_bonus: BigUint::from(LIQ_BONUS),
-            liquidation_base_fee: BigUint::from(LIQ_BASE_FEE),
+            liquidation_base_bonus: BigUint::from(LIQ_BONUS),
+            liquidation_max_fee: BigUint::from(LIQ_BASE_FEE),
             borrow_cap: None,
             supply_cap: None,
             can_be_collateral: true,
@@ -334,8 +334,8 @@ pub fn get_capped_config() -> SetupConfig {
         config: AssetConfig {
             ltv: BigUint::from(LTV),
             liquidation_threshold: BigUint::from(LIQ_THRESOLD),
-            liquidation_bonus: BigUint::from(LIQ_BONUS),
-            liquidation_base_fee: BigUint::from(LIQ_BASE_FEE),
+            liquidation_base_bonus: BigUint::from(LIQ_BONUS),
+            liquidation_max_fee: BigUint::from(LIQ_BASE_FEE),
             borrow_cap: Some(
                 BigUint::from(100u64) * BigUint::from(10u32).pow(CAPPED_DECIMALS as u32),
             ),

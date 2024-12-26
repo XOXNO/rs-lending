@@ -100,7 +100,7 @@ where
     To: TxTo<Env>,
     Gas: TxGas<Env>,
 {
-    /// Supplies collateral to the lending pool 
+    /// Supplies collaterals to the lending pool 
     ///  
     /// # Arguments 
     /// * `is_vault` - Whether this supply is for a vault position 
@@ -167,17 +167,14 @@ where
     /// withdraw("EGLD-123456", 50_000_000_000_000_000_000) // 50 EGLD 
     /// ``` 
     pub fn withdraw<
-        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-        Arg1: ProxyArg<BigUint<Env::Api>>,
+        Arg0: ProxyArg<MultiValueEncoded<Env::Api, EgldOrEsdtTokenPayment<Env::Api>>>,
     >(
         self,
-        withdraw_token_id: Arg0,
-        amount: Arg1,
+        collaterals: Arg0,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("withdraw")
-            .argument(&withdraw_token_id)
-            .argument(&amount)
+            .argument(&collaterals)
             .original_result()
     }
 
@@ -212,17 +209,14 @@ where
     /// borrow("USDC-123456", 1_000_000_000) // 1000 USDC 
     /// ``` 
     pub fn borrow<
-        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-        Arg1: ProxyArg<BigUint<Env::Api>>,
+        Arg0: ProxyArg<MultiValueEncoded<Env::Api, EgldOrEsdtTokenPayment<Env::Api>>>,
     >(
         self,
-        asset_to_borrow: Arg0,
-        amount: Arg1,
+        borrowed_tokens: Arg0,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("borrow")
-            .argument(&asset_to_borrow)
-            .argument(&amount)
+            .argument(&borrowed_tokens)
             .original_result()
     }
 
@@ -330,6 +324,7 @@ where
     ///   "execute",     // Endpoint 
     ///   []            // No arguments 
     /// ``` 
+    ///  
     pub fn flash_loan<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
@@ -343,9 +338,8 @@ where
         contract_address: Arg2,
         endpoint: Arg3,
         arguments: Arg4,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+    ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
-            .payment(NotPayable)
             .raw_call("flashLoan")
             .argument(&borrowed_token)
             .argument(&amount)
@@ -388,6 +382,79 @@ where
             .original_result()
     }
 
+    /// Disables vault for a given account that has vault enabled 
+    /// # Arguments 
+    /// * `account_nonce` - NFT nonce of the account to disable vault for 
+    ///  
+    /// # Flow 
+    /// 1. Validates account exists 
+    /// 2. Validates account token 
+    /// 3. Iterates over borrow positions 
+    /// 4. Disables vault for each borrow position 
+    /// 5. Iterates over deposit positions 
+    /// 6. Disables vault for each deposit position and move funds to the market shared pool 
+    /// 7. Emits event for each position 
+    ///  
+    /// ``` 
+    pub fn disable_vault(
+        self,
+    ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
+        self.wrapped_tx
+            .raw_call("disableVault")
+            .original_result()
+    }
+
+    /// Enables vault for a given account that has vault disabled 
+    /// # Arguments 
+    /// * `account_nonce` - NFT nonce of the account to enable vault for 
+    ///  
+    /// # Flow 
+    /// 1. Validates account exists 
+    /// 2. Validates account token 
+    /// 3. Iterates over borrow positions 
+    /// 4. Enables vault for each borrow position 
+    /// 5. Iterates over deposit positions 
+    /// 6. Enables vault for each deposit position and move funds from shared pool to the controller vault 
+    /// 7. Emits event for each position 
+    ///  
+    pub fn enable_vault(
+        self,
+    ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
+        self.wrapped_tx
+            .raw_call("enableVault")
+            .original_result()
+    }
+
+    /// Updates the LTV for a given asset and account positions 
+    ///  
+    /// # Arguments 
+    /// * `token_id` - Token identifier to update LTV for 
+    /// * `account_nonces` - Nonces of the accounts to update LTV for 
+    ///  
+    /// # Flow 
+    /// 1. Validates asset is supported 
+    /// 2. Iterates over account positions 
+    /// 3. Updates LTV if necessary 
+    /// 4. Emits event if LTV is updated 
+    pub fn update_position_threshold<
+        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+        Arg1: ProxyArg<bool>,
+        Arg2: ProxyArg<MultiValueEncoded<Env::Api, u64>>,
+    >(
+        self,
+        token_id: Arg0,
+        is_ltv: Arg1,
+        account_nonces: Arg2,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("updatePositionThreshold")
+            .argument(&token_id)
+            .argument(&is_ltv)
+            .argument(&account_nonces)
+            .original_result()
+    }
+
     /// Updates interest rate indexes for a given asset 
     ///  
     /// # Arguments 
@@ -398,15 +465,15 @@ where
     /// 2. Gets current asset price 
     /// 3. Calls pool to update indexes with current price 
     pub fn update_indexes<
-        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+        Arg0: ProxyArg<MultiValueEncoded<Env::Api, EgldOrEsdtTokenIdentifier<Env::Api>>>,
     >(
         self,
-        token_id: Arg0,
+        assets: Arg0,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("updateIndexes")
-            .argument(&token_id)
+            .argument(&assets)
             .original_result()
     }
 
@@ -965,22 +1032,6 @@ where
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getAssetConfig")
-            .argument(&asset)
-            .original_result()
-    }
-
-    /// Get the asset LTV 
-    /// The storage holds the LTV of an asset 
-    /// The LTV is used to get the LTV of an asset 
-    pub fn asset_ltv<
-        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-    >(
-        self,
-        asset: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getAssetLTV")
             .argument(&asset)
             .original_result()
     }

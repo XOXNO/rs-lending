@@ -311,13 +311,15 @@ pub trait ValidationModule:
                 return;
             }
             let deposit_positions = self.deposit_positions(account_nonce);
-            let collateral_in_egld = self.get_liquidation_collateral_in_egld_vec(
-                &deposit_positions.values().collect(),
-                storage_cache,
-            );
+            let (liquidation_weighted_collateral_in_egld, _, _) = self
+                .get_summary_collateral_in_egld_vec(
+                    &deposit_positions.values().collect(),
+                    storage_cache,
+                );
             let borrowed_egld = self
                 .get_total_borrow_in_egld_vec(&borrow_positions.values().collect(), storage_cache);
-            let health_factor = self.compute_health_factor(&collateral_in_egld, &borrowed_egld);
+            let health_factor = self
+                .compute_health_factor(&liquidation_weighted_collateral_in_egld, &borrowed_egld);
 
             // Make sure the health factor is greater than 100% when is a normal withdraw
             let health_factor_with_safety_factor = if let Some(safety_factor_value) = safety_factor
@@ -463,8 +465,8 @@ pub trait ValidationModule:
     ) -> (BigUint, PriceFeedShort<Self::Api>) {
         let asset_data_feed = self.get_token_price_data(asset_to_borrow, storage_cache);
         let amount_to_borrow_in_egld = self.get_token_amount_in_egld_raw(amount, &asset_data_feed);
-        let ltv_collateral_in_egld =
-            self.get_ltv_collateral_in_egld_vec(collateral_positions, storage_cache);
+        let (_, _, ltv_collateral_in_egld) =
+            self.get_summary_collateral_in_egld_vec(collateral_positions, storage_cache);
 
         let borrowed_amount_in_egld =
             self.get_total_borrow_in_egld_vec(borrow_positions, storage_cache);

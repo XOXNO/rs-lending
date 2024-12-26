@@ -2,7 +2,7 @@ multiversx_sc::imports!();
 
 use crate::{oracle, storage, ERROR_NO_COLLATERAL_TOKEN};
 use common_constants::{BP, MAX_BONUS};
-use common_events::NftAccountAttributes;
+use common_events::{AssetConfig, NftAccountAttributes};
 use common_structs::PriceFeedShort;
 
 #[multiversx_sc::module]
@@ -50,58 +50,149 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
         health_factor
     }
 
-    /// Calculates the maximum amount that can be liquidated in a single transaction
-    ///
-    /// # Arguments
-    /// * `total_debt_in_egld` - Total EGLD value of user's debt
-    /// * `weighted_collateral_in_egld` - Total EGLD value of collateral weighted by liquidation thresholds
-    /// * `liquidation_bonus` - Bonus percentage for liquidators in basis points
-    ///
-    /// # Returns
-    /// * `BigUint` - Maximum EGLD value that can be liquidated
-    ///
-    /// # Examples
-    /// ```
-    /// // Example 1: Position slightly unhealthy
-    /// total_debt = 100 EGLD
-    /// weighted_collateral = 95 EGLD
-    /// liquidation_bonus = 500 (5%)
-    /// target_hf = 1.05
-    /// required_repayment ≈ 20 EGLD
-    ///
-    /// // Example 2: Position deeply unhealthy
-    /// total_debt = 100 EGLD
-    /// weighted_collateral = 50 EGLD
-    /// liquidation_bonus = 500 (5%)
-    /// target_hf = 1.05
-    /// required_repayment = 100 EGLD (full liquidation)
-    /// ```
-    fn calculate_max_liquidatable_amount_in_egld(
+    fn get_max_feasible_bonus(
         &self,
-        total_debt_in_egld: &BigUint,
-        weighted_collateral_in_egld: &BigUint,
-        liquidation_bonus: &BigUint,
+        total_collateral_value: &BigUint,
+        total_debt_value: &BigUint,
+        liquidation_th: &BigUint,
+        target_hf: &BigUint,
+        liquidation_bonus_min: &BigUint,
     ) -> BigUint {
-        let bp = BigUint::from(BP);
-        // Target HF = 1.05 for all liquidations
-        let target_hf = bp.clone() + (bp.clone() / &BigUint::from(20u32)); // 1.05
+        let bp = &BigUint::from(BP);
 
-        // Calculate required repayment to reach target HF
-        let adjusted_debt = total_debt_in_egld * &target_hf / &bp;
-        // Since HF < 1.0, total_debt > weighted_collateral, and we multiply by 1.05,
-        // adjusted_debt is always > weighted_collateral
-        let debt_surplus = adjusted_debt.clone() - weighted_collateral_in_egld;
-        let required_repayment = &debt_surplus * &bp / &(liquidation_bonus + &(&target_hf - &bp));
+        let n = target_hf * total_debt_value - liquidation_th * total_collateral_value;
+        let bound1_numerator = target_hf * bp / liquidation_th;
+        sc_print!("target_hf,       {}", target_hf);
+        sc_print!("liquidation_th,  {}", liquidation_th);
+        sc_print!("bound1_numerator {}", bound1_numerator);
+        sc_print!("bound1_numer  bp {}", bp);
+        let bound1 = bound1_numerator - bp; // keep denominator positive
 
-        // If required repayment is more than total debt, it means we can't restore HF > 1.05
-        // In this case, allow maximum liquidation (100% of debt)
-        if &required_repayment > total_debt_in_egld {
-            total_debt_in_egld.clone()
-        } else {
-            required_repayment
-        }
+        sc_print!("bound1 {}", bound1);
+        sc_print!("n,                                           {}", n);
+        sc_print!(
+            " (total_collateral_value * target_hf),       {}",
+            (total_collateral_value * target_hf * bp)
+        );
+        sc_print!(
+            " (total_collateral_value * liquidation_th),  {}",
+            (total_collateral_value * liquidation_th * bp)
+        );
+        sc_print!(
+            " (total_collateral_value * liquidation_th),  {}",
+            ((total_collateral_value * target_hf * bp)
+                - (total_collateral_value * liquidation_th * bp))
+        );
+        let numerator = (total_collateral_value * target_hf * bp)
+            - (total_collateral_value * liquidation_th * bp)
+            - &n;
+        sc_print!("numerator {}", numerator);
+        let denominator = n + total_collateral_value * liquidation_th;
+        sc_print!("denominator {}", denominator);
+        let bound2 = numerator / denominator;
+        sc_print!("bound2 {}", bound2);
+
+        // The maximum feasible bonus is the smaller of these two then the max between min and the result
+        return BigUint::max(liquidation_bonus_min.clone(), BigUint::min(bound1, bound2));
     }
 
+    fn calculate_dynamic_liquidation_bonus(
+        &self,
+        old_hf: &BigUint,
+        liquidation_bonus_min: &BigUint,
+        liquidation_bonus_max: &BigUint,
+        min_hf: &BigUint,
+    ) -> BigUint {
+        let bp = BigUint::from(BP);
+
+        // Scale the bonus linearly between minHF and BP
+        let scaling_factor = (&bp - old_hf) * &bp / (&bp - min_hf); // Normalized between 0 and 1
+        sc_print!("scaling_factor    {}", scaling_factor);
+        let liquidation_bonus = liquidation_bonus_min
+            + &((scaling_factor * (liquidation_bonus_max - liquidation_bonus_min)) / &bp);
+        sc_print!("liquidation_bonus {}", liquidation_bonus);
+
+        return BigUint::min(liquidation_bonus, liquidation_bonus_max.clone()); // Ensure it does not exceed the maximum
+    }
+
+    fn calculate_liquidation(
+        &self,
+        total_collateral: &BigUint,
+        liquidation_th: &BigUint,
+        liquidation_bonus: &BigUint,
+        total_debt: &BigUint,
+        target_hf: &BigUint,
+    ) -> (BigUint, BigUint, bool) {
+        let bp = BigUint::from(BP);
+        // Calculate the debt required to reach the target health factor
+        sc_print!(
+            "ff {}",
+            (target_hf * total_debt - liquidation_th * total_collateral)
+        );
+        sc_print!("tt {}", target_hf);
+        sc_print!("dd {}", (liquidation_th * &(&bp + liquidation_bonus)));
+        sc_print!(
+            "dd {}",
+            (target_hf.clone() - (liquidation_th * &(&bp + liquidation_bonus)) / &bp)
+        );
+        let debt = &((target_hf * total_debt - liquidation_th * total_collateral)
+            / (target_hf.clone() - (liquidation_th * &(&bp + liquidation_bonus)) / &bp));
+
+        // Calculate total_seize based on the debt and liquidationBonus
+        let total_seize = debt + &((debt * liquidation_bonus) / &bp);
+
+        // Check if total_seize exceeds totalCollateral
+        if &total_seize > total_collateral {
+            return (debt.clone(), total_seize, true);
+        }
+
+        return (debt.clone(), total_seize, false);
+    }
+
+    fn do_liquidation(
+        &self,
+        total_collateral: &BigUint,
+        total_debt: &BigUint,
+        liquidation_th: &BigUint,
+        min_bonus: &BigUint,
+        old_hf: &BigUint,
+    ) -> (BigUint, BigUint, BigUint) {
+        // (debt, seize, bonus)
+        let bp = BigUint::from(BP);
+        let min_hf = bp.clone() / 2u32; // 0.5
+        let target = &bp * 8u32 / 100u32 + &bp;
+
+        let max_bonus = self.get_max_feasible_bonus(
+            total_collateral,
+            total_debt,
+            liquidation_th,
+            &target,
+            min_bonus,
+        );
+        sc_print!("max_bonus         {}", max_bonus);
+        let liquidation_bonus =
+            self.calculate_dynamic_liquidation_bonus(&old_hf, min_bonus, &max_bonus, &min_hf);
+
+        let (debt, total_seize, over_seize) = self.calculate_liquidation(
+            total_collateral,
+            liquidation_th,
+            &liquidation_bonus,
+            total_debt,
+            &target,
+        );
+
+        if !over_seize {
+            sc_print!("liquidation_bonus {}", liquidation_bonus);
+            (debt, total_seize, liquidation_bonus)
+        } else {
+            sc_print!("over_seize {}", over_seize);
+            let fallback_debt = total_collateral.mul(&bp).div(bp.add(min_bonus));
+            let total_seize = total_collateral.clone();
+
+            sc_print!("liquidation_bonus {}", min_bonus);
+            (fallback_debt, total_seize, min_bonus.clone())
+        }
+    }
     /// Calculates the maximum amount of a specific collateral asset that can be liquidated
     ///
     /// # Arguments
@@ -111,122 +202,53 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
     /// * `token_price_data` - Price feed data for the collateral token
     /// * `liquidatee_account_nonce` - NFT nonce of the account being liquidated
     /// * `debt_payment_in_egld` - Optional EGLD value of debt being repaid
-    /// * `liquidation_bonus` - Bonus percentage for liquidators in basis points
+    /// * `base_liquidation_bonus` - Base liquidation bonus in basis points (10^21 = 100%)
+    /// * `health_factor` - Current health factor in basis points (10^21 = 100%)
     ///
     /// # Returns
     /// * `BigUint` - Maximum EGLD value of the specific collateral that can be liquidated
     ///
-    /// # Examples
-    /// ```
-    /// // Example 1: Single collateral liquidation
-    /// total_debt = 100 EGLD
-    /// total_collateral = 95 EGLD
-    /// available_collateral = 95 EGLD (EGLD)
-    /// debt_payment = None
-    /// max_liquidatable = min(20 EGLD, 95 EGLD) = 20 EGLD
-    ///
-    /// // Example 2: Partial liquidation with payment limit
-    /// total_debt = 100 EGLD
-    /// total_collateral = 95 EGLD
-    /// available_collateral = 95 EGLD (EGLD)
-    /// debt_payment = Some(10 EGLD)
-    /// max_liquidatable = min(20 EGLD, 95 EGLD, 10 EGLD) = 10 EGLD
     /// ```
     fn calculate_single_asset_liquidation_amount(
         &self,
         total_debt_in_egld: &BigUint,
         total_collateral_in_egld: &BigUint,
         token_to_liquidate: &EgldOrEsdtTokenIdentifier,
-        token_price_data: &PriceFeedShort<Self::Api>,
         liquidatee_account_nonce: u64,
         debt_payment_in_egld: OptionalValue<BigUint>,
-        liquidation_bonus: &BigUint,
-    ) -> BigUint {
+        base_liquidation_bonus: &BigUint,
+        health_factor: &BigUint,
+    ) -> (BigUint, BigUint) {
         // Get the available collateral value for this specific asset
         let deposit_position = self
             .deposit_positions(liquidatee_account_nonce)
             .get(token_to_liquidate)
             .unwrap_or_else(|| sc_panic!(ERROR_NO_COLLATERAL_TOKEN));
 
-        let available_collateral_value_in_egld = self
-            .get_token_amount_in_egld_raw(&deposit_position.get_total_amount(), token_price_data);
-
-        let max_liquidatable_amount = self.calculate_max_liquidatable_amount_in_egld(
-            total_debt_in_egld,
+        let (max_repayable_debt, seized, bonus) = self.do_liquidation(
             total_collateral_in_egld,
-            liquidation_bonus,
+            total_debt_in_egld,
+            &deposit_position.entry_liquidation_threshold,
+            base_liquidation_bonus,
+            health_factor,
         );
+
+        sc_print!("max_liquidatable_amount: {}", max_repayable_debt);
+        sc_print!("collateral_seized      : {}", seized);
+        sc_print!("final_liquidation_bonus: {}", bonus);
 
         if debt_payment_in_egld.is_some() {
             // Take the minimum between what we need and what's available and what the liquidator is paying
-            BigUint::min(max_liquidatable_amount, available_collateral_value_in_egld)
-                .min(debt_payment_in_egld.into_option().unwrap())
+            (
+                BigUint::min(
+                    debt_payment_in_egld.into_option().unwrap(),
+                    max_repayable_debt,
+                ),
+                bonus,
+            )
         } else {
-            BigUint::min(max_liquidatable_amount, available_collateral_value_in_egld)
+            (max_repayable_debt, bonus)
         }
-    }
-
-    /// Calculates a dynamic liquidation bonus based on position health
-    ///
-    /// # Arguments
-    /// * `health_factor` - Current health factor in basis points (10^21 = 100%)
-    /// * `initial_bonus` - Base liquidation bonus in basis points (10^21 = 100%)
-    ///
-    /// # Returns
-    /// * `BigUint` - Final liquidation bonus in basis points
-    ///
-    /// # Examples
-    /// ```
-    /// // Example 1: Slightly unhealthy position (HF = 95%)
-    /// health_factor = 950_000_000_000_000_000_000 (95%)
-    /// initial_bonus = 50_000_000_000_000_000_000 (5%)
-    /// health_factor_impact = (1_000_000_000_000_000_000_000 - 950_000_000_000_000_000_000) * 2 = 100_000_000_000_000_000_000
-    /// bonus_increase = min(100_000_000_000_000_000_000 * 50_000_000_000_000_000_000 / 1_000_000_000_000_000_000_000, 300_000_000_000_000_000_000) = 5_000_000_000_000_000_000
-    /// final_bonus = 55_000_000_000_000_000_000 (5.5%)
-    ///
-    /// // Example 2: Very unhealthy position (HF = 50%)
-    /// health_factor = 500_000_000_000_000_000_000 (50%)
-    /// initial_bonus = 50_000_000_000_000_000_000 (5%)
-    /// health_factor_impact = (1_000_000_000_000_000_000_000 - 500_000_000_000_000_000_000) * 2 = 1_000_000_000_000_000_000_000
-    /// bonus_increase = min(1_000_000_000_000_000_000_000 * 50_000_000_000_000_000_000 / 1_000_000_000_000_000_000_000, 300_000_000_000_000_000_000) = 50_000_000_000_000_000_000
-    /// final_bonus = 100_000_000_000_000_000_000 (10%)
-    /// ```
-    fn calculate_dynamic_liquidation_bonus(
-        &self,
-        health_factor: &BigUint,
-        initial_bonus: &BigUint,
-        nft_attributes: &NftAccountAttributes,
-    ) -> BigUint {
-        let bp = BigUint::from(BP);
-
-        let final_bonus = if nft_attributes.e_mode_category == 0 {
-            initial_bonus
-        } else {
-            let category = self
-                .e_mode_category()
-                .get(&nft_attributes.e_mode_category)
-                .unwrap();
-            if category.is_deprecated {
-                initial_bonus
-            } else {
-                &category.liquidation_bonus.clone()
-            }
-        };
-
-        // Multiply by 2 to increase the bonus for more unhealthy positions
-        let health_factor_impact = (&bp - health_factor).mul(2u64);
-
-        // Max bonus increase is 30% (300_000_000_000_000_000_000 basis points)
-        let max_bonus_increase = BigUint::from(MAX_BONUS);
-
-        // Calculate bonus increase based on how unhealthy the position is
-        // More unhealthy = bigger bonus to incentivize quick liquidation
-        let bonus_increase = BigUint::min(
-            &health_factor_impact * final_bonus / bp,
-            max_bonus_increase,
-        );
-
-        final_bonus + &bonus_increase
     }
 
     /// Calculates a dynamic protocol fee based on position health
@@ -237,33 +259,6 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
     ///
     /// # Returns
     /// * `BigUint` - Final protocol fee in basis points
-    ///
-    /// # Examples
-    /// ```
-    /// // Example 1: Healthy position (HF = 100%)
-    /// health_factor = 1_000_000_000_000_000_000_000 (100%)
-    /// base_protocol_fee = 100_000_000_000_000_000_000 (10%)
-    /// final_fee = 100_000_000_000_000_000_000 (10%, no reduction)
-    ///
-    /// // Example 2: Unhealthy position (HF = 80%)
-    /// health_factor = 800_000_000_000_000_000_000 (80%)
-    /// base_protocol_fee = 100_000_000_000_000_000_000 (10%)
-    /// distance = 200_000_000_000_000_000_000 (20%)
-    /// health_factor_impact = 400_000_000_000_000_000_000 (40%)
-    /// fee_reduction = min(40_000_000_000_000_000_000, 300_000_000_000_000_000_000) = 40_000_000_000_000_000_000
-    /// max_allowed_reduction = 50_000_000_000_000_000_000 (5%)
-    /// final_reduction = min(40_000_000_000_000_000_000, 50_000_000_000_000_000_000) = 40_000_000_000_000_000_000
-    /// final_fee = 60_000_000_000_000_000_000 (6%)
-    ///
-    /// // Example 3: Very Unhealthy position (HF = 60%)
-    /// health_factor = 600_000_000_000_000_000_000 (60%)
-    /// base_protocol_fee = 100_000_000_000_000_000_000 (10%)
-    /// distance = 400_000_000_000_000_000_000 (40%)
-    /// health_factor_impact = 800_000_000_000_000_000_000 (80%)
-    /// fee_reduction = min(80_000_000_000_000_000_000, 300_000_000_000_000_000_000) = 80_000_000_000_000_000_000
-    /// max_allowed_reduction = 50_000_000_000_000_000_000 (5%)
-    /// final_reduction = min(80_000_000_000_000_000_000, 50_000_000_000_000_000_000) = 50_000_000_000_000_000_000
-    /// final_fee = 50_000_000_000_000_000_000 (5%)
     /// ```
     fn calculate_dynamic_protocol_fee(
         &self,

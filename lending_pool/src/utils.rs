@@ -149,62 +149,31 @@ pub trait LendingUtilsModule:
     ///
     /// Total = $8,850
     /// ```
-    fn get_liquidation_collateral_in_egld_vec(
+    fn get_summary_collateral_in_egld_vec(
         &self,
         positions: &ManagedVec<AccountPosition<Self::Api>>,
         storage_cache: &mut StorageCache<Self>,
-    ) -> BigUint {
+    ) -> (BigUint, BigUint, BigUint) {
         let mut weighted_collateral_in_egld = BigUint::zero();
+        let mut total_collateral_in_egld = BigUint::zero();
+        let mut total_ltv_collateral_in_egld = BigUint::zero();
 
         for dp in positions {
-            weighted_collateral_in_egld +=
-                self.get_token_amount_in_egld(&dp.token_id, &dp.get_total_amount(), storage_cache)
-                    * &dp.entry_liquidation_threshold
-                    / BigUint::from(BP);
-        }
-
-        weighted_collateral_in_egld
-    }
-
-    /// Calculates total weighted collateral value in EGLD for LTV
-    ///
-    /// # Arguments
-    /// * `positions` - Vector of account positions
-    ///
-    /// # Returns
-    /// * `BigUint` - Total EGLD value weighted by LTV ratios
-    ///
-    /// # Example
-    /// ```
-    /// // Position 1: 100 EGLD, LTV 75%
-    /// // Position 2: 1000 USDC, LTV 80%
-    ///
-    /// EGLD price = $100
-    /// EGLD value = 100 * $100 * 0.75 = $7,500
-    ///
-    /// USDC price = $1
-    /// USDC value = 1000 * $1 * 0.80 = $800
-    ///
-    /// Total = $8,300
-    /// ```
-    fn get_ltv_collateral_in_egld_vec(
-        &self,
-        positions: &ManagedVec<AccountPosition<Self::Api>>,
-        storage_cache: &mut StorageCache<Self>,
-    ) -> BigUint {
-        let mut weighted_collateral_in_egld = BigUint::zero();
-
-        for dp in positions {
-            let position_value_in_egld =
+            let collateral_in_egld =
                 self.get_token_amount_in_egld(&dp.token_id, &dp.get_total_amount(), storage_cache);
-
             weighted_collateral_in_egld +=
-                &position_value_in_egld * &dp.entry_ltv / BigUint::from(BP);
+                &collateral_in_egld * &dp.entry_liquidation_threshold / BigUint::from(BP);
+            total_ltv_collateral_in_egld += &collateral_in_egld * &dp.entry_ltv / BigUint::from(BP);
+            total_collateral_in_egld += collateral_in_egld;
         }
 
-        weighted_collateral_in_egld
+        (
+            weighted_collateral_in_egld,
+            total_collateral_in_egld,
+            total_ltv_collateral_in_egld,
+        )
     }
-
+  
     /// Calculates total borrow value in USD
     ///
     /// # Arguments

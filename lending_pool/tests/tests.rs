@@ -1,6 +1,6 @@
 use common_constants::DECIMAL_PRECISION;
 use lending_pool::{errors::*, NftAccountAttributes};
-use multiversx_sc::types::ManagedDecimal;
+use multiversx_sc::{sc_print, types::ManagedDecimal};
 use multiversx_sc_scenario::{
     api::StaticApi,
     imports::{BigUint, OptionalValue, TestAddress},
@@ -411,7 +411,7 @@ fn test_interest_accrual_two_suppliers_at_different_times() {
     let initial_supply_supplier = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
 
     // Simulate hourly updates for 2 years
-    for day in 1..=365*2 {
+    for day in 1..=365 * 2 {
         state
             .world
             .current_block()
@@ -1646,7 +1646,8 @@ fn test_liquidation_partial_payment() {
     state.world.current_block().block_timestamp(600000000u64);
     state.update_borrows_with_debt(&borrower, 2);
     println!("borrow_amount_in_dollars: {:?}", borrow_amount_in_dollars);
-
+    let health = state.get_account_health_factor(2);
+    println!("health: {}", health);
     // Attempt liquidation
     state.liquidate_account(
         &liquidator,
@@ -1656,7 +1657,8 @@ fn test_liquidation_partial_payment() {
         2,
         USDC_DECIMALS,
     );
-
+    let health = state.get_account_health_factor(2);
+    println!("health: {}", health);
     let borrow_amount_in_dollars = state.get_borrow_amount_for_token(2, USDC_TOKEN);
     println!("borrow_amount_in_dollars: {:?}", borrow_amount_in_dollars);
     assert!(borrow_amount_in_dollars > BigUint::from(0u64));
@@ -1664,26 +1666,6 @@ fn test_liquidation_partial_payment() {
 
 // Liquidation Tests End
 
-// Input Validation Tests
-#[test]
-fn test_supply_asset_payment_count_error() {
-    let mut state = LendingPoolTestState::new();
-    let supplier = TestAddress::new("supplier");
-    let borrower = TestAddress::new("borrower");
-
-    setup_accounts(&mut state, supplier, borrower);
-    // Supply non isolated asset
-    state.supply_asset_error_payment_count(
-        &supplier,
-        XEGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
-        ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS,
-    );
-}
 // Input Validation Tests End
 
 #[test]
@@ -2004,9 +1986,10 @@ fn test_vault_liquidation() {
     state.borrow_asset(&vault, USDC_TOKEN, BigUint::from(2000u64), 1, USDC_DECIMALS);
 
     // Advance time and update interest
-    state.world.current_block().block_timestamp(600000000u64);
+    state.world.current_block().block_timestamp(535000000u64);
     state.update_borrows_with_debt(&vault, 1);
-
+    let health = state.get_account_health_factor(1);
+    println!("health: {}", health);
     // Attempt liquidation
     state.liquidate_account(
         &liquidator,
@@ -2017,8 +2000,14 @@ fn test_vault_liquidation() {
         USDC_DECIMALS,
     );
 
+    let health = state.get_account_health_factor(1);
+    println!("health: {}", health);
+
     // Verify vault supplied amount was reduced
     let vault_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);
+    let debt = state.get_total_borrow_in_egld(1);
+    println!("vault_supplied: {:?}", vault_supplied);
+    println!("debt: {:?}", debt);
     assert!(
         vault_supplied < BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32))
     );

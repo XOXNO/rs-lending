@@ -178,12 +178,16 @@ where
             .original_result()
     }
 
-    pub fn latest_round_data(
+    pub fn latest_round_data<
+        Arg0: ProxyArg<MultiValueEncoded<Env::Api, TokenPair<Env::Api>>>,
+    >(
         self,
+        pairs: Arg0,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValueEncoded<Env::Api, PriceFeed<Env::Api>>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("latestRoundData")
+            .argument(&pairs)
             .original_result()
     }
 
@@ -311,6 +315,16 @@ pub struct DiscardSubmissionEvent {
     pub submission_timestamp: u64,
     pub first_submission_timestamp: u64,
     pub has_caller_already_submitted: bool,
+}
+
+#[type_abi]
+#[derive(NestedEncode, NestedDecode, TopEncode, TopDecode, Clone)]
+pub struct TokenPair<Api>
+where
+    Api: ManagedTypeApi,
+{
+    pub from: ManagedBuffer<Api>,
+    pub to: ManagedBuffer<Api>,
 }
 
 #[type_abi]
