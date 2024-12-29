@@ -21,7 +21,7 @@ pub trait PriceAggregator:
     + views::ViewsModule
     + admin::AdminModule
 {
-    #[endpoint]
+    #[endpoint(submit)]
     fn submit(
         &self,
         from: ManagedBuffer,

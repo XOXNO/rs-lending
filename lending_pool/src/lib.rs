@@ -91,17 +91,17 @@ pub trait LendingPool:
     fn supply(&self, is_vault: bool, e_mode_category: OptionalValue<u8>) {
         let mut storage_cache = StorageCache::new(self);
         let payments = self.get_multi_payments();
-        let initial_caller = self.blockchain().get_caller();
+        let caller = self.blockchain().get_caller();
 
         // 1. Validate payments and extract tokens
-        let (collaterals, account_token) = self.validate_supply_payment(&initial_caller, &payments);
+        let (collaterals, account_token) = self.validate_supply_payment(&caller, &payments);
 
         let first_collateral = collaterals.get(0);
         let first_asset_info = self.asset_config(&first_collateral.token_identifier).get();
 
         // 3. Get or create position and NFT attributes
         let (account_nonce, nft_attributes) = self.get_or_create_supply_position(
-            &initial_caller,
+            &caller,
             first_asset_info.is_isolated,
             is_vault,
             e_mode_category.clone(),
@@ -155,8 +155,7 @@ pub trait LendingPool:
                 is_vault,
             );
 
-            let asset_data_feed =
-                self.get_token_price_data(&collateral.token_identifier, &mut storage_cache);
+            let feed = self.get_token_price(&collateral.token_identifier, &mut storage_cache);
 
             // 8. Update position and get updated state
             let updated_position = self.update_supply_position(
@@ -164,15 +163,15 @@ pub trait LendingPool:
                 &collateral,
                 &asset_info,
                 is_vault,
-                &asset_data_feed,
+                &feed,
             );
 
             // 9. Emit event
             self.update_position_event(
                 &collateral.amount,
                 &updated_position,
-                OptionalValue::Some(asset_data_feed.price),
-                OptionalValue::Some(&initial_caller),
+                OptionalValue::Some(feed.price),
+                OptionalValue::Some(&caller),
                 OptionalValue::Some(&nft_attributes),
             );
         }
@@ -206,28 +205,27 @@ pub trait LendingPool:
     #[payable("*")]
     #[endpoint(withdraw)]
     fn withdraw(&self, collaterals: MultiValueEncoded<EgldOrEsdtTokenPayment<Self::Api>>) {
-        let account_token = self.call_value().single_esdt();
-        let initial_caller = self.blockchain().get_caller();
+        let account = self.call_value().single_esdt();
+        let caller = self.blockchain().get_caller();
         // 1. Validate global params
         self.account_token()
-            .require_same_token(&account_token.token_identifier);
-        self.require_non_zero_address(&initial_caller);
-        let attributes =
-            self.get_nft_attributes(account_token.token_nonce, &account_token.token_identifier);
+            .require_same_token(&account.token_identifier);
+        self.require_non_zero_address(&caller);
+        let attributes = self.nft_attributes(account.token_nonce, &account.token_identifier);
 
         let mut storage_cache = StorageCache::new(self);
         storage_cache.allow_unsafe_price = false;
 
         for collateral in collaterals {
             // 2. Validate payment and parameters
-            self.validate_withdraw_payment(&collateral.token_identifier, &collateral.amount);
+            self.validate_withdraw_payment(&collateral);
 
             // 3. Process withdrawal
-            self.internal_withdraw(
-                account_token.token_nonce,
+            self._withdraw(
+                account.token_nonce,
                 &collateral.token_identifier,
                 collateral.amount,
-                &initial_caller,
+                &caller,
                 false, // not liquidation
                 &BigUint::zero(),
                 &mut storage_cache,
@@ -237,15 +235,10 @@ pub trait LendingPool:
         }
 
         // 4. Validate health factor after withdrawal
-        self.validate_withdraw_health_factor(
-            account_token.token_nonce,
-            false,
-            &mut storage_cache,
-            None,
-        );
+        self.validate_withdraw_health_factor(account.token_nonce, false, &mut storage_cache, None);
 
         // 5. Handle NFT (burn or return)
-        self.handle_nft_after_withdraw(account_token, &initial_caller);
+        self.handle_nft_after_withdraw(account, &caller);
     }
 
     /// Borrows an asset from the lending pool
@@ -281,30 +274,30 @@ pub trait LendingPool:
     #[payable("*")]
     #[endpoint(borrow)]
     fn borrow(&self, borrowed_tokens: MultiValueEncoded<EgldOrEsdtTokenPayment<Self::Api>>) {
-        let nft_token = self.call_value().single_esdt();
-        let initial_caller = self.blockchain().get_caller();
+        let account = self.call_value().single_esdt();
+        let caller = self.blockchain().get_caller();
 
         let mut storage_cache = StorageCache::new(self);
 
         storage_cache.allow_unsafe_price = false;
 
         // 1. Update positions with latest interest
-        let collaterals =
-            self.update_collateral_with_interest(nft_token.token_nonce, &mut storage_cache, false);
-        let length_of_borrows = borrowed_tokens.len();
-        let require_borrow_index_checks = length_of_borrows > 1;
-        let (mut borrows, mut borrow_index_mapper) = self.update_borrows_with_debt(
-            nft_token.token_nonce,
+        let collaterals = self.update_interest(account.token_nonce, &mut storage_cache, false);
+
+        let is_bulk_borrow = borrowed_tokens.len() > 1;
+
+        let (mut borrows, mut borrow_index_mapper) = self.update_debt(
+            account.token_nonce,
             &mut storage_cache,
             false,
-            require_borrow_index_checks,
+            is_bulk_borrow,
         );
 
         // 2. Get NFT attributes
-        let attributes =
-            self.get_nft_attributes(nft_token.token_nonce, &nft_token.token_identifier);
+        let attributes = self.nft_attributes(account.token_nonce, &account.token_identifier);
 
-        self.validate_borrow_account(&nft_token, &initial_caller);
+        self.validate_borrow_account(&account, &caller);
+
         for borrowed_token in borrowed_tokens {
             // 3. Validate asset supported
             self.require_asset_supported(&borrowed_token.token_identifier);
@@ -339,7 +332,7 @@ pub trait LendingPool:
             );
 
             // 8. Validate collateral and get amounts in egld
-            let (amount_to_borrow_in_egld, asset_data_feed) = self.validate_and_get_borrow_amounts(
+            let (borrow_amount, feed) = self.validate_and_get_borrow_amounts(
                 &borrowed_token.token_identifier,
                 &borrowed_token.amount,
                 &collaterals,
@@ -347,34 +340,33 @@ pub trait LendingPool:
                 &mut storage_cache,
             );
 
-            let usd_amount = self.get_token_amount_in_dollars_raw(
-                &amount_to_borrow_in_egld,
-                &storage_cache.egld_price_feed,
-            );
+            let usd_amount = self
+                .get_token_amount_in_dollars_raw(&borrow_amount, &storage_cache.egld_price_feed);
 
             // 9. Process borrow
             let updated_position = self.handle_borrow_position(
-                nft_token.token_nonce,
+                account.token_nonce,
                 &borrowed_token.token_identifier,
                 &borrowed_token.amount,
                 &usd_amount,
-                &initial_caller,
+                &caller,
                 &asset_config,
                 &attributes,
                 &collaterals,
-                &asset_data_feed,
+                &feed,
             );
+
             // 10. Emit event
             self.update_position_event(
                 &borrowed_token.amount,
                 &updated_position,
-                OptionalValue::Some(asset_data_feed.price),
-                OptionalValue::Some(&initial_caller),
+                OptionalValue::Some(feed.price),
+                OptionalValue::Some(&caller),
                 OptionalValue::Some(&attributes),
             );
 
             // In case of bulk borrows we need to update the borrows array position that is used to check the eligibility of LTV vs total borrow.
-            if require_borrow_index_checks {
+            if is_bulk_borrow {
                 let token_buffer = &updated_position.token_id.clone().into_name();
                 let existing_borrow = borrow_index_mapper.contains(&token_buffer);
                 if existing_borrow {
@@ -398,8 +390,9 @@ pub trait LendingPool:
                 }
             }
         }
+
         // 12. Return NFT to owner
-        self.tx().to(&initial_caller).esdt(nft_token).transfer();
+        self.tx().to(&caller).esdt(account).transfer();
     }
 
     /// Repays borrowed assets
@@ -428,27 +421,26 @@ pub trait LendingPool:
     #[endpoint(repay)]
     fn repay(&self, account_nonce: u64) {
         let payments = self.get_multi_payments();
-        let initial_caller = self.blockchain().get_caller();
+        let caller = self.blockchain().get_caller();
 
         // 1. Update positions with latest interest
         let mut storage_cache = StorageCache::new(self);
 
         // 2. Validate payment and parameters
-        self.lending_account_in_the_market(account_nonce);
+        self.require_active_account(account_nonce);
         let attributes = self.account_attributes(account_nonce).get();
         for payment in &payments {
-            self.validate_repay_payment(&payment.token_identifier, &payment.amount);
-            let price_data =
-                self.get_token_price_data(&payment.token_identifier, &mut storage_cache);
+            self.validate_repay_payment(&payment);
+            let feed = self.get_token_price(&payment.token_identifier, &mut storage_cache);
 
             // 3. Process repay
-            self.internal_repay(
+            self._repay(
                 account_nonce,
                 &payment.token_identifier,
                 &payment.amount,
-                &initial_caller,
-                self.get_token_amount_in_egld_raw(&payment.amount, &price_data),
-                &price_data,
+                &caller,
+                self.get_token_amount_in_egld_raw(&payment.amount, &feed),
+                &feed,
                 &mut storage_cache,
                 &attributes,
             );
@@ -490,12 +482,12 @@ pub trait LendingPool:
         min_amount_to_receive: OptionalValue<BigUint>,
     ) {
         let payment = self.call_value().egld_or_single_fungible_esdt();
-        let initial_caller = self.blockchain().get_caller();
+        let caller = self.blockchain().get_caller();
 
         let debt_payment = EgldOrEsdtTokenPayment::new(payment.0, 0, payment.1);
         // 1. Basic validations
-        self.lending_account_in_the_market(liquidatee_account_nonce);
-        self.validate_liquidation_payment(&debt_payment, collateral_to_receive, &initial_caller);
+        self.require_active_account(liquidatee_account_nonce);
+        self.validate_liquidation_payment(&debt_payment, collateral_to_receive, &caller);
 
         // 2. Process liquidation
         self.process_liquidation(
@@ -503,7 +495,7 @@ pub trait LendingPool:
             debt_payment,
             collateral_to_receive,
             min_amount_to_receive,
-            &initial_caller,
+            &caller,
         );
     }
 
@@ -534,7 +526,6 @@ pub trait LendingPool:
     ///   []            // No arguments
     /// ```
     ///
-    #[payable("*")]
     #[endpoint(flashLoan)]
     fn flash_loan(
         &self,
@@ -567,7 +558,7 @@ pub trait LendingPool:
         );
 
         let mut storage_cache = StorageCache::new(self);
-        let asset_data = self.get_token_price_data(borrowed_token, &mut storage_cache);
+        let feed = self.get_token_price(borrowed_token, &mut storage_cache);
 
         self.tx()
             .to(pool_address)
@@ -579,7 +570,7 @@ pub trait LendingPool:
                 endpoint,
                 arguments,
                 &asset_info.flash_loan_fee,
-                &asset_data.price,
+                &feed.price,
             )
             .returns(ReturnsResult)
             .sync_call();
@@ -611,14 +602,12 @@ pub trait LendingPool:
         account_nonce: u64,
     ) -> MultiValue2<ManagedVec<AccountPosition<Self::Api>>, ManagedVec<AccountPosition<Self::Api>>>
     {
-        self.lending_account_in_the_market(account_nonce);
+        self.require_active_account(account_nonce);
 
         let mut storage_cache = StorageCache::new(self);
-        let (borrow_positions, _) =
-            self.update_borrows_with_debt(account_nonce, &mut storage_cache, true, false);
-        let deposit_positions =
-            self.update_collateral_with_interest(account_nonce, &mut storage_cache, true);
-        (deposit_positions, borrow_positions).into()
+        let (borrows, _) = self.update_debt(account_nonce, &mut storage_cache, true, false);
+        let deposits = self.update_interest(account_nonce, &mut storage_cache, true);
+        (deposits, borrows).into()
     }
 
     /// Disables vault for a given account that has vault enabled
@@ -638,14 +627,14 @@ pub trait LendingPool:
     #[payable("*")]
     #[endpoint(disableVault)]
     fn disable_vault(&self) {
-        let nft_token = self.call_value().single_esdt();
-        self.lending_account_in_the_market(nft_token.token_nonce);
+        let account = self.call_value().single_esdt();
+        self.require_active_account(account.token_nonce);
         self.account_token()
-            .require_same_token(&nft_token.token_identifier);
+            .require_same_token(&account.token_identifier);
 
         let mut storage_cache = StorageCache::new(self);
-        let deposit_positions = self.deposit_positions(nft_token.token_nonce);
-        let borrow_positions = self.borrow_positions(nft_token.token_nonce);
+        let deposit_positions = self.deposit_positions(account.token_nonce);
+        let borrow_positions = self.borrow_positions(account.token_nonce);
 
         for mut bp in borrow_positions.values() {
             if bp.is_vault {
@@ -658,7 +647,7 @@ pub trait LendingPool:
                     OptionalValue::None,
                 );
                 // Update storage with the latest position
-                self.borrow_positions(nft_token.token_nonce)
+                self.borrow_positions(account.token_nonce)
                     .insert(bp.token_id.clone(), bp);
             }
         }
@@ -668,7 +657,7 @@ pub trait LendingPool:
                 dp.is_vault = false;
                 let pool_address = self.get_pool_address(&dp.token_id);
 
-                let asset_data_feed = self.get_token_price_data(&dp.token_id, &mut storage_cache);
+                let feed = self.get_token_price(&dp.token_id, &mut storage_cache);
                 let old_amount = dp.amount.clone();
                 let last_value = self.vault_supplied_amount(&dp.token_id).update(|am| {
                     *am -= &old_amount;
@@ -683,13 +672,13 @@ pub trait LendingPool:
                     .tx()
                     .to(pool_address)
                     .typed(proxy_pool::LiquidityPoolProxy)
-                    .supply(dp.clone(), &asset_data_feed.price)
+                    .supply(dp.clone(), &feed.price)
                     .payment(EgldOrEsdtTokenPayment::new(dp.token_id, 0, old_amount))
                     .returns(ReturnsResult)
                     .sync_call();
 
                 // Update storage with the latest position
-                self.deposit_positions(nft_token.token_nonce)
+                self.deposit_positions(account.token_nonce)
                     .insert(dp.token_id.clone(), dp.clone());
 
                 self.update_position_event(
@@ -704,7 +693,7 @@ pub trait LendingPool:
 
         self.tx()
             .to(self.blockchain().get_caller())
-            .esdt(nft_token)
+            .esdt(account)
             .transfer();
     }
 
@@ -724,14 +713,14 @@ pub trait LendingPool:
     #[payable("*")]
     #[endpoint(enableVault)]
     fn enable_vault(&self) {
-        let nft_token = self.call_value().single_esdt();
-        self.lending_account_in_the_market(nft_token.token_nonce);
+        let account = self.call_value().single_esdt();
+        self.require_active_account(account.token_nonce);
         self.account_token()
-            .require_same_token(&nft_token.token_identifier);
+            .require_same_token(&account.token_identifier);
 
         let mut storage_cache = StorageCache::new(self);
-        let deposit_positions = self.deposit_positions(nft_token.token_nonce);
-        let borrow_positions = self.borrow_positions(nft_token.token_nonce);
+        let deposit_positions = self.deposit_positions(account.token_nonce);
+        let borrow_positions = self.borrow_positions(account.token_nonce);
         let controller_sc = self.blockchain().get_sc_address();
 
         for mut bp in borrow_positions.values() {
@@ -745,7 +734,7 @@ pub trait LendingPool:
                     OptionalValue::None,
                 );
                 // Update storage with the latest position
-                self.borrow_positions(nft_token.token_nonce)
+                self.borrow_positions(account.token_nonce)
                     .insert(bp.token_id.clone(), bp.clone());
             }
         }
@@ -753,7 +742,7 @@ pub trait LendingPool:
         for mut dp in deposit_positions.values() {
             let asset_address = self.get_pool_address(&dp.token_id);
             if !dp.is_vault {
-                let feed = self.get_token_price_data(&dp.token_id, &mut storage_cache);
+                let feed = self.get_token_price(&dp.token_id, &mut storage_cache);
                 self.update_position(
                     &asset_address,
                     &mut dp,
@@ -791,7 +780,7 @@ pub trait LendingPool:
                 });
 
                 self.update_vault_supplied_amount_event(&dp.token_id, last_value);
-                self.deposit_positions(nft_token.token_nonce)
+                self.deposit_positions(account.token_nonce)
                     .insert(dp.token_id.clone(), dp.clone());
 
                 self.update_position_event(
@@ -805,7 +794,7 @@ pub trait LendingPool:
         }
         self.tx()
             .to(self.blockchain().get_caller())
-            .esdt(nft_token)
+            .esdt(account)
             .transfer();
     }
 
@@ -832,7 +821,7 @@ pub trait LendingPool:
         let asset_config = self.asset_config(&token_id).get();
         let mut storage_cache = StorageCache::new(self);
         for account_nonce in account_nonces {
-            self.lending_account_in_the_market(account_nonce);
+            self.require_active_account(account_nonce);
             let mut deposit_positions = self.deposit_positions(account_nonce);
             let dp_option = deposit_positions.get(&token_id);
 
@@ -907,7 +896,7 @@ pub trait LendingPool:
         let mut storage_cache = StorageCache::new(self);
         for asset in assets {
             let pool_address = self.get_pool_address(&asset);
-            let asset_price = self.get_token_price_data(&asset, &mut storage_cache);
+            let asset_price = self.get_token_price(&asset, &mut storage_cache);
             self.tx()
                 .to(pool_address)
                 .typed(proxy_pool::LiquidityPoolProxy)

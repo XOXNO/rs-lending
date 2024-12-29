@@ -7,7 +7,7 @@ use common_events::AssetConfig;
 
 use crate::{
     contexts::base::StorageCache, math, oracle, proxy_accumulator, proxy_pool, storage, utils,
-    ERROR_ASSET_ALREADY_SUPPORTED, ERROR_INVALID_TICKER, ERROR_NO_ACCUMULATOR_FOUND,
+    validation, ERROR_ASSET_ALREADY_SUPPORTED, ERROR_INVALID_TICKER, ERROR_NO_ACCUMULATOR_FOUND,
     ERROR_NO_POOL_FOUND,
 };
 
@@ -21,6 +21,7 @@ pub trait RouterModule:
     + oracle::OracleModule
     + utils::LendingUtilsModule
     + math::LendingMathModule
+    + validation::ValidationModule
 {
     #[allow_multiple_var_args]
     #[only_owner]
@@ -133,7 +134,7 @@ pub trait RouterModule:
     /// Claim revenue from the accumulator
     ///
     /// This function is used to claim the revenue from the liquidity pools
-    /// It iterates over the assets and claims the revenue
+    /// It iterates over the markets and claims the revenue
     /// The revenue is deposited into the accumulator
     #[only_owner]
     #[endpoint(claimRevenue)]
@@ -149,7 +150,7 @@ pub trait RouterModule:
         let accumulator_address = accumulator_address_mapper.get();
         for asset in assets {
             let pool_address = self.get_pool_address(&asset);
-            let data = self.get_token_price_data(&asset, &mut storage_cache);
+            let data = self.get_token_price(&asset, &mut storage_cache);
             let revenue = self
                 .tx()
                 .to(pool_address)

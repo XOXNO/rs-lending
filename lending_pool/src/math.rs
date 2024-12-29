@@ -2,8 +2,6 @@ multiversx_sc::imports!();
 
 use crate::{oracle, storage, ERROR_NO_COLLATERAL_TOKEN};
 use common_constants::{BP, MAX_BONUS};
-use common_events::{AssetConfig, NftAccountAttributes};
-use common_structs::PriceFeedShort;
 
 #[multiversx_sc::module]
 pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModule {
@@ -16,22 +14,6 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
     /// # Returns
     /// * `BigUint` - Health factor in basis points (10000 = 100%)
     ///
-    /// # Examples
-    /// ```
-    /// // Example 1: No borrows
-    /// weighted_collateral = 1000 EGLD
-    /// borrowed_value = 0 EGLD
-    /// health_factor = u128::MAX (effectively infinite)
-    ///
-    /// // Example 2: Healthy position
-    /// weighted_collateral = 150 EGLD
-    /// borrowed_value = 100 EGLD
-    /// health_factor = 15000 (150%)
-    ///
-    /// // Example 3: Unhealthy position
-    /// weighted_collateral = 90 EGLD
-    /// borrowed_value = 100 EGLD
-    /// health_factor = 9000 (90%)
     /// ```
     fn compute_health_factor(
         &self,
@@ -62,35 +44,15 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
 
         let n = target_hf * total_debt_value - liquidation_th * total_collateral_value;
         let bound1_numerator = target_hf * bp / liquidation_th;
-        sc_print!("target_hf,       {}", target_hf);
-        sc_print!("liquidation_th,  {}", liquidation_th);
-        sc_print!("bound1_numerator {}", bound1_numerator);
-        sc_print!("bound1_numer  bp {}", bp);
+
         let bound1 = bound1_numerator - bp; // keep denominator positive
 
-        sc_print!("bound1 {}", bound1);
-        sc_print!("n,                                           {}", n);
-        sc_print!(
-            " (total_collateral_value * target_hf),       {}",
-            (total_collateral_value * target_hf * bp)
-        );
-        sc_print!(
-            " (total_collateral_value * liquidation_th),  {}",
-            (total_collateral_value * liquidation_th * bp)
-        );
-        sc_print!(
-            " (total_collateral_value * liquidation_th),  {}",
-            ((total_collateral_value * target_hf * bp)
-                - (total_collateral_value * liquidation_th * bp))
-        );
         let numerator = (total_collateral_value * target_hf * bp)
             - (total_collateral_value * liquidation_th * bp)
             - &n;
-        sc_print!("numerator {}", numerator);
+
         let denominator = n + total_collateral_value * liquidation_th;
-        sc_print!("denominator {}", denominator);
         let bound2 = numerator / denominator;
-        sc_print!("bound2 {}", bound2);
 
         // The maximum feasible bonus is the smaller of these two then the max between min and the result
         return BigUint::max(liquidation_bonus_min.clone(), BigUint::min(bound1, bound2));
@@ -107,10 +69,8 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
 
         // Scale the bonus linearly between minHF and BP
         let scaling_factor = (&bp - old_hf) * &bp / (&bp - min_hf); // Normalized between 0 and 1
-        sc_print!("scaling_factor    {}", scaling_factor);
         let liquidation_bonus = liquidation_bonus_min
             + &((scaling_factor * (liquidation_bonus_max - liquidation_bonus_min)) / &bp);
-        sc_print!("liquidation_bonus {}", liquidation_bonus);
 
         return BigUint::min(liquidation_bonus, liquidation_bonus_max.clone()); // Ensure it does not exceed the maximum
     }
@@ -125,16 +85,6 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
     ) -> (BigUint, BigUint, bool) {
         let bp = BigUint::from(BP);
         // Calculate the debt required to reach the target health factor
-        sc_print!(
-            "ff {}",
-            (target_hf * total_debt - liquidation_th * total_collateral)
-        );
-        sc_print!("tt {}", target_hf);
-        sc_print!("dd {}", (liquidation_th * &(&bp + liquidation_bonus)));
-        sc_print!(
-            "dd {}",
-            (target_hf.clone() - (liquidation_th * &(&bp + liquidation_bonus)) / &bp)
-        );
         let debt = &((target_hf * total_debt - liquidation_th * total_collateral)
             / (target_hf.clone() - (liquidation_th * &(&bp + liquidation_bonus)) / &bp));
 
@@ -149,7 +99,7 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
         return (debt.clone(), total_seize, false);
     }
 
-    fn do_liquidation(
+    fn estimate_liquidation_amount(
         &self,
         total_collateral: &BigUint,
         total_debt: &BigUint,
@@ -169,7 +119,6 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
             &target,
             min_bonus,
         );
-        sc_print!("max_bonus         {}", max_bonus);
         let liquidation_bonus =
             self.calculate_dynamic_liquidation_bonus(&old_hf, min_bonus, &max_bonus, &min_hf);
 
@@ -182,17 +131,15 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
         );
 
         if !over_seize {
-            sc_print!("liquidation_bonus {}", liquidation_bonus);
             (debt, total_seize, liquidation_bonus)
         } else {
-            sc_print!("over_seize {}", over_seize);
             let fallback_debt = total_collateral.mul(&bp).div(bp.add(min_bonus));
             let total_seize = total_collateral.clone();
 
-            sc_print!("liquidation_bonus {}", min_bonus);
             (fallback_debt, total_seize, min_bonus.clone())
         }
     }
+
     /// Calculates the maximum amount of a specific collateral asset that can be liquidated
     ///
     /// # Arguments
@@ -225,7 +172,7 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
             .get(token_to_liquidate)
             .unwrap_or_else(|| sc_panic!(ERROR_NO_COLLATERAL_TOKEN));
 
-        let (max_repayable_debt, seized, bonus) = self.do_liquidation(
+        let (max_repayable_debt, seized, bonus) = self.estimate_liquidation_amount(
             total_collateral_in_egld,
             total_debt_in_egld,
             &deposit_position.entry_liquidation_threshold,
@@ -263,31 +210,31 @@ pub trait LendingMathModule: storage::LendingStorageModule + oracle::OracleModul
     fn calculate_dynamic_protocol_fee(
         &self,
         health_factor: &BigUint,
-        base_protocol_fee: BigUint,
+        base_protocol_fee: &BigUint,
     ) -> BigUint {
         let bp = BigUint::from(BP);
         let max_bonus = BigUint::from(MAX_BONUS); // 30%
+        let threshold = &bp * &BigUint::from(9u64) / &BigUint::from(10u64); // 90% threshold
 
-        // Only start reducing fee when health factor < 100% of BP
-        if health_factor >= &bp {
-            return base_protocol_fee;
+        // Only start reducing fee when health factor < 90% of BP
+        if health_factor > &threshold {
+            return base_protocol_fee.clone();
         }
 
-        // Calculate how far below 100% the HF is
-        let distance_from_threshold = &bp - health_factor;
+        // Calculate how far below 90% the HF is
+        let distance_from_threshold = &threshold - health_factor;
 
         // Similar to bonus calculation, multiply by 2 for steeper reduction
         let health_factor_impact = distance_from_threshold.mul(2u64);
 
         // Calculate fee reduction based on how unhealthy the position is
         // More unhealthy = bigger fee reduction to incentivize quick liquidation
-        let fee_reduction =
-            BigUint::min(&health_factor_impact * &base_protocol_fee / bp, max_bonus);
+        let fee_reduction = BigUint::min(&health_factor_impact * base_protocol_fee / bp, max_bonus);
 
         // Ensure we never reduce more than 50% of the base fee
-        let max_allowed_reduction = base_protocol_fee.clone() / 2u32;
+        let max_allowed_reduction = base_protocol_fee / &BigUint::from(2u64);
         let final_reduction = BigUint::min(fee_reduction, max_allowed_reduction);
 
-        base_protocol_fee - final_reduction
+        base_protocol_fee - &final_reduction
     }
 }

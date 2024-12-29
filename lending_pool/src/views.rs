@@ -1,7 +1,7 @@
 use common_constants::BP;
 use common_events::{AssetExtendedConfigView, PriceFeedShort};
 
-use crate::{contexts::base::StorageCache, oracle, storage, utils, ERROR_HEALTH_FACTOR};
+use crate::{contexts::base::StorageCache, oracle, storage, utils, math};
 
 multiversx_sc::imports!();
 
@@ -9,7 +9,7 @@ multiversx_sc::imports!();
 pub trait ViewsModule:
     storage::LendingStorageModule
     + oracle::OracleModule
-    + crate::math::LendingMathModule
+    + math::LendingMathModule
     + utils::LendingUtilsModule
     + common_events::EventsModule
 {
@@ -23,7 +23,7 @@ pub trait ViewsModule:
         for token in tokens {
             let pool_address = self.pools_map(&token).get();
             let pool = self.asset_config(&token).get();
-            let egld_price = self.get_token_price_data(&token, &mut storage_cache);
+            let egld_price = self.get_token_price(&token, &mut storage_cache);
             let usd_price = self
                 .get_token_amount_in_dollars_raw(&egld_price.price, &storage_cache.egld_price_feed);
 
@@ -142,7 +142,7 @@ pub trait ViewsModule:
     //     // Calculate collateral to receive with bonus
 
     //     let mut storage_cache = StorageCache::new(self);
-    //     let feed = self.get_token_price_data(collateral_asset, &mut storage_cache);
+    //     let feed = self.get_token_price(collateral_asset, &mut storage_cache);
 
     //     // Calculate liquidation amount using Dutch auction mechanism
     //     let (liquidation_amount_egld, liq_bonus) = self.calculate_single_asset_liquidation_amount(
@@ -248,7 +248,7 @@ pub trait ViewsModule:
     fn get_total_borrow_in_egld(&self, account_position: u64) -> BigUint {
         let mut storage_cache = StorageCache::new(self);
         let borrow_positions = self.borrow_positions(account_position);
-        self.get_total_borrow_in_egld_vec(&borrow_positions.values().collect(), &mut storage_cache)
+        self.sum_borrows(&borrow_positions.values().collect(), &mut storage_cache)
     }
 
     /// Gets total value of collateral assets in USD
@@ -304,7 +304,7 @@ pub trait ViewsModule:
     fn get_liquidation_collateral_available(&self, account_nonce: u64) -> BigUint {
         let deposit_positions = self.deposit_positions(account_nonce);
         let mut storage_cache = StorageCache::new(self);
-        let (weighted_collateral, _, _) = self.get_summary_collateral_in_egld_vec(
+        let (weighted_collateral, _, _) = self.get_account_collateral(
             &deposit_positions.values().collect(),
             &mut storage_cache,
         );
@@ -331,7 +331,7 @@ pub trait ViewsModule:
     fn get_ltv_collateral_in_egld(&self, account_position: u64) -> BigUint {
         let deposit_positions = self.deposit_positions(account_position);
         let mut storage_cache = StorageCache::new(self);
-        let (_, _, ltv_collateral_in_egld) = self.get_summary_collateral_in_egld_vec(
+        let (_, _, ltv_collateral_in_egld) = self.get_account_collateral(
             &deposit_positions.values().collect(),
             &mut storage_cache,
         );
@@ -344,20 +344,20 @@ pub trait ViewsModule:
         token_id: &EgldOrEsdtTokenIdentifier,
     ) -> PriceFeedShort<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
-        self.get_token_price_data(token_id, &mut storage_cache)
+        self.get_token_price(token_id, &mut storage_cache)
     }
 
     #[view(getTokenPriceUSD)]
     fn get_usd_price(&self, token_id: &EgldOrEsdtTokenIdentifier) -> BigUint {
         let mut storage_cache = StorageCache::new(self);
-        let data = self.get_token_price_data(token_id, &mut storage_cache);
+        let data = self.get_token_price(token_id, &mut storage_cache);
         self.get_token_amount_in_dollars_raw(&data.price, &storage_cache.egld_price_feed)
     }
 
     #[view(getTokenPriceEGLD)]
     fn get_egld_price(&self, token_id: &EgldOrEsdtTokenIdentifier) -> BigUint {
         let mut storage_cache = StorageCache::new(self);
-        let data = self.get_token_price_data(token_id, &mut storage_cache);
+        let data = self.get_token_price(token_id, &mut storage_cache);
         data.price
     }
 }

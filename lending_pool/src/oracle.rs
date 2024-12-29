@@ -78,7 +78,7 @@ pub trait OracleModule: storage::LendingStorageModule {
         amount: &BigUint,
         storage_cache: &mut StorageCache<Self>,
     ) -> BigUint {
-        let token_data = self.get_token_price_data(token_id, storage_cache);
+        let token_data = self.get_token_price(token_id, storage_cache);
         self.get_token_amount_in_egld_raw(amount, &token_data)
     }
 
@@ -104,7 +104,7 @@ pub trait OracleModule: storage::LendingStorageModule {
     /// If the price and decimals are not cached, it calculates the price and decimals
     /// It also handles the case when the token is EGLD/WEGLD to early return
     /// If the token is not found in the oracle, it returns an error
-    fn get_token_price_data(
+    fn get_token_price(
         &self,
         token_id: &EgldOrEsdtTokenIdentifier,
         storage_cache: &mut StorageCache<Self>,
@@ -186,7 +186,7 @@ pub trait OracleModule: storage::LendingStorageModule {
     ) -> PriceFeedShort<Self::Api> {
         let ratio = self
             .tx()
-            .to(configs.contract_address.clone())
+            .to(&configs.contract_address)
             .typed(proxy_legld::SalsaContractProxy)
             .token_price()
             .returns(ReturnsResult)
@@ -201,7 +201,7 @@ pub trait OracleModule: storage::LendingStorageModule {
     ) -> PriceFeedShort<Self::Api> {
         let ratio = self
             .tx()
-            .to(configs.contract_address.clone())
+            .to(&configs.contract_address)
             .typed(xegld_proxy::LiquidStakingProxy)
             .get_exchange_rate()
             .returns(ReturnsResult)
@@ -217,16 +217,16 @@ pub trait OracleModule: storage::LendingStorageModule {
     ) -> PriceFeedShort<Self::Api> {
         let ratio = self
             .tx()
-            .to(configs.contract_address.clone())
+            .to(&configs.contract_address)
             .typed(lxoxno_proxy::RsLiquidXoxnoProxy)
             .get_exchange_rate()
             .returns(ReturnsResult)
             .sync_call();
 
-        let token_data = self.get_token_price_data(&configs.first_token_id, storage_cache);
-        let egld_price = self.get_token_amount_in_egld_raw(&ratio, &token_data);
+        let feed = self.get_token_price(&configs.first_token_id, storage_cache);
+        let egld_price = self.get_token_amount_in_egld_raw(&ratio, &feed);
 
-        self.create_price_feed(egld_price, token_data.decimals)
+        self.create_price_feed(egld_price, feed.decimals)
     }
 
     fn get_pair_state(&self, pair: &ManagedAddress) -> State {
@@ -254,7 +254,7 @@ pub trait OracleModule: storage::LendingStorageModule {
         let result = self
             .safe_price_proxy(self.safe_price_view().get())
             .get_safe_price_by_default_offset(
-                configs.contract_address.clone(),
+                &configs.contract_address,
                 EsdtTokenPayment::new(token_id.clone().unwrap_esdt(), 0, one_token),
             )
             .returns(ReturnsResult)
@@ -269,8 +269,7 @@ pub trait OracleModule: storage::LendingStorageModule {
         }
 
         let new_token_id = EgldOrEsdtTokenIdentifier::esdt(result.token_identifier);
-        self.get_token_price_data(&new_token_id, storage_cache)
-            .price
+        self.get_token_price(&new_token_id, storage_cache).price
     }
 
     /// Get normal price egld price
@@ -418,12 +417,12 @@ pub trait OracleModule: storage::LendingStorageModule {
                 .sync_call();
 
             let (first_token, second_token) = tokens.into_tuple();
-            let first_token_data = self.get_token_price_data(
+            let first_token_data = self.get_token_price(
                 &EgldOrEsdtTokenIdentifier::esdt(first_token.token_identifier),
                 storage_cache,
             );
 
-            let second_token_data = self.get_token_price_data(
+            let second_token_data = self.get_token_price(
                 &EgldOrEsdtTokenIdentifier::esdt(second_token.token_identifier),
                 storage_cache,
             );
@@ -433,6 +432,7 @@ pub trait OracleModule: storage::LendingStorageModule {
             let second_token_egld_price =
                 self.get_token_amount_in_egld_raw(&second_token.amount, &second_token_data);
 
+            // TODO: Add anchor checks and more ways of getting the LP price
             self.create_price_feed(
                 first_token_egld_price + second_token_egld_price,
                 configs.decimals,
@@ -529,6 +529,7 @@ mod safe_price_proxy {
 
     #[multiversx_sc::proxy]
     pub trait SafePriceContract {
+        // TODO: Add new functions to pass timestamp offset
         #[view(getSafePriceByDefaultOffset)]
         fn get_safe_price_by_default_offset(
             &self,

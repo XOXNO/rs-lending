@@ -7,12 +7,13 @@ use common_structs::PriceFeedShort;
 use multiversx_sc::storage::StorageKey;
 
 use crate::{
-    contexts::base::StorageCache, math, oracle, storage, utils, views,
+    contexts::base::StorageCache, math, oracle, storage, utils, ERROR_ACCOUNT_NOT_IN_THE_MARKET,
+    ERROR_ADDRESS_IS_ZERO, ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO,
     ERROR_ASSET_NOT_BORROWABLE_IN_ISOLATION, ERROR_ASSET_NOT_BORROWABLE_IN_SILOED,
-    ERROR_BORROW_CAP, ERROR_CANNOT_USE_EMODE_WITH_ISOLATED_ASSETS, ERROR_EMODE_CATEGORY_NOT_FOUND,
-    ERROR_HEALTH_FACTOR, ERROR_HEALTH_FACTOR_WITHDRAW, ERROR_INSUFFICIENT_COLLATERAL,
-    ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS, ERROR_MIX_ISOLATED_COLLATERAL,
-    ERROR_POSITION_SHOULD_BE_VAULT, ERROR_SUPPLY_CAP,
+    ERROR_ASSET_NOT_SUPPORTED, ERROR_BORROW_CAP, ERROR_CANNOT_USE_EMODE_WITH_ISOLATED_ASSETS,
+    ERROR_EMODE_CATEGORY_NOT_FOUND, ERROR_HEALTH_FACTOR, ERROR_HEALTH_FACTOR_WITHDRAW,
+    ERROR_INSUFFICIENT_COLLATERAL, ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS,
+    ERROR_MIX_ISOLATED_COLLATERAL, ERROR_POSITION_SHOULD_BE_VAULT, ERROR_SUPPLY_CAP,
 };
 
 #[multiversx_sc::module]
@@ -22,7 +23,6 @@ pub trait ValidationModule:
     + common_events::EventsModule
     + math::LendingMathModule
     + oracle::OracleModule
-    + views::ViewsModule
 {
     /// Validates supply payment and handles NFT return
     ///
@@ -35,12 +35,6 @@ pub trait ValidationModule:
     ///   - Collateral payment
     ///   - Optional account NFT payment
     ///
-    /// Validates:
-    /// - Payment count (1 or 2 payments allowed)
-    /// - Asset is supported
-    /// - Amount is greater than zero
-    /// - Caller is valid
-    /// Returns NFT to owner if present
     fn validate_supply_payment(
         &self,
         caller: &ManagedAddress,
@@ -54,15 +48,12 @@ pub trait ValidationModule:
         // Validate the collateral payment token
         self.require_non_zero_address(caller);
 
-        let account_nft = payments.get(0);
+        let account = payments.get(0);
 
-        if self.account_token().get_token_id() == account_nft.token_identifier {
+        if self.account_token().get_token_id() == account.token_identifier {
             require!(payments.len() >= 2, ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS);
 
-            (
-                payments.slice(1, payments.len()).unwrap(),
-                Some(account_nft),
-            )
+            (payments.slice(1, payments.len()).unwrap(), Some(account))
         } else {
             (payments.clone(), None)
         }
@@ -187,13 +178,6 @@ pub trait ValidationModule:
     /// # Errors
     /// * `ERROR_BORROW_CAP` - If new borrow would exceed cap
     ///
-    /// # Example
-    /// ```
-    /// // Asset: EGLD
-    /// // Current borrows: 900 EGLD
-    /// // Borrow cap: 1000 EGLD
-    /// // New borrow: 150 EGLD
-    /// // Result: Error - cap exceeded
     /// ```
     fn check_borrow_cap(
         &self,
@@ -277,13 +261,9 @@ pub trait ValidationModule:
     /// - Caller address is valid
     /// - Asset is supported
     /// - Amount is greater than zero
-    fn validate_withdraw_payment(
-        &self,
-        withdraw_token_id: &EgldOrEsdtTokenIdentifier,
-        amount: &BigUint,
-    ) {
-        self.require_asset_supported(withdraw_token_id);
-        self.require_amount_greater_than_zero(amount);
+    fn validate_withdraw_payment(&self, withdraw_payment: &EgldOrEsdtTokenPayment) {
+        self.require_asset_supported(&withdraw_payment.token_identifier);
+        self.require_amount_greater_than_zero(&withdraw_payment.amount);
     }
 
     /// Validates health factor after withdrawal
@@ -311,22 +291,19 @@ pub trait ValidationModule:
                 return;
             }
             let deposit_positions = self.deposit_positions(account_nonce);
-            let (liquidation_weighted_collateral_in_egld, _, _) = self
-                .get_summary_collateral_in_egld_vec(
-                    &deposit_positions.values().collect(),
-                    storage_cache,
-                );
-            let borrowed_egld = self
-                .get_total_borrow_in_egld_vec(&borrow_positions.values().collect(), storage_cache);
-            let health_factor = self
-                .compute_health_factor(&liquidation_weighted_collateral_in_egld, &borrowed_egld);
+            let (liquidation_collateral_in_egld, _, _) =
+                self.get_account_collateral(&deposit_positions.values().collect(), storage_cache);
+            let borrowed_egld =
+                self.sum_borrows(&borrow_positions.values().collect(), storage_cache);
+            let health_factor =
+                self.compute_health_factor(&liquidation_collateral_in_egld, &borrowed_egld);
 
             // Make sure the health factor is greater than 100% when is a normal withdraw
             let health_factor_with_safety_factor = if let Some(safety_factor_value) = safety_factor
             {
-                BigUint::from(BP) + (BigUint::from(BP) / safety_factor_value)
+                &storage_cache.bp + &(&storage_cache.bp / &safety_factor_value)
             } else {
-                BigUint::from(BP)
+                storage_cache.bp.clone()
             };
             require!(
                 health_factor >= health_factor_with_safety_factor,
@@ -354,7 +331,7 @@ pub trait ValidationModule:
         nft_token: &EsdtTokenPayment<Self::Api>,
         initial_caller: &ManagedAddress,
     ) {
-        self.lending_account_in_the_market(nft_token.token_nonce);
+        self.require_active_account(nft_token.token_nonce);
         self.account_token()
             .require_same_token(&nft_token.token_identifier);
         self.require_non_zero_address(&initial_caller);
@@ -463,13 +440,12 @@ pub trait ValidationModule:
         borrow_positions: &ManagedVec<AccountPosition<Self::Api>>,
         storage_cache: &mut StorageCache<Self>,
     ) -> (BigUint, PriceFeedShort<Self::Api>) {
-        let asset_data_feed = self.get_token_price_data(asset_to_borrow, storage_cache);
+        let asset_data_feed = self.get_token_price(asset_to_borrow, storage_cache);
         let amount_to_borrow_in_egld = self.get_token_amount_in_egld_raw(amount, &asset_data_feed);
         let (_, _, ltv_collateral_in_egld) =
-            self.get_summary_collateral_in_egld_vec(collateral_positions, storage_cache);
+            self.get_account_collateral(collateral_positions, storage_cache);
 
-        let borrowed_amount_in_egld =
-            self.get_total_borrow_in_egld_vec(borrow_positions, storage_cache);
+        let borrowed_amount_in_egld = self.sum_borrows(borrow_positions, storage_cache);
 
         self.validate_borrow_collateral(
             &ltv_collateral_in_egld,
@@ -491,13 +467,9 @@ pub trait ValidationModule:
     /// - Account exists in market
     /// - Asset is supported
     /// - Amount is greater than zero
-    fn validate_repay_payment(
-        &self,
-        repay_token_id: &EgldOrEsdtTokenIdentifier,
-        repay_amount: &BigUint,
-    ) {
-        self.require_asset_supported(repay_token_id);
-        self.require_amount_greater_than_zero(repay_amount);
+    fn validate_repay_payment(&self, repay_payment: &EgldOrEsdtTokenPaymentNew<Self::Api>) {
+        self.require_asset_supported(&repay_payment.token_identifier);
+        self.require_amount_greater_than_zero(&repay_payment.amount);
     }
 
     /// Validates repay position exists
@@ -560,7 +532,7 @@ pub trait ValidationModule:
             (amount_to_repay_in_egld - &interest_egld_amount)
                 .min(total_principal_borrowed_egld_amount)
         } else {
-            BigUint::from(0u64)
+            BigUint::zero()
         };
 
         principal_egld_amount
@@ -607,5 +579,52 @@ pub trait ValidationModule:
         let health_factor = self.compute_health_factor(collateral_in_egld, borrowed_egld);
         require!(health_factor < BigUint::from(BP), ERROR_HEALTH_FACTOR);
         health_factor
+    }
+
+    /// Validates that an asset is supported by the protocol
+    ///
+    /// # Arguments
+    /// * `asset` - Token identifier to check
+    ///
+    /// # Errors
+    /// * `ERROR_ASSET_NOT_SUPPORTED` - If asset has no liquidity pool
+    fn require_asset_supported(&self, asset: &EgldOrEsdtTokenIdentifier) {
+        require!(!self.pools_map(asset).is_empty(), ERROR_ASSET_NOT_SUPPORTED);
+    }
+
+    /// Validates that an account is in the market
+    ///
+    /// # Arguments
+    /// * `nonce` - Account nonce
+    ///
+    /// # Errors
+    /// * `ERROR_ACCOUNT_NOT_IN_THE_MARKET` - If account is not in the market
+    fn require_active_account(&self, nonce: u64) {
+        require!(
+            self.account_positions().contains(&nonce),
+            ERROR_ACCOUNT_NOT_IN_THE_MARKET
+        );
+    }
+
+    /// Validates that an amount is greater than zero
+    ///
+    /// # Arguments
+    /// * `amount` - Amount to validate
+    ///
+    /// # Errors
+    /// * `ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO` - If amount is not greater than zero
+    fn require_amount_greater_than_zero(&self, amount: &BigUint) {
+        require!(amount > &0, ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO);
+    }
+
+    /// Validates that an address is not zero
+    ///
+    /// # Arguments
+    /// * `address` - Address to validate
+    ///
+    /// # Errors
+    /// * `ERROR_ADDRESS_IS_ZERO` - If address is zero
+    fn require_non_zero_address(&self, address: &ManagedAddress) {
+        require!(!address.is_zero(), ERROR_ADDRESS_IS_ZERO);
     }
 }

@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           62
+// Endpoints:                           61
 // Async Callback:                       1
-// Total number of exported functions:  65
+// Total number of exported functions:  64
 
 #![no_std]
 
@@ -72,7 +72,6 @@ multiversx_sc_wasm_adapter::endpoints! {
         getAllMarkets => get_all_markets
         canBeLiquidated => can_be_liquidated
         getHealthFactor => get_health_factor
-        getMaxLiquidateAmountForCollateral => get_max_liquidate_amount_for_collateral
         getCollateralAmountForToken => get_collateral_amount_for_token
         getBorrowAmountForToken => get_borrow_amount_for_token
         getTotalBorrowInEgld => get_total_borrow_in_egld

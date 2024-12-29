@@ -149,7 +149,6 @@ pub trait LiquidityModule:
     /// # Returns
     /// - `AccountPosition<Self::Api>`: The updated position.
     #[only_owner]
-    #[payable("*")]
     #[endpoint(borrow)]
     fn borrow(
         &self,
@@ -220,7 +219,6 @@ pub trait LiquidityModule:
     /// # Returns
     /// - `AccountPosition<Self::Api>`: The updated position.
     #[only_owner]
-    #[payable("*")]
     #[endpoint(withdraw)]
     fn withdraw(
         &self,
@@ -261,7 +259,7 @@ pub trait LiquidityModule:
         );
 
         let zero =
-            ManagedDecimal::from_raw_units(BigUint::from(0u64), storage_cache.pool_params.decimals);
+            ManagedDecimal::from_raw_units(BigUint::zero(), storage_cache.pool_params.decimals);
         // If the total withdrawal amount is greater than the accumulated interest, we need to subtract the accumulated interest from the withdrawal amount
         if principal_amount >= accumulated_interest {
             principal_amount -= &accumulated_interest;

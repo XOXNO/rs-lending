@@ -3,9 +3,8 @@ multiversx_sc::derive_imports!();
 
 use crate::contexts::base::StorageCache;
 use crate::{
-    math, oracle, proxy_pool, storage, ERROR_ACCOUNT_NOT_IN_THE_MARKET, ERROR_ADDRESS_IS_ZERO,
-    ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO, ERROR_ASSET_NOT_SUPPORTED, ERROR_DEBT_CEILING_REACHED,
-    ERROR_NO_POOL_FOUND, ERROR_UNEXPECTED_ANCHOR_TOLERANCES, ERROR_UNEXPECTED_FIRST_TOLERANCE,
+    math, oracle, proxy_pool, storage, ERROR_DEBT_CEILING_REACHED, ERROR_NO_POOL_FOUND,
+    ERROR_UNEXPECTED_ANCHOR_TOLERANCES, ERROR_UNEXPECTED_FIRST_TOLERANCE,
     ERROR_UNEXPECTED_LAST_TOLERANCE,
 };
 use common_constants::{
@@ -136,20 +135,8 @@ pub trait LendingUtilsModule:
     /// # Returns
     /// * `BigUint` - Total EGLD value weighted by liquidation thresholds
     ///
-    /// # Example
     /// ```
-    /// // Position 1: 100 EGLD, threshold 80%
-    /// // Position 2: 1000 USDC, threshold 85%
-    ///
-    /// EGLD price = $100
-    /// EGLD value = 100 * $100 * 0.80 = $8,000
-    ///
-    /// USDC price = $1
-    /// USDC value = 1000 * $1 * 0.85 = $850
-    ///
-    /// Total = $8,850
-    /// ```
-    fn get_summary_collateral_in_egld_vec(
+    fn get_account_collateral(
         &self,
         positions: &ManagedVec<AccountPosition<Self::Api>>,
         storage_cache: &mut StorageCache<Self>,
@@ -162,8 +149,8 @@ pub trait LendingUtilsModule:
             let collateral_in_egld =
                 self.get_token_amount_in_egld(&dp.token_id, &dp.get_total_amount(), storage_cache);
             weighted_collateral_in_egld +=
-                &collateral_in_egld * &dp.entry_liquidation_threshold / BigUint::from(BP);
-            total_ltv_collateral_in_egld += &collateral_in_egld * &dp.entry_ltv / BigUint::from(BP);
+                &collateral_in_egld * &dp.entry_liquidation_threshold / &storage_cache.bp;
+            total_ltv_collateral_in_egld += &collateral_in_egld * &dp.entry_ltv / &storage_cache.bp;
             total_collateral_in_egld += collateral_in_egld;
         }
 
@@ -173,7 +160,7 @@ pub trait LendingUtilsModule:
             total_ltv_collateral_in_egld,
         )
     }
-  
+
     /// Calculates total borrow value in USD
     ///
     /// # Arguments
@@ -182,20 +169,8 @@ pub trait LendingUtilsModule:
     /// # Returns
     /// * `BigUint` - Total USD value of borrowed assets
     ///
-    /// # Example
     /// ```
-    /// // Position 1: 50 EGLD borrowed
-    /// // Position 2: 500 USDC borrowed
-    ///
-    /// EGLD price = $100
-    /// EGLD value = 50 * $100 = $5,000
-    ///
-    /// USDC price = $1
-    /// USDC value = 500 * $1 = $500
-    ///
-    /// Total = $5,500
-    /// ```
-    fn get_total_borrow_in_egld_vec(
+    fn sum_borrows(
         &self,
         positions: &ManagedVec<AccountPosition<Self::Api>>,
         storage_cache: &mut StorageCache<Self>,
@@ -272,7 +247,7 @@ pub trait LendingUtilsModule:
         amount_in_usd: &BigUint,
         is_increase: bool,
     ) {
-        if amount_in_usd.eq(&BigUint::from(0u64)) {
+        if amount_in_usd.eq(&BigUint::zero()) {
             return;
         }
 
@@ -287,53 +262,6 @@ pub trait LendingUtilsModule:
         self.update_debt_ceiling_event(token_id, map.get());
     }
 
-    /// Validates that an asset is supported by the protocol
-    ///
-    /// # Arguments
-    /// * `asset` - Token identifier to check
-    ///
-    /// # Errors
-    /// * `ERROR_ASSET_NOT_SUPPORTED` - If asset has no liquidity pool
-    fn require_asset_supported(&self, asset: &EgldOrEsdtTokenIdentifier) {
-        require!(!self.pools_map(asset).is_empty(), ERROR_ASSET_NOT_SUPPORTED);
-    }
-
-    /// Validates that an account is in the market
-    ///
-    /// # Arguments
-    /// * `nonce` - Account nonce
-    ///
-    /// # Errors
-    /// * `ERROR_ACCOUNT_NOT_IN_THE_MARKET` - If account is not in the market
-    fn lending_account_in_the_market(&self, nonce: u64) {
-        require!(
-            self.account_positions().contains(&nonce),
-            ERROR_ACCOUNT_NOT_IN_THE_MARKET
-        );
-    }
-
-    /// Validates that an amount is greater than zero
-    ///
-    /// # Arguments
-    /// * `amount` - Amount to validate
-    ///
-    /// # Errors
-    /// * `ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO` - If amount is not greater than zero
-    fn require_amount_greater_than_zero(&self, amount: &BigUint) {
-        require!(amount > &0, ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO);
-    }
-
-    /// Validates that an address is not zero
-    ///
-    /// # Arguments
-    /// * `address` - Address to validate
-    ///
-    /// # Errors
-    /// * `ERROR_ADDRESS_IS_ZERO` - If address is zero
-    fn require_non_zero_address(&self, address: &ManagedAddress) {
-        require!(!address.is_zero(), ERROR_ADDRESS_IS_ZERO);
-    }
-
     /// Gets NFT attributes for an account position
     ///
     /// # Arguments
@@ -342,7 +270,7 @@ pub trait LendingUtilsModule:
     ///
     /// # Returns
     /// * `NftAccountAttributes` - Decoded NFT attributes
-    fn get_nft_attributes(
+    fn nft_attributes(
         &self,
         account_nonce: u64,
         token_id: &TokenIdentifier<Self::Api>,
@@ -356,6 +284,19 @@ pub trait LendingUtilsModule:
         data.decode_attributes::<NftAccountAttributes>()
     }
 
+    /// Updates account position with interest
+    /// - Updates position's interest amount
+    /// - Updates position's last interest update timestamp
+    /// - Updates position's total amount
+    ///
+    /// # Arguments
+    /// * `asset_address` - Address of the asset
+    /// * `position` - Account position to update
+    /// * `price` - Current price of the asset
+    ///
+    /// # Returns
+    /// * `AccountPosition` - Edits the position in place
+    ///
     fn update_position(
         &self,
         asset_address: &ManagedAddress,

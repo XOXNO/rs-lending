@@ -69,7 +69,7 @@ pub trait UtilsModule:
     ) {
         if storage_cache.supplied_amount
             != ManagedDecimal::from_raw_units(
-                BigUint::from(0u64),
+                BigUint::zero(),
                 storage_cache.pool_params.decimals,
             )
         {

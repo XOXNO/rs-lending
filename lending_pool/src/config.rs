@@ -384,12 +384,12 @@ pub trait ConfigModule:
             can_be_collateral,
             can_be_borrowed,
             can_borrow_in_isolation,
-            borrow_cap: if borrow_cap == BigUint::from(0u64) {
+            borrow_cap: if borrow_cap == BigUint::zero() {
                 None
             } else {
                 Some(borrow_cap)
             },
-            supply_cap: if supply_cap == BigUint::from(0u64) {
+            supply_cap: if supply_cap == BigUint::zero() {
                 None
             } else {
                 Some(supply_cap)

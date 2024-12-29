@@ -510,8 +510,8 @@ where
         reserve_factor: Arg6,
         ltv: Arg7,
         liquidation_threshold: Arg8,
-        liquidation_bonus: Arg9,
-        liquidation_base_fee: Arg10,
+        liquidation_base_bonus: Arg9,
+        liquidation_max_fee: Arg10,
         can_be_collateral: Arg11,
         can_be_borrowed: Arg12,
         is_isolated: Arg13,
@@ -535,8 +535,8 @@ where
             .argument(&reserve_factor)
             .argument(&ltv)
             .argument(&liquidation_threshold)
-            .argument(&liquidation_bonus)
-            .argument(&liquidation_base_fee)
+            .argument(&liquidation_base_bonus)
+            .argument(&liquidation_max_fee)
             .argument(&can_be_collateral)
             .argument(&can_be_borrowed)
             .argument(&is_isolated)
@@ -584,7 +584,7 @@ where
     /// Claim revenue from the accumulator 
     ///  
     /// This function is used to claim the revenue from the liquidity pools 
-    /// It iterates over the assets and claims the revenue 
+    /// It iterates over the markets and claims the revenue 
     /// The revenue is deposited into the accumulator 
     pub fn claim_revenue<
         Arg0: ProxyArg<MultiValueEncoded<Env::Api, EgldOrEsdtTokenIdentifier<Env::Api>>>,
@@ -842,8 +842,8 @@ where
         asset: Arg0,
         ltv: Arg1,
         liquidation_threshold: Arg2,
-        liquidation_bonus: Arg3,
-        liquidation_base_fee: Arg4,
+        liquidation_base_bonus: Arg3,
+        liquidation_max_fee: Arg4,
         is_isolated: Arg5,
         debt_ceiling_usd: Arg6,
         is_siloed: Arg7,
@@ -861,8 +861,8 @@ where
             .argument(&asset)
             .argument(&ltv)
             .argument(&liquidation_threshold)
-            .argument(&liquidation_bonus)
-            .argument(&liquidation_base_fee)
+            .argument(&liquidation_base_bonus)
+            .argument(&liquidation_max_fee)
             .argument(&is_isolated)
             .argument(&debt_ceiling_usd)
             .argument(&is_siloed)
@@ -1273,25 +1273,6 @@ where
     /// get_max_liquidate_amount_for_collateral(1, "EGLD-123456", false) = 50 
     /// // Can liquidate 50 EGLD 
     /// ``` 
-    pub fn get_max_liquidate_amount_for_collateral<
-        Arg0: ProxyArg<u64>,
-        Arg1: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-        Arg2: ProxyArg<bool>,
-    >(
-        self,
-        account_position: Arg0,
-        collateral_asset: Arg1,
-        in_egld: Arg2,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getMaxLiquidateAmountForCollateral")
-            .argument(&account_position)
-            .argument(&collateral_asset)
-            .argument(&in_egld)
-            .original_result()
-    }
-
     /// Gets the collateral amount for a specific token 
     ///  
     /// # Arguments 

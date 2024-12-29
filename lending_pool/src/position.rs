@@ -6,10 +6,10 @@ use common_events::{
 use common_events::{AccountPositionType, PriceFeedShort};
 
 use crate::contexts::base::StorageCache;
+use crate::math;
 use crate::storage;
 use crate::utils;
 use crate::validation;
-use crate::{math, views};
 use crate::{oracle, ERROR_LIQUIDATED_AMOUNT_AFTER_FEES_LESS_THAN_MIN_AMOUNT_TO_RECEIVE};
 use crate::{proxy_pool, ERROR_EMODE_CATEGORY_DEPRECATED};
 
@@ -21,7 +21,6 @@ pub trait PositionModule:
     + common_events::EventsModule
     + utils::LendingUtilsModule
     + math::LendingMathModule
-    + views::ViewsModule
 {
     /// Updates all borrow positions for an account with accumulated interest
     ///
@@ -34,7 +33,7 @@ pub trait PositionModule:
     ///
     /// Updates each borrow position by calling the liquidity pool to calculate
     /// accumulated interest. Stores the updated positions in storage and returns them.
-    fn update_borrows_with_debt(
+    fn update_debt(
         &self,
         account_position: u64,
         storage_cache: &mut StorageCache<Self>,
@@ -51,7 +50,7 @@ pub trait PositionModule:
             let mut bp = borrow_positions.get(&token_id).unwrap();
             let asset_address = self.get_pool_address(&bp.token_id);
             let price = if fetch_price {
-                let result = self.get_token_price_data(&bp.token_id, storage_cache);
+                let result = self.get_token_price(&bp.token_id, storage_cache);
                 OptionalValue::Some(result.price)
             } else {
                 OptionalValue::None
@@ -96,19 +95,19 @@ pub trait PositionModule:
     /// Updates each collateral position by calling the liquidity pool to calculate
     /// accumulated interest. Skips vault positions as they don't accrue interest.
     /// Stores the updated positions in storage and returns them.
-    fn update_collateral_with_interest(
+    fn update_interest(
         &self,
         account_position: u64,
         storage_cache: &mut StorageCache<Self>,
         fetch_price: bool,
     ) -> ManagedVec<AccountPosition<Self::Api>> {
-        let deposit_positions = self.deposit_positions(account_position);
+        let positions_map = self.deposit_positions(account_position);
         let mut positions: ManagedVec<Self::Api, AccountPosition<Self::Api>> = ManagedVec::new();
-        for mut dp in deposit_positions.values() {
+        for mut dp in positions_map.values() {
             let asset_address = self.get_pool_address(&dp.token_id);
             if !dp.is_vault {
                 let price = if fetch_price {
-                    let result = self.get_token_price_data(&dp.token_id, storage_cache);
+                    let result = self.get_token_price(&dp.token_id, storage_cache);
                     OptionalValue::Some(result.price)
                 } else {
                     OptionalValue::None
@@ -126,6 +125,7 @@ pub trait PositionModule:
                 }
                 self.deposit_positions(account_position)
                     .insert(dp.token_id.clone(), dp.clone());
+
                 positions.push(dp);
             } else {
                 positions.push(dp.clone());
@@ -179,7 +179,7 @@ pub trait PositionModule:
     /// Gets or creates a supply position for a user
     ///
     /// # Arguments
-    /// * `initial_caller` - Address of the user supplying assets
+    /// * `caller` - Address of the user supplying assets
     /// * `is_isolated` - Whether this is an isolated position
     /// * `is_vault` - Whether this is a vault position
     /// * `e_mode_category` - Optional e-mode category
@@ -192,27 +192,26 @@ pub trait PositionModule:
     /// Otherwise creates a new position with specified parameters.
     fn get_or_create_supply_position(
         &self,
-        initial_caller: &ManagedAddress,
+        caller: &ManagedAddress,
         is_isolated: bool,
         is_vault: bool,
         e_mode_category: OptionalValue<u8>,
         account_nonce: Option<EgldOrEsdtTokenPaymentNew<Self::Api>>,
     ) -> (u64, NftAccountAttributes) {
-        if let Some(account_nft) = account_nonce {
-            self.lending_account_in_the_market(account_nft.token_nonce);
+        if let Some(account) = account_nonce {
+            self.require_active_account(account.token_nonce);
 
             let token_id = self.account_token().get_token_id();
-            let attributes = self.get_nft_attributes(account_nft.token_nonce, &token_id);
+            let attributes = self.nft_attributes(account.token_nonce, &token_id);
 
             // Return NFT to owner after validation
             self.tx()
-                .to(initial_caller)
-                .single_esdt(&token_id, account_nft.token_nonce, &BigUint::from(1u64))
+                .to(caller)
+                .single_esdt(&token_id, account.token_nonce, &BigUint::from(1u64))
                 .transfer();
-            (account_nft.token_nonce, attributes)
+            (account.token_nonce, attributes)
         } else {
-            let (payment, attributes) =
-                self.enter(initial_caller, is_isolated, is_vault, e_mode_category);
+            let (payment, attributes) = self.enter(caller, is_isolated, is_vault, e_mode_category);
             (payment.token_nonce, attributes)
         }
     }
@@ -230,17 +229,17 @@ pub trait PositionModule:
     ///
     /// If a position exists for the token, returns it.
     /// Otherwise creates a new position with zero balance and default parameters.
-    fn get_existing_or_new_deposit_position_for_token(
+    fn get_existing_or_new_position_for_token(
         &self,
         account_nonce: u64,
         asset_info: &AssetConfig<Self::Api>,
         token_id: &EgldOrEsdtTokenIdentifier,
         is_vault: bool,
     ) -> AccountPosition<Self::Api> {
-        let mut deposit_positions = self.deposit_positions(account_nonce);
+        let mut positions = self.deposit_positions(account_nonce);
 
-        if let Some(position) = deposit_positions.get(token_id) {
-            deposit_positions.remove(token_id);
+        if let Some(position) = positions.get(token_id) {
+            positions.remove(token_id);
             position
         } else {
             AccountPosition::new(
@@ -276,44 +275,42 @@ pub trait PositionModule:
     fn update_supply_position(
         &self,
         account_nonce: u64,
-        collateral_payment: &EgldOrEsdtTokenPaymentNew<Self::Api>,
+        collateral: &EgldOrEsdtTokenPaymentNew<Self::Api>,
         asset_info: &AssetConfig<Self::Api>,
         is_vault: bool,
-        asset_data_feed: &PriceFeedShort<Self::Api>,
+        feed: &PriceFeedShort<Self::Api>,
     ) -> AccountPosition<Self::Api> {
-        let mut deposit_position = self.get_existing_or_new_deposit_position_for_token(
+        let mut position = self.get_existing_or_new_position_for_token(
             account_nonce,
             asset_info,
-            &collateral_payment.token_identifier,
+            &collateral.token_identifier,
             is_vault,
         );
 
-        if deposit_position.entry_ltv != asset_info.ltv {
-            deposit_position.entry_ltv = asset_info.ltv.clone();
+        if position.entry_ltv != asset_info.ltv {
+            position.entry_ltv = asset_info.ltv.clone();
         }
 
         if is_vault {
             self.increase_vault_position(
-                &mut deposit_position,
-                &collateral_payment.amount,
-                &collateral_payment.token_identifier,
+                &mut position,
+                &collateral.amount,
+                &collateral.token_identifier,
             );
         } else {
             self.update_market_position(
-                &mut deposit_position,
-                &collateral_payment.amount,
-                &collateral_payment.token_identifier,
-                &asset_data_feed,
+                &mut position,
+                &collateral.amount,
+                &collateral.token_identifier,
+                &feed,
             );
         }
 
         // Update storage with the latest position
-        self.deposit_positions(account_nonce).insert(
-            collateral_payment.token_identifier.clone(),
-            deposit_position.clone(),
-        );
+        self.deposit_positions(account_nonce)
+            .insert(collateral.token_identifier.clone(), position.clone());
 
-        deposit_position
+        position
     }
 
     /// Updates market position through liquidity pool
@@ -330,7 +327,7 @@ pub trait PositionModule:
         position: &mut AccountPosition<Self::Api>,
         amount: &BigUint,
         token_id: &EgldOrEsdtTokenIdentifier,
-        asset_data_feed: &PriceFeedShort<Self::Api>,
+        feed: &PriceFeedShort<Self::Api>,
     ) {
         let pool_address = self.get_pool_address(token_id);
 
@@ -338,7 +335,7 @@ pub trait PositionModule:
             .tx()
             .to(pool_address)
             .typed(proxy_pool::LiquidityPoolProxy)
-            .supply(position.clone(), &asset_data_feed.price)
+            .supply(position.clone(), &feed.price)
             .payment(EgldOrEsdtTokenPayment::new(
                 token_id.clone(),
                 0,
@@ -390,18 +387,17 @@ pub trait PositionModule:
         token_id: &EgldOrEsdtTokenIdentifier,
         category: Option<EModeCategory<Self::Api>>,
     ) {
-        if category.is_some() {
-            require!(
-                !category.unwrap().is_deprecated,
-                ERROR_EMODE_CATEGORY_DEPRECATED
-            );
-        } else if e_mode_category_id > 0 {
-            let category = self.e_mode_category().get(&e_mode_category_id).unwrap();
-            require!(!category.is_deprecated, ERROR_EMODE_CATEGORY_DEPRECATED);
-        };
-
         if !asset_info.is_isolated && asset_info.is_e_mode_enabled && e_mode_category_id > 0 {
-            let category_data = self.e_mode_category().get(&e_mode_category_id).unwrap();
+            let category_data = if category.is_some() {
+                let tmp_category = category.unwrap();
+                require!(!tmp_category.is_deprecated, ERROR_EMODE_CATEGORY_DEPRECATED);
+                tmp_category
+            } else {
+                let category = self.e_mode_category().get(&e_mode_category_id).unwrap();
+                require!(!category.is_deprecated, ERROR_EMODE_CATEGORY_DEPRECATED);
+                category
+            };
+
             let asset_emode_config = self
                 .e_mode_assets(e_mode_category_id)
                 .get(token_id)
@@ -422,7 +418,7 @@ pub trait PositionModule:
     /// * `account_nonce` - NFT nonce of the account position
     /// * `withdraw_token_id` - Token to withdraw
     /// * `amount` - Amount to withdraw
-    /// * `initial_caller` - Address initiating withdrawal
+    /// * `caller` - Address initiating withdrawal
     /// * `is_liquidation` - Whether this is a liquidation withdrawal
     /// * `liquidation_fee` - Protocol fee for liquidation
     /// * `attributes` - Optional NFT attributes
@@ -434,12 +430,12 @@ pub trait PositionModule:
     /// For vault positions, updates storage directly.
     /// For market positions, processes through liquidity pool.
     /// Handles protocol fees for liquidations.
-    fn internal_withdraw(
+    fn _withdraw(
         &self,
         account_nonce: u64,
         withdraw_token_id: &EgldOrEsdtTokenIdentifier,
         mut amount: BigUint,
-        initial_caller: &ManagedAddress,
+        caller: &ManagedAddress,
         is_liquidation: bool,
         liquidation_fee: &BigUint,
         storage_cache: &mut StorageCache<Self>,
@@ -471,8 +467,8 @@ pub trait PositionModule:
             );
         }
 
-        let asset_data = self.get_token_price_data(withdraw_token_id, storage_cache);
-        let deposit_position = if dp.is_vault {
+        let asset_data = self.get_token_price(withdraw_token_id, storage_cache);
+        let position = if dp.is_vault {
             let last_value = self.vault_supplied_amount(withdraw_token_id).update(|am| {
                 *am -= &amount;
                 am.clone()
@@ -483,7 +479,7 @@ pub trait PositionModule:
 
             if is_liquidation {
                 self.send().direct_esdt(
-                    initial_caller,
+                    caller,
                     &withdraw_token_id.clone().unwrap_esdt(),
                     0,
                     liquidated_amount_after_fees,
@@ -498,7 +494,7 @@ pub trait PositionModule:
                     .sync_call();
             } else {
                 self.send().direct_esdt(
-                    initial_caller,
+                    caller,
                     &withdraw_token_id.clone().unwrap_esdt(),
                     0,
                     &amount,
@@ -510,7 +506,7 @@ pub trait PositionModule:
                 .to(pool_address)
                 .typed(proxy_pool::LiquidityPoolProxy)
                 .withdraw(
-                    initial_caller,
+                    caller,
                     &amount,
                     dp,
                     is_liquidation,
@@ -523,26 +519,26 @@ pub trait PositionModule:
 
         self.update_position_event(
             &amount,
-            &deposit_position,
+            &position,
             OptionalValue::Some(asset_data.price),
-            OptionalValue::Some(&initial_caller),
+            OptionalValue::Some(&caller),
             OptionalValue::Some(&attributes),
         );
 
-        if deposit_position.get_total_amount().gt(&BigUint::from(0u64)) {
-            dep_pos_map.insert(withdraw_token_id.clone(), deposit_position.clone());
+        if position.get_total_amount().gt(&BigUint::zero()) {
+            dep_pos_map.insert(withdraw_token_id.clone(), position.clone());
         } else {
             dep_pos_map.remove(withdraw_token_id);
         }
 
-        deposit_position
+        position
     }
 
     /// Handles NFT after withdrawal operation
     ///
     /// # Arguments
     /// * `account_token` - NFT token payment
-    /// * `initial_caller` - Address initiating withdrawal
+    /// * `caller` - Address initiating withdrawal
     ///
     /// If no positions remain (no deposits or borrows),
     /// burns the NFT and removes from storage.
@@ -550,7 +546,7 @@ pub trait PositionModule:
     fn handle_nft_after_withdraw(
         &self,
         account_token: EsdtTokenPayment<Self::Api>,
-        initial_caller: &ManagedAddress,
+        caller: &ManagedAddress,
     ) {
         let dep_pos_map = self.deposit_positions(account_token.token_nonce).len();
         let borrow_pos_map = self.borrow_positions(account_token.token_nonce).len();
@@ -562,7 +558,7 @@ pub trait PositionModule:
                 .swap_remove(&account_token.token_nonce);
             self.account_attributes(account_token.token_nonce).clear();
         } else {
-            self.tx().to(initial_caller).esdt(account_token).transfer();
+            self.tx().to(caller).esdt(account_token).transfer();
         }
     }
 
@@ -573,11 +569,11 @@ pub trait PositionModule:
     /// * `asset_to_borrow` - Token to borrow
     /// * `amount` - Amount to borrow
     /// * `amount_in_usd` - USD value of borrow
-    /// * `initial_caller` - Address initiating borrow
+    /// * `caller` - Address initiating borrow
     /// * `asset_config` - Asset configuration
-    /// * `nft_attributes` - Position NFT attributes
-    /// * `collateral_positions` - Current collateral positions
-    /// * `asset_data_feed` - Price data for the asset being borrowed
+    /// * `account` - Position NFT attributes
+    /// * `collaterals` - Current collateral positions
+    /// * `feed` - Price data for the asset being borrowed
     ///
     /// # Returns
     /// * `AccountPosition` - Updated borrow position
@@ -591,39 +587,34 @@ pub trait PositionModule:
         asset_to_borrow: &EgldOrEsdtTokenIdentifier,
         amount: &BigUint,
         amount_in_usd: &BigUint,
-        initial_caller: &ManagedAddress,
+        caller: &ManagedAddress,
         asset_config: &AssetConfig<Self::Api>,
-        nft_attributes: &NftAccountAttributes,
-        collateral_positions: &ManagedVec<AccountPosition<Self::Api>>,
-        asset_data_feed: &PriceFeedShort<Self::Api>,
+        account: &NftAccountAttributes,
+        collaterals: &ManagedVec<AccountPosition<Self::Api>>,
+        feed: &PriceFeedShort<Self::Api>,
     ) -> AccountPosition<Self::Api> {
         let pool_address = self.get_pool_address(asset_to_borrow);
 
         // Get or create borrow position
-        let borrow_position = self.get_existing_or_new_borrow_position_for_token(
+        let mut borrow_position = self.get_existing_or_new_borrow_position_for_token(
             account_nonce,
             asset_config,
             asset_to_borrow.clone(),
-            nft_attributes.is_vault,
+            account.is_vault,
         );
 
         // Execute borrow
-        let updated_position = self
+        borrow_position = self
             .tx()
             .to(pool_address)
             .typed(proxy_pool::LiquidityPoolProxy)
-            .borrow(
-                initial_caller,
-                amount,
-                borrow_position,
-                &asset_data_feed.price,
-            )
+            .borrow(caller, amount, borrow_position, &feed.price)
             .returns(ReturnsResult)
             .sync_call();
 
         // Handle isolated mode debt ceiling
-        if nft_attributes.is_isolated {
-            let collateral_token_id = collateral_positions.get(0).token_id;
+        if account.is_isolated {
+            let collateral_token_id = collaterals.get(0).token_id;
             let collateral_config = self.asset_config(&collateral_token_id).get();
 
             self.validate_isolated_debt_ceiling(
@@ -640,9 +631,9 @@ pub trait PositionModule:
 
         // Update storage
         self.borrow_positions(account_nonce)
-            .insert(asset_to_borrow.clone(), updated_position.clone());
+            .insert(asset_to_borrow.clone(), borrow_position.clone());
 
-        updated_position
+        borrow_position
     }
 
     /// Gets existing borrow position or creates new one
@@ -693,7 +684,7 @@ pub trait PositionModule:
     /// * `account_nonce` - NFT nonce of the account position
     /// * `repay_token_id` - Token being repaid
     /// * `repay_amount` - Amount being repaid
-    /// * `initial_caller` - Address initiating repayment
+    /// * `caller` - Address initiating repayment
     /// * `borrow_position` - Current borrow position being repaid
     /// * `debt_token_price_data` - Price data for the debt token
     ///
@@ -708,7 +699,7 @@ pub trait PositionModule:
         account_nonce: u64,
         repay_token_id: &EgldOrEsdtTokenIdentifier,
         repay_amount: &BigUint,
-        initial_caller: &ManagedAddress,
+        caller: &ManagedAddress,
         borrow_position: &mut AccountPosition<Self::Api>,
         debt_token_price_data: &PriceFeedShort<Self::Api>,
     ) {
@@ -718,7 +709,7 @@ pub trait PositionModule:
             .to(asset_address)
             .typed(proxy_pool::LiquidityPoolProxy)
             .repay(
-                initial_caller,
+                caller,
                 borrow_position.clone(),
                 &debt_token_price_data.price,
             )
@@ -728,7 +719,7 @@ pub trait PositionModule:
 
         // Update storage
         let mut borrow_positions = self.borrow_positions(account_nonce);
-        if borrow_position.get_total_amount().gt(&BigUint::from(0u64)) {
+        if borrow_position.get_total_amount().gt(&BigUint::zero()) {
             borrow_positions.insert(repay_token_id.clone(), borrow_position.clone());
         } else {
             borrow_positions.remove(repay_token_id);
@@ -747,39 +738,35 @@ pub trait PositionModule:
     fn handle_isolated_repay(
         &self,
         account_nonce: u64,
-        borrow_position: &mut AccountPosition<Self::Api>,
-        debt_token_price_data: &PriceFeedShort<Self::Api>,
-        repay_amount_in_egld: &BigUint,
+        position: &mut AccountPosition<Self::Api>,
+        feed: &PriceFeedShort<Self::Api>,
+        repay_amount: &BigUint,
         storage_cache: &mut StorageCache<Self>,
+        attributes: &NftAccountAttributes,
     ) {
-        let collaterals_map = self.deposit_positions(account_nonce);
-        if collaterals_map.len() == 1 {
+        if attributes.is_isolated {
+            let collaterals_map = self.deposit_positions(account_nonce);
             let (collateral_token_id, _) = collaterals_map.iter().next().unwrap();
-            let asset_config = self.asset_config(&collateral_token_id).get();
 
-            if asset_config.is_isolated {
-                // 3. Calculate repay amounts
-                let asset_address = self.pools_map(&borrow_position.token_id).get();
-                self.update_position(
-                    &asset_address,
-                    borrow_position,
-                    OptionalValue::Some(debt_token_price_data.price.clone()),
-                );
-                let principal_egld_amount = self.validate_and_get_repay_amounts(
-                    &borrow_position,
-                    &debt_token_price_data,
-                    repay_amount_in_egld,
-                );
+            // 3. Calculate repay amounts
+            let asset_address = self.pools_map(&position.token_id).get();
 
-                self.update_isolated_debt_usd(
-                    &collateral_token_id,
-                    &self.get_token_amount_in_dollars_raw(
-                        &principal_egld_amount,
-                        &storage_cache.egld_price_feed,
-                    ),
-                    false, // is_decrease
-                );
-            }
+            self.update_position(
+                &asset_address,
+                position,
+                OptionalValue::Some(feed.price.clone()),
+            );
+            let principal_amount =
+                self.validate_and_get_repay_amounts(&position, &feed, repay_amount);
+
+            let debt_usd_amount = self
+                .get_token_amount_in_dollars_raw(&principal_amount, &storage_cache.egld_price_feed);
+
+            self.update_isolated_debt_usd(
+                &collateral_token_id,
+                &debt_usd_amount,
+                false, // is_decrease
+            );
         }
     }
 
@@ -789,7 +776,7 @@ pub trait PositionModule:
     /// * `account_nonce` - NFT nonce of the account position
     /// * `repay_token_id` - Token being repaid
     /// * `repay_amount` - Amount being repaid
-    /// * `initial_caller` - Address initiating repayment
+    /// * `caller` - Address initiating repayment
     /// * `repay_amount_in_egld` - Optional EGLD value of repayment (used in liquidations)
     /// * `debt_token_price_data` - Optional price data (used in liquidations)
     ///
@@ -800,12 +787,12 @@ pub trait PositionModule:
     /// 4. Updates isolated mode debt if applicable
     /// 5. Processes repayment through liquidity pool
     /// 6. Emits position update event
-    fn internal_repay(
+    fn _repay(
         &self,
         account_nonce: u64,
         repay_token_id: &EgldOrEsdtTokenIdentifier,
         repay_amount: &BigUint,
-        initial_caller: &ManagedAddress,
+        caller: &ManagedAddress,
         repay_amount_in_egld: BigUint,
         debt_token_price_data: &PriceFeedShort<Self::Api>,
         storage_cache: &mut StorageCache<Self>,
@@ -821,6 +808,7 @@ pub trait PositionModule:
             &debt_token_price_data,
             &repay_amount_in_egld,
             storage_cache,
+            attributes,
         );
 
         // 3. Process repay and update position
@@ -828,7 +816,7 @@ pub trait PositionModule:
             account_nonce,
             repay_token_id,
             repay_amount,
-            initial_caller,
+            caller,
             &mut borrow_position,
             &debt_token_price_data,
         );
@@ -838,7 +826,7 @@ pub trait PositionModule:
             repay_amount,
             &borrow_position,
             OptionalValue::Some(debt_token_price_data.price.clone()),
-            OptionalValue::Some(&initial_caller),
+            OptionalValue::Some(&caller),
             OptionalValue::Some(attributes),
         );
     }
@@ -860,10 +848,8 @@ pub trait PositionModule:
         health_factor: &BigUint,
     ) -> BigUint {
         // Calculate dynamic protocol fee based on health factor
-        let dynamic_fee = self.calculate_dynamic_protocol_fee(
-            health_factor,
-            asset_config.liquidation_max_fee.clone(),
-        );
+        let dynamic_fee =
+            self.calculate_dynamic_protocol_fee(health_factor, &asset_config.liquidation_max_fee);
 
         // Calculate protocol's share of the bonus based on dynamic fee
         liq_bonus_amount * &dynamic_fee / &BigUint::from(BP)
@@ -875,7 +861,7 @@ pub trait PositionModule:
     /// * `liquidatee_account_nonce` - NFT nonce of account being liquidated
     /// * `debt_payment` - Payment to cover debt
     /// * `collateral_to_receive` - Collateral token to receive
-    /// * `initial_caller` - Address initiating liquidation
+    /// * `caller` - Address initiating liquidation
     /// * `asset_config_collateral` - Configuration of collateral asset
     ///
     /// # Returns
@@ -894,10 +880,9 @@ pub trait PositionModule:
         liquidatee_account_nonce: u64,
         debt_payment: EgldOrEsdtTokenPayment<Self::Api>,
         collateral_to_receive: &EgldOrEsdtTokenIdentifier,
-        initial_caller: &ManagedAddress,
+        caller: &ManagedAddress,
         asset_config_collateral: &AssetConfig<Self::Api>,
         storage_cache: &mut StorageCache<Self>,
-        nft_attributes: &NftAccountAttributes,
     ) -> (
         BigUint,                   // health_factor
         BigUint,                   // debt_to_repay_amount
@@ -907,29 +892,27 @@ pub trait PositionModule:
         PriceFeedShort<Self::Api>, // debt_token_price_data
     ) {
         let debt_token_price_data =
-            self.get_token_price_data(&debt_payment.token_identifier, storage_cache);
+            self.get_token_price(&debt_payment.token_identifier, storage_cache);
         let collateral_token_price_data =
-            self.get_token_price_data(collateral_to_receive, storage_cache);
+            self.get_token_price(collateral_to_receive, storage_cache);
         let mut debt_payment_in_egld =
             self.get_token_amount_in_egld_raw(&debt_payment.amount, &debt_token_price_data);
 
         // Calculate liquidation bonus based on health factor
-        let collateral_positions =
-            self.update_collateral_with_interest(liquidatee_account_nonce, storage_cache, false);
-        let (borrow_positions, _) =
-            self.update_borrows_with_debt(liquidatee_account_nonce, storage_cache, false, false);
+        let collaterals = self.update_interest(liquidatee_account_nonce, storage_cache, false);
+        let (borrows, _) = self.update_debt(liquidatee_account_nonce, storage_cache, false, false);
 
-        let (weighted_collateral_in_egld, total_collateral_in_egld, _) =
-            self.get_summary_collateral_in_egld_vec(&collateral_positions, storage_cache);
-        let borrowed_egld = self.get_total_borrow_in_egld_vec(&borrow_positions, storage_cache);
+        let (liquidation_collateral, total_collateral, _) =
+            self.get_account_collateral(&collaterals, storage_cache);
+        let borrowed_egld = self.sum_borrows(&borrows, storage_cache);
 
         let health_factor =
-            self.validate_liquidation_health_factor(&weighted_collateral_in_egld, &borrowed_egld);
+            self.validate_liquidation_health_factor(&liquidation_collateral, &borrowed_egld);
 
         // Calculate liquidation amount using Dutch auction mechanism
         let (liquidation_amount_egld, bonus_rate) = self.calculate_single_asset_liquidation_amount(
             &borrowed_egld,
-            &total_collateral_in_egld,
+            &total_collateral,
             collateral_to_receive,
             liquidatee_account_nonce,
             OptionalValue::Some(debt_payment_in_egld.clone()),
@@ -955,7 +938,7 @@ pub trait PositionModule:
         // Return excess if any
         if let Some(excess) = excess_amount {
             self.tx()
-                .to(initial_caller)
+                .to(caller)
                 .payment(EgldOrEsdtTokenPayment::new(
                     debt_payment.token_identifier.clone(),
                     0,
@@ -973,7 +956,6 @@ pub trait PositionModule:
             / &BigUint::from(BP);
 
         let bonus_amount = &collateral_amount_after_bonus - &collateral_amount_before_bonus;
-
         (
             health_factor,
             debt_to_repay_amount,
@@ -990,7 +972,7 @@ pub trait PositionModule:
     /// * `liquidatee_account_nonce` - NFT nonce of account being liquidated
     /// * `debt_payment` - Payment to cover debt
     /// * `collateral_to_receive` - Collateral token to receive
-    /// * `initial_caller` - Address initiating liquidation
+    /// * `caller` - Address initiating liquidation
     ///
     /// Orchestrates the entire liquidation flow:
     /// 1. Calculates liquidation amounts
@@ -1003,12 +985,14 @@ pub trait PositionModule:
         debt_payment: EgldOrEsdtTokenPayment<Self::Api>,
         collateral_to_receive: &EgldOrEsdtTokenIdentifier,
         min_amount_to_receive: OptionalValue<BigUint>,
-        initial_caller: &ManagedAddress,
+        caller: &ManagedAddress,
     ) {
         let mut storage_cache = StorageCache::new(self);
         storage_cache.allow_unsafe_price = false;
+
         let asset_config_collateral = self.asset_config(collateral_to_receive).get();
-        let nft_attributes = self.account_attributes(liquidatee_account_nonce).get();
+        let account = self.account_attributes(liquidatee_account_nonce).get();
+
         let (
             health_factor,
             debt_to_repay_amount,
@@ -1020,22 +1004,21 @@ pub trait PositionModule:
             liquidatee_account_nonce,
             debt_payment.clone(),
             collateral_to_receive,
-            initial_caller,
+            caller,
             &asset_config_collateral,
             &mut storage_cache,
-            &nft_attributes,
         );
 
         // Repay debt
-        self.internal_repay(
+        self._repay(
             liquidatee_account_nonce,
             &debt_payment.token_identifier,
             &debt_to_repay_amount,
-            initial_caller,
+            caller,
             repay_amount_in_egld,
             &debt_token_price_data,
             &mut storage_cache,
-            &nft_attributes,
+            &account,
         );
 
         // Calculate protocol fee using pre-calculated values
@@ -1046,15 +1029,15 @@ pub trait PositionModule:
         );
 
         // Process withdrawal with protocol fee
-        self.internal_withdraw(
+        self._withdraw(
             liquidatee_account_nonce,
             collateral_to_receive,
             collateral_amount_after_bonus,
-            initial_caller,
+            caller,
             true,
             &protocol_fee_amount,
             &mut storage_cache,
-            &nft_attributes,
+            &account,
             min_amount_to_receive.into_option(),
         );
     }

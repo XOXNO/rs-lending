@@ -1,3 +1,4 @@
+use common_constants::BP;
 use common_events::PriceFeedShort;
 
 multiversx_sc::imports!();
@@ -13,6 +14,7 @@ where
     pub egld_price_feed: PriceFeedShort<C::Api>,
     pub price_aggregator_sc: ManagedAddress<C::Api>,
     pub allow_unsafe_price: bool,
+    pub bp: BigUint<C::Api>,
 }
 
 impl<'a, C> StorageCache<'a, C>
@@ -29,6 +31,7 @@ where
                 .get_aggregator_price_feed(&EgldOrEsdtTokenIdentifier::egld(), &price_aggregator),
             price_aggregator_sc: price_aggregator,
             allow_unsafe_price: true,
+            bp: BigUint::from(BP),
         }
     }
 }

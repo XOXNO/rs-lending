@@ -3,6 +3,7 @@ use common_constants::{DECIMAL_PRECISION, EGLD_TICKER, MIN_FIRST_TOLERANCE, MIN_
 
 use contexts::base::StorageCache;
 
+use math::LendingMathModule;
 use multiversx_sc::{
     imports::OptionalValue,
     types::{
@@ -133,6 +134,95 @@ impl LendingPoolTestState {
             / BigUint::from(BP))
         .to_u64()
         .unwrap()
+    }
+
+    pub fn enable_vault(&mut self, from: &TestAddress, account_nonce: u64) {
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .enable_vault()
+            .single_esdt(
+                &ACCOUNT_TOKEN.to_token_identifier(),
+                account_nonce,
+                &BigUint::from(1u32),
+            )
+            .run();
+    }
+
+    pub fn enable_vault_error(
+        &mut self,
+        from: &TestAddress,
+        account_nonce: u64,
+        error_message: &[u8],
+    ) {
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .enable_vault()
+            .single_esdt(
+                &ACCOUNT_TOKEN.to_token_identifier(),
+                account_nonce,
+                &BigUint::from(1u32),
+            )
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
+    pub fn disable_vault(&mut self, from: &TestAddress, account_nonce: u64) {
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .disable_vault()
+            .single_esdt(
+                &ACCOUNT_TOKEN.to_token_identifier(),
+                account_nonce,
+                &BigUint::from(1u32),
+            )
+            .run();
+    }
+
+    pub fn disable_vault_error(
+        &mut self,
+        from: &TestAddress,
+        account_nonce: u64,
+        error_message: &[u8],
+    ) {
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .disable_vault()
+            .single_esdt(
+                &ACCOUNT_TOKEN.to_token_identifier(),
+                account_nonce,
+                &BigUint::from(1u32),
+            )
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
+    pub fn calculate_dynamic_protocol_fee(
+        &mut self,
+        health_factor: BigUint<DebugApi>,
+        base_protocol_fee: BigUint<DebugApi>,
+    ) -> BigUint<DebugApi> {
+        let mut result: BigUint<DebugApi> = BigUint::zero();
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .returns(ReturnsResult)
+            .whitebox(lending_pool::contract_obj, |sc| {
+                result = sc.calculate_dynamic_protocol_fee(&health_factor, &base_protocol_fee);
+                println!("Result: {:?}", result);
+            });
+        result
     }
 
     pub fn get_usd_price_error(&mut self, token_id: TestTokenIdentifier, error_message: &[u8]) {
@@ -624,7 +714,7 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .whitebox(lending_pool::contract_obj, |sc| {
                 let mut storage_cache = StorageCache::new(&sc);
-                sc.update_borrows_with_debt(account_position, &mut storage_cache, true, false);
+                sc.update_debt(account_position, &mut storage_cache, true, false);
             });
     }
 
@@ -635,8 +725,32 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .whitebox(lending_pool::contract_obj, |sc| {
                 let mut storage_cache = StorageCache::new(&sc);
-                sc.update_collateral_with_interest(account_position, &mut storage_cache, true);
+                sc.update_interest(account_position, &mut storage_cache, true);
             });
+    }
+
+    pub fn update_markets(
+        &mut self,
+        from: &TestAddress,
+        markets: MultiValueEncoded<StaticApi, EgldOrEsdtTokenIdentifier<StaticApi>>,
+    ) {
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .update_indexes(markets)
+            .run();
+    }
+
+    pub fn update_account_positions(&mut self, from: &TestAddress, account_position: u64) {
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .update_account_positions(account_position)
+            .run();
     }
 
     pub fn get_vault_supplied_amount(
@@ -1371,7 +1485,7 @@ pub fn setup_egld_liquid_staking(
         .typed(proxy_liquid_staking::LiquidStakingProxy)
         .init(
             EGLD_LIQUID_STAKING_ADDRESS,
-            BigUint::from(0u64),
+            BigUint::zero(),
             0u64,
             0u64,
             BigUint::from(25u64),

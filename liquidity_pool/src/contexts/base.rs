@@ -103,7 +103,7 @@ where
         if self.reserves_amount >= self.protocol_revenue {
             self.reserves_amount.clone() - self.protocol_revenue.clone()
         } else {
-            ManagedDecimal::from_raw_units(BigUint::from(0u64), self.pool_params.decimals)
+            ManagedDecimal::from_raw_units(BigUint::zero(), self.pool_params.decimals)
         }
     }
 
