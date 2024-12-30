@@ -6,3 +6,6 @@ name = "lending_pool"
 
 [[proxy]]
 path = "../lending_pool/tests/proxys/proxy_lending_pool.rs"
+
+[[proxy]]
+path = "../flash_mock/src/proxy_lending.rs"

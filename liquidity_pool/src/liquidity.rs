@@ -455,21 +455,24 @@ pub trait LiquidityModule:
         let asset = storage_cache.pool_asset.clone();
         require!(borrowed_token == &asset, ERROR_INVALID_ASSET);
 
-        let amount_dec =
+        let loaned_amount =
             ManagedDecimal::from_raw_units(amount.clone(), storage_cache.pool_params.decimals);
 
         require!(
-            &storage_cache.get_reserves() >= &amount_dec,
+            &storage_cache.get_reserves() >= &loaned_amount,
             ERROR_FLASHLOAN_RESERVE_ASSET
         );
 
-        storage_cache.reserves_amount -= &amount_dec;
+        storage_cache.reserves_amount -= &loaned_amount;
+
         // Calculate flash loan fee
-        let flash_loan_fee =
-            amount_dec.clone() * ManagedDecimal::from_raw_units(fees.clone(), DECIMAL_PRECISION);
+        let flash_loan_fee = loaned_amount.clone().mul_with_precision(
+            ManagedDecimal::from_raw_units(fees.clone(), DECIMAL_PRECISION),
+            DECIMAL_PRECISION,
+        );
 
         // Calculate minimum required amount to be paid back
-        let min_required_amount = amount_dec + flash_loan_fee;
+        let min_repayment_amount = loaned_amount.clone() + flash_loan_fee;
 
         drop(storage_cache);
         let back_transfers = self
@@ -483,18 +486,18 @@ pub trait LiquidityModule:
 
         let mut storage_cache_second = StorageCache::new(self);
         let is_egld = borrowed_token == &EgldOrEsdtTokenIdentifier::egld();
-        if is_egld {
-            let amount_dec = ManagedDecimal::from_raw_units(
+        let repayment_amount = if is_egld {
+            let _repayment_amount = ManagedDecimal::from_raw_units(
                 back_transfers.total_egld_amount,
                 storage_cache_second.pool_params.decimals,
             );
+
             require!(
-                amount_dec >= min_required_amount,
+                &storage_cache_second.pool_asset.is_egld(),
                 ERROR_INVALID_FLASHLOAN_REPAYMENT
             );
-            let extra_amount = amount_dec - min_required_amount;
-            storage_cache_second.protocol_revenue += &extra_amount;
-            storage_cache_second.reserves_amount += &extra_amount;
+
+            _repayment_amount
         } else {
             require!(
                 back_transfers.esdt_payments.len() == 1,
@@ -506,20 +509,24 @@ pub trait LiquidityModule:
                 ERROR_INVALID_FLASHLOAN_REPAYMENT
             );
 
-            let amount_dec = ManagedDecimal::from_raw_units(
+            let _repayment_amount = ManagedDecimal::from_raw_units(
                 payment.amount.clone(),
                 storage_cache_second.pool_params.decimals,
             );
 
-            require!(
-                amount_dec >= min_required_amount,
-                ERROR_INVALID_FLASHLOAN_REPAYMENT
-            );
+            _repayment_amount
+        };
 
-            let extra_amount = amount_dec - min_required_amount;
-            storage_cache_second.protocol_revenue += &extra_amount;
-            storage_cache_second.reserves_amount += &extra_amount;
-        }
+        require!(
+            repayment_amount >= min_repayment_amount && loaned_amount <= repayment_amount,
+            ERROR_INVALID_FLASHLOAN_REPAYMENT
+        );
+
+        let revenue = repayment_amount - loaned_amount.clone();
+
+        storage_cache_second.protocol_revenue += &revenue;
+        storage_cache_second.reserves_amount += &revenue;
+        storage_cache_second.reserves_amount += &loaned_amount;
 
         self.update_market_state_event(
             storage_cache_second.timestamp,

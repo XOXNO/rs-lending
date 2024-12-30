@@ -343,8 +343,9 @@ where
         borrow_amount: Arg1,
         borrow_position: Arg2,
         asset_price: Arg3,
-    ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPosition<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::AccountPosition<Env::Api>> {
         self.wrapped_tx
+            .payment(NotPayable)
             .raw_call("borrow")
             .argument(&initial_caller)
             .argument(&borrow_amount)
@@ -380,8 +381,9 @@ where
         is_liquidation: Arg3,
         protocol_liquidation_fee: Arg4,
         asset_price: Arg5,
-    ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPosition<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::AccountPosition<Env::Api>> {
         self.wrapped_tx
+            .payment(NotPayable)
             .raw_call("withdraw")
             .argument(&initial_caller)
             .argument(&amount)

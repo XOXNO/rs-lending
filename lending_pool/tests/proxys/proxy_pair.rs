@@ -237,15 +237,6 @@ where
             .original_result()
     }
 
-    pub fn get_trusted_swap_pairs(
-        self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValueEncoded<Env::Api, (common_structs::wrapper_types::TokenPair<Env::Api>, ManagedAddress<Env::Api>)>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getTrustedSwapPairs")
-            .original_result()
-    }
-
     pub fn get_whitelisted_managed_addresses(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValueEncoded<Env::Api, ManagedAddress<Env::Api>>> {
@@ -580,14 +571,14 @@ where
             .original_result()
     }
 
-    pub fn state(
-        self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, pausable::State> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getState")
-            .original_result()
-    }
+    // pub fn state(
+    //     self,
+    // ) -> TxTypedCall<Env, From, To, NotPayable, Gas, pausable::State> {
+    //     self.wrapped_tx
+    //         .payment(NotPayable)
+    //         .raw_call("getState")
+    //         .original_result()
+    // }
 
     pub fn add_initial_liquidity(
         self,

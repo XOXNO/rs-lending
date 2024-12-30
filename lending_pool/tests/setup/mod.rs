@@ -7,8 +7,9 @@ use math::LendingMathModule;
 use multiversx_sc::{
     imports::OptionalValue,
     types::{
-        BigUint, EgldOrEsdtTokenPayment, ManagedAddress, ManagedBuffer, ManagedDecimal,
-        MultiValueEncoded, ReturnsNewManagedAddress, ReturnsResult, TestTokenIdentifier,
+        BigUint, EgldOrEsdtTokenPayment, ManagedAddress, ManagedArgBuffer, ManagedBuffer,
+        ManagedDecimal, MultiValueEncoded, ReturnsNewManagedAddress, ReturnsResult,
+        TestTokenIdentifier,
     },
 };
 use multiversx_sc_scenario::{
@@ -21,6 +22,7 @@ use rs_liquid_staking_sc::{
     storage::StorageModule,
 };
 use rs_liquid_xoxno::{config::ConfigModule as XoxnoConfigModule, rs_xoxno_proxy};
+
 use std::ops::Mul;
 use storage::LendingStorageModule;
 
@@ -51,6 +53,8 @@ pub fn world() -> ScenarioWorld {
 
     blockchain.register_contract(SAFE_PRICE_VIEW_PATH, pair::ContractBuilder);
 
+    blockchain.register_contract(FLASH_MOCK_PATH, flash_mock::ContractBuilder);
+
     blockchain
 }
 
@@ -71,6 +75,7 @@ pub struct LendingPoolTestState {
     pub segld_market: ManagedAddress<StaticApi>,
     pub legld_market: ManagedAddress<StaticApi>,
     pub lp_egld_market: ManagedAddress<StaticApi>,
+    pub flash_mock: ManagedAddress<StaticApi>,
 }
 
 impl LendingPoolTestState {
@@ -102,6 +107,9 @@ impl LendingPoolTestState {
             &price_aggregator_sc,
         );
 
+        let flash_mock = setup_flash_mock(&mut world);
+        setup_flasher(&mut world, flash_mock.clone());
+
         Self {
             world,
             lending_pool_whitebox,
@@ -119,6 +127,7 @@ impl LendingPoolTestState {
             segld_market,
             legld_market,
             lp_egld_market,
+            flash_mock,
         }
     }
 
@@ -134,6 +143,44 @@ impl LendingPoolTestState {
             / BigUint::from(BP))
         .to_u64()
         .unwrap()
+    }
+
+    pub fn flash_loan(
+        &mut self,
+        from: &TestAddress,
+        token: &TestTokenIdentifier,
+        amount: BigUint<StaticApi>,
+        contract: ManagedAddress<StaticApi>,
+        endpoint: ManagedBuffer<StaticApi>,
+        arguments: ManagedArgBuffer<StaticApi>,
+    ) {
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(&self.lending_sc)
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .flash_loan(token, amount, contract, endpoint, arguments)
+            .run();
+    }
+
+    pub fn flash_loan_error(
+        &mut self,
+        from: &TestAddress,
+        token: &TestTokenIdentifier,
+        amount: BigUint<StaticApi>,
+        contract: ManagedAddress<StaticApi>,
+        endpoint: ManagedBuffer<StaticApi>,
+        arguments: ManagedArgBuffer<StaticApi>,
+        error_message: &[u8],
+    ) {
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(&self.lending_sc)
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .flash_loan(token, amount, contract, endpoint, arguments)
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
     }
 
     pub fn enable_vault(&mut self, from: &TestAddress, account_nonce: u64) {
@@ -1368,6 +1415,19 @@ pub fn calculate_optimal_liquidity(
     (first_amount, second_amount)
 }
 
+pub fn setup_flash_mock(world: &mut ScenarioWorld) -> ManagedAddress<StaticApi> {
+    let flash_mock = world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .typed(proxy_flash_mock::FlashMockProxy)
+        .init()
+        .code(FLASH_MOCK_PATH)
+        .returns(ReturnsNewManagedAddress)
+        .run();
+
+    flash_mock
+}
+
 pub fn setup_price_aggregator(
     world: &mut ScenarioWorld,
 ) -> (
@@ -1876,4 +1936,12 @@ pub fn setup_owner(world: &mut ScenarioWorld) {
             USDC_TOKEN,
             BigUint::from(100000000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
         );
+}
+
+pub fn setup_flasher(world: &mut ScenarioWorld, flash: ManagedAddress<StaticApi>) {
+    world.set_esdt_balance(
+        flash,
+        &EGLD_TOKEN.as_bytes(),
+        BigUint::from(100000000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+    );
 }

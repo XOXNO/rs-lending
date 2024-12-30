@@ -26,16 +26,17 @@ path = "../common/events"
 [dependencies.common-constants]
 path = "../common/constants"
 
+[dependencies.price-aggregator]
+path = "../price-aggregator"
+
+[dependencies.flash-mock]
+path = "../flash_mock"
+
 [dev-dependencies]
 num-bigint = "0.4.2"
 num-traits = "0.2"
 hex = "0.4"
+multiversx-sc-scenario = "0.54.6"
 rs-liquid-xoxno = { git = "https://github.com/XOXNO/rs-liquid-xoxno" }
 rs-liquid-staking-sc = { git = "https://github.com/XOXNO/rs-liquid-staking-sc", package = "liquid-staking" }
 pair = { git = "https://github.com/mihaieremia/mx-exchange-sc", package = "pair" }
-
-[dev-dependencies.multiversx-sc-scenario]
-version = "0.54.6"
-
-[dependencies.price-aggregator]
-path = "../price-aggregator"

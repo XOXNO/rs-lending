@@ -1,0 +1,27 @@
+[package]
+name    = "flash-mock"
+version = "0.0.0"
+authors = ["Mihai Eremia <mihai@xoxno.com>"]
+readme  = "README.md"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[dev-dependencies.multiversx-sc-scenario]
+version = "0.54.6"
+
+[dependencies.multiversx-sc]
+version = "0.54.6"
+
+[dependencies.multiversx-sc-modules]
+version = "0.54.6"
+
+[dependencies.common-structs]
+path = "../common/structs"
+
+[dependencies.common-events]
+path = "../common/events"
+
+[dependencies.common-constants]
+path = "../common/constants"

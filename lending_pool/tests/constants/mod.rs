@@ -94,11 +94,15 @@ pub const ORACLE_ADDRESS_2: TestAddress = TestAddress::new("oracle2");
 pub const ORACLE_ADDRESS_3: TestAddress = TestAddress::new("oracle3");
 pub const ORACLE_ADDRESS_4: TestAddress = TestAddress::new("oracle4");
 
-pub const LENDING_POOL_PATH: MxscPath = MxscPath::new("../output/lending-pool.mxsc.json");
+pub const LENDING_POOL_PATH: MxscPath = MxscPath::new("../output/lending_pool.mxsc.json");
+
 pub const LIQUIDITY_POOL_PATH: MxscPath =
-    MxscPath::new("../liquidity_pool/output/liquidity-pool.mxsc.json");
+    MxscPath::new("../liquidity_pool/output/liquidity_pool.mxsc.json");
+
 pub const PRICE_AGGREGATOR_PATH: MxscPath =
     MxscPath::new("../price-aggregator/output/price-aggregator.mxsc.json");
+
+pub const FLASH_MOCK_PATH: MxscPath = MxscPath::new("../flash_mock/output/flash_mock.mxsc.json");
 
 pub const EGLD_LIQUID_STAKING_PATH: MxscPath =
     MxscPath::new("../proxys/egld_liquid_staking.mxsc.json");

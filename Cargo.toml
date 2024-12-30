@@ -8,5 +8,7 @@ members = [
     "common/constants",
     "common/events",
     "price-aggregator",
-    "price-aggregator/meta"
+    "price-aggregator/meta",
+    "flash_mock",
+    "flash_mock/meta",
 ]
