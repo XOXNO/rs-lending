@@ -475,15 +475,18 @@ pub trait PositionModule:
             });
 
             self.update_vault_supplied_amount_event(withdraw_token_id, last_value);
+
             dp.amount -= &amount;
 
             if is_liquidation {
-                self.send().direct_esdt(
-                    caller,
-                    &withdraw_token_id.clone().unwrap_esdt(),
-                    0,
-                    liquidated_amount_after_fees,
-                );
+                self.tx()
+                    .to(caller)
+                    .payment(EgldOrEsdtTokenPayment::new(
+                        withdraw_token_id.clone(),
+                        0,
+                        liquidated_amount_after_fees.clone(),
+                    ))
+                    .transfer();
 
                 self.tx()
                     .to(pool_address)
@@ -493,13 +496,16 @@ pub trait PositionModule:
                     .returns(ReturnsResult)
                     .sync_call();
             } else {
-                self.send().direct_esdt(
-                    caller,
-                    &withdraw_token_id.clone().unwrap_esdt(),
-                    0,
-                    &amount,
-                );
+                self.tx()
+                    .to(caller)
+                    .payment(EgldOrEsdtTokenPayment::new(
+                        withdraw_token_id.clone(),
+                        0,
+                        amount.clone(),
+                    ))
+                    .transfer();
             };
+
             dp
         } else {
             self.tx()

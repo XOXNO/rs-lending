@@ -218,7 +218,7 @@ getTotalBorrowInEgld() {
 }
 
 getCollateralAmountForToken() {
-    mxpy contract query ${ADDRESS} --function="getCollateralAmountForToken" --arguments 0x0e ${XEGLD_TOKEN} --proxy=${PROXY}
+    mxpy contract query ${ADDRESS} --function="getCollateralAmountForToken" --arguments 0x01 ${XEGLD_TOKEN} --proxy=${PROXY}
 }
 
 getBorrowAmountForToken() {
@@ -226,7 +226,7 @@ getBorrowAmountForToken() {
 }
 
 getTotalCollateralAvailable() {
-    mxpy contract query ${ADDRESS} --function="getTotalCollateralAvailable" --arguments 0x0a --proxy=${PROXY}
+    mxpy contract query ${ADDRESS} --function="getTotalCollateralAvailable" --arguments 0x01 --proxy=${PROXY}
 }
 
 canBeLiquidated() {

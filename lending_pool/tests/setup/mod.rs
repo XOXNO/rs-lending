@@ -36,6 +36,7 @@ pub static NFT_ROLES: &[EsdtLocalRole] = &[
     EsdtLocalRole::NftCreate,
     EsdtLocalRole::Mint,
     EsdtLocalRole::NftBurn,
+    EsdtLocalRole::NftUpdateAttributes,
 ];
 
 pub fn world() -> ScenarioWorld {

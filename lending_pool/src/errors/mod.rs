@@ -113,3 +113,7 @@ pub static ERROR_EMODE_CATEGORY_DEPRECATED: &[u8] = b"E-mode category deprecated
 pub static ERROR_POSITION_NOT_FOUND: &[u8] = b"Position not found.";
 
 pub static ERROR_ENABLE_VAULT_MODE_FAILED: &[u8] = b"Enable vault mode failed.";
+
+pub static ERROR_VAULT_ALREADY_DISABLED: &[u8] = b"Vault already disabled.";
+
+pub static ERROR_VAULT_ALREADY_ENABLED: &[u8] = b"Vault already enabled.";

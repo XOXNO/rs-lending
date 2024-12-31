@@ -232,19 +232,22 @@ pub trait LiquidityModule:
         let mut storage_cache = StorageCache::new(self);
 
         self.update_interest_indexes(&mut storage_cache);
-        let amount_dec =
+
+        let requested_amount =
             ManagedDecimal::from_raw_units(amount.clone(), storage_cache.pool_params.decimals);
+
         // Unaccrued interest for the wanted amount
         let extra_interest = self.compute_interest(
-            amount_dec.clone(),
+            requested_amount.clone(),
             &storage_cache.supply_index,
             &ManagedDecimal::from_raw_units(deposit_position.index.clone(), DECIMAL_PRECISION),
         );
-        let total_withdraw = amount_dec.clone() + extra_interest.clone();
-        // Withdrawal amount = initial wanted amount + Unaccrued interest for that amount (this has to be paid back to the user that requested the withdrawal)
-        let mut principal_amount = amount_dec;
-        // Check if there is enough liquidity to cover the withdrawal
 
+        let total_withdraw = requested_amount.clone() + extra_interest.clone();
+        // Withdrawal amount = initial wanted amount + Unaccrued interest for that amount (this has to be paid back to the user that requested the withdrawal)
+        let mut principal_amount = requested_amount;
+
+        // Check if there is enough liquidity to cover the withdrawal
         require!(
             &storage_cache.get_reserves() >= &total_withdraw,
             ERROR_INSUFFICIENT_LIQUIDITY
@@ -260,18 +263,23 @@ pub trait LiquidityModule:
 
         let zero =
             ManagedDecimal::from_raw_units(BigUint::zero(), storage_cache.pool_params.decimals);
+
         // If the total withdrawal amount is greater than the accumulated interest, we need to subtract the accumulated interest from the withdrawal amount
+
         if principal_amount >= accumulated_interest {
-            principal_amount -= &accumulated_interest;
+            principal_amount -= accumulated_interest;
             accumulated_interest = zero.clone();
         }
 
         // If the accumulated interest is greater than the withdrawal amount, we need to subtract the withdrawal amount from the accumulated interest
+
         if accumulated_interest >= principal_amount {
-            accumulated_interest -= principal_amount.clone();
+            accumulated_interest -= principal_amount;
             principal_amount = zero.clone();
         }
+
         deposit_position.accumulated_interest = accumulated_interest.into_raw_units().clone();
+
         // Check if there is enough liquidity to cover the withdrawal after the interest was subtracted
         if principal_amount.gt(&zero) {
             require!(
@@ -292,14 +300,14 @@ pub trait LiquidityModule:
                 ))
                 .transfer();
         } else {
-            let protocol_liquidation_fee_dec = ManagedDecimal::from_raw_units(
+            let protocol_fee = ManagedDecimal::from_raw_units(
                 protocol_liquidation_fee.clone(),
                 storage_cache.pool_params.decimals,
             );
 
-            storage_cache.protocol_revenue += &protocol_liquidation_fee_dec;
-            storage_cache.reserves_amount += &protocol_liquidation_fee_dec;
-            let amount_after_fee = total_withdraw - protocol_liquidation_fee_dec;
+            storage_cache.protocol_revenue += &protocol_fee;
+            storage_cache.reserves_amount += &protocol_fee;
+            let amount_after_fee = total_withdraw - protocol_fee;
 
             self.tx()
                 .to(initial_caller)

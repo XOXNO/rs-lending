@@ -165,7 +165,6 @@ fn test_complete_market_exit() {
         false,
     );
 
-    state.world.current_block().block_timestamp(6000u64);
     state.borrow_asset(
         &borrower,
         EGLD_TOKEN,
@@ -174,6 +173,7 @@ fn test_complete_market_exit() {
         EGLD_DECIMALS,
     );
 
+    state.world.current_block().block_timestamp(6000u64);
     state.supply_asset(
         &OWNER_ADDRESS,
         EGLD_TOKEN,
@@ -186,7 +186,8 @@ fn test_complete_market_exit() {
     // return;
     state.world.current_block().block_timestamp(8000u64);
     state.update_borrows_with_debt(&borrower, 2);
-    // state.update_interest_indexes(&supplier, 1);
+    state.update_interest_indexes(&supplier, 1);
+    state.update_interest_indexes(&OWNER_ADDRESS, 3);
 
     state
         .world
@@ -258,8 +259,11 @@ fn test_complete_market_exit() {
         EGLD_DECIMALS,
     );
 
-    let collateral_in_dollars = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
-    println!("collateral_in_dollars: {:?}", collateral_in_dollars);
+    let collateral_in_dollars = state.get_collateral_amount_for_token(3, EGLD_TOKEN);
+    println!(
+        "collateral_in_dollars: {:?}",
+        collateral_in_dollars.to_u64()
+    );
     assert!(collateral_in_dollars == BigUint::zero());
     // state.claim_revenue(EGLD_TOKEN);
     return;
@@ -2218,6 +2222,71 @@ fn test_enable_disable_vault_with_borrows_and_interest() {
     assert!(
         egld_supplied > BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32)),
     );
+}
+
+#[test]
+fn test_disable_enable_vault_with_borrows_and_interest() {
+    let mut state = LendingPoolTestState::new();
+    let vault = TestAddress::new("vault");
+
+    let user: TestAddress<'_> = TestAddress::new("user");
+    // Setup accounts
+    setup_accounts(&mut state, vault, user);
+
+    // Supply first position as vault
+    state.supply_asset(
+        &vault,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    state.supply_asset(
+        &user,
+        USDC_TOKEN,
+        BigUint::from(5000u64),
+        USDC_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    state.supply_asset(
+        &user,
+        EGLD_TOKEN,
+        BigUint::from(50u64),
+        EGLD_DECIMALS,
+        OptionalValue::Some(2),
+        OptionalValue::None,
+        false,
+    );
+
+    state.borrow_asset(&user, EGLD_TOKEN, BigUint::from(10u64), 2, EGLD_DECIMALS);
+    state.borrow_asset(&vault, USDC_TOKEN, BigUint::from(1000u64), 1, USDC_DECIMALS);
+    state.world.current_block().block_timestamp(530000u64);
+    let egld_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);
+    assert!(egld_supplied == BigUint::from(0u64));
+    let collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    assert!(
+        collateral >= BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32))
+    );
+    state.enable_vault(&vault, 1);
+    let egld_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);
+    assert!(
+        egld_supplied > BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32)),
+    );
+    state.world.current_block().block_timestamp(535000u64);
+    state.disable_vault(&vault, 1);
+
+    let egld_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
+    state.update_markets(&vault, markets);
+    state.update_account_positions(&vault, 1);
+    assert!(egld_supplied == BigUint::from(0u64));
 }
 
 #[test]
