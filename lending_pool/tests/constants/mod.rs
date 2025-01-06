@@ -18,7 +18,7 @@ pub const R_SLOPE1: u128 = 100_000_000_000_000_000_000; // 10%
 pub const R_SLOPE2: u128 = 1_000_000_000_000_000_000_000; // 100%
 pub const U_OPTIMAL: u128 = 800_000_000_000_000_000_000; // 80%
 pub const RESERVE_FACTOR: u128 = 300_000_000_000_000_000_000; // 30%
-pub const LIQ_THRESOLD: u128 = 800_000_000_000_000_000_000; // 80%
+pub const LIQ_THRESOLD: u128 = 760_000_000_000_000_000_000; // 80%
 pub const E_MODE_LIQ_THRESOLD: u128 = 850_000_000_000_000_000_000; // 85%
 pub const LIQ_BONUS: u128 = 10_000_000_000_000_000_000; // 1%
 pub const E_MODE_LIQ_BONUS: u128 = 50_000_000_000_000_000_000; // 5%
@@ -84,7 +84,7 @@ pub const CAPPED_DECIMALS: usize = 8;
 
 pub const LENDING_POOL_ADDRESS: TestSCAddress = TestSCAddress::new("lending-pool");
 pub const LIQUIDITY_POOL_ADDRESS: TestSCAddress = TestSCAddress::new("liquidity-pool");
-pub const PRICE_AGGREGATOR_ADDRESS: TestSCAddress = TestSCAddress::new("price-aggregator");
+pub const PRICE_AGGREGATOR_ADDRESS: TestSCAddress = TestSCAddress::new("price_aggregator");
 pub const EGLD_LIQUID_STAKING_ADDRESS: TestSCAddress = TestSCAddress::new("egld-liquid-staking");
 pub const XOXNO_LIQUID_STAKING_ADDRESS: TestSCAddress = TestSCAddress::new("xoxno-liquid-staking");
 pub const OWNER_ADDRESS: TestAddress = TestAddress::new("owner");
@@ -100,7 +100,7 @@ pub const LIQUIDITY_POOL_PATH: MxscPath =
     MxscPath::new("../liquidity_pool/output/liquidity_pool.mxsc.json");
 
 pub const PRICE_AGGREGATOR_PATH: MxscPath =
-    MxscPath::new("../price-aggregator/output/price-aggregator.mxsc.json");
+    MxscPath::new("../price_aggregator/output/price_aggregator.mxsc.json");
 
 pub const FLASH_MOCK_PATH: MxscPath = MxscPath::new("../flash_mock/output/flash_mock.mxsc.json");
 
@@ -276,6 +276,35 @@ pub fn get_legld_config() -> SetupConfig {
         reserve_factor: RESERVE_FACTOR,
     }
 }
+
+pub fn get_xoxno_config() -> SetupConfig {
+    SetupConfig {
+        config: AssetConfig {
+            ltv: BigUint::from(LTV),
+            liquidation_threshold: BigUint::from(LIQ_THRESOLD),
+            liquidation_base_bonus: BigUint::from(LIQ_BONUS),
+            liquidation_max_fee: BigUint::from(LIQ_BASE_FEE),
+            borrow_cap: None,
+            supply_cap: None,
+            can_be_collateral: true,
+            can_be_borrowed: true,
+            is_e_mode_enabled: false,
+            is_isolated: false,
+            debt_ceiling_usd: BigUint::zero(),
+            is_siloed: false,
+            flashloan_enabled: true,
+            flash_loan_fee: BigUint::from(FLASH_LOAN_FEE),
+            can_borrow_in_isolation: false,
+        },
+        r_max: R_MAX,
+        r_base: R_BASE,
+        r_slope1: R_SLOPE1,
+        r_slope2: R_SLOPE2,
+        u_optimal: U_OPTIMAL,
+        reserve_factor: RESERVE_FACTOR,
+    }
+}
+
 
 pub fn get_isolated_config() -> SetupConfig {
     SetupConfig {

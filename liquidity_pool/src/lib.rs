@@ -4,25 +4,25 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
-pub mod liq_math;
+pub mod rates;
 use common_constants::{BP, DECIMAL_PRECISION};
-pub use liq_math::*;
+pub use rates::*;
 pub mod contexts;
 pub mod errors;
 pub mod liquidity;
 pub mod view;
 pub use common_events::*;
 
-pub mod liq_storage;
-pub mod liq_utils;
+pub mod storage;
+pub mod utils;
 
 #[multiversx_sc::contract]
 pub trait LiquidityPool:
-    liq_storage::StorageModule
+    storage::StorageModule
     + common_events::EventsModule
-    + liq_math::MathModule
+    + rates::InterestRateMath
     + liquidity::LiquidityModule
-    + liq_utils::UtilsModule
+    + utils::UtilsModule
     + view::ViewModule
 {
     // Initialize the pool

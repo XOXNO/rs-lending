@@ -96,12 +96,12 @@ impl ContractInteract {
     async fn new() -> Self {
         let config = Config::new();
         let mut interactor = Interactor::new(config.gateway_uri(), config.use_chain_simulator()).await;
-        interactor.set_current_dir_from_workspace("price-aggregator");
+        interactor.set_current_dir_from_workspace("price_aggregator");
 
         let wallet_address = interactor.register_wallet(test_wallets::alice()).await;
         
         let contract_code = BytesValue::interpret_from(
-            "mxsc:../output/price-aggregator.mxsc.json",
+            "mxsc:../output/price_aggregator.mxsc.json",
             &InterpreterContext::default(),
         );
 

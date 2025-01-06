@@ -7,8 +7,8 @@ members = [
     "common/structs",
     "common/constants",
     "common/events",
-    "price-aggregator",
-    "price-aggregator/meta",
+    "price_aggregator",
+    "price_aggregator/meta",
     "flash_mock",
     "flash_mock/meta",
 ]

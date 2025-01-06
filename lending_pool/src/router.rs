@@ -6,7 +6,7 @@ multiversx_sc::derive_imports!();
 use common_events::AssetConfig;
 
 use crate::{
-    contexts::base::StorageCache, math, oracle, proxy_accumulator, proxy_pool, storage, utils,
+    contexts::base::StorageCache, helpers, oracle, proxy_accumulator, proxy_pool, storage, utils,
     validation, ERROR_ASSET_ALREADY_SUPPORTED, ERROR_INVALID_TICKER, ERROR_NO_ACCUMULATOR_FOUND,
     ERROR_NO_POOL_FOUND,
 };
@@ -20,8 +20,8 @@ pub trait RouterModule:
     + common_events::EventsModule
     + oracle::OracleModule
     + utils::LendingUtilsModule
-    + math::LendingMathModule
     + validation::ValidationModule
+    + helpers::math::MathsModule
 {
     #[allow_multiple_var_args]
     #[only_owner]

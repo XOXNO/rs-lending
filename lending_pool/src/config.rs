@@ -3,7 +3,7 @@ multiversx_sc::imports!();
 pub use common_events::*;
 
 use crate::errors::*;
-use crate::math;
+use crate::helpers;
 use crate::oracle;
 use crate::proxies::*;
 use crate::storage;
@@ -14,8 +14,8 @@ pub trait ConfigModule:
     storage::LendingStorageModule
     + utils::LendingUtilsModule
     + common_events::EventsModule
-    + math::LendingMathModule
     + oracle::OracleModule
+    + helpers::math::MathsModule
 {
     #[only_owner]
     #[payable("EGLD")]

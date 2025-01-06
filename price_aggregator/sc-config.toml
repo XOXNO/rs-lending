@@ -2,7 +2,7 @@
 main = "main"
 
 [contracts.main]
-name = "price-aggregator"
+name = "price_aggregator"
 
 [[proxy]]
 path = "../lending_pool/src/proxies/proxy_price_aggregator.rs"

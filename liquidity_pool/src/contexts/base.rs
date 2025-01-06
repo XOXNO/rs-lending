@@ -5,7 +5,7 @@ multiversx_sc::derive_imports!();
 
 pub struct StorageCache<'a, C>
 where
-    C: crate::liq_storage::StorageModule,
+    C: crate::storage::StorageModule,
 {
     sc_ref: &'a C,
     /// The amount of the asset supplied.
@@ -32,7 +32,7 @@ where
 
 impl<'a, C> StorageCache<'a, C>
 where
-    C: crate::liq_storage::StorageModule,
+    C: crate::storage::StorageModule,
 {
     pub fn new(sc_ref: &'a C) -> Self {
         let params = sc_ref.pool_params().get();
@@ -66,7 +66,7 @@ where
 
 impl<'a, C> Drop for StorageCache<'a, C>
 where
-    C: crate::liq_storage::StorageModule,
+    C: crate::storage::StorageModule,
 {
     fn drop(&mut self) {
         // commit changes to storage for the mutable fields
@@ -92,7 +92,7 @@ where
 
 impl<'a, C> StorageCache<'a, C>
 where
-    C: crate::liq_storage::StorageModule,
+    C: crate::storage::StorageModule,
 {
     /// Returns the reserves of the pool.
     /// This is the amount of the asset that is not reserved for protocol revenue.

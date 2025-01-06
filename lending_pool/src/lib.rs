@@ -7,7 +7,8 @@ pub mod config;
 pub mod contexts;
 pub mod errors;
 pub mod factory;
-pub mod math;
+pub mod helpers;
+pub mod multiply;
 pub mod oracle;
 pub mod position;
 pub mod proxies;
@@ -33,8 +34,8 @@ pub trait LendingPool:
     + position::PositionModule
     + validation::ValidationModule
     + utils::LendingUtilsModule
-    + math::LendingMathModule
     + views::ViewsModule
+    + helpers::math::MathsModule
     + multiversx_sc_modules::default_issue_callbacks::DefaultIssueCallbacksModule
 {
     /// Initializes the lending pool contract
@@ -81,10 +82,6 @@ pub trait LendingPool:
     /// 7. Updates position
     /// 8. Emits event
     ///
-    /// # Example
-    /// ```
-    /// Supply 100 EGLD as collateral
-    /// supply(false, OptionalValue::None)
     /// ```
     #[payable("*")]
     #[endpoint(supply)]
@@ -100,7 +97,7 @@ pub trait LendingPool:
         let first_asset_info = self.asset_config(&first_collateral.token_identifier).get();
 
         // 3. Get or create position and NFT attributes
-        let (account_nonce, nft_attributes) = self.get_or_create_supply_position(
+        let (account_nonce, nft_attributes) = self.get_or_create_account(
             &caller,
             first_asset_info.is_isolated,
             is_vault,
@@ -148,7 +145,7 @@ pub trait LendingPool:
             );
 
             // 7. Check supply caps
-            self.check_supply_cap(
+            self.validate_supply_cap(
                 &asset_info,
                 &collateral.amount,
                 &collateral.token_identifier,
@@ -316,7 +313,7 @@ pub trait LendingPool:
             require!(asset_config.can_be_borrowed, ERROR_ASSET_NOT_BORROWABLE);
 
             // 7. Check borrow cap
-            self.check_borrow_cap(
+            self.validate_borrow_cap(
                 &asset_config,
                 &borrowed_token.amount,
                 &borrowed_token.token_identifier,
@@ -372,6 +369,7 @@ pub trait LendingPool:
                     );
                     let _ = borrows.set(index, updated_position);
                 } else {
+                    // Add the new borrow and save it's position index in the cache
                     borrows.push(updated_position);
                     let last_index = borrows.len() - 1;
                     borrow_index_mapper.put(
@@ -390,23 +388,6 @@ pub trait LendingPool:
     ///
     /// # Arguments
     /// * `account_nonce` - NFT nonce of the account position to repay
-    ///
-    /// # Payment
-    /// Accepts EGLD or single ESDT payment of the debt token
-    ///
-    /// # Flow
-    /// 1. Updates positions with latest interest
-    /// 2. Validates payment and parameters
-    /// 3. Processes repayment
-    ///
-    /// # Example
-    /// ```
-    /// // Repay 500 USDC for account position
-    /// ESDTTransfer {
-    ///   token: "USDC-123456",
-    ///   amount: 500_000_000 // 500 USDC
-    /// }
-    /// repay(1) // Account NFT nonce
     /// ```
     #[payable("*")]
     #[endpoint(repay)]
@@ -650,9 +631,6 @@ pub trait LendingPool:
                 .returns(ReturnsResult)
                 .sync_call();
             dp.is_vault = false;
-            // Update storage with the latest position
-            self.deposit_positions(account.token_nonce)
-                .insert(dp.token_id.clone(), dp.clone());
 
             self.update_position_event(
                 &BigUint::zero(),
@@ -661,6 +639,9 @@ pub trait LendingPool:
                 OptionalValue::None,
                 OptionalValue::None,
             );
+            // Update storage with the latest position
+            self.deposit_positions(account.token_nonce)
+                .insert(dp.token_id.clone(), dp);
         }
 
         nft_attributes.is_vault = false;

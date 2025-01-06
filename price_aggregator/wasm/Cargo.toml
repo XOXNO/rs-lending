@@ -5,7 +5,7 @@
 # ##########################################
 
 [package]
-name = "price-aggregator-wasm"
+name = "price_aggregator-wasm"
 version = "0.0.0"
 edition = "2021"
 publish = false
@@ -24,7 +24,7 @@ overflow-checks = false
 [profile.dev]
 panic = "abort"
 
-[dependencies.price-aggregator]
+[dependencies.price_aggregator]
 path = ".."
 
 [dependencies.multiversx-sc-wasm-adapter]

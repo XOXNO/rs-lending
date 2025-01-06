@@ -1,19 +1,15 @@
 multiversx_sc::imports!();
 use common_constants::{
-    BP, EGLD_TICKER, PRICE_AGGREGATOR_ROUNDS_STORAGE_KEY, PRICE_AGGREGATOR_STATUS_STORAGE_KEY,
-    STATE_PAIR_STORAGE_KEY, USD_TICKER, WEGLD_TICKER,
+    BP, EGLD_TICKER, SECONDS_PER_HOUR, SECONDS_PER_MINUTE, STATE_PAIR_STORAGE_KEY, USD_TICKER,
+    WEGLD_TICKER,
 };
 use common_events::{ExchangeSource, OracleProvider, OracleType, PriceFeedShort, PricingMethod};
 use multiversx_sc::storage::StorageKey;
-use price_aggregator::{
-    // errors::{PAUSED_ERROR, TOKEN_PAIR_NOT_FOUND_ERROR},
-    structs::{TimestampedPrice, TokenPair},
-};
 
 use crate::{
     contexts::base::StorageCache,
     proxies::{lxoxno_proxy, proxy_legld, xegld_proxy},
-    proxy_price_aggregator::{PriceAggregatorProxy, PriceFeed},
+    proxy_price_aggregator::PriceAggregatorProxy,
     proxy_xexchange_pair::State,
     storage, ERROR_INVALID_EXCHANGE_SOURCE, ERROR_INVALID_ORACLE_TOKEN_TYPE,
     ERROR_NO_LAST_PRICE_FOUND, ERROR_ORACLE_TOKEN_NOT_FOUND, ERROR_PAIR_NOT_ACTIVE,
@@ -52,20 +48,6 @@ pub trait OracleModule: storage::LendingStorageModule {
             .mul(&token_data.price)
             .div(BigUint::from(10u64).pow(token_data.decimals as u32))
             .div(&BigUint::from(BP))
-    }
-
-    /// Get token amount in usd from egld
-    ///
-    /// This function is used to get the amount of a token in usd from the egld price
-    /// It uses the egld price to convert the amount to usd
-    fn get_token_amount_in_usd_from_egld(
-        &self,
-        amount_in_egld: &BigUint,
-        egld_price_feed: &PriceFeedShort<Self::Api>,
-    ) -> BigUint {
-        amount_in_egld
-            .mul(&BigUint::from(BP))
-            .div(&egld_price_feed.price)
     }
 
     /// Get token amount in egld
@@ -158,12 +140,52 @@ pub trait OracleModule: storage::LendingStorageModule {
     ) -> PriceFeedShort<Self::Api> {
         match configs.token_type {
             OracleType::Derived => self.get_derived_price(configs, storage_cache),
-            OracleType::Lp => self.get_lp_price(configs, storage_cache),
+            OracleType::Lp => self.get_safe_lp_price(configs, storage_cache),
             OracleType::Normal => {
                 self.get_normal_price_in_egld(configs, original_market_token, storage_cache)
             }
             _ => sc_panic!(ERROR_INVALID_ORACLE_TOKEN_TYPE),
         }
+    }
+
+    fn get_safe_lp_price(
+        &self,
+        configs: &OracleProvider<Self::Api>,
+        storage_cache: &mut StorageCache<Self>,
+    ) -> PriceFeedShort<Self::Api> {
+        let short_interval = self.get_lp_price(configs, SECONDS_PER_MINUTE * 10, storage_cache);
+        let long_interval = self.get_lp_price(configs, SECONDS_PER_MINUTE * 60, storage_cache);
+
+        let tolerances = &configs.tolerance;
+
+        let final_price = {
+            let avg_price =
+                (&short_interval.price + &long_interval.price).div(&BigUint::from(2u64));
+
+            if self.is_within_anchor(
+                &short_interval.price,
+                &long_interval.price,
+                &tolerances.first_upper_ratio,
+                &tolerances.first_lower_ratio,
+            ) {
+                short_interval.price
+            } else if self.is_within_anchor(
+                &short_interval.price,
+                &long_interval.price,
+                &tolerances.last_upper_ratio,
+                &tolerances.last_lower_ratio,
+            ) {
+                avg_price
+            } else {
+                require!(
+                    storage_cache.allow_unsafe_price,
+                    ERROR_UN_SAFE_PRICE_NOT_ALLOWED
+                );
+                long_interval.price
+            }
+        };
+
+        self.create_price_feed(final_price, configs.decimals)
     }
 
     // Derived Price Functions
@@ -253,8 +275,9 @@ pub trait OracleModule: storage::LendingStorageModule {
 
         let result = self
             .safe_price_proxy(self.safe_price_view().get())
-            .get_safe_price_by_default_offset(
+            .get_safe_price_by_timestamp_offset(
                 &configs.contract_address,
+                SECONDS_PER_HOUR,
                 EsdtTokenPayment::new(token_id.clone().unwrap_esdt(), 0, one_token),
             )
             .returns(ReturnsResult)
@@ -279,8 +302,6 @@ pub trait OracleModule: storage::LendingStorageModule {
     /// If the pricing method is aggregator, it uses the aggregator to get the price
     /// If the pricing method is safe, it uses the safe price to get the price
     /// If the pricing method is mix, it uses the aggregator and safe price to get the price
-    /// When the price is within the anchor, it updates the last price
-    /// When the price is not within the anchor, it uses the last price
     fn get_normal_price_in_egld(
         &self,
         configs: &OracleProvider<Self::Api>,
@@ -309,7 +330,6 @@ pub trait OracleModule: storage::LendingStorageModule {
             let token_price_in_egld = token_price_in_egld_opt.into_option().unwrap();
             let anchor_price = safe_price.into_option().unwrap();
             let avg_price = (&token_price_in_egld + &anchor_price).div(&BigUint::from(2u64));
-            let mapper_last_price = self.last_token_price(original_market_token);
             let tolerances = &configs.tolerance;
 
             if self.is_within_anchor(
@@ -318,7 +338,6 @@ pub trait OracleModule: storage::LendingStorageModule {
                 &tolerances.first_upper_ratio,
                 &tolerances.first_lower_ratio,
             ) {
-                mapper_last_price.set(&token_price_in_egld);
                 token_price_in_egld
             } else if self.is_within_anchor(
                 &token_price_in_egld,
@@ -326,7 +345,6 @@ pub trait OracleModule: storage::LendingStorageModule {
                 &tolerances.last_upper_ratio,
                 &tolerances.last_lower_ratio,
             ) {
-                mapper_last_price.set(&avg_price);
                 avg_price
             } else {
                 require!(
@@ -358,7 +376,6 @@ pub trait OracleModule: storage::LendingStorageModule {
         // Get price feeds
         let token_price_feed =
             self.get_aggregator_price_feed(token_id, &storage_cache.price_aggregator_sc);
-
         // For other tokens, continue with normal calculation
         let one_egld = BigUint::from(10u64).pow(storage_cache.egld_price_feed.decimals as u32);
 
@@ -404,13 +421,15 @@ pub trait OracleModule: storage::LendingStorageModule {
     fn get_lp_price(
         &self,
         configs: &OracleProvider<Self::Api>,
+        time_offest: u64,
         storage_cache: &mut StorageCache<Self>,
     ) -> PriceFeedShort<Self::Api> {
         if configs.source == ExchangeSource::XExchange {
             let tokens = self
                 .safe_price_proxy(self.safe_price_view().get())
-                .get_lp_tokens_safe_price_by_default_offset(
+                .get_lp_tokens_safe_price_by_timestamp_offset(
                     configs.contract_address.clone(),
+                    time_offest,
                     &BigUint::from(10u64).pow(configs.decimals as u32),
                 )
                 .returns(ReturnsResult)
@@ -482,43 +501,43 @@ pub trait OracleModule: storage::LendingStorageModule {
         self.create_price_feed(price_feed.price, price_feed.decimals)
     }
 
-    fn token_oracle_prices_round(
-        &self,
-        from: &ManagedBuffer,
-        to: &ManagedBuffer,
-        address: &ManagedAddress,
-    ) -> VecMapper<TimestampedPrice<Self::Api>, ManagedAddress> {
-        let mut key = StorageKey::new(PRICE_AGGREGATOR_ROUNDS_STORAGE_KEY);
-        key.append_item(from);
-        key.append_item(to);
-        VecMapper::<_, _, ManagedAddress>::new_from_address(address.clone(), key)
-    }
+    // fn token_oracle_prices_round(
+    //     &self,
+    //     from: &ManagedBuffer,
+    //     to: &ManagedBuffer,
+    //     address: &ManagedAddress,
+    // ) -> VecMapper<TimestampedPrice<Self::Api>, ManagedAddress> {
+    //     let mut key = StorageKey::new(PRICE_AGGREGATOR_ROUNDS_STORAGE_KEY);
+    //     key.append_item(from);
+    //     key.append_item(to);
+    //     VecMapper::<_, _, ManagedAddress>::new_from_address(address.clone(), key)
+    // }
 
-    fn get_aggregator_status(&self, address: &ManagedAddress) -> bool {
-        SingleValueMapper::<_, _, ManagedAddress>::new_from_address(
-            address.clone(),
-            StorageKey::new(PRICE_AGGREGATOR_STATUS_STORAGE_KEY),
-        )
-        .get()
-    }
+    // fn get_aggregator_status(&self, address: &ManagedAddress) -> bool {
+    //     SingleValueMapper::<_, _, ManagedAddress>::new_from_address(
+    //         address.clone(),
+    //         StorageKey::new(PRICE_AGGREGATOR_STATUS_STORAGE_KEY),
+    //     )
+    //     .get()
+    // }
 
-    fn make_price_feed(
-        &self,
-        token_pair: TokenPair<Self::Api>,
-        round_values: VecMapper<TimestampedPrice<Self::Api>, ManagedAddress>,
-    ) -> PriceFeed<Self::Api> {
-        let round_id: usize = round_values.len();
-        let last_price = round_values.get(round_id);
+    // fn make_price_feed(
+    //     &self,
+    //     token_pair: TokenPair<Self::Api>,
+    //     round_values: VecMapper<TimestampedPrice<Self::Api>, ManagedAddress>,
+    // ) -> PriceFeed<Self::Api> {
+    //     let round_id: usize = round_values.len();
+    //     let last_price = round_values.get(round_id);
 
-        PriceFeed {
-            round_id: round_id as u32,
-            from: token_pair.from,
-            to: token_pair.to,
-            timestamp: last_price.timestamp,
-            price: last_price.price,
-            decimals: last_price.decimals,
-        }
-    }
+    //     PriceFeed {
+    //         round_id: round_id as u32,
+    //         from: token_pair.from,
+    //         to: token_pair.to,
+    //         timestamp: last_price.timestamp,
+    //         price: last_price.price,
+    //         decimals: last_price.decimals,
+    //     }
+    // }
 
     #[proxy]
     fn safe_price_proxy(&self, sc_address: ManagedAddress) -> safe_price_proxy::ProxyTo<Self::Api>;
@@ -529,18 +548,19 @@ mod safe_price_proxy {
 
     #[multiversx_sc::proxy]
     pub trait SafePriceContract {
-        // TODO: Add new functions to pass timestamp offset
-        #[view(getSafePriceByDefaultOffset)]
-        fn get_safe_price_by_default_offset(
+        #[view(getSafePriceByTimestampOffset)]
+        fn get_safe_price_by_timestamp_offset(
             &self,
             pair_address: ManagedAddress,
+            timestamp_offset: u64,
             input_payment: EsdtTokenPayment,
         ) -> EsdtTokenPayment;
 
-        #[view(getLpTokensSafePriceByDefaultOffset)]
-        fn get_lp_tokens_safe_price_by_default_offset(
+        #[view(getLpTokensSafePriceByTimestampOffset)]
+        fn get_lp_tokens_safe_price_by_timestamp_offset(
             &self,
             pair_address: ManagedAddress,
+            timestamp_offset: u64,
             liquidity: BigUint,
         ) -> MultiValue2<EsdtTokenPayment, EsdtTokenPayment>;
     }

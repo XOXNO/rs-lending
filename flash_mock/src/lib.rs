@@ -18,15 +18,12 @@ pub trait FlashMock {
     fn flash(&self) {
         let mut payment = self.call_value().egld_or_single_esdt();
         let caller = self.blockchain().get_caller();
-        sc_print!("Amount: {}", payment.amount);
 
         payment.amount += payment
             .amount
             .clone()
             .mul(BigUint::from(FLASH_FEES))
             .div(BigUint::from(BP));
-
-        sc_print!("Repays: {}", payment.amount);
 
         self.tx().to(&caller).payment(payment).transfer();
     }
@@ -36,7 +33,6 @@ pub trait FlashMock {
     fn flash_repay_some(&self) {
         let mut payment = self.call_value().egld_or_single_esdt();
         let caller = self.blockchain().get_caller();
-        sc_print!("Amount: {}", payment.amount);
 
         payment.amount -= payment
             .amount
@@ -44,11 +40,8 @@ pub trait FlashMock {
             .mul(BigUint::from(FLASH_FEES))
             .div(BigUint::from(BP));
 
-        sc_print!("Repays: {}", payment.amount);
-
         self.tx().to(&caller).payment(payment).transfer();
     }
-
 
     #[payable("*")]
     #[endpoint(flashNoRepay)]

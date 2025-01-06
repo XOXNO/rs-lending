@@ -4,7 +4,7 @@ DEPLOY_TRANSACTION=$(mxpy data load --key=deployTransaction-devnet)
 PROXY=https://devnet-gateway.xoxno.com
 CHAIN_ID=D
 
-PROJECT="./output/price-aggregator.wasm"
+PROJECT="./output/price_aggregator.wasm"
 
 deploy() {
     mxpy --verbose contract deploy --bytecode=${PROJECT} --recall-nonce \

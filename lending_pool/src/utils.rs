@@ -2,23 +2,16 @@ multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
 use crate::contexts::base::StorageCache;
-use crate::{
-    math, oracle, proxy_pool, storage, ERROR_DEBT_CEILING_REACHED, ERROR_NO_POOL_FOUND,
-    ERROR_UNEXPECTED_ANCHOR_TOLERANCES, ERROR_UNEXPECTED_FIRST_TOLERANCE,
-    ERROR_UNEXPECTED_LAST_TOLERANCE,
-};
-use common_constants::{
-    BP, EGLD_IDENTIFIER, MAX_FIRST_TOLERANCE, MAX_LAST_TOLERANCE, MIN_FIRST_TOLERANCE,
-    MIN_LAST_TOLERANCE,
-};
+use crate::{helpers, oracle, proxy_pool, storage, ERROR_NO_COLLATERAL_TOKEN, ERROR_NO_POOL_FOUND};
+use common_constants::EGLD_IDENTIFIER;
 use common_structs::*;
 
 #[multiversx_sc::module]
 pub trait LendingUtilsModule:
-    math::LendingMathModule
-    + storage::LendingStorageModule
+    storage::LendingStorageModule
     + oracle::OracleModule
     + common_events::EventsModule
+    + helpers::math::MathsModule
 {
     /// Gets the liquidity pool address for a given asset
     ///
@@ -39,94 +32,6 @@ pub trait LendingUtilsModule:
         pool_address
     }
 
-    /// Calculates upper and lower bounds for a given tolerance
-    ///
-    /// # Arguments
-    /// * `tolerance` - Tolerance value in basis points
-    ///
-    /// # Returns
-    /// * `(BigUint, BigUint)` - Tuple containing:
-    ///   - Upper bound (BP + tolerance)
-    ///   - Lower bound (BP * BP / upper)
-    ///
-    /// # Example
-    /// ```
-    /// // For 5% tolerance (500 basis points)
-    /// tolerance = 500
-    /// upper = 10000 + 500 = 10500
-    /// lower = 10000 * 10000 / 10500 ≈ 9524
-    /// ```
-    fn get_range(&self, tolerance: &BigUint) -> (BigUint, BigUint) {
-        let bp = BigUint::from(BP);
-        let upper = &bp + tolerance;
-        let lower = &bp * &bp / &upper;
-
-        (upper, lower)
-    }
-
-    /// Validates and calculates oracle price fluctuation tolerances
-    ///
-    /// # Arguments
-    /// * `first_tolerance` - Initial tolerance for price deviation
-    /// * `last_tolerance` - Maximum allowed tolerance
-    ///
-    /// # Returns
-    /// * `OraclePriceFluctuation` - Struct containing upper/lower bounds for both tolerances
-    ///
-    /// # Errors
-    /// * `ERROR_UNEXPECTED_FIRST_TOLERANCE` - If first tolerance is out of range
-    /// * `ERROR_UNEXPECTED_LAST_TOLERANCE` - If last tolerance is out of range
-    /// * `ERROR_UNEXPECTED_ANCHOR_TOLERANCES` - If last tolerance is less than first
-    ///
-    /// # Example
-    /// ```
-    /// // For 5% first tolerance and 10% last tolerance
-    /// first_tolerance = 500 (5%)
-    /// last_tolerance = 1000 (10%)
-    ///
-    /// Returns:
-    /// OraclePriceFluctuation {
-    ///   first_upper_ratio: 10500,  // 105%
-    ///   first_lower_ratio: 9524,   // ~95.24%
-    ///   last_upper_ratio: 11000,   // 110%
-    ///   last_lower_ratio: 9091     // ~90.91%
-    /// }
-    /// ```
-    fn get_anchor_tolerances(
-        &self,
-        first_tolerance: &BigUint,
-        last_tolerance: &BigUint,
-    ) -> OraclePriceFluctuation<Self::Api> {
-        require!(
-            first_tolerance >= &BigUint::from(MIN_FIRST_TOLERANCE)
-                && first_tolerance <= &BigUint::from(MAX_FIRST_TOLERANCE),
-            ERROR_UNEXPECTED_FIRST_TOLERANCE
-        );
-
-        require!(
-            last_tolerance >= &BigUint::from(MIN_LAST_TOLERANCE)
-                && last_tolerance <= &BigUint::from(MAX_LAST_TOLERANCE),
-            ERROR_UNEXPECTED_LAST_TOLERANCE
-        );
-
-        require!(
-            last_tolerance >= first_tolerance,
-            ERROR_UNEXPECTED_ANCHOR_TOLERANCES
-        );
-
-        let (first_upper_ratio, first_lower_ratio) = self.get_range(first_tolerance);
-        let (last_upper_ratio, last_lower_ratio) = self.get_range(last_tolerance);
-
-        let tolerances = OraclePriceFluctuation {
-            first_upper_ratio,
-            first_lower_ratio,
-            last_upper_ratio,
-            last_lower_ratio,
-        };
-
-        tolerances
-    }
-
     /// Calculates total weighted collateral value in EGLD for liquidation
     ///
     /// # Arguments
@@ -136,7 +41,7 @@ pub trait LendingUtilsModule:
     /// * `BigUint` - Total EGLD value weighted by liquidation thresholds
     ///
     /// ```
-    fn get_account_collateral(
+    fn sum_collaterals(
         &self,
         positions: &ManagedVec<AccountPosition<Self::Api>>,
         storage_cache: &mut StorageCache<Self>,
@@ -185,41 +90,6 @@ pub trait LendingUtilsModule:
         total_borrow_in_egld
     }
 
-    /// Validates that a new borrow doesn't exceed isolated asset debt ceiling
-    ///
-    /// # Arguments
-    /// * `asset_config` - Asset configuration
-    /// * `token_id` - Token identifier
-    /// * `amount_to_borrow_in_dollars` - USD value of new borrow
-    ///
-    /// # Errors
-    /// * `ERROR_DEBT_CEILING_REACHED` - If new borrow would exceed debt ceiling
-    ///
-    /// # Example
-    /// ```
-    /// // Asset: USDC
-    /// // Current debt: $800,000
-    /// // Debt ceiling: $1,000,000
-    /// // New borrow: $300,000
-    /// // Total after: $1,100,000
-    /// // Result: Error - ceiling exceeded
-    /// ```
-    fn validate_isolated_debt_ceiling(
-        &self,
-        asset_config: &AssetConfig<Self::Api>,
-        token_id: &EgldOrEsdtTokenIdentifier,
-        amount_to_borrow_in_dollars: &BigUint,
-    ) {
-        let current_debt = self.isolated_asset_debt_usd(token_id).get();
-
-        let total_debt = current_debt.clone() + amount_to_borrow_in_dollars;
-
-        require!(
-            total_debt <= asset_config.debt_ceiling_usd,
-            ERROR_DEBT_CEILING_REACHED
-        );
-    }
-
     /// Updates isolated asset debt tracking
     ///
     /// # Arguments
@@ -231,15 +101,6 @@ pub trait LendingUtilsModule:
     /// 1. Skips if amount is zero
     /// 2. Updates debt tracking storage
     /// 3. Emits debt ceiling event
-    ///
-    /// # Example
-    /// ```
-    /// // Increase debt by $100,000
-    /// update_isolated_debt_usd(
-    ///   "USDC-123456",
-    ///   BigUint::from(100_000),
-    ///   true
-    /// )
     /// ```
     fn update_isolated_debt_usd(
         &self,
@@ -341,5 +202,59 @@ pub trait LendingUtilsModule:
         }
 
         valid_payments
+    }
+
+    /// Calculates the maximum amount of a specific collateral asset that can be liquidated
+    ///
+    /// # Arguments
+    /// * `total_debt_in_egld` - Total EGLD value of user's debt
+    /// * `total_collateral_in_egld` - Total EGLD value of all collateral
+    /// * `token_to_liquidate` - Token identifier of collateral to liquidate
+    /// * `token_price_data` - Price feed data for the collateral token
+    /// * `liquidatee_account_nonce` - NFT nonce of the account being liquidated
+    /// * `debt_payment_in_egld` - Optional EGLD value of debt being repaid
+    /// * `base_liquidation_bonus` - Base liquidation bonus in basis points (10^21 = 100%)
+    /// * `health_factor` - Current health factor in basis points (10^21 = 100%)
+    ///
+    /// # Returns
+    /// * `(BigUint, BigUint)` - Maximum EGLD value of the specific collateral that can be liquidated and the bonus
+    fn calculate_single_asset_liquidation_amount(
+        &self,
+        total_debt_in_egld: &BigUint,
+        total_collateral_in_egld: &BigUint,
+        token_to_liquidate: &EgldOrEsdtTokenIdentifier,
+        liquidatee_account_nonce: u64,
+        debt_payment: OptionalValue<BigUint>,
+        base_liquidation_bonus: &BigUint,
+        health_factor: &BigUint,
+        collateral_feed: &PriceFeedShort<Self::Api>,
+    ) -> (BigUint, BigUint) {
+        // Get the available collateral value for this specific asset
+        let deposit_position = self
+            .deposit_positions(liquidatee_account_nonce)
+            .get(token_to_liquidate)
+            .unwrap_or_else(|| sc_panic!(ERROR_NO_COLLATERAL_TOKEN));
+
+        let total_position_egld_value = self
+            .get_token_amount_in_egld_raw(&deposit_position.get_total_amount(), collateral_feed);
+
+        let (max_repayable_debt, bonus) = self.estimate_liquidation_amount(
+            &total_position_egld_value,
+            total_collateral_in_egld,
+            total_debt_in_egld,
+            &deposit_position.entry_liquidation_threshold,
+            base_liquidation_bonus,
+            health_factor,
+        );
+
+        if debt_payment.is_some() {
+            // Take the minimum between what we need and what's available and what the liquidator is paying
+            (
+                BigUint::min(debt_payment.into_option().unwrap(), max_repayable_debt),
+                bonus,
+            )
+        } else {
+            (max_repayable_debt, bonus)
+        }
     }
 }

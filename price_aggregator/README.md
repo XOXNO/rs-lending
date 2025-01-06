@@ -2,7 +2,7 @@
 
 ## Overview
 
-The price-aggregator smart contract keeps track of the price between multiple pairs of tokens.
+The price_aggregator smart contract keeps track of the price between multiple pairs of tokens.
 Compared to the other chainlink contracts, it is a simplified and easier to use version.
 
 ## Deployment

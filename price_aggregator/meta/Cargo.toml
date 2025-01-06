@@ -1,10 +1,10 @@
 [package]
-name = "price-aggregator-meta"
+name = "price_aggregator-meta"
 version = "0.0.0"
 edition = "2021"
 publish = false
 
-[dependencies.price-aggregator]
+[dependencies.price_aggregator]
 path = ".."
 
 [dependencies.multiversx-sc]

@@ -121,10 +121,6 @@ where
     /// 7. Updates position 
     /// 8. Emits event 
     ///  
-    /// # Example 
-    /// ``` 
-    /// Supply 100 EGLD as collateral 
-    /// supply(false, OptionalValue::None) 
     /// ``` 
     pub fn supply<
         Arg0: ProxyArg<bool>,
@@ -156,15 +152,6 @@ where
     /// 3. Validates health factor after withdrawal 
     /// 4. Handles NFT (burns or returns) 
     ///  
-    /// # Example 
-    /// ``` 
-    /// // Withdraw 50 EGLD using account NFT 
-    /// ESDTTransfer { 
-    ///   token: "LEND-123456", // Account NFT 
-    ///   nonce: 1, 
-    ///   amount: 1 
-    /// } 
-    /// withdraw("EGLD-123456", 50_000_000_000_000_000_000) // 50 EGLD 
     /// ``` 
     pub fn withdraw<
         Arg0: ProxyArg<MultiValueEncoded<Env::Api, EgldOrEsdtTokenPayment<Env::Api>>>,
@@ -271,14 +258,6 @@ where
     ///    - Transfers tokens 
     ///    - Emits events 
     ///  
-    /// # Example 
-    /// ``` 
-    /// // Liquidate position by repaying 1000 USDC debt 
-    /// ESDTTransfer { 
-    ///   token: "USDC-123456", 
-    ///   amount: 1_000_000_000 // 1000 USDC 
-    /// } 
-    /// liquidate(1, "EGLD-123456") // Get EGLD collateral 
     /// ``` 
     pub fn liquidate<
         Arg0: ProxyArg<u64>,
@@ -315,15 +294,6 @@ where
     ///    - Calls specified endpoint 
     ///    - Verifies repayment with fee 
     ///  
-    /// # Example 
-    /// ``` 
-    /// flashLoan( 
-    ///   "USDC-123456", // Token 
-    ///   1_000_000_000, // 1000 USDC 
-    ///   "erd1...",     // Contract address 
-    ///   "execute",     // Endpoint 
-    ///   []            // No arguments 
-    /// ``` 
     ///  
     pub fn flash_loan<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
@@ -877,6 +847,8 @@ where
             .original_result()
     }
 
+    /// Get the set of allowed pools 
+    /// This storage mapper holds the addresses of pools that are allowed to participate in the lending protocol. 
     pub fn pools_allowed(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValueEncoded<Env::Api, ManagedAddress<Env::Api>>> {
@@ -887,7 +859,7 @@ where
     }
 
     /// Get the account token 
-    /// The storage holds the logic of the account token 
+    /// This storage mapper holds the logic of the account token, which is a non-fungible token (NFT). 
     pub fn account_token(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, TokenIdentifier<Env::Api>> {
@@ -898,8 +870,7 @@ where
     }
 
     /// Get the account positions 
-    /// The storage holds a list of account positions as a set 
-    /// A position represents a nonce of an account (NFT nonce) 
+    /// This storage mapper holds a list of account positions as a set. A position represents a nonce of an account (NFT nonce). 
     pub fn account_positions(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValueEncoded<Env::Api, u64>> {
@@ -910,8 +881,7 @@ where
     }
 
     /// Get the account attributes 
-    /// We are mapping each minted NFT to an account attributes 
-    /// Useful when we want to know the attributes of an account without having the NFT in hand 
+    /// This storage mapper maps each minted NFT to account attributes, useful for retrieving attributes without having the NFT in hand. 
     pub fn account_attributes<
         Arg0: ProxyArg<u64>,
     >(
@@ -926,8 +896,7 @@ where
     }
 
     /// Get the deposit positions 
-    /// We are mapping each deposit position to an account nonce 
-    /// A deposit position is a list of assets and their corresponding structs 
+    /// This storage mapper maps each deposit position to an account nonce, holding a list of assets and their corresponding structs. 
     pub fn deposit_positions<
         Arg0: ProxyArg<u64>,
     >(
@@ -942,8 +911,7 @@ where
     }
 
     /// Get the borrow positions 
-    /// We are mapping each borrow position to an account nonce 
-    /// A borrow position is a list of assets and their corresponding structs 
+    /// This storage mapper maps each borrow position to an account nonce, holding a list of assets and their corresponding structs. 
     pub fn borrow_positions<
         Arg0: ProxyArg<u64>,
     >(
@@ -957,9 +925,8 @@ where
             .original_result()
     }
 
-    /// Get the liq pool template address 
-    /// The storage holds the address of the liq pool template 
-    /// The liq pool template is used to create new liquidity pools 
+    /// Get the liquidity pool template address 
+    /// This storage mapper holds the address of the liquidity pool template, used to create new liquidity pools. 
     pub fn liq_pool_template_address(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
@@ -970,8 +937,7 @@ where
     }
 
     /// Get the accumulator address 
-    /// The storage holds the address of the accumulator 
-    /// The accumulator is used to claim the revenue from the liquidity pools 
+    /// This storage mapper holds the address of the accumulator, used to claim revenue from the liquidity pools. 
     pub fn accumulator_address(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
@@ -982,8 +948,7 @@ where
     }
 
     /// Get the pools map 
-    /// The storage holds a map of pools 
-    /// The map is used to get the address of a pool given a token id 
+    /// This storage mapper holds a map of pools, used to get the address of a pool given a token ID. 
     pub fn pools_map<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
     >(
@@ -998,8 +963,7 @@ where
     }
 
     /// Get the price aggregator address 
-    /// The storage holds the address of the price aggregator 
-    /// The price aggregator is used to get the price of a token in USD 
+    /// This storage mapper holds the address of the price aggregator, used to get the price of a token in USD. 
     pub fn price_aggregator_address(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
@@ -1010,8 +974,7 @@ where
     }
 
     /// Get the safe price view address 
-    /// The storage holds the address of the safe price view 
-    /// The safe price view is used to get the price of a token out of the DEX pair 
+    /// This storage mapper holds the address of the safe price view, used to get the price of a token out of the DEX pair. 
     pub fn safe_price_view(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
@@ -1022,8 +985,7 @@ where
     }
 
     /// Get the asset config 
-    /// The storage holds the config of an asset 
-    /// The config is used to get the config of an asset 
+    /// This storage mapper holds the configuration of an asset, used to retrieve the config of an asset. 
     pub fn asset_config<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
     >(
@@ -1037,9 +999,8 @@ where
             .original_result()
     }
 
-    /// Get the last e-mode category id 
-    /// The storage holds the id of the last e-mode category 
-    /// The id is used to get the last e-mode category 
+    /// Get the last e-mode category ID 
+    /// This storage mapper holds the ID of the last e-mode category, used to retrieve the last e-mode category. 
     pub fn last_e_mode_category_id(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, u8> {
@@ -1049,6 +1010,8 @@ where
             .original_result()
     }
 
+    /// Get all e-mode categories 
+    /// This storage mapper holds a map of e-mode categories, used to group assets into categories with different risk parameters. 
     pub fn e_mode_category(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValueEncoded<Env::Api, MultiValue2<u8, common_structs::EModeCategory<Env::Api>>>> {
@@ -1058,6 +1021,8 @@ where
             .original_result()
     }
 
+    /// Get the e-mode categories for a given asset 
+    /// This storage mapper holds a set of e-mode categories for a given asset. One asset can have multiple e-mode categories. 
     pub fn asset_e_modes<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
     >(
@@ -1071,6 +1036,8 @@ where
             .original_result()
     }
 
+    /// Get all assets for a given e-mode category 
+    /// This storage mapper holds a map of assets for a given e-mode category, used to get the config for a given asset in a given e-mode category. 
     pub fn e_mode_assets<
         Arg0: ProxyArg<u8>,
     >(
@@ -1084,6 +1051,8 @@ where
             .original_result()
     }
 
+    /// Get the debt in USD for isolated assets 
+    /// This storage mapper holds the debt in USD for isolated assets. 
     pub fn isolated_asset_debt_usd<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
     >(
@@ -1097,6 +1066,8 @@ where
             .original_result()
     }
 
+    /// Get the vault supplied amount per token 
+    /// This storage mapper holds the supplied amount per token in the vault. 
     pub fn vault_supplied_amount<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
     >(
@@ -1111,8 +1082,7 @@ where
     }
 
     /// Get the token oracle 
-    /// The storage holds the oracle of a token 
-    /// The oracle is used to get the price of a token 
+    /// This storage mapper holds the oracle of a token, used to get the price of a token. 
     pub fn token_oracle<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
     >(
@@ -1122,21 +1092,6 @@ where
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getTokenOracle")
-            .argument(&token_id)
-            .original_result()
-    }
-
-    /// Get the last token price in EGLD 
-    /// The price is used to get the price of a token in EGLD in case of a price oracle failure or big deviation 
-    pub fn last_token_price<
-        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-    >(
-        self,
-        token_id: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getLastTokenPrice")
             .argument(&token_id)
             .original_result()
     }
@@ -1274,6 +1229,28 @@ where
     /// get_max_liquidate_amount_for_collateral(1, "EGLD-123456", false) = 50 
     /// // Can liquidate 50 EGLD 
     /// ``` 
+    pub fn get_max_liquidate_amount_for_collateral<
+        Arg0: ProxyArg<u64>,
+        Arg1: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+        Arg2: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+        Arg3: ProxyArg<bool>,
+    >(
+        self,
+        account_position: Arg0,
+        collateral_asset: Arg1,
+        debt_asset: Arg2,
+        in_egld: Arg3,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getMaxLiquidateAmountForCollateral")
+            .argument(&account_position)
+            .argument(&collateral_asset)
+            .argument(&debt_asset)
+            .argument(&in_egld)
+            .original_result()
+    }
+
     /// Gets the collateral amount for a specific token 
     ///  
     /// # Arguments 

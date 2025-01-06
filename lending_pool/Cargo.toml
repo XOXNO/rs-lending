@@ -26,8 +26,8 @@ path = "../common/events"
 [dependencies.common-constants]
 path = "../common/constants"
 
-[dependencies.price-aggregator]
-path = "../price-aggregator"
+[dependencies.price_aggregator]
+path = "../price_aggregator"
 
 [dependencies.flash-mock]
 path = "../flash_mock"

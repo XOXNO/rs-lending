@@ -330,7 +330,8 @@ fn test_interest_accrual() {
     // Verify interest accrual
     let final_borrow = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
     let final_supply = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
-
+    println!("final_supply {:?}", final_supply.clone());
+    println!("initial_supply {:?}", initial_supply.clone());
     assert!(final_borrow > initial_borrow);
     assert!(final_supply > initial_supply);
     println!(
@@ -1669,6 +1670,108 @@ fn test_liquidation_partial_payment() {
     let borrow_amount_in_dollars = state.get_borrow_amount_for_token(2, USDC_TOKEN);
     println!("borrow_amount_in_dollars: {:?}", borrow_amount_in_dollars);
     assert!(borrow_amount_in_dollars > BigUint::zero());
+}
+
+#[test]
+fn test_liquidation_normal_recovery() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+    let liquidator = TestAddress::new("liquidator");
+
+    // Setup accounts including liquidator
+    setup_accounts(&mut state, supplier, borrower);
+
+    state.world.account(liquidator).nonce(1).esdt_balance(
+        XOXNO_TOKEN,
+        BigUint::from(20000u64) * BigUint::from(10u64).pow(XOXNO_DECIMALS as u32),
+    );
+
+    state.supply_asset(
+        &supplier,
+        XOXNO_TOKEN,
+        BigUint::from(1000u64),
+        XOXNO_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    // Create risky position
+    state.supply_asset(
+        &borrower,
+        USDC_TOKEN,
+        BigUint::from(1000u64),
+        USDC_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    // state.supply_asset(
+    //     &borrower,
+    //     EGLD_TOKEN,
+    //     BigUint::from(10u64),
+    //     EGLD_DECIMALS,
+    //     OptionalValue::Some(2),
+    //     OptionalValue::None,
+    //     false,
+    // );
+
+
+    state.borrow_asset(
+        &borrower,
+        XOXNO_TOKEN.clone(),
+        BigUint::from(750u64),
+        2,
+        XOXNO_DECIMALS,
+    );
+
+    let borrow_amount_in_dollars = state.get_total_borrow_in_egld(2);
+    let collateral_in_dollars = state.get_liquidation_collateral_available(2);
+
+    println!("borrow total in egld: {:?}", borrow_amount_in_dollars);
+
+    println!("weighted collateral in egld: {:?}", collateral_in_dollars);
+
+    state.world.current_block().block_timestamp(1u64);
+
+    state.submit_price_denom(
+        XOXNO_TICKER,
+        BigUint::from(12u64).mul(BigUint::from(10u32).pow(20)),
+        18,
+        1u64,
+    );
+
+    // state.world.current_block().block_timestamp(2000u64);
+
+    // state.submit_price(XOXNO_TICKER, 2, 18, 2000u64);
+
+    println!("Before");
+    let borrow_amount_in_dollars = state.get_total_borrow_in_egld(2);
+    println!("After");
+    println!("borrow total in egld: {:?}", borrow_amount_in_dollars);
+    let hf = state.get_account_health_factor(2);
+    println!("hf: {:?}", hf);
+
+    let max_liq_amount =
+        state.get_max_liquidate_amount_for_collateral(2, USDC_TOKEN,   XOXNO_TOKEN, false);
+    println!(
+        "max_liq_amount: {:?}",
+        BigUint::from(max_liq_amount.clone())
+            .div(BigUint::from(10u64).pow(XOXNO_DECIMALS as u32))
+            .to_u64()
+    );
+
+    state.liquidate_account_dem(
+        &liquidator,
+        &USDC_TOKEN,
+        &XOXNO_TOKEN,
+        max_liq_amount,
+        2,
+    );
+    let hf = state.get_account_health_factor(2);
+    println!("hf: {:?}", hf);
 }
 
 // Liquidation Tests End

@@ -3,7 +3,7 @@ use common_constants::{BP, DECIMAL_PRECISION};
 multiversx_sc::imports!();
 
 #[multiversx_sc::module]
-pub trait MathModule {
+pub trait InterestRateMath {
     /// Computes the borrow rate based on the current utilization.
     ///
     /// # Parameters

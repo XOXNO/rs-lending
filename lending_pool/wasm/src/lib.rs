@@ -67,11 +67,11 @@ multiversx_sc_wasm_adapter::endpoints! {
         getIsolatedAssetDebtUsd => isolated_asset_debt_usd
         getVaultSuppliedAmount => vault_supplied_amount
         getTokenOracle => token_oracle
-        getLastTokenPrice => last_token_price
         getPoolAddress => get_pool_address
         getAllMarkets => get_all_markets
         canBeLiquidated => can_be_liquidated
         getHealthFactor => get_health_factor
+        getMaxLiquidateAmountForCollateral => get_max_liquidate_amount_for_collateral
         getCollateralAmountForToken => get_collateral_amount_for_token
         getBorrowAmountForToken => get_borrow_amount_for_token
         getTotalBorrowInEgld => get_total_borrow_in_egld

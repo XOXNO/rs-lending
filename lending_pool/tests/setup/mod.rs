@@ -3,7 +3,7 @@ use common_constants::{DECIMAL_PRECISION, EGLD_TICKER, MIN_FIRST_TOLERANCE, MIN_
 
 use contexts::base::StorageCache;
 
-use math::LendingMathModule;
+use helpers::math::MathsModule;
 use multiversx_sc::{
     imports::OptionalValue,
     types::{
@@ -76,6 +76,7 @@ pub struct LendingPoolTestState {
     pub segld_market: ManagedAddress<StaticApi>,
     pub legld_market: ManagedAddress<StaticApi>,
     pub lp_egld_market: ManagedAddress<StaticApi>,
+    pub xoxno_market: ManagedAddress<StaticApi>,
     pub flash_mock: ManagedAddress<StaticApi>,
 }
 
@@ -102,6 +103,7 @@ impl LendingPoolTestState {
             segld_market,
             legld_market,
             lp_egld_market,
+            xoxno_market,
         ) = setup_lending_pool(
             &mut world,
             &template_address_liquidity_pool,
@@ -110,6 +112,8 @@ impl LendingPoolTestState {
 
         let flash_mock = setup_flash_mock(&mut world);
         setup_flasher(&mut world, flash_mock.clone());
+        // For LP safe price simulation
+        world.current_block().block_round(1500);
 
         Self {
             world,
@@ -128,10 +132,29 @@ impl LendingPoolTestState {
             segld_market,
             legld_market,
             lp_egld_market,
+            xoxno_market,
             flash_mock,
         }
     }
 
+    pub fn get_max_liquidate_amount_for_collateral(
+        &mut self,
+        nonce: u64,
+        collateral_token: TestTokenIdentifier,
+        debt_token: TestTokenIdentifier,
+        in_egld: bool,
+    ) -> BigUint<StaticApi> {
+        let max_liquidate_amount = self
+            .world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .get_max_liquidate_amount_for_collateral(nonce, collateral_token, debt_token, in_egld)
+            .returns(ReturnsResult)
+            .run();
+
+        max_liquidate_amount
+    }
     pub fn get_usd_price(&mut self, token_id: TestTokenIdentifier) -> u64 {
         (self
             .world
@@ -642,6 +665,30 @@ impl LendingPoolTestState {
             .run();
     }
 
+    pub fn liquidate_account_dem(
+        &mut self,
+        from: &TestAddress,
+        collateral_to_liquidate: &TestTokenIdentifier,
+        liquidator_payment: &TestTokenIdentifier,
+        amount: BigUint<StaticApi>,
+        account_nonce: u64,
+    ) {
+        let transfer = EsdtTokenPayment::new(liquidator_payment.to_token_identifier(), 0, amount);
+
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .liquidate(
+                account_nonce,
+                collateral_to_liquidate.to_token_identifier(),
+                OptionalValue::<BigUint<StaticApi>>::None,
+            )
+            .esdt(transfer)
+            .run();
+    }
+
     // Price aggregator operations
     pub fn submit_price(&mut self, from: &[u8], price: u64, decimals: usize, timestamp: u64) -> () {
         let oracles = vec![
@@ -661,6 +708,37 @@ impl LendingPoolTestState {
                     ManagedBuffer::from(DOLLAR_TICKER),
                     timestamp,
                     BigUint::from(price).mul(BigUint::from(BP)),
+                    decimals as u8,
+                )
+                .run();
+        }
+    }
+
+    // Price aggregator operations
+    pub fn submit_price_denom(
+        &mut self,
+        from: &[u8],
+        price: BigUint<StaticApi>,
+        decimals: usize,
+        timestamp: u64,
+    ) -> () {
+        let oracles = vec![
+            ORACLE_ADDRESS_1,
+            ORACLE_ADDRESS_2,
+            ORACLE_ADDRESS_3,
+            ORACLE_ADDRESS_4,
+        ];
+        for oracle in oracles {
+            self.world
+                .tx()
+                .from(oracle)
+                .to(self.price_aggregator_sc.clone())
+                .typed(proxy_aggregator::PriceAggregatorProxy)
+                .submit(
+                    ManagedBuffer::from(from),
+                    ManagedBuffer::from(DOLLAR_TICKER),
+                    timestamp,
+                    &price,
                     decimals as u8,
                 )
                 .run();
@@ -890,6 +968,21 @@ impl LendingPoolTestState {
             .to_u64()
             .unwrap()
     }
+
+    pub fn get_liquidation_collateral_available(&mut self, account_position: u64) -> u64 {
+        let liquidation_collateral_available = self
+            .world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .get_liquidation_collateral_available(account_position)
+            .returns(ReturnsResult)
+            .run();
+
+        (liquidation_collateral_available / BigUint::from(10u64).pow(EGLD_DECIMALS as u32))
+            .to_u64()
+            .unwrap()
+    }
 }
 
 pub fn setup_lending_pool(
@@ -899,6 +992,7 @@ pub fn setup_lending_pool(
 ) -> (
     ManagedAddress<StaticApi>,
     WhiteboxContract<lending_pool::ContractObj<DebugApi>>,
+    ManagedAddress<StaticApi>,
     ManagedAddress<StaticApi>,
     ManagedAddress<StaticApi>,
     ManagedAddress<StaticApi>,
@@ -1015,6 +1109,13 @@ pub fn setup_lending_pool(
         get_legld_config(),
     );
 
+    let xoxno_market = setup_market(
+        world,
+        &lending_sc,
+        EgldOrEsdtTokenIdentifier::esdt(XOXNO_TOKEN.to_token_identifier()),
+        get_xoxno_config(),
+    );
+
     let lp_egld_market = setup_market(
         world,
         &lending_sc,
@@ -1041,6 +1142,7 @@ pub fn setup_lending_pool(
         segld_market,
         legld_market,
         lp_egld_market,
+        xoxno_market,
     )
 }
 pub fn set_oracle_token_data(
@@ -1299,6 +1401,34 @@ pub fn set_oracle_token_data(
             BigUint::from(MIN_LAST_TOLERANCE),
         )
         .run();
+
+    let wegld_xoxno_pair_sc = deploy_pair_sc(
+        world,
+        &WEGLD_TOKEN,
+        EGLD_DECIMALS,
+        &XOXNO_TOKEN,
+        XOXNO_DECIMALS,
+        &LP_EGLD_TOKEN,
+        EGLD_PRICE_IN_DOLLARS,
+        XOXNO_PRICE_IN_DOLLARS,
+    );
+
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(lending_sc)
+        .typed(proxy_lending_pool::LendingPoolProxy)
+        .set_token_oracle(
+            XOXNO_TOKEN.to_token_identifier(),
+            XOXNO_DECIMALS as u8,
+            &wegld_xoxno_pair_sc,
+            PricingMethod::Aggregator,
+            OracleType::Normal,
+            ExchangeSource::XExchange,
+            BigUint::from(MIN_FIRST_TOLERANCE),
+            BigUint::from(MIN_LAST_TOLERANCE),
+        )
+        .run();
 }
 
 pub fn deploy_pair_sc(
@@ -1524,6 +1654,14 @@ pub fn setup_price_aggregator(
         CAPPED_TICKER,
         CAPPED_PRICE_IN_DOLLARS,
         CAPPED_DECIMALS,
+    );
+
+    submit_price(
+        world,
+        &price_aggregator_sc,
+        XOXNO_TICKER,
+        XOXNO_PRICE_IN_DOLLARS,
+        XOXNO_DECIMALS,
     );
 
     (price_aggregator_sc, price_aggregator_whitebox)
@@ -1835,6 +1973,10 @@ pub fn setup_accounts(
             BigUint::from(1000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
         )
         .esdt_balance(
+            XOXNO_TOKEN,
+            BigUint::from(10000u64) * BigUint::from(10u64).pow(XOXNO_DECIMALS as u32),
+        )
+        .esdt_balance(
             ISOLATED_TOKEN,
             BigUint::from(1000u64) * BigUint::from(10u64).pow(ISOLATED_DECIMALS as u32),
         )
@@ -1870,6 +2012,10 @@ pub fn setup_accounts(
         .esdt_balance(
             EGLD_TOKEN,
             BigUint::from(1000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+        )
+        .esdt_balance(
+            XOXNO_TOKEN,
+            BigUint::from(10000u64) * BigUint::from(10u64).pow(XOXNO_DECIMALS as u32),
         )
         .esdt_balance(
             CAPPED_TOKEN,
@@ -1908,6 +2054,10 @@ pub fn setup_owner(world: &mut ScenarioWorld) {
         .esdt_balance(
             EGLD_TOKEN,
             BigUint::from(100000000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+        )
+        .esdt_balance(
+            XOXNO_TOKEN,
+            BigUint::from(100000000u64) * BigUint::from(10u64).pow(XOXNO_DECIMALS as u32),
         )
         .esdt_balance(
             ISOLATED_TOKEN,

@@ -466,6 +466,28 @@ where
             .original_result()
     }
 
+    pub fn internal_create_strategy<
+        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+        Arg1: ProxyArg<BigUint<Env::Api>>,
+        Arg2: ProxyArg<BigUint<Env::Api>>,
+        Arg3: ProxyArg<BigUint<Env::Api>>,
+    >(
+        self,
+        borrowed_token: Arg0,
+        amount: Arg1,
+        strategy_fee: Arg2,
+        asset_price: Arg3,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, (BigUint<Env::Api>, u64)> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("createStrategy")
+            .argument(&borrowed_token)
+            .argument(&amount)
+            .argument(&strategy_fee)
+            .argument(&asset_price)
+            .original_result()
+    }
+
     /// Adds vault liquidation rewards to the pool. 
     ///  
     /// # Parameters 
@@ -473,14 +495,14 @@ where
     ///  
     /// # Payment 
     /// - `*`: The asset to add, has to be the same as the pool asset. 
-    pub fn add_vault_liquidation_rewards<
+    pub fn add_external_protocol_revenue<
         Arg0: ProxyArg<BigUint<Env::Api>>,
     >(
         self,
         asset_price: Arg0,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
-            .raw_call("addVaultLiquidationRewards")
+            .raw_call("addExternalProtocolRevenue")
             .argument(&asset_price)
             .original_result()
     }

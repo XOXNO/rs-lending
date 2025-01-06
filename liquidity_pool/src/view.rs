@@ -1,10 +1,10 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
-use crate::{contexts::base::StorageCache, liq_math, liq_storage};
+use crate::{contexts::base::StorageCache, rates, storage};
 
 #[multiversx_sc::module]
-pub trait ViewModule: liq_math::MathModule + liq_storage::StorageModule {
+pub trait ViewModule: rates::InterestRateMath + storage::StorageModule {
     /// Returns the capital utilisation of the pool.
     ///
     /// # Returns

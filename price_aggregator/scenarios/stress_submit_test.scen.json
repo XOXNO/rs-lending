@@ -11,7 +11,7 @@
                 {
                     "creatorAddress": "address:owner",
                     "creatorNonce": "1",
-                    "newAddress": "sc:price-aggregator"
+                    "newAddress": "sc:price_aggregator"
                 }
             ],
             "currentBlockInfo": {
@@ -473,7 +473,7 @@
             "id": "",
             "tx": {
                 "from": "address:owner",
-                "contractCode": "mxsc:../output/multiversx-price-aggregator-sc.mxsc.json",
+                "contractCode": "mxsc:../output/multiversx-price_aggregator-sc.mxsc.json",
                 "arguments": [
                     "0x45474c44",
                     "0x14",
@@ -543,7 +543,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle1",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -559,7 +559,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle2",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -575,7 +575,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle3",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -591,7 +591,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle4",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -607,7 +607,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle5",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -623,7 +623,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle6",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -639,7 +639,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle7",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -655,7 +655,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle8",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -671,7 +671,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle9",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -687,7 +687,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle10",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -703,7 +703,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle11",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -719,7 +719,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle12",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -735,7 +735,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle13",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -751,7 +751,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle14",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -767,7 +767,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle15",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -783,7 +783,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle16",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -799,7 +799,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle17",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -815,7 +815,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle18",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -831,7 +831,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle19",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -847,7 +847,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle20",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -863,7 +863,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle21",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -879,7 +879,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle22",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -895,7 +895,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle23",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -911,7 +911,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle24",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -927,7 +927,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle25",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -943,7 +943,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle26",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -959,7 +959,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle27",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -975,7 +975,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle28",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -991,7 +991,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle29",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -1007,7 +1007,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle30",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -1023,7 +1023,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle31",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -1039,7 +1039,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle32",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -1055,7 +1055,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle33",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -1071,7 +1071,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle34",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -1087,7 +1087,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle35",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -1103,7 +1103,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle36",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -1119,7 +1119,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle37",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -1135,7 +1135,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle38",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -1151,7 +1151,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle39",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -1167,7 +1167,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle40",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -1183,7 +1183,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle41",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -1199,7 +1199,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle42",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -1215,7 +1215,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle43",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -1231,7 +1231,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle44",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -1247,7 +1247,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle45",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -1263,7 +1263,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle46",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -1279,7 +1279,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle47",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -1295,7 +1295,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle48",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -1311,7 +1311,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle49",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -1327,7 +1327,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle50",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "egldValue": "20",
                 "function": "stake",
                 "arguments": [],
@@ -1343,7 +1343,7 @@
             "id": "",
             "tx": {
                 "from": "address:owner",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "setPairDecimals",
                 "arguments": [
                     "0x45474c44",
@@ -1362,7 +1362,7 @@
             "id": "",
             "tx": {
                 "from": "address:owner",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "unpause",
                 "arguments": [],
                 "gasLimit": "5000000"
@@ -1377,7 +1377,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle1",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1398,7 +1398,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle2",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1419,7 +1419,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle3",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1440,7 +1440,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle4",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1461,7 +1461,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle5",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1482,7 +1482,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle6",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1503,7 +1503,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle7",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1524,7 +1524,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle8",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1545,7 +1545,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle9",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1566,7 +1566,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle10",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1587,7 +1587,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle11",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1608,7 +1608,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle12",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1629,7 +1629,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle13",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1650,7 +1650,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle14",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1671,7 +1671,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle15",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1692,7 +1692,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle16",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1713,7 +1713,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle17",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1734,7 +1734,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle18",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1755,7 +1755,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle19",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1776,7 +1776,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle20",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1797,7 +1797,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle21",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1818,7 +1818,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle22",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1839,7 +1839,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle23",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1860,7 +1860,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle24",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1881,7 +1881,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle25",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1902,7 +1902,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle26",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1923,7 +1923,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle27",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1944,7 +1944,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle28",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1965,7 +1965,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle29",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -1986,7 +1986,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle30",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -2007,7 +2007,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle31",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -2028,7 +2028,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle32",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -2049,7 +2049,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle33",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -2070,7 +2070,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle34",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -2091,7 +2091,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle35",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -2112,7 +2112,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle36",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -2133,7 +2133,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle37",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -2154,7 +2154,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle38",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -2175,7 +2175,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle39",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -2196,7 +2196,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle40",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -2217,7 +2217,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle41",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -2238,7 +2238,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle42",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -2259,7 +2259,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle43",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -2280,7 +2280,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle44",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -2301,7 +2301,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle45",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -2322,7 +2322,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle46",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -2343,7 +2343,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle47",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -2364,7 +2364,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle48",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -2385,7 +2385,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle49",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",
@@ -2406,7 +2406,7 @@
             "id": "",
             "tx": {
                 "from": "address:oracle50",
-                "to": "sc:price-aggregator",
+                "to": "sc:price_aggregator",
                 "function": "submit",
                 "arguments": [
                     "0x45474c44",

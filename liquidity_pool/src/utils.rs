@@ -1,14 +1,14 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
-use crate::{contexts::base::StorageCache, liq_math, liq_storage, view};
+use crate::{contexts::base::StorageCache, rates, storage, view};
 
 use common_constants::{BP, DECIMAL_PRECISION, SECONDS_PER_YEAR};
 use common_structs::*;
 
 #[multiversx_sc::module]
 pub trait UtilsModule:
-    liq_math::MathModule + liq_storage::StorageModule + common_events::EventsModule + view::ViewModule
+    rates::InterestRateMath + storage::StorageModule + common_events::EventsModule + view::ViewModule
 {
     /// Computes the interest factor using a Taylor series expansion up to the fourth term.
     ///
@@ -20,19 +20,23 @@ pub trait UtilsModule:
     /// - `BigUint`: The computed interest factor.
     fn calculate_interest_factor(
         &self,
-        rate: &ManagedDecimal<Self::Api, NumDecimals>,
+        storage_cache: &mut StorageCache<Self>,
         delta_timestamp: u64,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         // Constants
+        let rate = self.get_borrow_rate_internal(storage_cache);
+
         let bp = ManagedDecimal::from_raw_units(BigUint::from(BP), DECIMAL_PRECISION);
         let seconds_per_year_dec =
             ManagedDecimal::from_raw_units(BigUint::from(SECONDS_PER_YEAR), 0);
-        // Convert `rate` to ManagedDecimal
-        let rate_dec = rate.clone();
         // Convert `delta_timestamp` to ManagedDecimal
         let delta_dec = ManagedDecimal::from_raw_units(BigUint::from(delta_timestamp), 0);
         // Calculate x = (rate * delta_timestamp) / SECONDS_PER_YEAR
-        let x = rate_dec.mul(delta_dec).div(seconds_per_year_dec).add(bp);
+        let x = rate
+            .clone()
+            .mul_with_precision(delta_dec, DECIMAL_PRECISION)
+            .div(seconds_per_year_dec)
+            .add(bp);
 
         x
     }
@@ -45,16 +49,13 @@ pub trait UtilsModule:
     /// - `storage_cache`: The storage cache to update.
     fn update_borrow_index(
         &self,
-        borrow_rate: &ManagedDecimal<Self::Api, NumDecimals>,
-        delta_timestamp: u64,
         storage_cache: &mut StorageCache<Self>,
+        interest_factor: &ManagedDecimal<Self::Api, NumDecimals>,
     ) {
-        let interest_factor = self.calculate_interest_factor(borrow_rate, delta_timestamp);
-
         storage_cache.borrow_index = storage_cache
             .borrow_index
             .clone()
-            .mul_with_precision(interest_factor, DECIMAL_PRECISION);
+            .mul_with_precision(interest_factor.clone(), DECIMAL_PRECISION);
     }
 
     /// Updates the supply index for the given storage cache.
@@ -68,14 +69,13 @@ pub trait UtilsModule:
         storage_cache: &mut StorageCache<Self>,
     ) {
         if storage_cache.supplied_amount
-            != ManagedDecimal::from_raw_units(
-                BigUint::zero(),
-                storage_cache.pool_params.decimals,
-            )
+            != ManagedDecimal::from_raw_units(BigUint::zero(), storage_cache.pool_params.decimals)
         {
+            let bp_dec = ManagedDecimal::from_raw_units(BigUint::from(BP), DECIMAL_PRECISION);
+
             // Convert rewards to an index increase factor
-            let rewards_factor = rewards_increase.clone() / storage_cache.supplied_amount.clone()
-                + ManagedDecimal::from_raw_units(BigUint::from(BP), DECIMAL_PRECISION);
+            let rewards_factor =
+                rewards_increase * bp_dec.clone() / storage_cache.supplied_amount.clone() + bp_dec;
 
             storage_cache.supply_index = storage_cache
                 .supply_index
@@ -95,22 +95,22 @@ pub trait UtilsModule:
     /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total interest earned (compound) for the suppliers.
     fn update_rewards_reserves(
         &self,
-        borrow_rate: &ManagedDecimal<Self::Api, NumDecimals>,
-        delta_timestamp: u64,
         storage_cache: &mut StorageCache<Self>,
+        interest_factor: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        // 1. Calculate compound interest factor
-        let interest_factor = self.calculate_interest_factor(borrow_rate, delta_timestamp);
-
         let borrowed_amount_dec = storage_cache.borrowed_amount.clone();
         // 2. Calculate total interest earned (compound)
-        let new_borrowed_amount = borrowed_amount_dec.clone().mul(interest_factor);
+        let new_borrowed_amount = borrowed_amount_dec
+            .clone()
+            .mul_with_precision(interest_factor.clone(), storage_cache.pool_params.decimals);
+
         let rewards_increase = new_borrowed_amount - borrowed_amount_dec;
 
         // 3. Calculate protocol's share
-        let revenue = rewards_increase
-            .clone()
-            .mul(storage_cache.pool_params.reserve_factor.clone());
+        let revenue = rewards_increase.clone().mul_with_precision(
+            storage_cache.pool_params.reserve_factor.clone(),
+            storage_cache.pool_params.decimals,
+        );
 
         // 4. Update reserves
         storage_cache.protocol_revenue += &revenue;
@@ -127,10 +127,10 @@ pub trait UtilsModule:
         let delta_timestamp = storage_cache.timestamp - storage_cache.last_update_timestamp;
 
         if delta_timestamp > 0 {
-            let borrow_rate = self.get_borrow_rate_internal(storage_cache);
-            self.update_borrow_index(&borrow_rate, delta_timestamp, storage_cache);
-            let rewards =
-                self.update_rewards_reserves(&borrow_rate, delta_timestamp, storage_cache);
+            let interest_factor = self.calculate_interest_factor(storage_cache, delta_timestamp);
+
+            self.update_borrow_index(storage_cache, &interest_factor);
+            let rewards = self.update_rewards_reserves(storage_cache, &interest_factor);
             self.update_supply_index(rewards, storage_cache);
             // Update the last used round
             storage_cache.last_update_timestamp = storage_cache.timestamp;
@@ -147,7 +147,10 @@ pub trait UtilsModule:
         position: &mut AccountPosition<Self::Api>,
         storage_cache: &mut StorageCache<Self>,
     ) {
-        self.update_interest_indexes(storage_cache);
+        if position.get_total_amount().eq(&BigUint::zero()) {
+            return;
+        }
+
         let is_supply = position.deposit_type == AccountPositionType::Deposit;
 
         let index = if is_supply {
@@ -158,7 +161,7 @@ pub trait UtilsModule:
 
         let accumulated_interest_dec = self.compute_interest(
             ManagedDecimal::from_raw_units(
-                position.get_total_amount().clone(),
+                position.get_total_amount(),
                 storage_cache.pool_params.decimals,
             ),
             &index,
@@ -172,5 +175,29 @@ pub trait UtilsModule:
             position.timestamp = storage_cache.timestamp;
             position.index = index.into_raw_units().clone();
         }
+    }
+
+    fn calculate_principal_and_interest(
+        &self,
+        received_payment_amount: &ManagedDecimal<Self::Api, NumDecimals>,
+        borrow_position: &AccountPosition<Self::Api>,
+        total_owed_with_interest: ManagedDecimal<Self::Api, NumDecimals>,
+        decimals: usize,
+    ) -> (
+        ManagedDecimal<Self::Api, NumDecimals>,
+        ManagedDecimal<Self::Api, NumDecimals>,
+    ) {
+        let principal_portion = received_payment_amount
+            .clone()
+            .mul(ManagedDecimal::from_raw_units(
+                borrow_position.amount.clone(),
+                decimals,
+            ))
+            .div(total_owed_with_interest);
+
+        (
+            principal_portion.clone(),
+            received_payment_amount.clone() - principal_portion,
+        )
     }
 }

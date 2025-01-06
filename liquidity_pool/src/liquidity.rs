@@ -5,14 +5,14 @@ use crate::errors::*;
 use common_constants::DECIMAL_PRECISION;
 use common_structs::*;
 
-use super::{contexts::base::StorageCache, liq_math, liq_storage, liq_utils, view};
+use super::{contexts::base::StorageCache, rates, storage, utils, view};
 
 #[multiversx_sc::module]
 pub trait LiquidityModule:
-    liq_storage::StorageModule
-    + liq_utils::UtilsModule
+    storage::StorageModule
+    + utils::UtilsModule
     + common_events::EventsModule
-    + liq_math::MathModule
+    + rates::InterestRateMath
     + view::ViewModule
 {
     /// Updates the indexes of the pool.
@@ -55,6 +55,9 @@ pub trait LiquidityModule:
         asset_price: OptionalValue<BigUint>,
     ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
+
+        self.update_interest_indexes(&mut storage_cache);
+
         self.internal_update_position_with_interest(&mut position, &mut storage_cache);
 
         if asset_price.is_some() {
@@ -96,11 +99,6 @@ pub trait LiquidityModule:
 
         let (deposit_asset, deposit_amount) = self.call_value().egld_or_single_fungible_esdt();
 
-        let deposit_amount_dec = ManagedDecimal::from_raw_units(
-            deposit_amount.clone(),
-            storage_cache.pool_params.decimals,
-        );
-
         require!(
             deposit_asset.eq(&storage_cache.pool_asset),
             ERROR_INVALID_ASSET
@@ -108,13 +106,14 @@ pub trait LiquidityModule:
 
         self.update_interest_indexes(&mut storage_cache);
 
-        if deposit_position.amount.gt(&BigUint::zero()) {
-            self.internal_update_position_with_interest(&mut deposit_position, &mut storage_cache);
-        }
+        self.internal_update_position_with_interest(&mut deposit_position, &mut storage_cache);
 
         deposit_position.amount += &deposit_amount;
         deposit_position.timestamp = storage_cache.timestamp;
         deposit_position.index = storage_cache.supply_index.into_raw_units().clone();
+
+        let deposit_amount_dec =
+            ManagedDecimal::from_raw_units(deposit_amount, storage_cache.pool_params.decimals);
 
         storage_cache.reserves_amount += &deposit_amount_dec;
 
@@ -159,6 +158,14 @@ pub trait LiquidityModule:
     ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
 
+        self.update_interest_indexes(&mut storage_cache);
+
+        self.internal_update_position_with_interest(&mut borrow_position, &mut storage_cache);
+
+        borrow_position.amount += borrow_amount;
+        borrow_position.timestamp = storage_cache.timestamp;
+        borrow_position.index = storage_cache.borrow_index.into_raw_units().clone();
+
         let borrow_amount_dec = ManagedDecimal::from_raw_units(
             borrow_amount.clone(),
             storage_cache.pool_params.decimals,
@@ -169,18 +176,8 @@ pub trait LiquidityModule:
             ERROR_INSUFFICIENT_LIQUIDITY
         );
 
-        self.update_interest_indexes(&mut storage_cache);
-
-        if borrow_position.amount.gt(&BigUint::zero()) {
-            self.internal_update_position_with_interest(&mut borrow_position, &mut storage_cache);
-        }
-
-        borrow_position.amount += borrow_amount;
-        borrow_position.timestamp = storage_cache.timestamp;
-        borrow_position.index = storage_cache.borrow_index.into_raw_units().clone();
-
-        storage_cache.borrowed_amount += borrow_amount_dec.clone();
-        storage_cache.reserves_amount -= borrow_amount_dec.clone();
+        storage_cache.borrowed_amount += &borrow_amount_dec;
+        storage_cache.reserves_amount -= &borrow_amount_dec;
 
         self.tx()
             .to(initial_caller)
@@ -269,11 +266,7 @@ pub trait LiquidityModule:
         if principal_amount >= accumulated_interest {
             principal_amount -= accumulated_interest;
             accumulated_interest = zero.clone();
-        }
-
-        // If the accumulated interest is greater than the withdrawal amount, we need to subtract the withdrawal amount from the accumulated interest
-
-        if accumulated_interest >= principal_amount {
+        } else {
             accumulated_interest -= principal_amount;
             principal_amount = zero.clone();
         }
@@ -290,16 +283,7 @@ pub trait LiquidityModule:
             storage_cache.supplied_amount -= &principal_amount;
         }
 
-        if !is_liquidation {
-            self.tx()
-                .to(initial_caller)
-                .payment(EgldOrEsdtTokenPayment::new(
-                    storage_cache.pool_asset.clone(),
-                    0,
-                    total_withdraw.into_raw_units().clone(),
-                ))
-                .transfer();
-        } else {
+        if is_liquidation {
             let protocol_fee = ManagedDecimal::from_raw_units(
                 protocol_liquidation_fee.clone(),
                 storage_cache.pool_params.decimals,
@@ -316,7 +300,16 @@ pub trait LiquidityModule:
                     0,
                     amount_after_fee.into_raw_units().clone(),
                 ))
-                .transfer();
+                .transfer_if_not_empty();
+        } else {
+            self.tx()
+                .to(initial_caller)
+                .payment(EgldOrEsdtTokenPayment::new(
+                    storage_cache.pool_asset.clone(),
+                    0,
+                    total_withdraw.into_raw_units().clone(),
+                ))
+                .transfer_if_not_empty();
         }
 
         self.update_market_state_event(
@@ -352,7 +345,7 @@ pub trait LiquidityModule:
     fn repay(
         &self,
         initial_caller: ManagedAddress,
-        mut borrow_position: AccountPosition<Self::Api>,
+        mut position: AccountPosition<Self::Api>,
         asset_price: &BigUint,
     ) -> AccountPosition<Self::Api> {
         let mut storage_cache = StorageCache::new(self);
@@ -363,64 +356,49 @@ pub trait LiquidityModule:
             ERROR_INVALID_ASSET
         );
 
-        let received_amount_dec = ManagedDecimal::from_raw_units(
-            received_amount.clone(),
-            storage_cache.pool_params.decimals,
-        );
         self.update_interest_indexes(&mut storage_cache);
-        self.internal_update_position_with_interest(&mut borrow_position, &mut storage_cache);
+        self.internal_update_position_with_interest(&mut position, &mut storage_cache);
 
-        let total_owed_with_interest = ManagedDecimal::from_raw_units(
-            borrow_position.get_total_amount().clone(),
+        let total_borrorwed = ManagedDecimal::from_raw_units(
+            position.get_total_amount(),
             storage_cache.pool_params.decimals,
         );
 
-        if received_amount_dec >= total_owed_with_interest {
+        let (principal, interest) = if received_amount.ge(&position.get_total_amount()) {
             // Full repayment
-            let extra_amount = received_amount - borrow_position.get_total_amount();
-            if extra_amount > BigUint::zero() {
-                self.tx()
-                    .to(&initial_caller)
-                    .payment(EgldOrEsdtTokenPayment::new(
-                        received_asset,
-                        0,
-                        extra_amount.clone(),
-                    ))
-                    .transfer();
-            }
-            // Reduce borrowed by principal
-            storage_cache.borrowed_amount -= &ManagedDecimal::from_raw_units(
-                borrow_position.amount.clone(),
+            let extra_amount = &received_amount - &position.get_total_amount();
+
+            self.tx()
+                .to(&initial_caller)
+                .egld_or_single_esdt(&received_asset, 0, &extra_amount)
+                .transfer_if_not_empty();
+
+            let principal =
+                ManagedDecimal::from_raw_units(position.amount, storage_cache.pool_params.decimals);
+
+            position.amount = BigUint::zero();
+            position.accumulated_interest = BigUint::zero();
+
+            (principal, total_borrorwed)
+        } else {
+            let repayment =
+                ManagedDecimal::from_raw_units(received_amount, storage_cache.pool_params.decimals);
+            // Partial repayment
+            let (principal, interest) = self.calculate_principal_and_interest(
+                &repayment,
+                &position,
+                total_borrorwed,
                 storage_cache.pool_params.decimals,
             );
-            // Add full payment (principal + interest) to reserves
 
-            storage_cache.reserves_amount += &total_owed_with_interest;
+            position.amount -= principal.into_raw_units();
+            position.accumulated_interest -= interest.into_raw_units();
 
-            borrow_position.amount = BigUint::zero();
-            borrow_position.accumulated_interest = BigUint::zero();
-        } else {
-            // Partial repayment
-            let total_debt = total_owed_with_interest.clone();
-            // Calculate principal portion of the payment
-            let principal_portion = received_amount_dec
-                .clone()
-                .mul(ManagedDecimal::from_raw_units(
-                    borrow_position.amount.clone(),
-                    storage_cache.pool_params.decimals,
-                ))
-                .div(total_debt);
-            let interest_portion = received_amount_dec.clone() - principal_portion.clone();
+            (principal, repayment)
+        };
 
-            // Reduce position amounts
-            borrow_position.amount -= &principal_portion.into_raw_units().clone();
-            borrow_position.accumulated_interest -= &interest_portion.into_raw_units().clone();
-
-            // Update storage
-            storage_cache.borrowed_amount -= &principal_portion;
-
-            storage_cache.reserves_amount += &received_amount_dec; // Full payment goes to reserves
-        }
+        storage_cache.borrowed_amount -= &principal;
+        storage_cache.reserves_amount += &interest;
 
         self.update_market_state_event(
             storage_cache.timestamp,
@@ -434,7 +412,7 @@ pub trait LiquidityModule:
             asset_price,
         );
 
-        borrow_position
+        position
     }
 
     /// Handles a flash loan.
@@ -460,6 +438,8 @@ pub trait LiquidityModule:
         asset_price: &BigUint,
     ) {
         let mut storage_cache = StorageCache::new(self);
+        self.update_interest_indexes(&mut storage_cache);
+
         let asset = storage_cache.pool_asset.clone();
         require!(borrowed_token == &asset, ERROR_INVALID_ASSET);
 
@@ -530,11 +510,11 @@ pub trait LiquidityModule:
             ERROR_INVALID_FLASHLOAN_REPAYMENT
         );
 
-        let revenue = repayment_amount - loaned_amount.clone();
+        storage_cache_second.reserves_amount += &loaned_amount;
+        let revenue = repayment_amount - loaned_amount;
 
         storage_cache_second.protocol_revenue += &revenue;
         storage_cache_second.reserves_amount += &revenue;
-        storage_cache_second.reserves_amount += &loaned_amount;
 
         self.update_market_state_event(
             storage_cache_second.timestamp,
@@ -549,6 +529,66 @@ pub trait LiquidityModule:
         );
     }
 
+    #[only_owner]
+    #[endpoint(createStrategy)]
+    fn internal_create_strategy(
+        &self,
+        token: &EgldOrEsdtTokenIdentifier,
+        amount: &BigUint,
+        fee: &BigUint,
+        asset_price: &BigUint,
+    ) -> (BigUint, u64) {
+        let mut storage_cache = StorageCache::new(self);
+        self.update_interest_indexes(&mut storage_cache);
+
+        let asset = storage_cache.pool_asset.clone();
+
+        require!(token == &asset, ERROR_INVALID_ASSET);
+
+        let strategy_amount =
+            ManagedDecimal::from_raw_units(amount.clone(), storage_cache.pool_params.decimals);
+
+        let strategy_fee =
+            ManagedDecimal::from_raw_units(fee.clone(), storage_cache.pool_params.decimals);
+
+        require!(
+            &storage_cache.get_reserves() >= &strategy_amount,
+            ERROR_INSUFFICIENT_LIQUIDITY
+        );
+
+        storage_cache.reserves_amount -= &strategy_amount;
+
+        storage_cache.borrowed_amount += &strategy_amount;
+
+        storage_cache.protocol_revenue += &strategy_fee;
+
+        self.update_market_state_event(
+            storage_cache.timestamp,
+            &storage_cache.supply_index,
+            &storage_cache.borrow_index,
+            &storage_cache.reserves_amount,
+            &storage_cache.supplied_amount,
+            &storage_cache.borrowed_amount,
+            &storage_cache.protocol_revenue,
+            &storage_cache.pool_asset,
+            asset_price,
+        );
+
+        self.tx()
+            .to(self.blockchain().get_caller())
+            .payment(EgldOrEsdtTokenPayment::new(
+                asset,
+                0,
+                strategy_amount.into_raw_units().clone(),
+            ))
+            .transfer();
+
+        (
+            storage_cache.borrow_index.into_raw_units().clone(),
+            storage_cache.timestamp,
+        )
+    }
+
     /// Adds vault liquidation rewards to the pool.
     ///
     /// # Parameters
@@ -558,12 +598,13 @@ pub trait LiquidityModule:
     /// - `*`: The asset to add, has to be the same as the pool asset.
     #[payable("*")]
     #[only_owner]
-    #[endpoint(addVaultLiquidationRewards)]
-    fn add_vault_liquidation_rewards(&self, asset_price: &BigUint) {
+    #[endpoint(addExternalProtocolRevenue)]
+    fn add_external_protocol_revenue(&self, asset_price: &BigUint) {
         let (received_asset, received_amount) = self.call_value().egld_or_single_fungible_esdt();
         let mut storage_cache = StorageCache::new(self);
+
         require!(
-            received_asset == storage_cache.pool_asset,
+            &received_asset == &storage_cache.pool_asset,
             ERROR_INVALID_ASSET
         );
 
@@ -606,14 +647,14 @@ pub trait LiquidityModule:
         let revenue_biguint = if storage_cache.borrowed_amount.into_raw_units() == &BigUint::zero()
             && storage_cache.supplied_amount.into_raw_units() == &BigUint::zero()
         {
-            storage_cache.protocol_revenue -= &storage_cache.protocol_revenue.clone();
-            storage_cache.reserves_amount -= &storage_cache.reserves_amount.clone();
+            storage_cache.protocol_revenue -= storage_cache.protocol_revenue.clone();
+            storage_cache.reserves_amount -= storage_cache.reserves_amount.clone();
 
             storage_cache.reserves_amount.into_raw_units().clone()
         } else {
             let rvn = storage_cache.available_revenue();
-            storage_cache.protocol_revenue -= rvn.clone();
-            storage_cache.reserves_amount -= rvn.clone();
+            storage_cache.protocol_revenue -= &rvn;
+            storage_cache.reserves_amount -= &rvn;
             rvn.into_raw_units().clone()
         };
 

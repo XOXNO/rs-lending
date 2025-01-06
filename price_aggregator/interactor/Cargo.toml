@@ -9,7 +9,7 @@ publish = false
 name = "rust-interact"
 path = "src/interactor_main.rs"
 
-[dependencies.price-aggregator]
+[dependencies.price_aggregator]
 path = ".."
 
 [dependencies.multiversx-sc-snippets]

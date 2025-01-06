@@ -22,6 +22,10 @@ pub const USD_TICKER: &[u8] = b"USD";
 
 /// Seconds per year
 pub const SECONDS_PER_YEAR: u64 = 31_556_926;
+
+pub const SECONDS_PER_MINUTE: u64 = 60;
+pub const SECONDS_PER_HOUR: u64 = 3_600;
+
 /// Basis points
 pub const BP: u128 = 1_000_000_000_000_000_000_000; // Represents 100%
 /// Decimal precision
