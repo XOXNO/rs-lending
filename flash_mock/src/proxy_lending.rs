@@ -211,23 +211,6 @@ where
     ///  
     /// # Arguments 
     /// * `account_nonce` - NFT nonce of the account position to repay 
-    ///  
-    /// # Payment 
-    /// Accepts EGLD or single ESDT payment of the debt token 
-    ///  
-    /// # Flow 
-    /// 1. Updates positions with latest interest 
-    /// 2. Validates payment and parameters 
-    /// 3. Processes repayment 
-    ///  
-    /// # Example 
-    /// ``` 
-    /// // Repay 500 USDC for account position 
-    /// ESDTTransfer { 
-    ///   token: "USDC-123456", 
-    ///   amount: 500_000_000 // 500 USDC 
-    /// } 
-    /// repay(1) // Account NFT nonce 
     /// ``` 
     pub fn repay<
         Arg0: ProxyArg<u64>,
@@ -1473,6 +1456,34 @@ where
             .payment(NotPayable)
             .raw_call("getTokenPriceEGLD")
             .argument(&token_id)
+            .original_result()
+    }
+
+    pub fn calculate_max_leverage<
+        Arg0: ProxyArg<BigUint<Env::Api>>,
+        Arg1: ProxyArg<BigUint<Env::Api>>,
+        Arg2: ProxyArg<Option<common_structs::EModeCategory<Env::Api>>>,
+        Arg3: ProxyArg<common_structs::AssetConfig<Env::Api>>,
+        Arg4: ProxyArg<BigUint<Env::Api>>,
+        Arg5: ProxyArg<BigUint<Env::Api>>,
+    >(
+        self,
+        initial_deposit: Arg0,
+        health_factor: Arg1,
+        e_mode: Arg2,
+        asset_config: Arg3,
+        total_reserves: Arg4,
+        reserve_buffer: Arg5,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getMaxLeverage")
+            .argument(&initial_deposit)
+            .argument(&health_factor)
+            .argument(&e_mode)
+            .argument(&asset_config)
+            .argument(&total_reserves)
+            .argument(&reserve_buffer)
             .original_result()
     }
 }
