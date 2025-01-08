@@ -25,6 +25,7 @@ HTM_TOKEN="str:HTM-23a1da"
 XEGLD_TOKEN="str:XEGLD-23b511"
 LP_XOXNO_TOKEN="str:XOXNOWEGLD-232308"
 LEGLD_TOKEN="str:LEGLD-e8378b"
+LP_XEGLD_TOKEN="str:XEGLDWEGLD-cc2dd9"
 
 R_MAX=1000000000000000000000 # 100%
 R_BASE=35000000000000000000 # 2.5%
@@ -246,9 +247,9 @@ getTokenPriceData() {
 }
 
 getTokenPriceUSD() {
-    mxpy contract query ${ADDRESS} --function="getTokenPriceUSD" --arguments ${XOXNO_TOKEN} --proxy=${PROXY}
+    mxpy contract query ${ADDRESS} --function="getTokenPriceUSD" --arguments ${LP_XEGLD_TOKEN} --proxy=${PROXY}
 }
 
 getTokenPriceEGLD() {
-    mxpy contract query ${ADDRESS} --function="getTokenPriceEGLD" --arguments ${XEGLD_TOKEN} --proxy=${PROXY}
+    mxpy contract query ${ADDRESS} --function="getTokenPriceEGLD" --arguments ${LP_XEGLD_TOKEN} --proxy=${PROXY}
 }

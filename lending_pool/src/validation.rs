@@ -1,7 +1,11 @@
 multiversx_sc::imports!();
-use common_constants::{BP, TOTAL_BORROWED_AMOUNT_STORAGE_KEY, TOTAL_SUPPLY_AMOUNT_STORAGE_KEY};
+use common_constants::{
+    BP, TOTAL_BORROWED_AMOUNT_STORAGE_KEY, TOTAL_RESERVES_AMOUNT_STORAGE_KEY,
+    TOTAL_SUPPLY_AMOUNT_STORAGE_KEY,
+};
 use common_events::{
-    AccountPosition, AssetConfig, EModeCategory, EgldOrEsdtTokenPaymentNew, NftAccountAttributes,
+    AccountPosition, AssetConfig, EModeAssetConfig, EModeCategory, EgldOrEsdtTokenPaymentNew,
+    NftAccountAttributes,
 };
 use common_structs::PriceFeedShort;
 use multiversx_sc::storage::StorageKey;
@@ -11,8 +15,8 @@ use crate::{
     ERROR_ADDRESS_IS_ZERO, ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO,
     ERROR_ASSET_NOT_BORROWABLE_IN_ISOLATION, ERROR_ASSET_NOT_BORROWABLE_IN_SILOED,
     ERROR_ASSET_NOT_SUPPORTED, ERROR_BORROW_CAP, ERROR_CANNOT_USE_EMODE_WITH_ISOLATED_ASSETS,
-    ERROR_DEBT_CEILING_REACHED, ERROR_EMODE_CATEGORY_NOT_FOUND, ERROR_HEALTH_FACTOR,
-    ERROR_HEALTH_FACTOR_WITHDRAW, ERROR_INSUFFICIENT_COLLATERAL,
+    ERROR_DEBT_CEILING_REACHED, ERROR_EMODE_CATEGORY_DEPRECATED, ERROR_EMODE_CATEGORY_NOT_FOUND,
+    ERROR_HEALTH_FACTOR, ERROR_HEALTH_FACTOR_WITHDRAW, ERROR_INSUFFICIENT_COLLATERAL,
     ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS, ERROR_MIX_ISOLATED_COLLATERAL,
     ERROR_POSITION_SHOULD_BE_VAULT, ERROR_SUPPLY_CAP,
 };
@@ -60,68 +64,52 @@ pub trait ValidationModule:
         }
     }
 
-    /// Validates e-mode constraints for a position
-    ///
-    /// # Arguments
-    /// * `token_id` - Token identifier being supplied
-    /// * `asset_info` - Asset configuration
-    /// * `nft_attributes` - Position NFT attributes
-    /// * `e_mode_category` - Optional e-mode category to use
-    ///
-    /// Validates:
-    /// - Isolated assets cannot use e-mode
-    /// - E-mode category exists if specified
-    /// - Asset supports the e-mode category
-    fn validate_e_mode_constraints(
-        &self,
-        token_id: &EgldOrEsdtTokenIdentifier,
-        asset_info: &AssetConfig<Self::Api>,
-        nft_attributes: &NftAccountAttributes,
-    ) -> Option<EModeCategory<Self::Api>> {
-        // 1. Validate isolated asset constraints
-        require!(
-            !(asset_info.is_isolated && nft_attributes.e_mode_category != 0),
-            ERROR_CANNOT_USE_EMODE_WITH_ISOLATED_ASSETS
-        );
-
-        // 3. Validate e-mode if active
-        if nft_attributes.e_mode_category != 0 {
-            // Validate category exists
-            require!(
-                self.e_mode_category()
-                    .contains_key(&nft_attributes.e_mode_category),
-                ERROR_EMODE_CATEGORY_NOT_FOUND
-            );
-
-            let category = self
-                .e_mode_category()
-                .get(&nft_attributes.e_mode_category)
-                .unwrap();
-
-            if category.is_deprecated {
-                return Some(category);
-            }
-
-            // Validate asset supports this e-mode
-            require!(
-                self.asset_e_modes(token_id)
-                    .contains(&nft_attributes.e_mode_category),
-                ERROR_EMODE_CATEGORY_NOT_FOUND
-            );
-
-            // Validate asset has configuration for this e-mode
-            require!(
-                self.e_mode_assets(nft_attributes.e_mode_category)
-                    .contains_key(token_id),
-                ERROR_EMODE_CATEGORY_NOT_FOUND
-            );
-
-            return Some(category);
-        } else {
-            None
+    fn validate_not_depracated_e_mode(&self, e_mode_category: &Option<EModeCategory<Self::Api>>) {
+        if let Some(category) = e_mode_category {
+            require!(!category.is_deprecated, ERROR_EMODE_CATEGORY_DEPRECATED);
         }
     }
 
+    fn validate_e_mode_not_isolated(&self, asset_info: &AssetConfig<Self::Api>, e_mode: u8) {
+        require!(
+            !(asset_info.is_isolated && e_mode != 0),
+            ERROR_CANNOT_USE_EMODE_WITH_ISOLATED_ASSETS
+        );
+    }
+
+    fn validate_token_of_emode(
+        &self,
+        e_mode: u8,
+        token_id: &EgldOrEsdtTokenIdentifier,
+    ) -> Option<EModeAssetConfig> {
+        if e_mode == 0 {
+            return None;
+        }
+
+        require!(
+            self.asset_e_modes(token_id).contains(&e_mode),
+            ERROR_EMODE_CATEGORY_NOT_FOUND
+        );
+
+        // Validate asset has configuration for this e-mode
+        require!(
+            self.e_mode_assets(e_mode).contains_key(token_id),
+            ERROR_EMODE_CATEGORY_NOT_FOUND
+        );
+
+        Some(self.e_mode_assets(e_mode).get(token_id).unwrap())
+    }
+
+    fn validate_e_mode_exists(&self, e_mode: u8) -> Option<EModeCategory<Self::Api>> {
+        if e_mode == 0 {
+            return None;
+        }
+        require!(
+            self.e_mode_category().contains_key(&e_mode),
+            ERROR_EMODE_CATEGORY_NOT_FOUND
+        );
+        Some(self.e_mode_category().get(&e_mode).unwrap())
+    }
     /// Validates consistency between vault flags
     ///
     /// # Arguments
@@ -212,6 +200,16 @@ pub trait ValidationModule:
         SingleValueMapper::<_, _, ManagedAddress>::new_from_address(
             pair_address,
             StorageKey::new(TOTAL_SUPPLY_AMOUNT_STORAGE_KEY),
+        )
+    }
+
+    fn get_total_reserves(
+        &self,
+        pair_address: ManagedAddress,
+    ) -> SingleValueMapper<BigUint, ManagedAddress> {
+        SingleValueMapper::<_, _, ManagedAddress>::new_from_address(
+            pair_address,
+            StorageKey::new(TOTAL_RESERVES_AMOUNT_STORAGE_KEY),
         )
     }
 
@@ -362,15 +360,6 @@ pub trait ValidationModule:
             require!(
                 asset_config.can_borrow_in_isolation,
                 ERROR_ASSET_NOT_BORROWABLE_IN_ISOLATION
-            );
-        }
-
-        // Handle e-mode validation
-        if nft_attributes.e_mode_category != 0 {
-            require!(
-                self.asset_e_modes(asset_to_borrow)
-                    .contains(&nft_attributes.e_mode_category),
-                ERROR_EMODE_CATEGORY_NOT_FOUND
             );
         }
 

@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           61
+// Endpoints:                           62
 // Async Callback:                       1
-// Total number of exported functions:  64
+// Total number of exported functions:  65
 
 #![no_std]
 
@@ -81,6 +81,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         getTokenPriceData => get_token_price_data_view
         getTokenPriceUSD => get_usd_price
         getTokenPriceEGLD => get_egld_price
+        getMaxLeverage => calculate_max_leverage
     )
 }
 

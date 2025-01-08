@@ -26,43 +26,54 @@ pub trait MultiplyModule:
         e_mode_category: u8,
         collateral_token: &EgldOrEsdtTokenIdentifier,
     ) {
+        let bp = BigUint::from(BP);
         let debt_payment = self.call_value().egld_or_single_esdt();
         let caller = self.blockchain().get_caller();
+        let e_mode = self.validate_e_mode_exists(e_mode_category);
+        self.validate_not_depracated_e_mode(&e_mode);
 
+        let target = &bp * 2u32 / 100u32 + &bp; // 1.02
+        let reserves_factor = &bp / 5u64; // 20%
         self.require_asset_supported(collateral_token);
+
         let collateral_oracle = self.token_oracle(collateral_token).get();
         let mut collateral_config = self.asset_config(collateral_token).get();
 
         let mut debt_config = self.asset_config(&debt_payment.token_identifier).get();
         let asset_address = self.require_asset_supported(&debt_payment.token_identifier);
+        let debt_market_sc = self.pools_map(&debt_payment.token_identifier).get();
+        let max_l = self.calculate_max_leverage(
+            &debt_payment.amount,
+            &target,
+            &e_mode,
+            &debt_config,
+            &self.get_total_reserves(debt_market_sc).get(),
+            &reserves_factor,
+        );
+
+        require!(
+            leverage <= &max_l,
+            "The leverage is over the maximum allowed!"
+        );
 
         let (account, nft_attributes) =
             self.enter(&caller, false, false, OptionalValue::Some(e_mode_category));
-
+        let e_mode_id = nft_attributes.e_mode_category;
         // 4. Validate e-mode constraints first
-        let category_collateral =
-            self.validate_e_mode_constraints(collateral_token, &collateral_config, &nft_attributes);
+        let collateral_emode_config = self.validate_token_of_emode(e_mode_id, &collateral_token);
+        let debt_emode_config =
+            self.validate_token_of_emode(e_mode_id, &debt_payment.token_identifier);
 
-        let category_debt = self.validate_e_mode_constraints(
-            &debt_payment.token_identifier,
-            &debt_config,
-            &nft_attributes,
-        );
+        self.validate_e_mode_not_isolated(&collateral_config, e_mode_id);
+        self.validate_e_mode_not_isolated(&debt_config, e_mode_id);
 
         // 5. Update asset config if NFT has active e-mode
         self.update_asset_config_for_e_mode(
             &mut collateral_config,
-            nft_attributes.e_mode_category,
-            collateral_token,
-            category_collateral,
+            &e_mode,
+            collateral_emode_config,
         );
-
-        self.update_asset_config_for_e_mode(
-            &mut debt_config,
-            nft_attributes.e_mode_category,
-            &debt_payment.token_identifier,
-            category_debt,
-        );
+        self.update_asset_config_for_e_mode(&mut debt_config, &e_mode, debt_emode_config);
 
         require!(
             collateral_config.can_be_collateral,
@@ -95,7 +106,7 @@ pub trait MultiplyModule:
             &debt_payment.token_identifier,
         );
 
-        let (latest_market_info, _) = self
+        let latest_market_info = self
             .tx()
             .to(asset_address)
             .typed(proxy_pool::LiquidityPoolProxy)
@@ -106,7 +117,6 @@ pub trait MultiplyModule:
                 &feed.price,
             )
             .returns(ReturnsResult)
-            .returns(ReturnsBackTransfers)
             .sync_call();
 
         let (borrow_index, timestamp) = latest_market_info;
@@ -161,7 +171,7 @@ pub trait MultiplyModule:
 
         let feed_collateral = self.get_token_price(collateral_token, &mut storage_cache);
 
-        let updated_position = self.update_supply_position(
+        self.update_supply_position(
             account.token_nonce,
             &EgldOrEsdtTokenPaymentNew {
                 token_identifier: EgldOrEsdtTokenIdentifier::esdt(
@@ -173,14 +183,8 @@ pub trait MultiplyModule:
             &collateral_config,
             false,
             &feed_collateral,
-        );
-
-        self.update_position_event(
-            &collateral_payment.amount,
-            &updated_position,
-            OptionalValue::Some(feed_collateral.price),
-            OptionalValue::Some(&caller),
-            OptionalValue::Some(&nft_attributes),
+            &caller,
+            &nft_attributes,
         );
 
         // 4. Validate health factor after looping was created to verify integrity of healthy

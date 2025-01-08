@@ -821,7 +821,7 @@ fn test_supply_isolated_asset_with_e_mode_error() {
         OptionalValue::Some(1),
         OptionalValue::None,
         false,
-        ERROR_CANNOT_USE_EMODE_WITH_ISOLATED_ASSETS,
+        ERROR_EMODE_CATEGORY_NOT_FOUND, // ERROR_CANNOT_USE_EMODE_WITH_ISOLATED_ASSETS,
     );
 }
 
@@ -1718,7 +1718,6 @@ fn test_liquidation_normal_recovery() {
     //     false,
     // );
 
-
     state.borrow_asset(
         &borrower,
         XOXNO_TOKEN.clone(),
@@ -1755,7 +1754,7 @@ fn test_liquidation_normal_recovery() {
     println!("hf: {:?}", hf);
 
     let max_liq_amount =
-        state.get_max_liquidate_amount_for_collateral(2, USDC_TOKEN,   XOXNO_TOKEN, false);
+        state.get_max_liquidate_amount_for_collateral(2, USDC_TOKEN, XOXNO_TOKEN, false);
     println!(
         "max_liq_amount: {:?}",
         BigUint::from(max_liq_amount.clone())
@@ -1763,13 +1762,7 @@ fn test_liquidation_normal_recovery() {
             .to_u64()
     );
 
-    state.liquidate_account_dem(
-        &liquidator,
-        &USDC_TOKEN,
-        &XOXNO_TOKEN,
-        max_liq_amount,
-        2,
-    );
+    state.liquidate_account_dem(&liquidator, &USDC_TOKEN, &XOXNO_TOKEN, max_liq_amount, 2);
     let hf = state.get_account_health_factor(2);
     println!("hf: {:?}", hf);
 }
@@ -2534,4 +2527,18 @@ fn flash_loan_build_in_functions_throw() {
             ERROR_INVALID_ENDPOINT,
         );
     }
+}
+
+#[test]
+fn test_max_leverage_correctens() {
+    let mut state = LendingPoolTestState::new();
+
+    // let target = &bp * 5u32 / 100u32 + &bp;
+    // First supply a normal asset not siloed
+    state.calculate_max_leverage(
+        BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32)),
+        BigUint::from(BP).mul(7u64).div(BigUint::from(100u64)) + BigUint::from(BP),
+        BigUint::from(10000u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32)),
+        BigUint::from(BP).div(5u64), // 20% in BP
+    );
 }

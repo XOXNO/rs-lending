@@ -106,7 +106,7 @@ pub trait LendingPool:
         );
 
         self.validate_vault_consistency(&nft_attributes, is_vault);
-
+        let e_mode = self.validate_e_mode_exists(nft_attributes.e_mode_category);
         for collateral in &collaterals {
             // 2. Get asset info and validate it can be used as collateral
             let mut asset_info = if collateral.token_identifier == first_collateral.token_identifier
@@ -116,20 +116,16 @@ pub trait LendingPool:
                 self.asset_config(&collateral.token_identifier).get()
             };
 
-            // 4. Validate e-mode constraints first
-            let category = self.validate_e_mode_constraints(
-                &collateral.token_identifier,
-                &asset_info,
-                &nft_attributes,
-            );
-
-            // 5. Update asset config if NFT has active e-mode
-            self.update_asset_config_for_e_mode(
-                &mut asset_info,
+            let asset_emode_config = self.validate_token_of_emode(
                 nft_attributes.e_mode_category,
                 &collateral.token_identifier,
-                category,
             );
+
+            self.validate_e_mode_not_isolated(&asset_info, nft_attributes.e_mode_category);
+            self.validate_not_depracated_e_mode(&e_mode);
+
+            // 5. Update asset config if NFT has active e-mode
+            self.update_asset_config_for_e_mode(&mut asset_info, &e_mode, asset_emode_config);
 
             require!(
                 asset_info.can_be_collateral,
@@ -155,21 +151,14 @@ pub trait LendingPool:
             let feed = self.get_token_price(&collateral.token_identifier, &mut storage_cache);
 
             // 8. Update position and get updated state
-            let updated_position = self.update_supply_position(
+            self.update_supply_position(
                 account_nonce,
                 &collateral,
                 &asset_info,
                 is_vault,
                 &feed,
-            );
-
-            // 9. Emit event
-            self.update_position_event(
-                &collateral.amount,
-                &updated_position,
-                OptionalValue::Some(feed.price),
-                OptionalValue::Some(&caller),
-                OptionalValue::Some(&nft_attributes),
+                &caller,
+                &nft_attributes,
             );
         }
     }
@@ -285,7 +274,7 @@ pub trait LendingPool:
         let attributes = self.nft_attributes(account.token_nonce, &account.token_identifier);
 
         self.validate_borrow_account(&account, &caller);
-
+        let e_mode = self.validate_e_mode_exists(attributes.e_mode_category);
         for borrowed_token in borrowed_tokens {
             // 3. Validate asset supported
             self.require_asset_supported(&borrowed_token.token_identifier);
@@ -302,13 +291,16 @@ pub trait LendingPool:
                 &borrows,
             );
 
-            // 6. Update asset config if in e-mode
-            self.update_asset_config_for_e_mode(
-                &mut asset_config,
+            let asset_emode_config = self.validate_token_of_emode(
                 attributes.e_mode_category,
                 &borrowed_token.token_identifier,
-                None,
             );
+
+            self.validate_e_mode_not_isolated(&asset_config, attributes.e_mode_category);
+            self.validate_not_depracated_e_mode(&e_mode);
+
+            // 5. Update asset config if NFT has active e-mode
+            self.update_asset_config_for_e_mode(&mut asset_config, &e_mode, asset_emode_config);
 
             require!(asset_config.can_be_borrowed, ERROR_ASSET_NOT_BORROWABLE);
 
@@ -596,6 +588,7 @@ pub trait LendingPool:
 
         for mut bp in borrow_positions.values() {
             bp.is_vault = false;
+
             self.update_position_event(
                 &BigUint::zero(),
                 &bp,
@@ -648,6 +641,7 @@ pub trait LendingPool:
 
         self.account_token()
             .nft_update_attributes(account.token_nonce, &nft_attributes);
+
         self.account_attributes(account.token_nonce)
             .set(&nft_attributes);
 

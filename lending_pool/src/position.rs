@@ -1,7 +1,8 @@
 multiversx_sc::imports!();
 use common_constants::BP;
 use common_events::{
-    AccountPosition, AssetConfig, EModeCategory, EgldOrEsdtTokenPaymentNew, NftAccountAttributes,
+    AccountPosition, AssetConfig, EModeAssetConfig, EModeCategory, EgldOrEsdtTokenPaymentNew,
+    NftAccountAttributes,
 };
 use common_events::{AccountPositionType, PriceFeedShort};
 
@@ -11,7 +12,7 @@ use crate::storage;
 use crate::utils;
 use crate::validation;
 use crate::{oracle, ERROR_LIQUIDATED_AMOUNT_AFTER_FEES_LESS_THAN_MIN_AMOUNT_TO_RECEIVE};
-use crate::{proxy_pool, ERROR_EMODE_CATEGORY_DEPRECATED};
+use crate::proxy_pool;
 
 #[multiversx_sc::module]
 pub trait PositionModule:
@@ -279,6 +280,8 @@ pub trait PositionModule:
         asset_info: &AssetConfig<Self::Api>,
         is_vault: bool,
         feed: &PriceFeedShort<Self::Api>,
+        caller: &ManagedAddress,
+        attributes: &NftAccountAttributes,
     ) -> AccountPosition<Self::Api> {
         let mut position = self.get_or_create_deposit_position(
             account_nonce,
@@ -305,6 +308,14 @@ pub trait PositionModule:
                 &feed,
             );
         }
+
+        self.update_position_event(
+            &collateral.amount,
+            &position,
+            OptionalValue::Some(feed.price.clone()),
+            OptionalValue::Some(caller),
+            OptionalValue::Some(attributes),
+        );
 
         // Update storage with the latest position
         self.deposit_positions(account_nonce)
@@ -383,32 +394,16 @@ pub trait PositionModule:
     fn update_asset_config_for_e_mode(
         &self,
         asset_info: &mut AssetConfig<Self::Api>,
-        e_mode_category_id: u8,
-        token_id: &EgldOrEsdtTokenIdentifier,
-        category: Option<EModeCategory<Self::Api>>,
+        category: &Option<EModeCategory<Self::Api>>,
+        asset_emode_config: Option<EModeAssetConfig>,
     ) {
-        if !asset_info.is_isolated && asset_info.is_e_mode_enabled && e_mode_category_id > 0 {
-            let category_data = if category.is_some() {
-                let tmp_category = category.unwrap();
-                require!(!tmp_category.is_deprecated, ERROR_EMODE_CATEGORY_DEPRECATED);
-                tmp_category
-            } else {
-                let category = self.e_mode_category().get(&e_mode_category_id).unwrap();
-                require!(!category.is_deprecated, ERROR_EMODE_CATEGORY_DEPRECATED);
-                category
-            };
-
-            let asset_emode_config = self
-                .e_mode_assets(e_mode_category_id)
-                .get(token_id)
-                .unwrap();
-
+        if let (Some(category), Some(asset_emode_config)) = (category, asset_emode_config) {
             // Update all asset config parameters with e-mode values for that category
             asset_info.can_be_collateral = asset_emode_config.can_be_collateral;
             asset_info.can_be_borrowed = asset_emode_config.can_be_borrowed;
-            asset_info.ltv = category_data.ltv;
-            asset_info.liquidation_threshold = category_data.liquidation_threshold;
-            asset_info.liquidation_base_bonus = category_data.liquidation_bonus;
+            asset_info.ltv = category.ltv.clone();
+            asset_info.liquidation_threshold = category.liquidation_threshold.clone();
+            asset_info.liquidation_base_bonus = category.liquidation_bonus.clone();
         }
     }
 

@@ -137,6 +137,33 @@ impl LendingPoolTestState {
         }
     }
 
+    pub fn calculate_max_leverage(
+        &mut self,
+        initial_deposit: BigUint<StaticApi>,
+        target_hf: BigUint<StaticApi>,
+        reserves: BigUint<StaticApi>,
+        reservers_factor: BigUint<StaticApi>,
+    ) -> BigUint<StaticApi> {
+        let max_liquidate_amount = self
+            .world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .calculate_max_leverage(
+                &initial_deposit,
+                &target_hf,
+                Option::<EModeCategory<StaticApi>>::None,
+                get_usdc_config().config,
+                &reserves,
+                &reservers_factor,
+            )
+            .returns(ReturnsResult)
+            .run();
+
+        println!("Max Leverage: {:?}", max_liquidate_amount);
+        return max_liquidate_amount;
+    }
+
     pub fn get_max_liquidate_amount_for_collateral(
         &mut self,
         nonce: u64,

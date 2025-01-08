@@ -1,7 +1,7 @@
 use common_constants::{
     BP, MAX_BONUS, MAX_FIRST_TOLERANCE, MAX_LAST_TOLERANCE, MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE,
 };
-use common_events::{AssetConfig, OraclePriceFluctuation};
+use common_events::{AssetConfig, EModeCategory, OraclePriceFluctuation};
 
 use crate::{
     ERROR_UNEXPECTED_ANCHOR_TOLERANCES, ERROR_UNEXPECTED_FIRST_TOLERANCE,
@@ -332,5 +332,58 @@ pub trait MathsModule {
             total_debt,
             &target,
         );
+    }
+
+    #[view(getMaxLeverage)]
+    fn calculate_max_leverage(
+        &self,
+        initial_deposit: &BigUint,
+        health_factor: &BigUint,
+        e_mode: &Option<EModeCategory<Self::Api>>,
+        asset_config: &AssetConfig<Self::Api>,
+        total_reserves: &BigUint,
+        reserve_buffer: &BigUint,
+    ) -> BigUint {
+        let bp = BigUint::from(BP);
+        let liquidation_threshold = if let Some(mode) = e_mode {
+            &mode.liquidation_threshold
+        } else {
+            &asset_config.liquidation_threshold
+        };
+        let flash_loan_fee = &asset_config.flash_loan_fee;
+        // If both `health_factor` and `flash_loan_fee` are already scaled by BP, then
+        //    (1 + fee) = (bp + flash_loan_fee), also in BP scale.
+        // We multiply them and THEN divide by BP to keep the result in the same BP scale.
+        let hf_plus_fee = (health_factor * &(&bp + flash_loan_fee)) / &bp;
+
+        // `liquidation_threshold` is already in the same BP scale as HF, so we subtract it directly.
+        // The denominator is HF*(1+F) - LT, all in the same BP scale.
+        // let max_l_hf_numerator = &hf_plus_fee;
+        let max_l_hf_denominator = &hf_plus_fee - liquidation_threshold;
+
+        // The final result for max leverage by HF formula:
+        //   MaxL_HF = [ HF*(1 + fee) ] / [ HF*(1 + fee) - liquidation_threshold ]
+        // Since everything is in BP scale, we multiply by BP one more time to keep output in BP scale.
+        let max_l_hf = &hf_plus_fee * &bp / &max_l_hf_denominator;
+
+        // --- Reserve-based constraint:
+        // AR = total_reserves * (1 - reserve_buffer).
+        // Because `reserve_buffer` is in BP scale, do the appropriate scaling by `bp` to get normal units.
+        let available_reserves = (total_reserves * &(&bp - reserve_buffer)) / &bp;
+
+        // Suppose we want to say:
+        //   "If we have AR available, how many times bigger is that than `initial_deposit`?"
+        //   ratio = AR / D  (but in normal arithmetic, ratio is dimensionless).
+        //   Then leverage-limited = ratio + 1  => in BP scale => ratio * BP + BP
+        // So we do:
+        //   ratio_in_bp = (AR * BP) / D
+        //   max_l_reserves = ratio_in_bp + BP
+        let ratio_in_bp = (&available_reserves * &bp) / initial_deposit;
+        let max_l_reserves = ratio_in_bp + &bp;
+
+        // Final max leverage is the minimum of the HF-based limit and the Reserve-based limit
+        let max_l = BigUint::min(max_l_hf, max_l_reserves);
+
+        max_l
     }
 }

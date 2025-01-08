@@ -154,7 +154,7 @@ pub trait OracleModule: storage::LendingStorageModule {
         storage_cache: &mut StorageCache<Self>,
     ) -> PriceFeedShort<Self::Api> {
         let short_interval = self.get_lp_price(configs, SECONDS_PER_MINUTE * 10, storage_cache);
-        let long_interval = self.get_lp_price(configs, SECONDS_PER_MINUTE * 60, storage_cache);
+        let long_interval = self.get_lp_price(configs, SECONDS_PER_HOUR, storage_cache);
 
         let tolerances = &configs.tolerance;
 
