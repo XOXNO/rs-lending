@@ -2,8 +2,7 @@ multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
 use crate::contexts::base::StorageCache;
-use crate::{helpers, oracle, proxy_pool, storage, ERROR_NO_COLLATERAL_TOKEN, ERROR_NO_POOL_FOUND};
-use common_constants::EGLD_IDENTIFIER;
+use crate::{helpers, oracle, proxy_pool, storage, ERROR_NO_POOL_FOUND};
 use common_structs::*;
 
 #[multiversx_sc::module]
@@ -66,6 +65,29 @@ pub trait LendingUtilsModule:
         )
     }
 
+    fn proportion_of_weighted_seized(
+        &self,
+        total_collateral_in_egld: &BigUint,
+        positions: &ManagedVec<AccountPosition<Self::Api>>,
+        storage_cache: &mut StorageCache<Self>,
+    ) -> (BigUint, BigUint) {
+        let mut proportion_of_weighted_seized = BigUint::zero();
+        let mut weighted_bonus = BigUint::zero();
+
+        for dp in positions {
+            let collateral_in_egld =
+                self.get_token_amount_in_egld(&dp.token_id, &dp.get_total_amount(), storage_cache);
+            let fraction = collateral_in_egld * &storage_cache.bp / total_collateral_in_egld;
+            proportion_of_weighted_seized +=
+                &fraction * &dp.entry_liquidation_threshold / &storage_cache.bp;
+            sc_print!("Token {}, Bonus {}", (dp.token_id), (dp.entry_liquidation_bonus));
+            weighted_bonus += fraction * &dp.entry_liquidation_bonus / &storage_cache.bp;
+        }
+
+        sc_print!("weighted_bonus {}",weighted_bonus);
+        (proportion_of_weighted_seized, weighted_bonus)
+    }
+
     /// Calculates total borrow value in USD
     ///
     /// # Arguments
@@ -88,6 +110,27 @@ pub trait LendingUtilsModule:
         }
 
         total_borrow_in_egld
+    }
+
+    fn sum_repayments(
+        &self,
+        repayments: &ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
+        storage_cache: &mut StorageCache<Self>,
+    ) -> (
+        BigUint,
+        ManagedVec<MultiValue3<EgldOrEsdtTokenPayment, BigUint, PriceFeedShort<Self::Api>>>,
+    ) {
+        let mut total_repaid = BigUint::zero();
+        let mut tokens_egld_value = ManagedVec::new();
+        for payment in repayments {
+            let token_feed = self.get_token_price(&payment.token_identifier, storage_cache);
+            let token_egld_amount = self.get_token_amount_in_egld_raw(&payment.amount, &token_feed);
+
+            total_repaid += &token_egld_amount;
+            tokens_egld_value.push((payment.clone(), token_egld_amount, token_feed).into());
+        }
+
+        (total_repaid, tokens_egld_value)
     }
 
     /// Updates isolated asset debt tracking
@@ -173,37 +216,6 @@ pub trait LendingUtilsModule:
             .sync_call();
     }
 
-    fn get_multi_payments(&self) -> ManagedVec<EgldOrEsdtTokenPaymentNew<Self::Api>> {
-        let payments = self.call_value().all_esdt_transfers();
-
-        let mut valid_payments = ManagedVec::new();
-        for i in 0..payments.len() {
-            let payment = payments.get(i);
-            // EGLD sent as multi-esdt payment
-            if payment.token_identifier.clone().into_managed_buffer()
-                == ManagedBuffer::from(EGLD_IDENTIFIER)
-                || payment.token_identifier.clone().into_managed_buffer()
-                    == ManagedBuffer::from("EGLD")
-            {
-                valid_payments.push(EgldOrEsdtTokenPaymentNew {
-                    token_identifier: EgldOrEsdtTokenIdentifier::egld(),
-                    token_nonce: 0,
-                    amount: payment.amount.clone(),
-                });
-            } else {
-                valid_payments.push(EgldOrEsdtTokenPaymentNew {
-                    token_identifier: EgldOrEsdtTokenIdentifier::esdt(
-                        payment.token_identifier.clone(),
-                    ),
-                    token_nonce: payment.token_nonce,
-                    amount: payment.amount.clone(),
-                });
-            }
-        }
-
-        valid_payments
-    }
-
     /// Calculates the maximum amount of a specific collateral asset that can be liquidated
     ///
     /// # Arguments
@@ -218,31 +230,21 @@ pub trait LendingUtilsModule:
     ///
     /// # Returns
     /// * `(BigUint, BigUint)` - Maximum EGLD value of the specific collateral that can be liquidated and the bonus
-    fn calculate_single_asset_liquidation_amount(
+    fn calculate_max_debt_repayment(
         &self,
-        total_debt_in_egld: &BigUint,
+        total_debt_in_egld: BigUint,
         total_collateral_in_egld: &BigUint,
-        token_to_liquidate: &EgldOrEsdtTokenIdentifier,
-        liquidatee_account_nonce: u64,
-        debt_payment: OptionalValue<BigUint>,
+        weighted_collateral_in_egld: BigUint,
+        proportion_of_weighted_seized: &BigUint,
         base_liquidation_bonus: &BigUint,
         health_factor: &BigUint,
-        collateral_feed: &PriceFeedShort<Self::Api>,
+        debt_payment: OptionalValue<BigUint>,
     ) -> (BigUint, BigUint) {
-        // Get the available collateral value for this specific asset
-        let deposit_position = self
-            .deposit_positions(liquidatee_account_nonce)
-            .get(token_to_liquidate)
-            .unwrap_or_else(|| sc_panic!(ERROR_NO_COLLATERAL_TOKEN));
-
-        let total_position_egld_value = self
-            .get_token_amount_in_egld_raw(&deposit_position.get_total_amount(), collateral_feed);
-
         let (max_repayable_debt, bonus) = self.estimate_liquidation_amount(
-            &total_position_egld_value,
+            weighted_collateral_in_egld,
+            proportion_of_weighted_seized,
             total_collateral_in_egld,
             total_debt_in_egld,
-            &deposit_position.entry_liquidation_threshold,
             base_liquidation_bonus,
             health_factor,
         );

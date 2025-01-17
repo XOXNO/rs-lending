@@ -25,6 +25,7 @@ pub struct TimestampedPrice<M: ManagedTypeApi> {
     pub price: BigUint<M>,
     pub timestamp: u64,
     pub decimals: u8,
+    pub round: u32,
 }
 
 #[type_abi]

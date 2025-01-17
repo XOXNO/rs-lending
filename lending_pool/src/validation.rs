@@ -4,8 +4,7 @@ use common_constants::{
     TOTAL_SUPPLY_AMOUNT_STORAGE_KEY,
 };
 use common_events::{
-    AccountPosition, AssetConfig, EModeAssetConfig, EModeCategory, EgldOrEsdtTokenPaymentNew,
-    NftAccountAttributes,
+    AccountPosition, AssetConfig, EModeAssetConfig, EModeCategory, NftAccountAttributes,
 };
 use common_structs::PriceFeedShort;
 use multiversx_sc::storage::StorageKey;
@@ -16,9 +15,9 @@ use crate::{
     ERROR_ASSET_NOT_BORROWABLE_IN_ISOLATION, ERROR_ASSET_NOT_BORROWABLE_IN_SILOED,
     ERROR_ASSET_NOT_SUPPORTED, ERROR_BORROW_CAP, ERROR_CANNOT_USE_EMODE_WITH_ISOLATED_ASSETS,
     ERROR_DEBT_CEILING_REACHED, ERROR_EMODE_CATEGORY_DEPRECATED, ERROR_EMODE_CATEGORY_NOT_FOUND,
-    ERROR_HEALTH_FACTOR, ERROR_HEALTH_FACTOR_WITHDRAW, ERROR_INSUFFICIENT_COLLATERAL,
-    ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS, ERROR_MIX_ISOLATED_COLLATERAL,
-    ERROR_POSITION_SHOULD_BE_VAULT, ERROR_SUPPLY_CAP,
+    ERROR_HEALTH_FACTOR, ERROR_HEALTH_FACTOR_BECOME_LOW, ERROR_HEALTH_FACTOR_WITHDRAW,
+    ERROR_INSUFFICIENT_COLLATERAL, ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS,
+    ERROR_MIX_ISOLATED_COLLATERAL, ERROR_POSITION_SHOULD_BE_VAULT, ERROR_SUPPLY_CAP,
 };
 
 #[multiversx_sc::module]
@@ -36,17 +35,17 @@ pub trait ValidationModule:
     /// * `payments` - Vector of payments (can include NFT and collateral)
     ///
     /// # Returns
-    /// * `(EgldOrEsdtTokenPaymentNew, Option<EgldOrEsdtTokenPaymentNew>)` - Tuple containing:
+    /// * `(EgldOrEsdtTokenPayment, Option<EgldOrEsdtTokenPayment>)` - Tuple containing:
     ///   - Collateral payment
     ///   - Optional account NFT payment
     ///
     fn validate_supply_payment(
         &self,
         caller: &ManagedAddress,
-        payments: &ManagedVec<EgldOrEsdtTokenPaymentNew<Self::Api>>,
+        payments: &ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
     ) -> (
-        ManagedVec<EgldOrEsdtTokenPaymentNew<Self::Api>>,
-        Option<EgldOrEsdtTokenPaymentNew<Self::Api>>,
+        ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
+        Option<EgldOrEsdtTokenPayment<Self::Api>>,
     ) {
         require!(payments.len() >= 1, ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS);
 
@@ -58,7 +57,10 @@ pub trait ValidationModule:
         if self.account_token().get_token_id() == account.token_identifier {
             require!(payments.len() >= 2, ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS);
 
-            (payments.slice(1, payments.len()).unwrap(), Some(account))
+            (
+                payments.slice(1, payments.len()).unwrap(),
+                Some(account.clone()),
+            )
         } else {
             (payments.clone(), None)
         }
@@ -401,6 +403,13 @@ pub trait ValidationModule:
         borrowed_amount_in_egld: &BigUint,
         amount_to_borrow_in_egld: &BigUint,
     ) {
+        sc_print!(
+            "LTV {}, Borrowed Already {}, Borrow Now {}, Total Borrow After {}",
+            ltv_collateral_in_egld,
+            borrowed_amount_in_egld,
+            amount_to_borrow_in_egld,
+            (amount_to_borrow_in_egld + borrowed_amount_in_egld)
+        );
         require!(
             ltv_collateral_in_egld >= &(borrowed_amount_in_egld + amount_to_borrow_in_egld),
             ERROR_INSUFFICIENT_COLLATERAL
@@ -417,27 +426,29 @@ pub trait ValidationModule:
     ///
     /// # Returns
     /// * `(BigUint, PriceFeedShort)` - Tuple containing:
-    ///   - EGLD value of borrow amount
+    ///   - USD value of borrow amount
     ///   - Price feed data for borrowed asset
     ///
     /// Calculates EGLD values and validates collateral sufficiency
     fn validate_and_get_borrow_amounts(
         &self,
+        ltv_collateral: &BigUint,
         asset_to_borrow: &EgldOrEsdtTokenIdentifier,
         amount: &BigUint,
-        collateral_positions: &ManagedVec<AccountPosition<Self::Api>>,
         borrow_positions: &ManagedVec<AccountPosition<Self::Api>>,
         storage_cache: &mut StorageCache<Self>,
     ) -> (BigUint, PriceFeedShort<Self::Api>) {
         let asset_data_feed = self.get_token_price(asset_to_borrow, storage_cache);
-        let amount_to_borrow = self.get_token_amount_in_egld_raw(amount, &asset_data_feed);
-        let (_, _, ltv_collateral) = self.sum_collaterals(collateral_positions, storage_cache);
+        let egld_amount = self.get_token_amount_in_egld_raw(amount, &asset_data_feed);
 
-        let borrowed_amount = self.sum_borrows(borrow_positions, storage_cache);
+        let egld_total_borrowed = self.sum_borrows(borrow_positions, storage_cache);
 
-        self.validate_borrow_collateral(&ltv_collateral, &borrowed_amount, &amount_to_borrow);
+        self.validate_borrow_collateral(&ltv_collateral, &egld_total_borrowed, &egld_amount);
 
-        (amount_to_borrow, asset_data_feed)
+        let amount_in_usd = self
+            .get_token_amount_in_dollars_raw(&egld_total_borrowed, &storage_cache.egld_price_feed);
+
+        (amount_in_usd, asset_data_feed)
     }
 
     /// Validates that a new borrow doesn't exceed isolated asset debt ceiling
@@ -478,7 +489,7 @@ pub trait ValidationModule:
     /// - Account exists in market
     /// - Asset is supported
     /// - Amount is greater than zero
-    fn validate_repay_payment(&self, repay_payment: &EgldOrEsdtTokenPaymentNew<Self::Api>) {
+    fn validate_repay_payment(&self, repay_payment: &EgldOrEsdtTokenPayment<Self::Api>) {
         self.require_asset_supported(&repay_payment.token_identifier);
         self.require_amount_greater_than_zero(&repay_payment.amount);
     }
@@ -548,22 +559,21 @@ pub trait ValidationModule:
     ///
     /// # Arguments
     /// * `debt_payment` - Payment to cover debt
-    /// * `collateral_to_receive` - Collateral token to receive
     /// * `initial_caller` - Address initiating liquidation
     ///
     /// Validates:
     /// - Both assets are supported
     /// - Payment amount is greater than zero
     /// - Caller address is valid
-    fn validate_liquidation_payment(
+    fn validate_liquidation_payments(
         &self,
-        debt_payment: &EgldOrEsdtTokenPayment<Self::Api>,
-        collateral_to_receive: &EgldOrEsdtTokenIdentifier,
+        debt_repayments: &ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
         initial_caller: &ManagedAddress,
     ) {
-        self.require_asset_supported(&debt_payment.token_identifier);
-        self.require_amount_greater_than_zero(&debt_payment.amount);
-        self.require_asset_supported(collateral_to_receive);
+        for debt_payment in debt_repayments {
+            self.require_asset_supported(&debt_payment.token_identifier);
+            self.require_amount_greater_than_zero(&debt_payment.amount);
+        }
         self.require_non_zero_address(initial_caller);
     }
 
@@ -584,6 +594,29 @@ pub trait ValidationModule:
     ) -> BigUint {
         let health_factor = self.compute_health_factor(collateral_in_egld, borrowed_egld);
         require!(health_factor < BigUint::from(BP), ERROR_HEALTH_FACTOR);
+        health_factor
+    }
+
+    /// Validates liquidation health factor remains safe
+    ///
+    /// # Arguments
+    /// * `collateral_in_egld` - EGLD value of collateral
+    /// * `borrowed_egld` - EGLD value of borrows
+    ///
+    /// # Returns
+    /// * `BigUint` - Current health factor
+    ///
+    /// Calculates health factor and ensures it's above liquidation threshold
+    fn validate_remain_healthy(
+        &self,
+        collateral_in_egld: &BigUint,
+        borrowed_egld: &BigUint,
+    ) -> BigUint {
+        let health_factor = self.compute_health_factor(collateral_in_egld, borrowed_egld);
+        require!(
+            health_factor >= BigUint::from(BP),
+            ERROR_HEALTH_FACTOR_BECOME_LOW
+        );
         health_factor
     }
 

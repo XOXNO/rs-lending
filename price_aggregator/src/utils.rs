@@ -32,13 +32,7 @@ pub trait UtilsModule:
         )
     }
 
-    fn submit_unchecked(
-        &self,
-        from: ManagedBuffer,
-        to: ManagedBuffer,
-        price: BigUint,
-        decimals: u8,
-    ) {
+    fn submit_unchecked(&self, from: ManagedBuffer, to: ManagedBuffer, price: BigUint) {
         let token_pair = TokenPair { from, to };
         let mut submissions = self
             .submissions()
@@ -49,10 +43,10 @@ pub trait UtilsModule:
         let first_sub_time_mapper = self.first_submission_timestamp(&token_pair);
         let last_sub_time_mapper = self.last_submission_timestamp(&token_pair);
 
-        let mut round_id = 0;
-        let wrapped_rounds = self.rounds(&token_pair.from, &token_pair.to).len();
-        if wrapped_rounds > 0 {
-            round_id = wrapped_rounds + 1;
+        let mut round_id = 0u32;
+        let wrapped_rounds = self.rounds_new(&token_pair.from, &token_pair.to);
+        if !wrapped_rounds.is_empty() {
+            round_id = wrapped_rounds.get().round + 1u32;
         }
 
         let current_timestamp = self.blockchain().get_block_timestamp();
@@ -84,8 +78,14 @@ pub trait UtilsModule:
         if accepted {
             submissions.insert(caller.clone(), price.clone());
             last_sub_time_mapper.set(current_timestamp);
+            let configured_decimals = self.get_pair_decimals(&token_pair.from, &token_pair.to);
 
-            self.create_new_round(token_pair.clone(), round_id, submissions, decimals);
+            self.create_new_round(
+                token_pair.clone(),
+                round_id,
+                submissions,
+                configured_decimals,
+            );
             self.add_submission_event(
                 &token_pair.from.clone(),
                 &token_pair.to.clone(),
@@ -125,7 +125,7 @@ pub trait UtilsModule:
     fn create_new_round(
         &self,
         token_pair: TokenPair<Self::Api>,
-        round_id: usize,
+        round_id: u32,
         mut submissions: MapMapper<ManagedAddress, BigUint>,
         decimals: u8,
     ) {
@@ -148,14 +148,16 @@ pub trait UtilsModule:
                 price,
                 timestamp: self.blockchain().get_block_timestamp(),
                 decimals,
+                round: round_id,
             };
 
             submissions.clear();
             self.first_submission_timestamp(&token_pair).clear();
             self.last_submission_timestamp(&token_pair).clear();
-
-            self.rounds(&token_pair.from, &token_pair.to)
-                .push(&price_feed);
+            self.rounds_new(&token_pair.from, &token_pair.to)
+                .set(&price_feed);
+            // self.rounds(&token_pair.from, &token_pair.to)
+            //     .push(&price_feed);
             self.emit_new_round_event(&token_pair, round_id, &price_feed);
         }
     }

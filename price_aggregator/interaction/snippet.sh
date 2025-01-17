@@ -1,4 +1,5 @@
-ADDRESS=erd1qqqqqqqqqqqqqpgq3rcsd0mqz5wtxx0p8yl670vzlr5h0890ah0sa3wp03
+ADDRESS=erd1qqqqqqqqqqqqqpgq7a48t570jjudy0xjxhuzcdwndcq9gt2tah0s7tg84a #main
+# ADDRESS=erd1qqqqqqqqqqqqqpgqlee5g4zqwq93ar9nlx55ql0jxvlrruadah0sg2vc89 #CEX
 DEPLOY_TRANSACTION=$(mxpy data load --key=deployTransaction-devnet)
 
 PROXY=https://devnet-gateway.xoxno.com
@@ -45,11 +46,11 @@ pause() {
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 
-FROM="str:HTM"
+FROM="str:USDT"
 TO="str:USD"
-PRICE=2939571259630567600000 # 55 USD
+PRICE=1511388968601690100000 # 55 USD
 
-DECIMALS=18
+DECIMALS=6
 
 set_pair_decimals() {
     mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=10000000 \
@@ -62,7 +63,7 @@ submit() {
     timestamp=$(date +%s)
     mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=10000000 \
     --ledger --ledger-account-index=0 --ledger-address-index=0 \
-    --function="submit" --arguments ${FROM} ${TO} ${timestamp} ${PRICE} ${DECIMALS} \
+    --function="submit" --arguments ${FROM} ${TO} ${timestamp} ${PRICE} \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
     }
 

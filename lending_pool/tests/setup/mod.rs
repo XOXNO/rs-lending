@@ -170,17 +170,17 @@ impl LendingPoolTestState {
         collateral_token: TestTokenIdentifier,
         debt_token: TestTokenIdentifier,
         in_egld: bool,
-    ) -> BigUint<StaticApi> {
-        let max_liquidate_amount = self
-            .world
-            .query()
-            .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
-            .get_max_liquidate_amount_for_collateral(nonce, collateral_token, debt_token, in_egld)
-            .returns(ReturnsResult)
-            .run();
+    ) {
+        // let max_liquidate_amount = self
+        //     .world
+        //     .query()
+        //     .to(self.lending_sc.clone())
+        //     .typed(proxy_lending_pool::LendingPoolProxy)
+        //     .get_max_liquidate_amount_for_collateral(nonce, collateral_token, debt_token, in_egld)
+        //     .returns(ReturnsResult)
+        //     .run();
 
-        max_liquidate_amount
+        // max_liquidate_amount
     }
     pub fn get_usd_price(&mut self, token_id: TestTokenIdentifier) -> u64 {
         (self
@@ -665,7 +665,6 @@ impl LendingPoolTestState {
     pub fn liquidate_account(
         &mut self,
         from: &TestAddress,
-        collateral_to_liquidate: &TestTokenIdentifier,
         liquidator_payment: &TestTokenIdentifier,
         amount: BigUint<StaticApi>,
         account_nonce: u64,
@@ -683,11 +682,7 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::LendingPoolProxy)
-            .liquidate(
-                account_nonce,
-                collateral_to_liquidate.to_token_identifier(),
-                OptionalValue::<BigUint<StaticApi>>::None,
-            )
+            .liquidate(account_nonce)
             .esdt(transfer)
             .run();
     }
@@ -707,17 +702,13 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::LendingPoolProxy)
-            .liquidate(
-                account_nonce,
-                collateral_to_liquidate.to_token_identifier(),
-                OptionalValue::<BigUint<StaticApi>>::None,
-            )
+            .liquidate(account_nonce)
             .esdt(transfer)
             .run();
     }
 
     // Price aggregator operations
-    pub fn submit_price(&mut self, from: &[u8], price: u64, decimals: usize, timestamp: u64) -> () {
+    pub fn submit_price(&mut self, from: &[u8], price: u64, timestamp: u64) -> () {
         let oracles = vec![
             ORACLE_ADDRESS_1,
             ORACLE_ADDRESS_2,
@@ -735,7 +726,6 @@ impl LendingPoolTestState {
                     ManagedBuffer::from(DOLLAR_TICKER),
                     timestamp,
                     BigUint::from(price).mul(BigUint::from(BP)),
-                    decimals as u8,
                 )
                 .run();
         }
@@ -746,7 +736,6 @@ impl LendingPoolTestState {
         &mut self,
         from: &[u8],
         price: BigUint<StaticApi>,
-        decimals: usize,
         timestamp: u64,
     ) -> () {
         let oracles = vec![
@@ -766,7 +755,6 @@ impl LendingPoolTestState {
                     ManagedBuffer::from(DOLLAR_TICKER),
                     timestamp,
                     &price,
-                    decimals as u8,
                 )
                 .run();
         }
@@ -1712,8 +1700,6 @@ pub fn setup_egld_liquid_staking(
         .init(
             EGLD_LIQUID_STAKING_ADDRESS,
             BigUint::zero(),
-            0u64,
-            0u64,
             BigUint::from(25u64),
             100usize,
             0u64,
@@ -1874,7 +1860,6 @@ pub fn submit_price(
                 ManagedBuffer::from(DOLLAR_TICKER),
                 0u64,
                 BigUint::from(price).mul(BigUint::from(BP)),
-                decimals as u8,
             )
             .run();
     }

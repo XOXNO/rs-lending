@@ -220,7 +220,7 @@ pub trait LiquidityModule:
     fn withdraw(
         &self,
         initial_caller: &ManagedAddress,
-        amount: &BigUint,
+        mut amount: BigUint,
         mut deposit_position: AccountPosition<Self::Api>,
         is_liquidation: bool,
         protocol_liquidation_fee: &BigUint,
@@ -229,9 +229,12 @@ pub trait LiquidityModule:
         let mut storage_cache = StorageCache::new(self);
 
         self.update_interest_indexes(&mut storage_cache);
+        if amount > deposit_position.get_total_amount() {
+            amount = deposit_position.get_total_amount();
+        }
 
         let requested_amount =
-            ManagedDecimal::from_raw_units(amount.clone(), storage_cache.pool_params.decimals);
+            ManagedDecimal::from_raw_units(amount, storage_cache.pool_params.decimals);
 
         // Unaccrued interest for the wanted amount
         let extra_interest = self.compute_interest(
@@ -529,6 +532,8 @@ pub trait LiquidityModule:
         );
     }
 
+    // Simulate a flash loan, where the loan is not repaid but added as debt in the account position
+    // Simulate repay of the loan fee as part of the interest acumulated instant in the new position, we deduct from the reserves
     #[only_owner]
     #[endpoint(createStrategy)]
     fn internal_create_strategy(
@@ -583,6 +588,7 @@ pub trait LiquidityModule:
             ))
             .transfer();
 
+        // Return latest market index and timestamp to be updated in place in the new position, that at this point is not created due to the need of flash borrow the tokens
         (
             storage_cache.borrow_index.into_raw_units().clone(),
             storage_cache.timestamp,

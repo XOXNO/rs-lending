@@ -37,6 +37,8 @@ pub struct AccountPosition<M: ManagedTypeApi> {
     pub index: BigUint<M>,
     pub is_vault: bool,
     pub entry_liquidation_threshold: BigUint<M>,
+    pub entry_liquidation_bonus: BigUint<M>,
+    pub entry_liquidation_fees: BigUint<M>,
     pub entry_ltv: BigUint<M>,
 }
 
@@ -50,6 +52,8 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
         timestamp: u64,
         index: BigUint<M>,
         entry_liquidation_threshold: BigUint<M>,
+        entry_liquidation_bonus: BigUint<M>,
+        entry_liquidation_fees: BigUint<M>,
         entry_ltv: BigUint<M>,
         is_vault: bool,
     ) -> Self {
@@ -63,6 +67,8 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
             index,
             is_vault,
             entry_liquidation_threshold,
+            entry_liquidation_bonus,
+            entry_liquidation_fees,
             entry_ltv,
         }
     }
@@ -110,6 +116,7 @@ pub struct AssetConfig<M: ManagedTypeApi> {
 #[type_abi]
 #[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode)]
 pub struct AssetExtendedConfigView<M: ManagedTypeApi> {
+    pub token: EgldOrEsdtTokenIdentifier<M>,
     pub asset_config: AssetConfig<M>,
     pub market_address: ManagedAddress<M>,
     pub egld_price: BigUint<M>,
@@ -139,16 +146,6 @@ pub struct NftAccountAttributes {
     pub is_isolated: bool,
     pub e_mode_category: u8,
     pub is_vault: bool,
-}
-
-#[type_abi]
-#[derive(
-    ManagedVecItem, TopDecode, TopEncode, NestedDecode, NestedEncode, Clone, PartialEq, Eq, Debug,
-)]
-pub struct EgldOrEsdtTokenPaymentNew<M: ManagedTypeApi> {
-    pub token_identifier: EgldOrEsdtTokenIdentifier<M>,
-    pub token_nonce: u64,
-    pub amount: BigUint<M>,
 }
 
 #[type_abi]
@@ -200,7 +197,7 @@ pub struct OracleProvider<M: ManagedTypeApi> {
 }
 
 #[type_abi]
-#[derive(NestedEncode, NestedDecode, TopEncode, TopDecode, Clone)]
+#[derive(ManagedVecItem, NestedEncode, NestedDecode, TopEncode, TopDecode, Clone)]
 pub struct PriceFeedShort<Api>
 where
     Api: ManagedTypeApi,
@@ -216,4 +213,11 @@ pub struct OraclePriceFluctuation<M: ManagedTypeApi> {
     pub first_lower_ratio: BigUint<M>,
     pub last_upper_ratio: BigUint<M>,
     pub last_lower_ratio: BigUint<M>,
+}
+
+#[type_abi]
+#[derive(TopEncode, TopDecode)]
+pub struct TokenPrices<M: ManagedTypeApi> {
+    pub token: EgldOrEsdtTokenIdentifier<M>,
+    pub price: BigUint<M>,
 }

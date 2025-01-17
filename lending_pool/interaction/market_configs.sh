@@ -1,7 +1,9 @@
 #!/bin/bash
 
 # Environment variables
-ADDRESS=${ADDRESS:-"erd1qqqqqqqqqqqqqpgqemcp8my3qw3lw39hx8fnkt2wvj4vqdqwah0sh5nzfw"}
+ADDRESS=${ADDRESS:-"erd1qqqqqqqqqqqqqpgqg532f5mdsqganmfd5vwktt7a7rdnc2lgah0s9q46jx"}
+AGGREGATOR_ADDRESS=${AGGREGATOR_ADDRESS:-"erd1qqqqqqqqqqqqqpgq7a48t570jjudy0xjxhuzcdwndcq9gt2tah0s7tg84a"}
+CEX_AGGREGATOR_ADDRESS=${CEX_AGGREGATOR_ADDRESS:-"erd1qqqqqqqqqqqqqpgqlee5g4zqwq93ar9nlx55ql0jxvlrruadah0sg2vc89"}
 PROXY=${PROXY:-"https://devnet-gateway.xoxno.com"}
 CHAIN_ID=${CHAIN_ID:-"D"}
 
@@ -101,6 +103,31 @@ create_oracle_args() {
     args+=("$(get_config_value "$market_name" "first_tolerance")")
     args+=("$(get_config_value "$market_name" "last_tolerance")")
     echo "${args[@]}"
+}
+
+create_set_decimals_aggregator_args() {
+    local market_name=$1
+    local -a args=()
+
+    args+=("str:$market_name")
+    args+=("str:USD")
+    args+=("$(get_config_value "$market_name" "oracle_decimals")")
+    echo "${args[@]}"
+}
+
+set_aggregator_decimals() {
+    local market_name=$1
+    
+    echo "Creating token oracle for ${market_name}..."
+    echo "Token ID: $(get_config_value "$market_name" "token_id")"
+    
+    local args=( $(create_set_decimals_aggregator_args "$market_name") )
+    echo "${args[@]}"
+
+    mxpy contract call ${AGGREGATOR_ADDRESS} --recall-nonce --gas-limit=10000000 \
+    --ledger --ledger-account-index=0 --ledger-address-index=0 \
+    --function="setPairDecimals" --arguments "${args[@]}" \
+    --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 
 # Function to create token oracle
@@ -222,6 +249,14 @@ case "$1" in
             exit 1
         fi
         create_market "$2"
+        ;;
+    "setDecimals")
+        if [ -z "$2" ]; then
+            echo "Please specify a market name"
+            list_markets
+            exit 1
+        fi
+        set_aggregator_decimals "$2"
         ;;
     "upgrade_market")
         if [ -z "$2" ]; then

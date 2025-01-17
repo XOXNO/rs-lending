@@ -1,4 +1,4 @@
-ADDRESS=erd1qqqqqqqqqqqqqpgqemcp8my3qw3lw39hx8fnkt2wvj4vqdqwah0sh5nzfw
+ADDRESS=erd1qqqqqqqqqqqqqpgqg532f5mdsqganmfd5vwktt7a7rdnc2lgah0s9q46jx
 
 PROXY=https://devnet-gateway.xoxno.com
 CHAIN_ID=D
@@ -6,7 +6,7 @@ CHAIN_ID=D
 PROJECT="./output/lending_pool.wasm"
 
 LP_TEMPLATE_ADDRESS=erd1qqqqqqqqqqqqqpgqlpf2f23jx29s6k7ftfccprn5wv7uccyuah0s5zvhn0
-AGGREGATOR_ADDR=erd1qqqqqqqqqqqqqpgq3rcsd0mqz5wtxx0p8yl670vzlr5h0890ah0sa3wp03
+AGGREGATOR_ADDR=erd1qqqqqqqqqqqqqpgq7a48t570jjudy0xjxhuzcdwndcq9gt2tah0s7tg84a
 SAFE_PRICE_VIEW_ADDRESS=erd1qqqqqqqqqqqqqpgqcmnum66jxyfpcnvqk5eahj5n3ny4vkfn0n4szjjskv
 ACCUMULATOR_ADDRESS=erd1qqqqqqqqqqqqqpgqyxfc4r5fmw2ljcgwxj2nuzv72y9ryvyhah0sgn5vv2
 
@@ -148,7 +148,7 @@ addEModeCategory() {
 addAssetToEModeCategory() {
     mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=20000000 \
     --ledger --ledger-account-index=0 --ledger-address-index=0 \
-    --function="addAssetToEModeCategory" --arguments ${LXOXNO_TOKEN} 0x01 0x01 0x01 \
+    --function="addAssetToEModeCategory" --arguments ${LXOXNO_TOKEN} 0x02 0x01 0x01 \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 
@@ -247,9 +247,9 @@ getTokenPriceData() {
 }
 
 getTokenPriceUSD() {
-    mxpy contract query ${ADDRESS} --function="getTokenPriceUSD" --arguments ${LP_XEGLD_TOKEN} --proxy=${PROXY}
+    mxpy contract query ${ADDRESS} --function="getTokenPriceUSD" --arguments ${LXOXNO_TOKEN} --proxy=${PROXY}
 }
 
 getTokenPriceEGLD() {
-    mxpy contract query ${ADDRESS} --function="getTokenPriceEGLD" --arguments ${LP_XEGLD_TOKEN} --proxy=${PROXY}
+    mxpy contract query ${ADDRESS} --function="getTokenPriceEGLD" --arguments ${LXOXNO_TOKEN} --proxy=${PROXY}
 }

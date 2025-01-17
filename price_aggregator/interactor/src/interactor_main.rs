@@ -199,7 +199,6 @@ impl ContractInteract {
         let to = ManagedBuffer::new_from_bytes(&b""[..]);
         let submission_timestamp = 0u64;
         let price = BigUint::<StaticApi>::from(0u128);
-        let decimals = 0u8;
 
         let response = self
             .interactor
@@ -208,9 +207,8 @@ impl ContractInteract {
             .to(self.state.current_address())
             .gas(30_000_000u64)
             .typed(proxy::PriceAggregatorProxy)
-            .submit(from, to, submission_timestamp, price, decimals)
+            .submit(from, to, submission_timestamp, price)
             .returns(ReturnsResultUnmanaged)
-            
             .run()
             .await;
 

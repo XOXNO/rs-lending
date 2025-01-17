@@ -414,13 +414,13 @@ where
     >(
         self,
         initial_caller: Arg0,
-        borrow_position: Arg1,
+        position: Arg1,
         asset_price: Arg2,
     ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPosition<Env::Api>> {
         self.wrapped_tx
             .raw_call("repay")
             .argument(&initial_caller)
-            .argument(&borrow_position)
+            .argument(&position)
             .argument(&asset_price)
             .original_result()
     }
@@ -473,17 +473,17 @@ where
         Arg3: ProxyArg<BigUint<Env::Api>>,
     >(
         self,
-        borrowed_token: Arg0,
+        token: Arg0,
         amount: Arg1,
-        strategy_fee: Arg2,
+        fee: Arg2,
         asset_price: Arg3,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, (BigUint<Env::Api>, u64)> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("createStrategy")
-            .argument(&borrowed_token)
+            .argument(&token)
             .argument(&amount)
-            .argument(&strategy_fee)
+            .argument(&fee)
             .argument(&asset_price)
             .original_result()
     }

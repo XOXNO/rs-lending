@@ -35,6 +35,7 @@ pub trait LendingPool:
     + validation::ValidationModule
     + utils::LendingUtilsModule
     + views::ViewsModule
+    + multiply::MultiplyModule
     + helpers::math::MathsModule
     + multiversx_sc_modules::default_issue_callbacks::DefaultIssueCallbacksModule
 {
@@ -87,7 +88,7 @@ pub trait LendingPool:
     #[endpoint(supply)]
     fn supply(&self, is_vault: bool, e_mode_category: OptionalValue<u8>) {
         let mut storage_cache = StorageCache::new(self);
-        let payments = self.get_multi_payments();
+        let payments = self.call_value().all_transfers();
         let caller = self.blockchain().get_caller();
 
         // 1. Validate payments and extract tokens
@@ -207,7 +208,6 @@ pub trait LendingPool:
                 &BigUint::zero(),
                 &mut storage_cache,
                 &attributes,
-                Option::None,
             );
         }
 
@@ -215,7 +215,12 @@ pub trait LendingPool:
         self.validate_withdraw_health_factor(account.token_nonce, false, &mut storage_cache, None);
 
         // 5. Handle NFT (burn or return)
-        self.handle_nft_after_withdraw(account, &caller);
+        self.handle_nft_after_withdraw(
+            &account.amount,
+            account.token_nonce,
+            &account.token_identifier,
+            &caller,
+        );
     }
 
     /// Borrows an asset from the lending pool
@@ -227,26 +232,6 @@ pub trait LendingPool:
     /// # Payment
     /// Requires account NFT payment
     ///
-    /// # Flow
-    /// 1. Validates payment and parameters
-    /// 2. Gets NFT attributes and asset config
-    /// 3. Updates positions with latest interest
-    /// 4. Validates borrowing constraints
-    /// 5. Checks borrow cap
-    /// 6. Validates collateral sufficiency
-    /// 7. Processes borrow
-    /// 8. Emits event
-    /// 9. Returns NFT
-    ///
-    /// # Example
-    /// ```
-    /// // Borrow 1000 USDC using account NFT
-    /// ESDTTransfer {
-    ///   token: "LEND-123456", // Account NFT
-    ///   nonce: 1,
-    ///   amount: 1
-    /// }
-    /// borrow("USDC-123456", 1_000_000_000) // 1000 USDC
     /// ```
     #[payable("*")]
     #[endpoint(borrow)]
@@ -260,6 +245,8 @@ pub trait LendingPool:
 
         // 1. Update positions with latest interest
         let collaterals = self.update_interest(account.token_nonce, &mut storage_cache, false);
+
+        let (_, _, ltv_collateral) = self.sum_collaterals(&collaterals, &mut storage_cache);
 
         let is_bulk_borrow = borrowed_tokens.len() > 1;
 
@@ -312,23 +299,20 @@ pub trait LendingPool:
             );
 
             // 8. Validate collateral and get amounts in egld
-            let (borrow_amount, feed) = self.validate_and_get_borrow_amounts(
+            let (borrow_amount_in_usd, feed) = self.validate_and_get_borrow_amounts(
+                &ltv_collateral,
                 &borrowed_token.token_identifier,
                 &borrowed_token.amount,
-                &collaterals,
                 &borrows,
                 &mut storage_cache,
             );
-
-            let usd_amount = self
-                .get_token_amount_in_dollars_raw(&borrow_amount, &storage_cache.egld_price_feed);
 
             // 9. Process borrow
             let updated_position = self.handle_borrow_position(
                 account.token_nonce,
                 &borrowed_token.token_identifier,
                 &borrowed_token.amount,
-                &usd_amount,
+                &borrow_amount_in_usd,
                 &caller,
                 &asset_config,
                 &attributes,
@@ -354,9 +338,9 @@ pub trait LendingPool:
                         .get(&token_buffer)
                         .parse_as_u64()
                         .unwrap() as usize;
-                    let pos = borrows.get(index);
+                    let token_id = &borrows.get(index).token_id.clone();
                     require!(
-                        &pos.token_id == &updated_position.token_id,
+                        token_id == &updated_position.token_id,
                         ERROR_INVALID_BULK_BORROW_TICKER
                     );
                     let _ = borrows.set(index, updated_position);
@@ -369,11 +353,11 @@ pub trait LendingPool:
                         &ManagedBuffer::new_from_bytes(&last_index.to_be_bytes()),
                     )
                 }
-            }
+            };
         }
 
         // 12. Return NFT to owner
-        self.tx().to(&caller).esdt(account).transfer();
+        self.tx().to(&caller).esdt(account.clone()).transfer();
     }
 
     /// Repays borrowed assets
@@ -384,7 +368,7 @@ pub trait LendingPool:
     #[payable("*")]
     #[endpoint(repay)]
     fn repay(&self, account_nonce: u64) {
-        let payments = self.get_multi_payments();
+        let payments = self.call_value().all_transfers();
         let caller = self.blockchain().get_caller();
 
         // 1. Update positions with latest interest
@@ -393,7 +377,7 @@ pub trait LendingPool:
         // 2. Validate payment and parameters
         self.require_active_account(account_nonce);
         let attributes = self.account_attributes(account_nonce).get();
-        for payment in &payments {
+        for payment in payments.iter() {
             self.validate_repay_payment(&payment);
             let feed = self.get_token_price(&payment.token_identifier, &mut storage_cache);
 
@@ -431,28 +415,16 @@ pub trait LendingPool:
     /// ```
     #[payable("*")]
     #[endpoint(liquidate)]
-    fn liquidate(
-        &self,
-        liquidatee_account_nonce: u64,
-        collateral_to_receive: &EgldOrEsdtTokenIdentifier,
-        min_amount_to_receive: OptionalValue<BigUint>,
-    ) {
-        let payment = self.call_value().egld_or_single_fungible_esdt();
+    fn liquidate(&self, liquidatee_account_nonce: u64) {
+        let payments = self.call_value().all_transfers();
         let caller = self.blockchain().get_caller();
 
-        let debt_payment = EgldOrEsdtTokenPayment::new(payment.0, 0, payment.1);
         // 1. Basic validations
         self.require_active_account(liquidatee_account_nonce);
-        self.validate_liquidation_payment(&debt_payment, collateral_to_receive, &caller);
+        self.validate_liquidation_payments(&payments, &caller);
 
         // 2. Process liquidation
-        self.process_liquidation(
-            liquidatee_account_nonce,
-            debt_payment,
-            collateral_to_receive,
-            min_amount_to_receive,
-            &caller,
-        );
+        self.process_liquidation(liquidatee_account_nonce, &payments, &caller);
     }
 
     /// Executes a flash loan
@@ -647,7 +619,7 @@ pub trait LendingPool:
 
         self.tx()
             .to(self.blockchain().get_caller())
-            .esdt(account)
+            .esdt(account.clone())
             .transfer();
     }
 
@@ -758,7 +730,7 @@ pub trait LendingPool:
 
         self.tx()
             .to(self.blockchain().get_caller())
-            .esdt(account)
+            .esdt(account.clone())
             .transfer();
     }
 

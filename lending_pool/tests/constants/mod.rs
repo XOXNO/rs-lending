@@ -23,7 +23,7 @@ pub const E_MODE_LIQ_THRESOLD: u128 = 970_000_000_000_000_000_000; // 85%
 pub const LIQ_BONUS: u128 = 10_000_000_000_000_000_000; // 1%
 pub const E_MODE_LIQ_BONUS: u128 = 50_000_000_000_000_000_000; // 5%
 
-pub const LIQ_BASE_FEE: u128 = 50_000_000_000_000_000_000; // 5%
+pub const LIQ_BASE_FEE: u128 = 10_000_000_000_000_000_000; // 1%
 pub const FLASH_LOAN_FEE: u128 = 500_000_000_000_000_000; // 0.05%
 pub const DECIMALS: u128 = 1_000_000_000_000_000_000_000;
 
@@ -166,6 +166,8 @@ pub fn get_usdc_config() -> SetupConfig {
 }
 
 pub fn get_egld_config() -> SetupConfig {
+    pub const LIQ_THRESOLD: u128 = 800_000_000_000_000_000_000; // 80%
+    pub const LTV: u128 = 750_000_000_000_000_000_000; // 75%
     SetupConfig {
         config: AssetConfig {
             ltv: BigUint::from(LTV),
@@ -194,6 +196,8 @@ pub fn get_egld_config() -> SetupConfig {
 }
 
 pub fn get_xegld_config() -> SetupConfig {
+    pub const LIQ_THRESOLD: u128 = 750_000_000_000_000_000_000; // 80%
+    pub const LTV: u128 = 700_000_000_000_000_000_000; // 70%
     SetupConfig {
         config: AssetConfig {
             ltv: BigUint::from(LTV),
@@ -222,6 +226,8 @@ pub fn get_xegld_config() -> SetupConfig {
 }
 
 pub fn get_segld_config() -> SetupConfig {
+    pub const LIQ_THRESOLD: u128 = 550_000_000_000_000_000_000; // 55%
+    pub const LTV: u128 = 500_000_000_000_000_000_000; // 50%
     SetupConfig {
         config: AssetConfig {
             ltv: BigUint::from(LTV),
@@ -304,7 +310,6 @@ pub fn get_xoxno_config() -> SetupConfig {
         reserve_factor: RESERVE_FACTOR,
     }
 }
-
 
 pub fn get_isolated_config() -> SetupConfig {
     SetupConfig {

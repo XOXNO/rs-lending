@@ -8,4 +8,4 @@ edition = "2018"
 path = "src/constants.rs"
 
 [dependencies.multiversx-sc]
-version = "0.54.6"
+version = "0.55.0"

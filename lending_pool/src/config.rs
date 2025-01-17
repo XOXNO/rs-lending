@@ -21,7 +21,7 @@ pub trait ConfigModule:
     #[payable("EGLD")]
     #[endpoint(registerAccountToken)]
     fn register_account_token(&self, token_name: ManagedBuffer, ticker: ManagedBuffer) {
-        let payment_amount = self.call_value().egld_value();
+        let payment_amount = self.call_value().egld();
         self.account_token().issue_and_set_all_roles(
             EsdtTokenType::NonFungible,
             payment_amount.clone_value(),
@@ -232,7 +232,7 @@ pub trait ConfigModule:
             .collect::<ManagedVec<_>>();
 
         for asset in &assets {
-            self.remove_asset_from_e_mode_category(asset, category_id);
+            self.remove_asset_from_e_mode_category(asset.clone_value(), category_id);
         }
         let mut old_info = map.get(&category_id).unwrap();
         old_info.is_deprecated = true;

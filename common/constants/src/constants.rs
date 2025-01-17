@@ -1,8 +1,5 @@
 #![no_std]
 
-/// EGLD token identifier constant
-pub const EGLD_IDENTIFIER: &str = "EGLD-000000";
-
 /// Minimum first tolerance for oracle price fluctuation (0.50%)
 pub const MIN_FIRST_TOLERANCE: u128 = 5_000_000_000_000_000_000;
 /// Maximum first tolerance for oracle price fluctuation (50%)
@@ -28,8 +25,16 @@ pub const SECONDS_PER_HOUR: u64 = 3_600;
 
 /// Basis points
 pub const BP: u128 = 1_000_000_000_000_000_000_000; // Represents 100%
+
+/// Basis points for 1 EGLD
+pub const BP_EGLD: u128 = 1_000_000_000_000_000_000; // Represents 1 EGLD
+
 /// Decimal precision
 pub const DECIMAL_PRECISION: usize = 21;
+
+/// EGLD Decimal precision
+pub const EGLD_DECIMAL_PRECISION: usize = 18;
+
 /// Maximum bonus
 pub const MAX_BONUS: u128 = 300_000_000_000_000_000_000; // Represents 30% basis points
 

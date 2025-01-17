@@ -8,7 +8,7 @@ pub trait EventsModule {
     fn emit_new_round_event(
         &self,
         token_pair: &TokenPair<Self::Api>,
-        round_id: usize,
+        round_id: u32,
         price_feed: &TimestampedPrice<Self::Api>,
     ) {
         let epoch = self.blockchain().get_block_epoch();
@@ -32,14 +32,14 @@ pub trait EventsModule {
         &self,
         #[indexed] from: &ManagedBuffer,
         #[indexed] to: &ManagedBuffer,
-        #[indexed] round: usize,
+        #[indexed] round: u32,
         new_round_event: &NewRoundEvent<Self::Api>,
     );
 
     fn emit_discard_submission_event(
         &self,
         token_pair: &TokenPair<Self::Api>,
-        round_id: usize,
+        round_id: u32,
         submission_timestamp: u64,
         first_submission_timestamp: u64,
         has_caller_already_submitted: bool,
@@ -61,7 +61,7 @@ pub trait EventsModule {
         &self,
         #[indexed] from: &ManagedBuffer,
         #[indexed] to: &ManagedBuffer,
-        #[indexed] round: usize,
+        #[indexed] round: u32,
         discard_submission_event: &DiscardSubmissionEvent,
     );
 
@@ -70,7 +70,7 @@ pub trait EventsModule {
         &self,
         #[indexed] from: &ManagedBuffer,
         #[indexed] to: &ManagedBuffer,
-        #[indexed] round: usize,
+        #[indexed] round: u32,
     );
 
     #[event("add_submission")]
@@ -78,7 +78,7 @@ pub trait EventsModule {
         &self,
         #[indexed] from: &ManagedBuffer,
         #[indexed] to: &ManagedBuffer,
-        #[indexed] round: usize,
+        #[indexed] round: u32,
         price: &BigUint,
     );
 }

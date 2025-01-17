@@ -93,14 +93,12 @@ where
         Arg1: ProxyArg<ManagedBuffer<Env::Api>>,
         Arg2: ProxyArg<u64>,
         Arg3: ProxyArg<BigUint<Env::Api>>,
-        Arg4: ProxyArg<u8>,
     >(
         self,
         from: Arg0,
         to: Arg1,
         submission_timestamp: Arg2,
         price: Arg3,
-        decimals: Arg4,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
@@ -109,12 +107,11 @@ where
             .argument(&to)
             .argument(&submission_timestamp)
             .argument(&price)
-            .argument(&decimals)
             .original_result()
     }
 
     pub fn submit_batch<
-        Arg0: ProxyArg<MultiValueEncoded<Env::Api, MultiValue5<ManagedBuffer<Env::Api>, ManagedBuffer<Env::Api>, u64, BigUint<Env::Api>, u8>>>,
+        Arg0: ProxyArg<MultiValueEncoded<Env::Api, MultiValue4<ManagedBuffer<Env::Api>, ManagedBuffer<Env::Api>, u64, BigUint<Env::Api>>>>,
     >(
         self,
         submissions: Arg0,

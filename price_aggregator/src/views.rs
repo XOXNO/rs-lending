@@ -13,13 +13,10 @@ pub trait ViewsModule:
     fn make_price_feed(
         &self,
         token_pair: TokenPair<Self::Api>,
-        round_values: VecMapper<TimestampedPrice<Self::Api>>,
+        last_price: TimestampedPrice<Self::Api>,
     ) -> PriceFeed<Self::Api> {
-        let round_id = round_values.len();
-        let last_price = round_values.get(round_id);
-
         PriceFeed {
-            round_id: round_id as u32,
+            round_id: last_price.round,
             from: token_pair.from,
             to: token_pair.to,
             timestamp: last_price.timestamp,
@@ -44,9 +41,9 @@ pub trait ViewsModule:
 
         let mut result = MultiValueEncoded::new();
         for token_pair in pairs {
-            let round_values = self.rounds(&token_pair.from, &token_pair.to);
-            if round_values.len() > 0 {
-                result.push(self.make_price_feed(token_pair, round_values));
+            let round_values = self.rounds_new(&token_pair.from, &token_pair.to);
+            if !round_values.is_empty() {
+                result.push(self.make_price_feed(token_pair, round_values.get()));
             }
         }
 
@@ -57,11 +54,11 @@ pub trait ViewsModule:
     fn latest_price_feed(&self, from: ManagedBuffer, to: ManagedBuffer) -> PriceFeed<Self::Api> {
         require!(self.not_paused(), PAUSED_ERROR);
 
-        let round_values = self.rounds(&from, &to);
+        let round_values = self.rounds_new(&from, &to);
         require!(!round_values.is_empty(), TOKEN_PAIR_NOT_FOUND_ERROR);
 
         let token_pair = TokenPair { from, to };
-        let feed = self.make_price_feed(token_pair, round_values);
+        let feed = self.make_price_feed(token_pair, round_values.get());
         feed
     }
 

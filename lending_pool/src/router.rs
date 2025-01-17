@@ -6,9 +6,7 @@ multiversx_sc::derive_imports!();
 use common_events::AssetConfig;
 
 use crate::{
-    contexts::base::StorageCache, helpers, oracle, proxy_accumulator, proxy_pool, storage, utils,
-    validation, ERROR_ASSET_ALREADY_SUPPORTED, ERROR_INVALID_TICKER, ERROR_NO_ACCUMULATOR_FOUND,
-    ERROR_NO_POOL_FOUND,
+    contexts::base::StorageCache, helpers, oracle, proxy_accumulator, proxy_pool, storage, utils, validation, ERROR_ASSET_ALREADY_SUPPORTED, ERROR_INVALID_LIQUIDATION_THRESHOLD, ERROR_INVALID_TICKER, ERROR_NO_ACCUMULATOR_FOUND, ERROR_NO_POOL_FOUND
 };
 
 use super::factory;
@@ -70,6 +68,11 @@ pub trait RouterModule:
 
         self.pools_map(&base_asset).set(address.clone());
         self.pools_allowed().insert(address.clone());
+
+        require!(
+            &liquidation_threshold > &ltv,
+            ERROR_INVALID_LIQUIDATION_THRESHOLD
+        );
 
         let asset_config = &AssetConfig {
             ltv,

@@ -244,19 +244,13 @@ where
     /// ``` 
     pub fn liquidate<
         Arg0: ProxyArg<u64>,
-        Arg1: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-        Arg2: ProxyArg<OptionalValue<BigUint<Env::Api>>>,
     >(
         self,
         liquidatee_account_nonce: Arg0,
-        collateral_to_receive: Arg1,
-        min_amount_to_receive: Arg2,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("liquidate")
             .argument(&liquidatee_account_nonce)
-            .argument(&collateral_to_receive)
-            .argument(&min_amount_to_receive)
             .original_result()
     }
 
@@ -1212,28 +1206,6 @@ where
     /// get_max_liquidate_amount_for_collateral(1, "EGLD-123456", false) = 50 
     /// // Can liquidate 50 EGLD 
     /// ``` 
-    pub fn get_max_liquidate_amount_for_collateral<
-        Arg0: ProxyArg<u64>,
-        Arg1: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-        Arg2: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-        Arg3: ProxyArg<bool>,
-    >(
-        self,
-        account_position: Arg0,
-        collateral_asset: Arg1,
-        debt_asset: Arg2,
-        in_egld: Arg3,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getMaxLiquidateAmountForCollateral")
-            .argument(&account_position)
-            .argument(&collateral_asset)
-            .argument(&debt_asset)
-            .argument(&in_egld)
-            .original_result()
-    }
-
     /// Gets the collateral amount for a specific token 
     ///  
     /// # Arguments 

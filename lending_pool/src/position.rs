@@ -1,18 +1,17 @@
 multiversx_sc::imports!();
 use common_constants::BP;
 use common_events::{
-    AccountPosition, AssetConfig, EModeAssetConfig, EModeCategory, EgldOrEsdtTokenPaymentNew,
-    NftAccountAttributes,
+    AccountPosition, AssetConfig, EModeAssetConfig, EModeCategory, NftAccountAttributes,
 };
 use common_events::{AccountPositionType, PriceFeedShort};
 
 use crate::contexts::base::StorageCache;
 use crate::helpers;
+use crate::oracle;
+use crate::proxy_pool;
 use crate::storage;
 use crate::utils;
 use crate::validation;
-use crate::{oracle, ERROR_LIQUIDATED_AMOUNT_AFTER_FEES_LESS_THAN_MIN_AMOUNT_TO_RECEIVE};
-use crate::proxy_pool;
 
 #[multiversx_sc::module]
 pub trait PositionModule:
@@ -197,7 +196,7 @@ pub trait PositionModule:
         is_isolated: bool,
         is_vault: bool,
         e_mode_category: OptionalValue<u8>,
-        account_nonce: Option<EgldOrEsdtTokenPaymentNew<Self::Api>>,
+        account_nonce: Option<EgldOrEsdtTokenPayment<Self::Api>>,
     ) -> (u64, NftAccountAttributes) {
         if let Some(account) = account_nonce {
             self.require_active_account(account.token_nonce);
@@ -252,6 +251,8 @@ pub trait PositionModule:
                 self.blockchain().get_block_timestamp(),
                 BigUint::from(BP),
                 asset_info.liquidation_threshold.clone(),
+                asset_info.liquidation_base_bonus.clone(),
+                asset_info.liquidation_max_fee.clone(),
                 asset_info.ltv.clone(),
                 is_vault,
             )
@@ -276,7 +277,7 @@ pub trait PositionModule:
     fn update_supply_position(
         &self,
         account_nonce: u64,
-        collateral: &EgldOrEsdtTokenPaymentNew<Self::Api>,
+        collateral: &EgldOrEsdtTokenPayment<Self::Api>,
         asset_info: &AssetConfig<Self::Api>,
         is_vault: bool,
         feed: &PriceFeedShort<Self::Api>,
@@ -435,7 +436,6 @@ pub trait PositionModule:
         liquidation_fee: &BigUint,
         storage_cache: &mut StorageCache<Self>,
         attributes: &NftAccountAttributes,
-        min_amount_to_receive: Option<BigUint>,
     ) -> AccountPosition<Self::Api> {
         let pool_address = self.get_pool_address(withdraw_token_id);
         let mut dep_pos_map = self.deposit_positions(account_nonce);
@@ -449,21 +449,13 @@ pub trait PositionModule:
 
         let mut dp = dp_opt.unwrap();
 
-        // Cap withdraw amount to available balance (principal + accumulated interest)
-        if amount > dp.get_total_amount() {
-            amount = dp.get_total_amount();
-        }
-
-        let liquidated_amount_after_fees = &(&amount - liquidation_fee);
-        if min_amount_to_receive.is_some() && is_liquidation {
-            require!(
-                liquidated_amount_after_fees >= &min_amount_to_receive.unwrap(),
-                ERROR_LIQUIDATED_AMOUNT_AFTER_FEES_LESS_THAN_MIN_AMOUNT_TO_RECEIVE
-            );
-        }
-
         let asset_data = self.get_token_price(withdraw_token_id, storage_cache);
         let position = if dp.is_vault {
+            // Cap withdraw amount to available balance
+            if amount > dp.get_total_amount() {
+                amount = dp.get_total_amount();
+            }
+
             let last_value = self.vault_supplied_amount(withdraw_token_id).update(|am| {
                 *am -= &amount;
                 am.clone()
@@ -474,6 +466,7 @@ pub trait PositionModule:
             dp.amount -= &amount;
 
             if is_liquidation {
+                let liquidated_amount_after_fees = &(&amount - liquidation_fee);
                 self.tx()
                     .to(caller)
                     .payment(EgldOrEsdtTokenPayment::new(
@@ -546,20 +539,23 @@ pub trait PositionModule:
     /// Otherwise returns NFT to caller.
     fn handle_nft_after_withdraw(
         &self,
-        account_token: EsdtTokenPayment<Self::Api>,
+        amount: &BigUint,
+        token_nonce: u64,
+        token_identifier: &TokenIdentifier,
         caller: &ManagedAddress,
     ) {
-        let dep_pos_map = self.deposit_positions(account_token.token_nonce).len();
-        let borrow_pos_map = self.borrow_positions(account_token.token_nonce).len();
+        let dep_pos_map = self.deposit_positions(token_nonce).len();
+        let borrow_pos_map = self.borrow_positions(token_nonce).len();
 
         if dep_pos_map == 0 && borrow_pos_map == 0 {
-            self.account_token()
-                .nft_burn(account_token.token_nonce, &account_token.amount);
-            self.account_positions()
-                .swap_remove(&account_token.token_nonce);
-            self.account_attributes(account_token.token_nonce).clear();
+            self.account_token().nft_burn(token_nonce, amount);
+            self.account_positions().swap_remove(&token_nonce);
+            self.account_attributes(token_nonce).clear();
         } else {
-            self.tx().to(caller).esdt(account_token).transfer();
+            self.tx()
+                .to(caller)
+                .single_esdt(token_identifier, token_nonce, amount)
+                .transfer();
         }
     }
 
@@ -615,17 +611,17 @@ pub trait PositionModule:
 
         // Handle isolated mode debt ceiling
         if account.is_isolated {
-            let collateral_token_id = collaterals.get(0).token_id;
-            let collateral_config = self.asset_config(&collateral_token_id).get();
+            let collateral_token_id = &collaterals.get(0).token_id;
+            let collateral_config = self.asset_config(collateral_token_id).get();
 
             self.validate_isolated_debt_ceiling(
                 &collateral_config,
-                &collateral_token_id,
-                amount_in_usd,
+                collateral_token_id,
+                &amount_in_usd,
             );
             self.update_isolated_debt_usd(
-                &collateral_token_id,
-                amount_in_usd,
+                collateral_token_id,
+                &amount_in_usd,
                 true, // is_increase
             );
         }
@@ -673,6 +669,8 @@ pub trait PositionModule:
                 self.blockchain().get_block_timestamp(),
                 BigUint::from(BP),
                 asset_info.liquidation_threshold.clone(),
+                asset_info.liquidation_base_bonus.clone(),
+                asset_info.liquidation_max_fee.clone(),
                 asset_info.ltv.clone(),
                 is_vault,
             )
@@ -844,106 +842,105 @@ pub trait PositionModule:
     /// * `caller` - Address initiating liquidation
     /// * `asset_config_collateral` - Configuration of collateral asset
     ///
-    /// # Returns
-    /// * Tuple containing:
-    ///   - health_factor: Current health factor
-    ///   - debt_to_repay_amount: Amount of debt to repay
-    ///   - collateral_amount_after_bonus: Collateral amount including bonus
-    ///   - bonus_amount: Bonus amount
-    ///   - repay_amount_in_egld: EGLD value of repayment
-    ///   - debt_token_price_data: Price data for debt token
-    ///
     /// Calculates liquidation amounts, handles excess payments,
     /// and determines collateral to receive including bonus.
     fn handle_liquidation(
         &self,
         account_nonce: u64,
-        debt_payment: EgldOrEsdtTokenPayment<Self::Api>,
-        collateral_to_receive: &EgldOrEsdtTokenIdentifier,
+        payments: &ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
         caller: &ManagedAddress,
-        asset_config_collateral: &AssetConfig<Self::Api>,
         storage_cache: &mut StorageCache<Self>,
     ) -> (
-        BigUint,                   // health_factor
-        BigUint,                   // debt_to_repay_amount
-        BigUint,                   // collateral_amount_after_bonus
-        BigUint,                   // bonus_amount
-        BigUint,                   // repay_amount_in_egld
-        PriceFeedShort<Self::Api>, // debt_token_price_data
+        ManagedVec<MultiValue2<EgldOrEsdtTokenPayment, BigUint>>, // Collateral seized
+        ManagedVec<MultiValue3<EgldOrEsdtTokenPayment, BigUint, PriceFeedShort<Self::Api>>>, // Repaid tokens, egld value, price feed of each
     ) {
-        let debt_token_price_data =
-            self.get_token_price(&debt_payment.token_identifier, storage_cache);
-        let collateral_token_price_data =
-            self.get_token_price(collateral_to_receive, storage_cache);
-        let mut debt_payment_in_egld =
-            self.get_token_amount_in_egld_raw(&debt_payment.amount, &debt_token_price_data);
+        let (debt_payment_in_egld, mut repaid_tokens) =
+            self.sum_repayments(payments, storage_cache);
 
-        // Calculate liquidation bonus based on health factor
         let collaterals = self.update_interest(account_nonce, storage_cache, false);
         let (borrows, _) = self.update_debt(account_nonce, storage_cache, false, false);
 
         let (liquidation_collateral, total_collateral, _) =
             self.sum_collaterals(&collaterals, storage_cache);
+
+        let (proportional_weighted, bonus_weighted) =
+            self.proportion_of_weighted_seized(&total_collateral, &collaterals, storage_cache);
+
         let borrowed_egld = self.sum_borrows(&borrows, storage_cache);
 
         let health_factor = self.validate_can_liquidate(&liquidation_collateral, &borrowed_egld);
 
         // Calculate liquidation amount using Dutch auction mechanism
-        let (liquidation_amount_egld, bonus_rate) = self.calculate_single_asset_liquidation_amount(
-            &borrowed_egld,
+        let (max_debt_to_repay, bonus_rate) = self.calculate_max_debt_repayment(
+            borrowed_egld,
             &total_collateral,
-            collateral_to_receive,
-            account_nonce,
-            OptionalValue::Some(debt_payment_in_egld.clone()),
-            &asset_config_collateral.liquidation_base_bonus,
+            liquidation_collateral,
+            &proportional_weighted,
+            &bonus_weighted,
             &health_factor,
-            &collateral_token_price_data,
+            OptionalValue::Some(debt_payment_in_egld.clone()),
         );
 
         // Handle excess debt payment if any
-        let (debt_to_repay_amount, excess_amount) =
-            if debt_payment_in_egld > liquidation_amount_egld {
-                let excess_in_egld = &debt_payment_in_egld - &liquidation_amount_egld;
-                let excess_in_tokens =
-                    self.compute_amount_in_tokens(&excess_in_egld, &debt_token_price_data);
-                let used_tokens_for_debt = debt_payment.amount - &excess_in_tokens;
-                debt_payment_in_egld = self
-                    .get_token_amount_in_egld_raw(&used_tokens_for_debt, &debt_token_price_data);
+        let refund_debt = if debt_payment_in_egld > max_debt_to_repay {
+            let mut excess_in_egld = &debt_payment_in_egld - &max_debt_to_repay;
+            let mut refunds = ManagedVec::new();
 
-                (used_tokens_for_debt, Some(excess_in_tokens))
-            } else {
-                (debt_payment.amount, None)
-            };
+            for index in 0..repaid_tokens.len() {
+                if excess_in_egld == BigUint::zero() {
+                    break;
+                }
+                let (mut debt_payment, mut egld_asset_amount, price_feed) =
+                    repaid_tokens.get(index).clone().into_tuple();
+
+                if egld_asset_amount >= excess_in_egld {
+                    // This flow is when the amount repaid is higher than the maximum possible
+                    // We calculate how much we repaid in EGLD, then we convert to the original token
+                    // We deduct from the repayment vec the amount and push to the refunds vec what needs to be sent back.
+                    let excess_in_original =
+                        self.compute_amount_in_tokens(&excess_in_egld, &price_feed);
+                    debt_payment.amount -= &excess_in_original;
+                    egld_asset_amount -= &excess_in_egld;
+                    refunds.push(EgldOrEsdtTokenPayment::new(
+                        debt_payment.token_identifier.clone(),
+                        0,
+                        excess_in_original,
+                    ));
+                    let _ = repaid_tokens
+                        .set(index, (debt_payment, egld_asset_amount, price_feed).into());
+
+                    excess_in_egld = BigUint::zero();
+                } else {
+                    // This flow is when the excess amount is more than the entire amount of this token, then refund the entire token sent
+                    // it can happen only when there is a bulk repayment of different debts in the same position
+                    refunds.push(debt_payment);
+                    let _ = repaid_tokens.remove(index);
+                    excess_in_egld -= egld_asset_amount;
+                }
+            }
+
+            Some(refunds)
+        } else {
+            None
+        };
 
         // Return excess if any
-        if let Some(excess) = excess_amount {
+        if let Some(refunds) = refund_debt {
             self.tx()
                 .to(caller)
-                .payment(EgldOrEsdtTokenPayment::new(
-                    debt_payment.token_identifier.clone(),
-                    0,
-                    excess,
-                ))
+                .payment(refunds)
                 .transfer_if_not_empty();
         }
 
-        // Calculate collateral amounts
-        let collateral_amount_before_bonus =
-            self.compute_amount_in_tokens(&liquidation_amount_egld, &collateral_token_price_data);
+        let seized_collaterals = self.seize_collateral_proportionally(
+            &collaterals,
+            &total_collateral,
+            &max_debt_to_repay,
+            &bonus_rate,
+            storage_cache,
+        );
 
-        let collateral_amount_after_bonus = &collateral_amount_before_bonus
-            * &(&BigUint::from(BP) + &bonus_rate)
-            / &BigUint::from(BP);
-
-        let bonus_amount = &collateral_amount_after_bonus - &collateral_amount_before_bonus;
-        (
-            health_factor,
-            debt_to_repay_amount,
-            collateral_amount_after_bonus,
-            bonus_amount,
-            debt_payment_in_egld,
-            debt_token_price_data,
-        )
+        (seized_collaterals, repaid_tokens)
     }
 
     /// Processes complete liquidation operation
@@ -962,63 +959,50 @@ pub trait PositionModule:
     fn process_liquidation(
         &self,
         liquidatee_account_nonce: u64,
-        debt_payment: EgldOrEsdtTokenPayment<Self::Api>,
-        collateral_to_receive: &EgldOrEsdtTokenIdentifier,
-        min_amount_to_receive: OptionalValue<BigUint>,
+        debt_payments: &ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
         caller: &ManagedAddress,
     ) {
         let mut storage_cache = StorageCache::new(self);
         storage_cache.allow_unsafe_price = false;
 
-        let asset_config_collateral = self.asset_config(collateral_to_receive).get();
         let account = self.account_attributes(liquidatee_account_nonce).get();
 
-        let (
-            health_factor,
-            debt_to_repay_amount,
-            collateral_amount_after_bonus,
-            bonus_amount,
-            repay_amount_in_egld,
-            debt_token_price_data,
-        ) = self.handle_liquidation(
+        let (seized_collaterals, repaid_tokens) = self.handle_liquidation(
             liquidatee_account_nonce,
-            debt_payment.clone(),
-            collateral_to_receive,
+            debt_payments,
             caller,
-            &asset_config_collateral,
             &mut storage_cache,
         );
 
-        // Repay debt
-        self._repay(
-            liquidatee_account_nonce,
-            &debt_payment.token_identifier,
-            &debt_to_repay_amount,
-            caller,
-            repay_amount_in_egld,
-            &debt_token_price_data,
-            &mut storage_cache,
-            &account,
-        );
+        for debt_payment_data in repaid_tokens {
+            let (debt_payment, debt_egld_value, debt_price_feeed) = debt_payment_data.into_tuple();
+            // // Repay debt
+            self._repay(
+                liquidatee_account_nonce,
+                &debt_payment.token_identifier,
+                &debt_payment.amount,
+                caller,
+                debt_egld_value,
+                &debt_price_feeed,
+                &mut storage_cache,
+                &account,
+            );
+        }
 
-        // Calculate protocol fee using pre-calculated values
-        let protocol_fee_amount = self.calculate_liquidation_fees(
-            &bonus_amount,
-            &asset_config_collateral,
-            &health_factor,
-        );
-
-        // Process withdrawal with protocol fee
-        self._withdraw(
-            liquidatee_account_nonce,
-            collateral_to_receive,
-            collateral_amount_after_bonus,
-            caller,
-            true,
-            &protocol_fee_amount,
-            &mut storage_cache,
-            &account,
-            min_amount_to_receive.into_option(),
-        );
+        for collateral_data in seized_collaterals {
+            let (seized_payment, protocol_fee) = collateral_data.into_tuple();
+            sc_print!("Seized {}, Amount {}, Fee {}", (seized_payment.token_identifier), (seized_payment.amount), protocol_fee);
+            // // Process withdrawal with protocol fee
+            self._withdraw(
+                liquidatee_account_nonce,
+                &seized_payment.token_identifier,
+                seized_payment.amount,
+                caller,
+                true,
+                &protocol_fee,
+                &mut storage_cache,
+                &account,
+            );
+        }
     }
 }

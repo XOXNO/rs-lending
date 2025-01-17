@@ -71,7 +71,6 @@ multiversx_sc_wasm_adapter::endpoints! {
         getAllMarkets => get_all_markets
         canBeLiquidated => can_be_liquidated
         getHealthFactor => get_health_factor
-        getMaxLiquidateAmountForCollateral => get_max_liquidate_amount_for_collateral
         getCollateralAmountForToken => get_collateral_amount_for_token
         getBorrowAmountForToken => get_borrow_amount_for_token
         getTotalBorrowInEgld => get_total_borrow_in_egld
@@ -81,6 +80,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         getTokenPriceData => get_token_price_data_view
         getTokenPriceUSD => get_usd_price
         getTokenPriceEGLD => get_egld_price
+        multiply => multiply
         getMaxLeverage => calculate_max_leverage
     )
 }

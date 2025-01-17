@@ -6,7 +6,7 @@ use crate::{
     ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL,
 };
 use common_constants::BP;
-use common_events::{EgldOrEsdtTokenPaymentNew, ExchangeSource, OracleType};
+use common_events::{ExchangeSource, OracleType};
 
 #[multiversx_sc::module]
 pub trait MultiplyModule:
@@ -18,6 +18,10 @@ pub trait MultiplyModule:
     + common_events::EventsModule
     + helpers::math::MathsModule
 {
+    // e-mode 1
+    // EGLD, xEGLD, xEGLD/EGLD LP
+    // Send EGLD -> Stake for xEGLD -> Supply xEGLD (COLLATERAL) -> Borrow EGLD -> loop again
+    // Send xEGLD -> Supply xEGLD (COLLATERAL) -> Borrow EGLD -> loop again
     #[payable("*")]
     #[endpoint]
     fn multiply(
@@ -41,7 +45,9 @@ pub trait MultiplyModule:
 
         let mut debt_config = self.asset_config(&debt_payment.token_identifier).get();
         let asset_address = self.require_asset_supported(&debt_payment.token_identifier);
+
         let debt_market_sc = self.pools_map(&debt_payment.token_identifier).get();
+
         let max_l = self.calculate_max_leverage(
             &debt_payment.amount,
             &target,
@@ -173,13 +179,11 @@ pub trait MultiplyModule:
 
         self.update_supply_position(
             account.token_nonce,
-            &EgldOrEsdtTokenPaymentNew {
-                token_identifier: EgldOrEsdtTokenIdentifier::esdt(
-                    collateral_payment.token_identifier.clone(),
-                ),
-                token_nonce: collateral_payment.token_nonce,
-                amount: collateral_payment.amount.clone(),
-            },
+            &EgldOrEsdtTokenPayment::new(
+                EgldOrEsdtTokenIdentifier::esdt(collateral_payment.token_identifier.clone()),
+                collateral_payment.token_nonce,
+                collateral_payment.amount.clone(),
+            ),
             &collateral_config,
             false,
             &feed_collateral,

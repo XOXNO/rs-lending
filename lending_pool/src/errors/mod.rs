@@ -7,6 +7,7 @@ pub static ERROR_INSUFFICIENT_DEPOSIT: &[u8] = b"Not enough tokens deposited for
 pub static ERROR_HEALTH_FACTOR: &[u8] = b"Health not low enough for liquidation.";
 
 pub static ERROR_HEALTH_FACTOR_WITHDRAW: &[u8] = b"Health factor will be too low after withdrawal.";
+pub static ERROR_HEALTH_FACTOR_BECOME_LOW: &[u8] = b"Health factor will be too low.";
 
 pub static ERROR_TOKEN_MISMATCH: &[u8] = b"Token sent is not the same as the liquidation token.";
 

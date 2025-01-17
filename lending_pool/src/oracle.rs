@@ -1,15 +1,19 @@
 multiversx_sc::imports!();
 use common_constants::{
-    BP, EGLD_TICKER, SECONDS_PER_HOUR, SECONDS_PER_MINUTE, STATE_PAIR_STORAGE_KEY, USD_TICKER,
-    WEGLD_TICKER,
+    BP, EGLD_TICKER, PRICE_AGGREGATOR_ROUNDS_STORAGE_KEY, PRICE_AGGREGATOR_STATUS_STORAGE_KEY,
+    SECONDS_PER_HOUR, SECONDS_PER_MINUTE, STATE_PAIR_STORAGE_KEY, USD_TICKER, WEGLD_TICKER,
 };
 use common_events::{ExchangeSource, OracleProvider, OracleType, PriceFeedShort, PricingMethod};
 use multiversx_sc::storage::StorageKey;
+use price_aggregator::{
+    errors::{PAUSED_ERROR, TOKEN_PAIR_NOT_FOUND_ERROR},
+    structs::{TimestampedPrice, TokenPair},
+};
 
 use crate::{
     contexts::base::StorageCache,
     proxies::{lxoxno_proxy, proxy_legld, xegld_proxy},
-    proxy_price_aggregator::PriceAggregatorProxy,
+    proxy_price_aggregator::PriceFeed,
     proxy_xexchange_pair::State,
     storage, ERROR_INVALID_EXCHANGE_SOURCE, ERROR_INVALID_ORACLE_TOKEN_TYPE,
     ERROR_NO_LAST_PRICE_FOUND, ERROR_ORACLE_TOKEN_NOT_FOUND, ERROR_PAIR_NOT_ACTIVE,
@@ -283,15 +287,13 @@ pub trait OracleModule: storage::LendingStorageModule {
             .returns(ReturnsResult)
             .sync_call();
 
-        let result_ticker = self.get_token_ticker(&EgldOrEsdtTokenIdentifier::esdt(
-            result.token_identifier.clone(),
-        ));
+        let new_token_id = EgldOrEsdtTokenIdentifier::esdt(result.token_identifier.clone());
+        let result_ticker = self.get_token_ticker(&new_token_id);
 
         if result_ticker == egld_ticker {
             return result.amount;
         }
 
-        let new_token_id = EgldOrEsdtTokenIdentifier::esdt(result.token_identifier);
         self.get_token_price(&new_token_id, storage_cache).price
     }
 
@@ -473,71 +475,68 @@ pub trait OracleModule: storage::LendingStorageModule {
             ERROR_PRICE_AGGREGATOR_NOT_SET
         );
 
-        // require!(
-        //     !self.get_aggregator_status(price_aggregator_sc),
-        //     PAUSED_ERROR
-        // );
+        require!(
+            !self.get_aggregator_status(price_aggregator_sc),
+            PAUSED_ERROR
+        );
 
-        // let token_pair = TokenPair {
-        //     from: from_ticker,
-        //     to: ManagedBuffer::new_from_bytes(USD_TICKER),
-        // };
+        let token_pair = TokenPair {
+            from: from_ticker,
+            to: ManagedBuffer::new_from_bytes(USD_TICKER),
+        };
 
-        // let round_values =
-        //     self.token_oracle_prices_round(&token_pair.from, &token_pair.to, price_aggregator_sc);
+        let round_values =
+            self.token_oracle_prices_round(&token_pair.from, &token_pair.to, price_aggregator_sc);
 
-        // require!(!round_values.is_empty(), TOKEN_PAIR_NOT_FOUND_ERROR);
+        require!(!round_values.is_empty(), TOKEN_PAIR_NOT_FOUND_ERROR);
 
-        // let price_feed = self.make_price_feed(token_pair, round_values);
+        let price_feed = self.make_price_feed(token_pair, round_values.get());
 
-        let price_feed = self
-            .tx()
-            .to(price_aggregator_sc)
-            .typed(PriceAggregatorProxy)
-            .latest_price_feed(from_ticker, ManagedBuffer::new_from_bytes(USD_TICKER))
-            .returns(ReturnsResult)
-            .sync_call();
+        // let price_feed = self
+        //     .tx()
+        //     .to(price_aggregator_sc)
+        //     .typed(PriceAggregatorProxy)
+        //     .latest_price_feed(from_ticker, ManagedBuffer::new_from_bytes(USD_TICKER))
+        //     .returns(ReturnsResult)
+        //     .sync_call();
 
         self.create_price_feed(price_feed.price, price_feed.decimals)
     }
 
-    // fn token_oracle_prices_round(
-    //     &self,
-    //     from: &ManagedBuffer,
-    //     to: &ManagedBuffer,
-    //     address: &ManagedAddress,
-    // ) -> VecMapper<TimestampedPrice<Self::Api>, ManagedAddress> {
-    //     let mut key = StorageKey::new(PRICE_AGGREGATOR_ROUNDS_STORAGE_KEY);
-    //     key.append_item(from);
-    //     key.append_item(to);
-    //     VecMapper::<_, _, ManagedAddress>::new_from_address(address.clone(), key)
-    // }
+    fn token_oracle_prices_round(
+        &self,
+        from: &ManagedBuffer,
+        to: &ManagedBuffer,
+        address: &ManagedAddress,
+    ) -> SingleValueMapper<TimestampedPrice<Self::Api>, ManagedAddress> {
+        let mut key = StorageKey::new(PRICE_AGGREGATOR_ROUNDS_STORAGE_KEY);
+        key.append_item(from);
+        key.append_item(to);
+        SingleValueMapper::<_, _, ManagedAddress>::new_from_address(address.clone(), key)
+    }
 
-    // fn get_aggregator_status(&self, address: &ManagedAddress) -> bool {
-    //     SingleValueMapper::<_, _, ManagedAddress>::new_from_address(
-    //         address.clone(),
-    //         StorageKey::new(PRICE_AGGREGATOR_STATUS_STORAGE_KEY),
-    //     )
-    //     .get()
-    // }
+    fn get_aggregator_status(&self, address: &ManagedAddress) -> bool {
+        SingleValueMapper::<_, _, ManagedAddress>::new_from_address(
+            address.clone(),
+            StorageKey::new(PRICE_AGGREGATOR_STATUS_STORAGE_KEY),
+        )
+        .get()
+    }
 
-    // fn make_price_feed(
-    //     &self,
-    //     token_pair: TokenPair<Self::Api>,
-    //     round_values: VecMapper<TimestampedPrice<Self::Api>, ManagedAddress>,
-    // ) -> PriceFeed<Self::Api> {
-    //     let round_id: usize = round_values.len();
-    //     let last_price = round_values.get(round_id);
-
-    //     PriceFeed {
-    //         round_id: round_id as u32,
-    //         from: token_pair.from,
-    //         to: token_pair.to,
-    //         timestamp: last_price.timestamp,
-    //         price: last_price.price,
-    //         decimals: last_price.decimals,
-    //     }
-    // }
+    fn make_price_feed(
+        &self,
+        token_pair: TokenPair<Self::Api>,
+        last_price: TimestampedPrice<Self::Api>,
+    ) -> PriceFeed<Self::Api> {
+        PriceFeed {
+            round_id: last_price.round,
+            from: token_pair.from,
+            to: token_pair.to,
+            timestamp: last_price.timestamp,
+            price: last_price.price,
+            decimals: last_price.decimals,
+        }
+    }
 
     #[proxy]
     fn safe_price_proxy(&self, sc_address: ManagedAddress) -> safe_price_proxy::ProxyTo<Self::Api>;

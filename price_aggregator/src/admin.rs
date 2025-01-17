@@ -71,7 +71,7 @@ pub trait AdminModule:
             self.require_paused();
         }
         pair_decimals_mapper.set(Some(decimals));
-        let pair = TokenPair { from, to };
+        let pair: TokenPair<<Self as ContractBase>::Api> = TokenPair { from, to };
         self.clear_submissions(&pair);
     }
 }
