@@ -9,6 +9,7 @@ LP_TEMPLATE_ADDRESS=erd1qqqqqqqqqqqqqpgqlpf2f23jx29s6k7ftfccprn5wv7uccyuah0s5zvh
 AGGREGATOR_ADDR=erd1qqqqqqqqqqqqqpgq7a48t570jjudy0xjxhuzcdwndcq9gt2tah0s7tg84a
 SAFE_PRICE_VIEW_ADDRESS=erd1qqqqqqqqqqqqqpgqcmnum66jxyfpcnvqk5eahj5n3ny4vkfn0n4szjjskv
 ACCUMULATOR_ADDRESS=erd1qqqqqqqqqqqqqpgqyxfc4r5fmw2ljcgwxj2nuzv72y9ryvyhah0sgn5vv2
+WEGLD_ADDRESS=erd1qqqqqqqqqqqqqpgqpv09kfzry5y4sj05udcngesat07umyj70n4sa2c0rp
 
 ACCOUNT_TOKEN_NAME="str:XOXNOLendingAccount"
 ACCOUNT_TOKEN_TICKER="str:BOBERLEND"
@@ -63,7 +64,7 @@ deploy() {
 
 upgrade() {
     mxpy contract upgrade ${ADDRESS} --bytecode=${PROJECT} --recall-nonce \
-    --ledger --ledger-account-index=0 --ledger-address-index=0 \
+    --ledger --ledger-account-index=0 --ledger-address-index=0 --arguments ${WEGLD_ADDRESS} \
     --gas-limit=250000000 --outfile="upgrade.json" \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 }
@@ -196,7 +197,7 @@ repay() {
 claimRevenue() {
     mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=600000000 \
     --ledger --ledger-account-index=0 --ledger-address-index=0 \
-    --function="claimRevenue" --arguments ${XEGLD_TOKEN} ${LXOXNO_TOKEN} ${XOXNO_TOKEN} ${MEX_TOKEN} ${WETH_TOKEN} ${USDC_TOKEN} ${HTM_TOKEN} ${LP_XOXNO_TOKEN} \
+    --function="claimRevenue" --arguments ${XEGLD_TOKEN} ${LXOXNO_TOKEN} ${XOXNO_TOKEN} ${MEX_TOKEN} ${WETH_TOKEN} ${USDC_TOKEN} ${HTM_TOKEN} ${LP_XOXNO_TOKEN} ${LEGLD_TOKEN} \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 

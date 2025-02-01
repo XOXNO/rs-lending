@@ -16,7 +16,7 @@ path = ".."
 version = "0.54.5"
 
 [dependencies.multiversx-sc]
-version = "0.55.0"
+version = "0.56.0"
 
 [dependencies]
 clap = { version = "4.4.7", features = ["derive"] }

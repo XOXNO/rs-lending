@@ -1,5 +1,4 @@
 #![no_std]
-#![allow(clippy::too_many_arguments)]
 
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();

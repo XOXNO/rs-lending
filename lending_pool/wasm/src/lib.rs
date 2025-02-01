@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           62
+// Endpoints:                           63
 // Async Callback:                       1
-// Total number of exported functions:  65
+// Total number of exported functions:  66
 
 #![no_std]
 
@@ -59,6 +59,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         getPoolsMap => pools_map
         getPriceAggregatorAddress => price_aggregator_address
         getSafePriceView => safe_price_view
+        getEGLDWrapperAddress => wegld_wrapper
         getAssetConfig => asset_config
         lastEModeCategoryId => last_e_mode_category_id
         getEModes => e_mode_category

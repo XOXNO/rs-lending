@@ -9,8 +9,7 @@ where
     C: crate::oracle::OracleModule + crate::storage::LendingStorageModule,
 {
     _sc_ref: &'a C,
-    pub prices: ManagedMap<C::Api>,
-    pub decimals: ManagedMap<C::Api>,
+    pub prices_cache: ManagedMapEncoded::<C::Api, EgldOrEsdtTokenIdentifier<C::Api>, PriceFeedShort<C::Api>>,
     pub egld_price_feed: PriceFeedShort<C::Api>,
     pub price_aggregator_sc: ManagedAddress<C::Api>,
     pub allow_unsafe_price: bool,
@@ -25,8 +24,7 @@ where
         let price_aggregator = sc_ref.price_aggregator_address().get();
         StorageCache {
             _sc_ref: sc_ref,
-            prices: ManagedMap::new(),
-            decimals: ManagedMap::new(),
+            prices_cache: ManagedMapEncoded::<C::Api, EgldOrEsdtTokenIdentifier<C::Api>, PriceFeedShort<C::Api>>::new(),
             egld_price_feed: sc_ref
                 .get_aggregator_price_feed(&EgldOrEsdtTokenIdentifier::egld(), &price_aggregator),
             price_aggregator_sc: price_aggregator,

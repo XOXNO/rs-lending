@@ -112,8 +112,7 @@ pub trait LiquidityModule:
         deposit_position.timestamp = storage_cache.timestamp;
         deposit_position.index = storage_cache.supply_index.into_raw_units().clone();
 
-        let deposit_amount_dec =
-            ManagedDecimal::from_raw_units(deposit_amount, storage_cache.pool_params.decimals);
+        let deposit_amount_dec = storage_cache.get_decimal_value(&deposit_amount);
 
         storage_cache.reserves_amount += &deposit_amount_dec;
 
@@ -166,10 +165,7 @@ pub trait LiquidityModule:
         borrow_position.timestamp = storage_cache.timestamp;
         borrow_position.index = storage_cache.borrow_index.into_raw_units().clone();
 
-        let borrow_amount_dec = ManagedDecimal::from_raw_units(
-            borrow_amount.clone(),
-            storage_cache.pool_params.decimals,
-        );
+        let borrow_amount_dec = storage_cache.get_decimal_value(borrow_amount);
 
         require!(
             &storage_cache.get_reserves() >= &borrow_amount_dec,
@@ -220,7 +216,7 @@ pub trait LiquidityModule:
     fn withdraw(
         &self,
         initial_caller: &ManagedAddress,
-        mut amount: BigUint,
+        amount: &BigUint,
         mut deposit_position: AccountPosition<Self::Api>,
         is_liquidation: bool,
         protocol_liquidation_fee: &BigUint,
@@ -229,12 +225,8 @@ pub trait LiquidityModule:
         let mut storage_cache = StorageCache::new(self);
 
         self.update_interest_indexes(&mut storage_cache);
-        if amount > deposit_position.get_total_amount() {
-            amount = deposit_position.get_total_amount();
-        }
 
-        let requested_amount =
-            ManagedDecimal::from_raw_units(amount, storage_cache.pool_params.decimals);
+        let requested_amount = storage_cache.get_decimal_value(amount);
 
         // Unaccrued interest for the wanted amount
         let extra_interest = self.compute_interest(
@@ -245,39 +237,39 @@ pub trait LiquidityModule:
 
         let total_withdraw = requested_amount.clone() + extra_interest.clone();
         // Withdrawal amount = initial wanted amount + Unaccrued interest for that amount (this has to be paid back to the user that requested the withdrawal)
-        let mut principal_amount = requested_amount;
+        let mut principal_amount = requested_amount.clone();
 
         // Check if there is enough liquidity to cover the withdrawal
         require!(
             &storage_cache.get_reserves() >= &total_withdraw,
-            ERROR_INSUFFICIENT_LIQUIDITY
+            "Not enough reserves {} => {}, Extra {} => Amount {} => Pos {}",
+            total_withdraw,
+            (storage_cache.get_reserves()),
+            extra_interest,
+            requested_amount,
+            (deposit_position.get_total_amount())
         );
 
         // Update the reserves amount
         storage_cache.reserves_amount -= &total_withdraw;
 
-        let mut accumulated_interest = ManagedDecimal::from_raw_units(
-            deposit_position.accumulated_interest.clone(),
-            storage_cache.pool_params.decimals,
-        );
-
-        let zero =
-            ManagedDecimal::from_raw_units(BigUint::zero(), storage_cache.pool_params.decimals);
+        let mut accumulated_interest =
+            storage_cache.get_decimal_value(&deposit_position.accumulated_interest);
 
         // If the total withdrawal amount is greater than the accumulated interest, we need to subtract the accumulated interest from the withdrawal amount
 
         if principal_amount >= accumulated_interest {
             principal_amount -= accumulated_interest;
-            accumulated_interest = zero.clone();
+            accumulated_interest = storage_cache.zero.clone();
         } else {
             accumulated_interest -= principal_amount;
-            principal_amount = zero.clone();
+            principal_amount = storage_cache.zero.clone();
         }
 
         deposit_position.accumulated_interest = accumulated_interest.into_raw_units().clone();
 
         // Check if there is enough liquidity to cover the withdrawal after the interest was subtracted
-        if principal_amount.gt(&zero) {
+        if principal_amount.gt(&storage_cache.zero) {
             require!(
                 storage_cache.supplied_amount >= principal_amount,
                 ERROR_INSUFFICIENT_LIQUIDITY
@@ -287,10 +279,7 @@ pub trait LiquidityModule:
         }
 
         if is_liquidation {
-            let protocol_fee = ManagedDecimal::from_raw_units(
-                protocol_liquidation_fee.clone(),
-                storage_cache.pool_params.decimals,
-            );
+            let protocol_fee = storage_cache.get_decimal_value(protocol_liquidation_fee);
 
             storage_cache.protocol_revenue += &protocol_fee;
             storage_cache.reserves_amount += &protocol_fee;
@@ -362,10 +351,7 @@ pub trait LiquidityModule:
         self.update_interest_indexes(&mut storage_cache);
         self.internal_update_position_with_interest(&mut position, &mut storage_cache);
 
-        let total_borrorwed = ManagedDecimal::from_raw_units(
-            position.get_total_amount(),
-            storage_cache.pool_params.decimals,
-        );
+        let total_borrorwed = storage_cache.get_decimal_value(&position.get_total_amount());
 
         let (principal, interest) = if received_amount.ge(&position.get_total_amount()) {
             // Full repayment
@@ -376,22 +362,19 @@ pub trait LiquidityModule:
                 .egld_or_single_esdt(&received_asset, 0, &extra_amount)
                 .transfer_if_not_empty();
 
-            let principal =
-                ManagedDecimal::from_raw_units(position.amount, storage_cache.pool_params.decimals);
+            let principal = storage_cache.get_decimal_value(&position.amount);
 
             position.amount = BigUint::zero();
             position.accumulated_interest = BigUint::zero();
 
             (principal, total_borrorwed)
         } else {
-            let repayment =
-                ManagedDecimal::from_raw_units(received_amount, storage_cache.pool_params.decimals);
+            let repayment = storage_cache.get_decimal_value(&received_amount);
             // Partial repayment
             let (principal, interest) = self.calculate_principal_and_interest(
                 &repayment,
-                &position,
+                storage_cache.get_decimal_value(&position.amount),
                 total_borrorwed,
-                storage_cache.pool_params.decimals,
             );
 
             position.amount -= principal.into_raw_units();
@@ -446,8 +429,7 @@ pub trait LiquidityModule:
         let asset = storage_cache.pool_asset.clone();
         require!(borrowed_token == &asset, ERROR_INVALID_ASSET);
 
-        let loaned_amount =
-            ManagedDecimal::from_raw_units(amount.clone(), storage_cache.pool_params.decimals);
+        let loaned_amount = storage_cache.get_decimal_value(amount);
 
         require!(
             &storage_cache.get_reserves() >= &loaned_amount,
@@ -478,10 +460,8 @@ pub trait LiquidityModule:
         let mut storage_cache_second = StorageCache::new(self);
         let is_egld = borrowed_token == &EgldOrEsdtTokenIdentifier::egld();
         let repayment_amount = if is_egld {
-            let _repayment_amount = ManagedDecimal::from_raw_units(
-                back_transfers.total_egld_amount,
-                storage_cache_second.pool_params.decimals,
-            );
+            let _repayment_amount =
+                storage_cache_second.get_decimal_value(&back_transfers.total_egld_amount);
 
             require!(
                 &storage_cache_second.pool_asset.is_egld(),
@@ -500,11 +480,7 @@ pub trait LiquidityModule:
                 ERROR_INVALID_FLASHLOAN_REPAYMENT
             );
 
-            let _repayment_amount = ManagedDecimal::from_raw_units(
-                payment.amount.clone(),
-                storage_cache_second.pool_params.decimals,
-            );
-
+            let _repayment_amount = storage_cache_second.get_decimal_value(&payment.amount);
             _repayment_amount
         };
 
@@ -550,11 +526,9 @@ pub trait LiquidityModule:
 
         require!(token == &asset, ERROR_INVALID_ASSET);
 
-        let strategy_amount =
-            ManagedDecimal::from_raw_units(amount.clone(), storage_cache.pool_params.decimals);
+        let strategy_amount = storage_cache.get_decimal_value(amount);
 
-        let strategy_fee =
-            ManagedDecimal::from_raw_units(fee.clone(), storage_cache.pool_params.decimals);
+        let strategy_fee = storage_cache.get_decimal_value(fee);
 
         require!(
             &storage_cache.get_reserves() >= &strategy_amount,
@@ -614,15 +588,10 @@ pub trait LiquidityModule:
             ERROR_INVALID_ASSET
         );
 
-        storage_cache.protocol_revenue += &ManagedDecimal::from_raw_units(
-            received_amount.clone(),
-            storage_cache.pool_params.decimals,
-        );
+        let decimal_received = storage_cache.get_decimal_value(&received_amount);
 
-        storage_cache.reserves_amount += &ManagedDecimal::from_raw_units(
-            received_amount.clone(),
-            storage_cache.pool_params.decimals,
-        );
+        storage_cache.protocol_revenue += &decimal_received;
+        storage_cache.reserves_amount += &decimal_received;
 
         self.update_market_state_event(
             storage_cache.timestamp,

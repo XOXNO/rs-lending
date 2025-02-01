@@ -77,6 +77,11 @@ pub trait LendingStorageModule {
     #[storage_mapper("safe_price_view")]
     fn safe_price_view(&self) -> SingleValueMapper<ManagedAddress>;
 
+    /// This storage mapper holds the address of the wrapper, used to convert between EGLD <-> WEGLD
+    #[view(getEGLDWrapperAddress)]
+    #[storage_mapper("wegld_wrapper_address")]
+    fn wegld_wrapper(&self) -> SingleValueMapper<ManagedAddress>;
+
     /// Get the asset config
     /// This storage mapper holds the configuration of an asset, used to retrieve the config of an asset.
     #[view(getAssetConfig)]

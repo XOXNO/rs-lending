@@ -92,26 +92,28 @@ pub trait ValidationModule:
             self.asset_e_modes(token_id).contains(&e_mode),
             ERROR_EMODE_CATEGORY_NOT_FOUND
         );
-
+        let e_mode_mapper = self.e_mode_assets(e_mode);
         // Validate asset has configuration for this e-mode
         require!(
-            self.e_mode_assets(e_mode).contains_key(token_id),
+            e_mode_mapper.contains_key(token_id),
             ERROR_EMODE_CATEGORY_NOT_FOUND
         );
 
-        Some(self.e_mode_assets(e_mode).get(token_id).unwrap())
+        Some(e_mode_mapper.get(token_id).unwrap())
     }
 
     fn validate_e_mode_exists(&self, e_mode: u8) -> Option<EModeCategory<Self::Api>> {
         if e_mode == 0 {
             return None;
         }
+        let e_mode_mapper = self.e_mode_category();
         require!(
-            self.e_mode_category().contains_key(&e_mode),
+            e_mode_mapper.contains_key(&e_mode),
             ERROR_EMODE_CATEGORY_NOT_FOUND
         );
-        Some(self.e_mode_category().get(&e_mode).unwrap())
+        Some(e_mode_mapper.get(&e_mode).unwrap())
     }
+
     /// Validates consistency between vault flags
     ///
     /// # Arguments
@@ -229,42 +231,25 @@ pub trait ValidationModule:
     fn validate_supply_cap(
         &self,
         asset_info: &AssetConfig<Self::Api>,
-        amount: &BigUint,
-        token_id: &EgldOrEsdtTokenIdentifier,
+        collateral: &EgldOrEsdtTokenPayment,
         is_vault: bool,
     ) {
         // Only check supply cap if
         if asset_info.supply_cap.is_some() {
-            let pool_address = self.get_pool_address(token_id);
+            let pool_address = self.get_pool_address(&collateral.token_identifier);
             let mut total_supplied = self.get_total_supply(pool_address).get();
 
             if is_vault {
-                let vault_supplied_amount = self.vault_supplied_amount(token_id).get();
+                let vault_supplied_amount = self
+                    .vault_supplied_amount(&collateral.token_identifier)
+                    .get();
                 total_supplied += vault_supplied_amount;
             }
             require!(
-                total_supplied + amount <= asset_info.supply_cap.clone().unwrap(),
+                total_supplied + &collateral.amount <= asset_info.supply_cap.clone().unwrap(),
                 ERROR_SUPPLY_CAP
             );
         }
-    }
-
-    /// Validates withdrawal payment parameters
-    ///
-    /// # Arguments
-    /// * `account_token` - NFT token identifier
-    /// * `withdraw_token_id` - Token to withdraw
-    /// * `amount` - Amount to withdraw
-    /// * `initial_caller` - Address initiating withdrawal
-    ///
-    /// Validates:
-    /// - Account token is valid
-    /// - Caller address is valid
-    /// - Asset is supported
-    /// - Amount is greater than zero
-    fn validate_withdraw_payment(&self, withdraw_payment: &EgldOrEsdtTokenPayment) {
-        self.require_asset_supported(&withdraw_payment.token_identifier);
-        self.require_amount_greater_than_zero(&withdraw_payment.amount);
     }
 
     /// Validates health factor after withdrawal
@@ -403,13 +388,6 @@ pub trait ValidationModule:
         borrowed_amount_in_egld: &BigUint,
         amount_to_borrow_in_egld: &BigUint,
     ) {
-        sc_print!(
-            "LTV {}, Borrowed Already {}, Borrow Now {}, Total Borrow After {}",
-            ltv_collateral_in_egld,
-            borrowed_amount_in_egld,
-            amount_to_borrow_in_egld,
-            (amount_to_borrow_in_egld + borrowed_amount_in_egld)
-        );
         require!(
             ltv_collateral_in_egld >= &(borrowed_amount_in_egld + amount_to_borrow_in_egld),
             ERROR_INSUFFICIENT_COLLATERAL
@@ -445,8 +423,8 @@ pub trait ValidationModule:
 
         self.validate_borrow_collateral(&ltv_collateral, &egld_total_borrowed, &egld_amount);
 
-        let amount_in_usd = self
-            .get_token_amount_in_dollars_raw(&egld_total_borrowed, &storage_cache.egld_price_feed);
+        let amount_in_usd =
+            self.get_token_amount_in_dollars_raw(&egld_amount, &storage_cache.egld_price_feed);
 
         (amount_in_usd, asset_data_feed)
     }
@@ -469,8 +447,7 @@ pub trait ValidationModule:
         amount_to_borrow_in_dollars: &BigUint,
     ) {
         let current_debt = self.isolated_asset_debt_usd(token_id).get();
-
-        let total_debt = current_debt.clone() + amount_to_borrow_in_dollars;
+        let total_debt = current_debt + amount_to_borrow_in_dollars;
 
         require!(
             total_debt <= asset_config.debt_ceiling_usd,
@@ -489,9 +466,9 @@ pub trait ValidationModule:
     /// - Account exists in market
     /// - Asset is supported
     /// - Amount is greater than zero
-    fn validate_repay_payment(&self, repay_payment: &EgldOrEsdtTokenPayment<Self::Api>) {
-        self.require_asset_supported(&repay_payment.token_identifier);
-        self.require_amount_greater_than_zero(&repay_payment.amount);
+    fn validate_payment(&self, payment: &EgldOrEsdtTokenPayment<Self::Api>) {
+        self.require_asset_supported(&payment.token_identifier);
+        self.require_amount_greater_than_zero(&payment.amount);
     }
 
     /// Validates borrow position exists
@@ -571,8 +548,7 @@ pub trait ValidationModule:
         initial_caller: &ManagedAddress,
     ) {
         for debt_payment in debt_repayments {
-            self.require_asset_supported(&debt_payment.token_identifier);
-            self.require_amount_greater_than_zero(&debt_payment.amount);
+            self.validate_payment(&debt_payment);
         }
         self.require_non_zero_address(initial_caller);
     }

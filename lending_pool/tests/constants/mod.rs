@@ -117,7 +117,6 @@ pub const PAIR_PATH: MxscPath = MxscPath::new("../proxys/pair-full.mxsc.json");
 pub static ESDT_ROLES: &[EsdtLocalRole] = &[
     EsdtLocalRole::Mint,
     EsdtLocalRole::Burn,
-    EsdtLocalRole::Transfer,
 ];
 
 pub static SFT_ROLES: &[EsdtLocalRole] = &[

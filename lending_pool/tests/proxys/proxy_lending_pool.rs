@@ -54,12 +54,14 @@ where
         Arg1: ProxyArg<ManagedAddress<Env::Api>>,
         Arg2: ProxyArg<ManagedAddress<Env::Api>>,
         Arg3: ProxyArg<ManagedAddress<Env::Api>>,
+        Arg4: ProxyArg<ManagedAddress<Env::Api>>,
     >(
         self,
         lp_template_address: Arg0,
         aggregator: Arg1,
         safe_view_address: Arg2,
         accumulator_address: Arg3,
+        wegld_address: Arg4,
     ) -> TxTypedDeploy<Env, From, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
@@ -68,6 +70,7 @@ where
             .argument(&aggregator)
             .argument(&safe_view_address)
             .argument(&accumulator_address)
+            .argument(&wegld_address)
             .original_result()
     }
 }
@@ -81,12 +84,16 @@ where
     To: TxTo<Env>,
     Gas: TxGas<Env>,
 {
-    pub fn upgrade(
+    pub fn upgrade<
+        Arg0: ProxyArg<ManagedAddress<Env::Api>>,
+    >(
         self,
+        wegld_address: Arg0,
     ) -> TxTypedUpgrade<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_upgrade()
+            .argument(&wegld_address)
             .original_result()
     }
 }
@@ -174,26 +181,6 @@ where
     /// # Payment 
     /// Requires account NFT payment 
     ///  
-    /// # Flow 
-    /// 1. Validates payment and parameters 
-    /// 2. Gets NFT attributes and asset config 
-    /// 3. Updates positions with latest interest 
-    /// 4. Validates borrowing constraints 
-    /// 5. Checks borrow cap 
-    /// 6. Validates collateral sufficiency 
-    /// 7. Processes borrow 
-    /// 8. Emits event 
-    /// 9. Returns NFT 
-    ///  
-    /// # Example 
-    /// ``` 
-    /// // Borrow 1000 USDC using account NFT 
-    /// ESDTTransfer { 
-    ///   token: "LEND-123456", // Account NFT 
-    ///   nonce: 1, 
-    ///   amount: 1 
-    /// } 
-    /// borrow("USDC-123456", 1_000_000_000) // 1000 USDC 
     /// ``` 
     pub fn borrow<
         Arg0: ProxyArg<MultiValueEncoded<Env::Api, EgldOrEsdtTokenPayment<Env::Api>>>,
@@ -262,14 +249,6 @@ where
     /// * `contract_address` - Address of contract to receive funds 
     /// * `endpoint` - Endpoint to call on receiving contract 
     /// * `arguments` - Arguments to pass to endpoint 
-    ///  
-    /// # Flow 
-    /// 1. Validates flash loan is enabled for asset 
-    /// 2. Validates contract is on same shard 
-    /// 3. Executes flash loan through pool: 
-    ///    - Transfers tokens to contract 
-    ///    - Calls specified endpoint 
-    ///    - Verifies repayment with fee 
     ///  
     ///  
     pub fn flash_loan<
@@ -961,6 +940,16 @@ where
             .original_result()
     }
 
+    /// This storage mapper holds the address of the wrapper, used to convert between EGLD <-> WEGLD 
+    pub fn wegld_wrapper(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getEGLDWrapperAddress")
+            .original_result()
+    }
+
     /// Get the asset config 
     /// This storage mapper holds the configuration of an asset, used to retrieve the config of an asset. 
     pub fn asset_config<
@@ -1428,6 +1417,27 @@ where
             .payment(NotPayable)
             .raw_call("getTokenPriceEGLD")
             .argument(&token_id)
+            .original_result()
+    }
+
+    pub fn multiply<
+        Arg0: ProxyArg<BigUint<Env::Api>>,
+        Arg1: ProxyArg<u8>,
+        Arg2: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+        Arg3: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+    >(
+        self,
+        leverage: Arg0,
+        e_mode_category: Arg1,
+        collateral_token: Arg2,
+        debt_token: Arg3,
+    ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
+        self.wrapped_tx
+            .raw_call("multiply")
+            .argument(&leverage)
+            .argument(&e_mode_category)
+            .argument(&collateral_token)
+            .argument(&debt_token)
             .original_result()
     }
 

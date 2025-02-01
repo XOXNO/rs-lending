@@ -1047,7 +1047,8 @@ pub fn setup_lending_pool(
             template_address_liquidity_pool,
             price_aggregator_sc,
             safe_view_sc.clone(),
-            safe_view_sc.clone(),
+            safe_view_sc.clone(), // TODO: Add real accumulator
+            safe_view_sc.clone(), // TODO Add wrap SC for WEGLD
         )
         .code(LENDING_POOL_PATH)
         .returns(ReturnsNewManagedAddress)

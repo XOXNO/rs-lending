@@ -90,7 +90,7 @@ where
     >(
         self,
         delegator: Arg0,
-    ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
+    ) -> TxTypedCall<Env, From, To, (), Gas, EsdtTokenPayment<Env::Api>> {
         self.wrapped_tx
             .raw_call("delegate")
             .argument(&delegator)
@@ -275,7 +275,7 @@ where
 }
 
 #[type_abi]
-#[derive(TopEncode, TopDecode)]
+#[derive(TopEncode, TopDecode, PartialEq, Eq, Copy, Clone, Debug)]
 pub enum State {
     Inactive,
     Active,
@@ -291,6 +291,7 @@ where
     pub ls_token_id: TokenIdentifier<Api>,
     pub ls_token_amount: BigUint<Api>,
     pub ls_token_supply: BigUint<Api>,
+    pub original_amount: BigUint<Api>,
     pub virtual_xoxno_reserve: BigUint<Api>,
     pub block: u64,
     pub epoch: u64,
@@ -306,10 +307,10 @@ where
     pub caller: ManagedAddress<Api>,
     pub ls_token_id: TokenIdentifier<Api>,
     pub ls_token_amount: BigUint<Api>,
-    pub unstake_token_id: TokenIdentifier<Api>,
-    pub unstake_token_amount: BigUint<Api>,
     pub ls_token_supply: BigUint<Api>,
+    pub original_amount: BigUint<Api>,
     pub virtual_xoxno_reserve: BigUint<Api>,
+    pub unbound_nft: EsdtTokenPayment<Api>,
     pub block: u64,
     pub epoch: u64,
     pub timestamp: u64,

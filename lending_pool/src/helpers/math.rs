@@ -33,8 +33,6 @@ pub trait MathsModule: oracle::OracleModule + storage::LendingStorageModule {
         if borrowed_value_in_egld == &BigUint::zero() {
             return BigUint::from(u128::MAX);
         }
-        sc_print!("borrow {}", borrowed_value_in_egld);
-        sc_print!("deposi {}", weighted_collateral_in_egld);
         let health_factor = weighted_collateral_in_egld
             .mul(&BigUint::from(BP))
             .div(borrowed_value_in_egld);
@@ -311,22 +309,18 @@ pub trait MathsModule: oracle::OracleModule + storage::LendingStorageModule {
                 BigInt::from_biguint(Sign::Plus, total_debt * &target_hf / &bp),
                 EGLD_DECIMAL_PRECISION,
             );
-        sc_print!("Numerator: {}", numerator);
-        let t: ManagedDecimalSigned<<Self as ContractBase>::Api, usize> = ManagedDecimalSigned::from_raw_units(
-            BigInt::from_biguint(
-                Sign::Plus,
-                proportion_of_weighted_seized * &(&bp + liquidation_bonus) / &bp,
-            ),
-            DECIMAL_PRECISION,
-        );
+        let t: ManagedDecimalSigned<<Self as ContractBase>::Api, usize> =
+            ManagedDecimalSigned::from_raw_units(
+                BigInt::from_biguint(
+                    Sign::Plus,
+                    proportion_of_weighted_seized * &(&bp + liquidation_bonus) / &bp,
+                ),
+                DECIMAL_PRECISION,
+            );
 
-        sc_print!("t: {}", t);
         let denominator = t - target_hf_signed;
 
-        sc_print!("Denominator: {}", denominator);
         let ideal_debt_to_repay = numerator.mul(bg_signed).div(denominator);
-
-        sc_print!("ideal_debt_to_repay: {}", ideal_debt_to_repay);
         require!(
             ideal_debt_to_repay.clone().sign().eq(&Sign::Plus),
             "Debt repaid can not be negative!"
@@ -335,8 +329,7 @@ pub trait MathsModule: oracle::OracleModule + storage::LendingStorageModule {
         // 2. Calculate the maximum debt that can be liquidated based on the available collateral of the specific asset.
         // max_debt_to_liquidate = (total_collateral_of_asset * bp) / (bp + liquidation_bonus)
         let max_debt_to_liquidate = (total_collateral_all_assets * &bp) / (&bp + liquidation_bonus);
-        sc_print!("total_collateral_all_assets: {}", total_collateral_all_assets);
-        sc_print!("max_debt_to_liquidate:       {}", max_debt_to_liquidate);
+
         // 3. Determine the actual debt to be repaid, which is the minimum of what's allowed and what's ideal.
         let debt_to_repay = BigUint::min(
             max_debt_to_liquidate,
@@ -353,22 +346,9 @@ pub trait MathsModule: oracle::OracleModule + storage::LendingStorageModule {
             weighted_collateral_in_egld.clone(),
         );
 
-        sc_print!(
-            "weighted_collateral_in_egld: {}",
-            weighted_collateral_in_egld
-        );
-        sc_print!("seized_weighted:             {}", seized_weighted);
         let new_weighted = weighted_collateral_in_egld - &seized_weighted;
 
         let new_health_factor = &new_weighted * &bp / (total_debt - &debt_to_repay);
-
-        sc_print!("New HF {}", new_health_factor);
-        sc_print!("New debt left {}", (total_debt - &debt_to_repay));
-        sc_print!("New deps left {}", new_weighted);
-        sc_print!(
-            "proportion_of_weighted_seized {}",
-            proportion_of_weighted_seized
-        );
 
         (debt_to_repay, liquidation_bonus.clone(), new_health_factor)
     }
@@ -414,19 +394,18 @@ pub trait MathsModule: oracle::OracleModule + storage::LendingStorageModule {
         weighted_collateral_in_egld: BigUint,
         proportion_of_weighted_seized: &BigUint,
         total_collateral: &BigUint,
-        total_debt: BigUint,
+        total_debt: &BigUint,
         min_bonus: &BigUint,
         old_hf: &BigUint,
     ) -> (BigUint, BigUint) {
         let bp = BigUint::from(BP);
         let target_best = &bp * 2u32 / 100u32 + &bp;
-        sc_print!("Min {}", min_bonus);
         // Try to bring it to at least 1.02 HF to be in a safer position
         let (safest_debt, safest_bonus, safe_new_hf) = self.simulation_target_liquidation(
             &weighted_collateral_in_egld,
             proportion_of_weighted_seized,
             total_collateral,
-            &total_debt,
+            total_debt,
             min_bonus,
             old_hf,
             target_best,
@@ -441,7 +420,7 @@ pub trait MathsModule: oracle::OracleModule + storage::LendingStorageModule {
             &weighted_collateral_in_egld,
             proportion_of_weighted_seized,
             total_collateral,
-            &total_debt,
+            total_debt,
             min_bonus,
             old_hf,
             bp.clone(),
@@ -453,16 +432,7 @@ pub trait MathsModule: oracle::OracleModule + storage::LendingStorageModule {
 
         // When 1.02 or 1.00 targets can not be reached we consider the position as bad debt and we fallback to max_debt using min bonus.
         let max_debt_to_liquidate = (total_collateral * &bp) / (&bp + min_bonus);
-        sc_print!(
-            "Max Debt Bad: {}, min bonus {}",
-            max_debt_to_liquidate,
-            min_bonus,
-        );  
-        sc_print!(
-            "Max Tota Col: {}, min bonus {}",
-            total_collateral,
-            min_bonus,
-        );
+
         // return (max_debt_to_liquidate, min_bonus);
         return (max_debt_to_liquidate, min_bonus.clone());
     }
@@ -489,14 +459,6 @@ pub trait MathsModule: oracle::OracleModule + storage::LendingStorageModule {
         // Does a liniar scaling from the base bonus towards the max bonus based on the health factor difference
         let bonus =
             self.calculate_dynamic_liquidation_bonus(&old_hf, &target_hf, min_bonus, &max_bonus);
-
-        sc_print!(
-            "Max bonus {}, Min Bonus {}, Scaled Bonus {}, Target HF {}",
-            max_bonus,
-            min_bonus,
-            bonus,
-            target_hf,
-        );
 
         return self.calculate_liquidation(
             total_collateral,

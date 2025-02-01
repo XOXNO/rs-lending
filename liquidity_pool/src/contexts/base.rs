@@ -26,6 +26,8 @@ where
     pub borrow_index: ManagedDecimal<C::Api, NumDecimals>,
     /// The supply index.
     pub supply_index: ManagedDecimal<C::Api, NumDecimals>,
+    // Zero value
+    pub zero: ManagedDecimal<C::Api, NumDecimals>,
     /// The timestamp of the last update.
     pub last_update_timestamp: u64,
 }
@@ -37,6 +39,7 @@ where
     pub fn new(sc_ref: &'a C) -> Self {
         let params = sc_ref.pool_params().get();
         StorageCache {
+            zero: ManagedDecimal::from_raw_units(BigUint::zero(), params.decimals),
             supplied_amount: ManagedDecimal::from_raw_units(
                 sc_ref.supplied_amount().get(),
                 params.decimals,
@@ -64,7 +67,7 @@ where
     }
 }
 
-impl<'a, C> Drop for StorageCache<'a, C>
+impl<C> Drop for StorageCache<'_, C>
 where
     C: crate::storage::StorageModule,
 {
@@ -94,6 +97,13 @@ impl<'a, C> StorageCache<'a, C>
 where
     C: crate::storage::StorageModule,
 {
+    pub fn get_decimal_value(
+        &self,
+        value: &BigUint<C::Api>,
+    ) -> ManagedDecimal<C::Api, NumDecimals> {
+        ManagedDecimal::from_raw_units(value.clone(), self.pool_params.decimals)
+    }
+
     /// Returns the reserves of the pool.
     /// This is the amount of the asset that is not reserved for protocol revenue.
     /// Important as it protects the revenue from being borrowed by protocol users.

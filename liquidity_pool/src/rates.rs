@@ -1,4 +1,5 @@
 use common_constants::{BP, DECIMAL_PRECISION};
+use common_events::PoolParams;
 
 multiversx_sc::imports!();
 
@@ -18,41 +19,37 @@ pub trait InterestRateMath {
     /// - `BigUint`: The computed borrow rate.
     fn compute_borrow_rate(
         &self,
-        r_max: ManagedDecimal<Self::Api, NumDecimals>,
-        r_base: ManagedDecimal<Self::Api, NumDecimals>,
-        r_slope1: ManagedDecimal<Self::Api, NumDecimals>,
-        r_slope2: ManagedDecimal<Self::Api, NumDecimals>,
-        u_optimal: ManagedDecimal<Self::Api, NumDecimals>,
+        params: PoolParams<Self::Api>,
         u_current: ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         // Represent 1.0 in ManagedDecimal using BP (Basis Points)
         let one_dec = ManagedDecimal::from_raw_units(BigUint::from(BP), DECIMAL_PRECISION);
 
-        if u_current <= u_optimal {
+        if u_current <= params.u_optimal {
             // Calculate utilization ratio: (u_current * r_slope1) / u_optimal
-            let utilization_ratio = u_current.mul(r_slope1).div(u_optimal);
+            let utilization_ratio = u_current.mul(params.r_slope1).div(params.u_optimal);
 
             // Compute borrow rate: r_base + utilization_ratio
-            let borrow_rate_dec = r_base.add(utilization_ratio);
+            let borrow_rate_dec = params.r_base.add(utilization_ratio);
 
             // Rescale and convert back to BigUint
             borrow_rate_dec
         } else {
             // Calculate denominator: BP - u_optimal
-            let denominator = one_dec.sub(u_optimal.clone());
+            let denominator = one_dec.sub(params.u_optimal.clone());
 
             // Calculate numerator: (u_current - u_optimal) * r_slope2
-            let numerator = u_current.sub(u_optimal).mul(r_slope2);
+            let numerator = u_current.sub(params.u_optimal).mul(params.r_slope2);
 
             // Compute intermediate rate: r_base + r_slope1
-            let intermediate_rate = r_base.add(r_slope1);
+            let intermediate_rate =params.r_base.add(params.r_slope1);
 
             // Compute the final result: intermediate_rate + (numerator / denominator)
             let result = intermediate_rate.add(numerator.div(denominator));
 
             // Compare with r_max and return the minimum
-            if result > r_max {
-                r_max
+            if result > params.r_max {
+                params.r_max
             } else {
                 result
             }
@@ -97,12 +94,10 @@ pub trait InterestRateMath {
         &self,
         borrowed_amount: ManagedDecimal<Self::Api, NumDecimals>,
         total_supplied: ManagedDecimal<Self::Api, NumDecimals>,
-        decimals: usize,
+        zero: ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let zero_dec = ManagedDecimal::from_raw_units(BigUint::zero(), decimals);
-
-        if total_supplied == zero_dec {
-            zero_dec
+        if total_supplied == zero {
+            zero
         } else {
             let utilization_ratio = borrowed_amount
                 .mul(ManagedDecimal::from_raw_units(

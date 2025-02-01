@@ -80,11 +80,9 @@ pub trait LendingUtilsModule:
             let fraction = collateral_in_egld * &storage_cache.bp / total_collateral_in_egld;
             proportion_of_weighted_seized +=
                 &fraction * &dp.entry_liquidation_threshold / &storage_cache.bp;
-            sc_print!("Token {}, Bonus {}", (dp.token_id), (dp.entry_liquidation_bonus));
             weighted_bonus += fraction * &dp.entry_liquidation_bonus / &storage_cache.bp;
         }
 
-        sc_print!("weighted_bonus {}",weighted_bonus);
         (proportion_of_weighted_seized, weighted_bonus)
     }
 
@@ -112,9 +110,30 @@ pub trait LendingUtilsModule:
         total_borrow_in_egld
     }
 
+    fn get_position_by_index(
+        &self,
+        key_token: &EgldOrEsdtTokenIdentifier,
+        borrows: &ManagedVec<AccountPosition<Self::Api>>,
+        borrows_index_map: &ManagedMapEncoded<Self::Api, EgldOrEsdtTokenIdentifier, usize>,
+    ) -> AccountPosition<Self::Api> {
+        require!(
+            borrows_index_map.contains(key_token),
+            "Token {} is not part of the mapper",
+            key_token
+        );
+        let safe_index = borrows_index_map.get(key_token);
+        let index = safe_index - 1;
+        let position = borrows.get(index).clone();
+
+        position
+    }
+
     fn sum_repayments(
         &self,
         repayments: &ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
+        borrows: &ManagedVec<AccountPosition<Self::Api>>,
+        refunds: &mut ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
+        borrows_index_map: ManagedMapEncoded<Self::Api, EgldOrEsdtTokenIdentifier, usize>,
         storage_cache: &mut StorageCache<Self>,
     ) -> (
         BigUint,
@@ -122,12 +141,31 @@ pub trait LendingUtilsModule:
     ) {
         let mut total_repaid = BigUint::zero();
         let mut tokens_egld_value = ManagedVec::new();
-        for payment in repayments {
+        for mut payment in repayments.clone() {
             let token_feed = self.get_token_price(&payment.token_identifier, storage_cache);
+            let original_borrow =
+                self.get_position_by_index(&payment.token_identifier, borrows, &borrows_index_map);
+
             let token_egld_amount = self.get_token_amount_in_egld_raw(&payment.amount, &token_feed);
 
-            total_repaid += &token_egld_amount;
-            tokens_egld_value.push((payment.clone(), token_egld_amount, token_feed).into());
+            let borrowed_egld_amount =
+                self.get_token_amount_in_egld_raw(&original_borrow.get_total_amount(), &token_feed);
+
+            if token_egld_amount > borrowed_egld_amount {
+                total_repaid += &borrowed_egld_amount;
+                let egld_excess = token_egld_amount - &borrowed_egld_amount;
+                let original_excess_paid = self.compute_amount_in_tokens(&egld_excess, &token_feed);
+                payment.amount -= &original_excess_paid;
+                tokens_egld_value.push((payment.clone(), borrowed_egld_amount, token_feed).into());
+                refunds.push(EgldOrEsdtTokenPayment::new(
+                    payment.token_identifier,
+                    payment.token_nonce,
+                    original_excess_paid,
+                ));
+            } else {
+                total_repaid += &token_egld_amount;
+                tokens_egld_value.push((payment.clone(), token_egld_amount, token_feed).into());
+            }
         }
 
         (total_repaid, tokens_egld_value)
@@ -232,7 +270,7 @@ pub trait LendingUtilsModule:
     /// * `(BigUint, BigUint)` - Maximum EGLD value of the specific collateral that can be liquidated and the bonus
     fn calculate_max_debt_repayment(
         &self,
-        total_debt_in_egld: BigUint,
+        total_debt_in_egld: &BigUint,
         total_collateral_in_egld: &BigUint,
         weighted_collateral_in_egld: BigUint,
         proportion_of_weighted_seized: &BigUint,

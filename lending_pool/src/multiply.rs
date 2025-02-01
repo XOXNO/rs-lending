@@ -17,6 +17,7 @@ pub trait MultiplyModule:
     + utils::LendingUtilsModule
     + common_events::EventsModule
     + helpers::math::MathsModule
+    + helpers::strategies::StrategiesModule
 {
     // e-mode 1
     // EGLD, xEGLD, xEGLD/EGLD LP
@@ -29,46 +30,53 @@ pub trait MultiplyModule:
         leverage: &BigUint,
         e_mode_category: u8,
         collateral_token: &EgldOrEsdtTokenIdentifier,
+        debt_token: &EgldOrEsdtTokenIdentifier,
     ) {
         let bp = BigUint::from(BP);
-        let debt_payment = self.call_value().egld_or_single_esdt();
+        let payment = self.call_value().egld_or_single_esdt();
         let caller = self.blockchain().get_caller();
         let e_mode = self.validate_e_mode_exists(e_mode_category);
         self.validate_not_depracated_e_mode(&e_mode);
 
+        let mut storage_cache = StorageCache::new(self);
+
         let target = &bp * 2u32 / 100u32 + &bp; // 1.02
         let reserves_factor = &bp / 5u64; // 20%
-        self.require_asset_supported(collateral_token);
+
+        let collateral_market_sc = self.require_asset_supported(collateral_token);
+        let debt_market_sc = self.require_asset_supported(debt_token);
 
         let collateral_oracle = self.token_oracle(collateral_token).get();
+        let debt_oracle = self.token_oracle(debt_token).get();
+        let payment_oracle = self.token_oracle(&payment.token_identifier).get();
+
         let mut collateral_config = self.asset_config(collateral_token).get();
+        let mut debt_config = self.asset_config(debt_token).get();
 
-        let mut debt_config = self.asset_config(&debt_payment.token_identifier).get();
-        let asset_address = self.require_asset_supported(&debt_payment.token_identifier);
+        let collateral_price_feed = self.get_token_price(collateral_token, &mut storage_cache);
+        let debt_price_feed = self.get_token_price(debt_token, &mut storage_cache);
 
-        let debt_market_sc = self.pools_map(&debt_payment.token_identifier).get();
+        // let max_l = self.calculate_max_leverage(
+        //     &debt_payment.amount,
+        //     &target,
+        //     &e_mode,
+        //     &debt_config,
+        //     &self.get_total_reserves(debt_market_sc).get(),
+        //     &reserves_factor,
+        // );
 
-        let max_l = self.calculate_max_leverage(
-            &debt_payment.amount,
-            &target,
-            &e_mode,
-            &debt_config,
-            &self.get_total_reserves(debt_market_sc).get(),
-            &reserves_factor,
-        );
-
-        require!(
-            leverage <= &max_l,
-            "The leverage is over the maximum allowed!"
-        );
+        // require!(
+        //     leverage <= &max_l,
+        //     "The leverage is over the maximum allowed: {}!",
+        //     max_l
+        // );
 
         let (account, nft_attributes) =
             self.enter(&caller, false, false, OptionalValue::Some(e_mode_category));
         let e_mode_id = nft_attributes.e_mode_category;
         // 4. Validate e-mode constraints first
         let collateral_emode_config = self.validate_token_of_emode(e_mode_id, &collateral_token);
-        let debt_emode_config =
-            self.validate_token_of_emode(e_mode_id, &debt_payment.token_identifier);
+        let debt_emode_config = self.validate_token_of_emode(e_mode_id, &debt_token);
 
         self.validate_e_mode_not_isolated(&collateral_config, e_mode_id);
         self.validate_e_mode_not_isolated(&debt_config, e_mode_id);
@@ -88,53 +96,46 @@ pub trait MultiplyModule:
 
         require!(debt_config.can_be_borrowed, ERROR_ASSET_NOT_BORROWABLE);
 
-        require!(
-            collateral_oracle.token_type == OracleType::Derived,
-            "Looping works only via LSD or LP tokens"
+        let initial_collateral = self.process_payment_to_collateral(
+            &payment,
+            &payment_oracle,
+            collateral_token,
+            &collateral_oracle,
         );
+        let initial_egld_collateral =
+            self.get_token_amount_in_egld_raw(&initial_collateral.amount, &collateral_price_feed);
+        let final_strategy_collateral = &initial_egld_collateral * leverage / &bp;
+        let required_collateral = &final_strategy_collateral - &initial_egld_collateral;
 
-        require!(
-            debt_payment.token_identifier == collateral_oracle.first_token_id,
-            "Payment has to be the underlaying LSD token"
-        );
+        let debt_amount_to_flash_loan =
+            self.compute_amount_in_tokens(&required_collateral, &debt_price_feed);
 
-        let total_collateral = &debt_payment.amount * leverage;
-        let flash_loan_amount = &total_collateral - &debt_payment.amount;
-        let flash_fee = &flash_loan_amount * &debt_config.flash_loan_fee / &BigUint::from(BP);
-        let total_borrowed = &flash_loan_amount + &flash_fee;
+        let flash_fee = &debt_amount_to_flash_loan * &debt_config.flash_loan_fee / &bp;
+        let total_borrowed = &debt_amount_to_flash_loan + &flash_fee;
 
-        let mut storage_cache = StorageCache::new(self);
-        let feed = self.get_token_price(&debt_payment.token_identifier, &mut storage_cache);
+        self.validate_borrow_cap(&debt_config, &total_borrowed, debt_token);
 
-        self.validate_borrow_cap(
-            &debt_config,
-            &total_borrowed,
-            &debt_payment.token_identifier,
-        );
-
-        let latest_market_info = self
+        let (borrow_index, timestamp) = self
             .tx()
-            .to(asset_address)
+            .to(debt_market_sc)
             .typed(proxy_pool::LiquidityPoolProxy)
             .internal_create_strategy(
-                &debt_payment.token_identifier,
-                &flash_loan_amount,
+                debt_token,
+                &debt_amount_to_flash_loan,
                 &flash_fee,
-                &feed.price,
+                &debt_price_feed.price,
             )
             .returns(ReturnsResult)
             .sync_call();
 
-        let (borrow_index, timestamp) = latest_market_info;
-
         let mut borrow_position = self.get_or_create_borrow_position(
             account.token_nonce,
             &debt_config,
-            debt_payment.token_identifier.clone(),
+            debt_token,
             false,
         );
 
-        borrow_position.amount += &flash_loan_amount;
+        borrow_position.amount += &debt_amount_to_flash_loan;
         borrow_position.accumulated_interest += &flash_fee;
         borrow_position.index = borrow_index;
         borrow_position.timestamp = timestamp;
@@ -142,53 +143,40 @@ pub trait MultiplyModule:
         let mut borrow_positions = self.borrow_positions(account.token_nonce);
 
         self.update_position_event(
-            &flash_loan_amount,
+            &debt_amount_to_flash_loan,
             &borrow_position,
-            OptionalValue::Some(feed.price),
+            OptionalValue::Some(debt_price_feed.price),
             OptionalValue::Some(&caller),
             OptionalValue::Some(&nft_attributes),
         );
-        borrow_positions.insert(debt_payment.token_identifier, borrow_position);
+
+        borrow_positions.insert(debt_token.clone(), borrow_position);
 
         // Convert the debt token to the LSD token
+        let final_collateral = self.process_flash_loan_to_collateral(
+            &debt_token,
+            &debt_amount_to_flash_loan,
+            collateral_token,
+            &initial_collateral.amount,
+            &collateral_oracle,
+            &debt_oracle,
+        );
 
-        let collateral_payment;
-        if collateral_oracle.source == ExchangeSource::XEGLD {
-            collateral_payment = self
-                .tx()
-                .to(&collateral_oracle.contract_address)
-                .typed(xegld_proxy::LiquidStakingProxy)
-                .delegate()
-                .egld(total_collateral)
-                .returns(ReturnsBackTransfersSingleESDT)
-                .sync_call();
-        } else if collateral_oracle.source == ExchangeSource::LXOXNO {
-            collateral_payment = self
-                .tx()
-                .to(&collateral_oracle.contract_address)
-                .typed(lxoxno_proxy::RsLiquidXoxnoProxy)
-                .delegate(OptionalValue::<ManagedAddress>::None)
-                .egld_or_single_esdt(collateral_token, 0, &total_collateral)
-                .returns(ReturnsBackTransfersSingleESDT)
-                .sync_call();
-        } else {
-            panic!("Source not supported yet");
-        }
-
-        let feed_collateral = self.get_token_price(collateral_token, &mut storage_cache);
+        // sc_panic!(
+        //     "Final collateral {}, Initial {}, Borrowed: {}",
+        //     final_collateral.amount,
+        //     initial_collateral.amount,
+        //     flash_borrow.amount
+        // );
 
         self.update_supply_position(
             account.token_nonce,
-            &EgldOrEsdtTokenPayment::new(
-                EgldOrEsdtTokenIdentifier::esdt(collateral_payment.token_identifier.clone()),
-                collateral_payment.token_nonce,
-                collateral_payment.amount.clone(),
-            ),
+            &final_collateral,
             &collateral_config,
             false,
-            &feed_collateral,
             &caller,
             &nft_attributes,
+            &mut storage_cache,
         );
 
         // 4. Validate health factor after looping was created to verify integrity of healthy

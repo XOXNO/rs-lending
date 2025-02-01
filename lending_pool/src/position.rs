@@ -41,11 +41,12 @@ pub trait PositionModule:
         return_map: bool,
     ) -> (
         ManagedVec<AccountPosition<Self::Api>>,
-        ManagedMap<Self::Api>,
+        ManagedMapEncoded<Self::Api, EgldOrEsdtTokenIdentifier, usize>,
     ) {
         let borrow_positions = self.borrow_positions(account_position);
         let mut positions: ManagedVec<Self::Api, AccountPosition<Self::Api>> = ManagedVec::new();
-        let mut index_position = ManagedMap::new();
+        let mut index_position =
+            ManagedMapEncoded::<Self::Api, EgldOrEsdtTokenIdentifier, usize>::new();
         for (index, token_id) in borrow_positions.keys().enumerate() {
             let mut bp = borrow_positions.get(&token_id).unwrap();
             let asset_address = self.get_pool_address(&bp.token_id);
@@ -69,10 +70,8 @@ pub trait PositionModule:
             }
 
             if return_map {
-                index_position.put(
-                    &bp.token_id.clone().into_name(),
-                    &ManagedBuffer::new_from_bytes(&index.to_be_bytes()),
-                );
+                let safe_index = index + 1;
+                index_position.put(&bp.token_id, &safe_index);
             }
 
             self.borrow_positions(account_position)
@@ -280,10 +279,11 @@ pub trait PositionModule:
         collateral: &EgldOrEsdtTokenPayment<Self::Api>,
         asset_info: &AssetConfig<Self::Api>,
         is_vault: bool,
-        feed: &PriceFeedShort<Self::Api>,
         caller: &ManagedAddress,
         attributes: &NftAccountAttributes,
+        storage_cache: &mut StorageCache<Self>,
     ) -> AccountPosition<Self::Api> {
+        let feed = self.get_token_price(&collateral.token_identifier, storage_cache);
         let mut position = self.get_or_create_deposit_position(
             account_nonce,
             asset_info,
@@ -429,17 +429,17 @@ pub trait PositionModule:
     fn _withdraw(
         &self,
         account_nonce: u64,
-        withdraw_token_id: &EgldOrEsdtTokenIdentifier,
-        mut amount: BigUint,
+        collateral: EgldOrEsdtTokenPayment,
         caller: &ManagedAddress,
         is_liquidation: bool,
         liquidation_fee: &BigUint,
         storage_cache: &mut StorageCache<Self>,
         attributes: &NftAccountAttributes,
     ) -> AccountPosition<Self::Api> {
-        let pool_address = self.get_pool_address(withdraw_token_id);
+        let (withdraw_token_id, _, mut amount) = collateral.into_tuple();
+        let pool_address = self.get_pool_address(&withdraw_token_id);
         let mut dep_pos_map = self.deposit_positions(account_nonce);
-        let dp_opt = dep_pos_map.get(withdraw_token_id);
+        let dp_opt = dep_pos_map.get(&withdraw_token_id);
 
         require!(
             dp_opt.is_some(),
@@ -448,20 +448,18 @@ pub trait PositionModule:
         );
 
         let mut dp = dp_opt.unwrap();
-
-        let asset_data = self.get_token_price(withdraw_token_id, storage_cache);
+        // Cap withdraw amount to available balance
+        if amount > dp.get_total_amount() {
+            amount = dp.get_total_amount();
+        }
+        let asset_data = self.get_token_price(&withdraw_token_id, storage_cache);
         let position = if dp.is_vault {
-            // Cap withdraw amount to available balance
-            if amount > dp.get_total_amount() {
-                amount = dp.get_total_amount();
-            }
-
-            let last_value = self.vault_supplied_amount(withdraw_token_id).update(|am| {
+            let last_value = self.vault_supplied_amount(&withdraw_token_id).update(|am| {
                 *am -= &amount;
                 am.clone()
             });
 
-            self.update_vault_supplied_amount_event(withdraw_token_id, last_value);
+            self.update_vault_supplied_amount_event(&withdraw_token_id, last_value);
 
             dp.amount -= &amount;
 
@@ -480,7 +478,7 @@ pub trait PositionModule:
                     .to(pool_address)
                     .typed(proxy_pool::LiquidityPoolProxy)
                     .add_external_protocol_revenue(&asset_data.price)
-                    .egld_or_single_esdt(withdraw_token_id, 0, liquidation_fee)
+                    .egld_or_single_esdt(&withdraw_token_id, 0, liquidation_fee)
                     .returns(ReturnsResult)
                     .sync_call();
             } else {
@@ -522,7 +520,7 @@ pub trait PositionModule:
         if position.get_total_amount().gt(&BigUint::zero()) {
             dep_pos_map.insert(withdraw_token_id.clone(), position.clone());
         } else {
-            dep_pos_map.remove(withdraw_token_id);
+            dep_pos_map.remove(&withdraw_token_id);
         }
 
         position
@@ -596,7 +594,7 @@ pub trait PositionModule:
         let mut borrow_position = self.get_or_create_borrow_position(
             account_nonce,
             asset_config,
-            asset_to_borrow.clone(),
+            asset_to_borrow,
             account.is_vault,
         );
 
@@ -651,18 +649,18 @@ pub trait PositionModule:
         &self,
         account_nonce: u64,
         asset_info: &AssetConfig<Self::Api>,
-        token_id: EgldOrEsdtTokenIdentifier,
+        token_id: &EgldOrEsdtTokenIdentifier,
         is_vault: bool,
     ) -> AccountPosition<Self::Api> {
         let mut borrow_positions = self.borrow_positions(account_nonce);
 
-        if let Some(position) = borrow_positions.get(&token_id) {
-            borrow_positions.remove(&token_id);
+        if let Some(position) = borrow_positions.get(token_id) {
+            borrow_positions.remove(token_id);
             position
         } else {
             AccountPosition::new(
                 AccountPositionType::Borrow,
-                token_id,
+                token_id.clone(),
                 BigUint::zero(),
                 BigUint::zero(),
                 account_nonce,
@@ -854,11 +852,18 @@ pub trait PositionModule:
         ManagedVec<MultiValue2<EgldOrEsdtTokenPayment, BigUint>>, // Collateral seized
         ManagedVec<MultiValue3<EgldOrEsdtTokenPayment, BigUint, PriceFeedShort<Self::Api>>>, // Repaid tokens, egld value, price feed of each
     ) {
-        let (debt_payment_in_egld, mut repaid_tokens) =
-            self.sum_repayments(payments, storage_cache);
-
+        let mut refunds = ManagedVec::new();
         let collaterals = self.update_interest(account_nonce, storage_cache, false);
-        let (borrows, _) = self.update_debt(account_nonce, storage_cache, false, false);
+        let (borrows, map_debt_indexes) =
+            self.update_debt(account_nonce, storage_cache, false, true);
+
+        let (debt_payment_in_egld, mut repaid_tokens) = self.sum_repayments(
+            payments,
+            &borrows,
+            &mut refunds,
+            map_debt_indexes,
+            storage_cache,
+        );
 
         let (liquidation_collateral, total_collateral, _) =
             self.sum_collaterals(&collaterals, storage_cache);
@@ -872,7 +877,7 @@ pub trait PositionModule:
 
         // Calculate liquidation amount using Dutch auction mechanism
         let (max_debt_to_repay, bonus_rate) = self.calculate_max_debt_repayment(
-            borrowed_egld,
+            &borrowed_egld,
             &total_collateral,
             liquidation_collateral,
             &proportional_weighted,
@@ -882,25 +887,35 @@ pub trait PositionModule:
         );
 
         // Handle excess debt payment if any
-        let refund_debt = if debt_payment_in_egld > max_debt_to_repay {
+        // User plateste in total cu 2 tokens 100 EGLD,
+        // Option 1: totalul de 100 EGLD este mai mare decat suma necesara sa faca pozitia healthy again = over paid
+        if debt_payment_in_egld > max_debt_to_repay {
+            // Excess este total platit - max required in EGLD to recover debt = 150 - 10 EGLD = over paid 140 EGLD
             let mut excess_in_egld = &debt_payment_in_egld - &max_debt_to_repay;
-            let mut refunds = ManagedVec::new();
-
+            // Token 1 = EGLD de 100 amount
+            // Token 2 = USDC de 50 EGLD echivalent = 1000 USDC
+            // debt_payment_in_egld = 150 EGLD
             for index in 0..repaid_tokens.len() {
                 if excess_in_egld == BigUint::zero() {
                     break;
                 }
+                // Token 1 repaid = EGLD = 100 paid
+                // Token 2 repaud = 50 EDLD
                 let (mut debt_payment, mut egld_asset_amount, price_feed) =
                     repaid_tokens.get(index).clone().into_tuple();
 
+                // Daca 100 >= 140 (Token 1)
+                // Daca 50 >= 40 (Token 2)
                 if egld_asset_amount >= excess_in_egld {
                     // This flow is when the amount repaid is higher than the maximum possible
                     // We calculate how much we repaid in EGLD, then we convert to the original token
                     // We deduct from the repayment vec the amount and push to the refunds vec what needs to be sent back.
+                    // Get the USDC echivalent of the excess EGLD
                     let excess_in_original =
                         self.compute_amount_in_tokens(&excess_in_egld, &price_feed);
-                    debt_payment.amount -= &excess_in_original;
-                    egld_asset_amount -= &excess_in_egld;
+
+                    debt_payment.amount -= &excess_in_original; // Reseteaza plata de 100 de EGLD sa ramana la 100 - 90 = 10 EGLD care teoretic face match cu max_debt to repay
+                    egld_asset_amount -= &excess_in_egld; // Ramana ca tokenul valoreaza in EGLD exact 50 - 40 = 10 EGLD
                     refunds.push(EgldOrEsdtTokenPayment::new(
                         debt_payment.token_identifier.clone(),
                         0,
@@ -915,17 +930,13 @@ pub trait PositionModule:
                     // it can happen only when there is a bulk repayment of different debts in the same position
                     refunds.push(debt_payment);
                     let _ = repaid_tokens.remove(index);
-                    excess_in_egld -= egld_asset_amount;
+                    excess_in_egld -= egld_asset_amount; // Ramane la 140 - 100 = 40;
                 }
             }
-
-            Some(refunds)
-        } else {
-            None
         };
 
         // Return excess if any
-        if let Some(refunds) = refund_debt {
+        if !refunds.is_empty() {
             self.tx()
                 .to(caller)
                 .payment(refunds)
@@ -990,13 +1001,11 @@ pub trait PositionModule:
         }
 
         for collateral_data in seized_collaterals {
-            let (seized_payment, protocol_fee) = collateral_data.into_tuple();
-            sc_print!("Seized {}, Amount {}, Fee {}", (seized_payment.token_identifier), (seized_payment.amount), protocol_fee);
+            let (seized_collateral, protocol_fee) = collateral_data.into_tuple();
             // // Process withdrawal with protocol fee
             self._withdraw(
                 liquidatee_account_nonce,
-                &seized_payment.token_identifier,
-                seized_payment.amount,
+                seized_collateral,
                 caller,
                 true,
                 &protocol_fee,

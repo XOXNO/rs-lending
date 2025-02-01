@@ -57,7 +57,7 @@ pub trait ConfigModule:
                     .typed(lxoxno_proxy::RsLiquidXoxnoProxy)
                     .main_token()
                     .returns(ReturnsResult)
-                    .sync_call();
+                    .sync_call_readonly();
                 EgldOrEsdtTokenIdentifier::esdt(token_id)
             }
             ExchangeSource::XExchange => {
@@ -67,7 +67,7 @@ pub trait ConfigModule:
                     .typed(proxy_xexchange_pair::PairProxy)
                     .first_token_id()
                     .returns(ReturnsResult)
-                    .sync_call();
+                    .sync_call_readonly();
                 EgldOrEsdtTokenIdentifier::esdt(token_id)
             }
             ExchangeSource::XEGLD => EgldOrEsdtTokenIdentifier::egld(),
@@ -85,7 +85,7 @@ pub trait ConfigModule:
                     .typed(proxy_xexchange_pair::PairProxy)
                     .second_token_id()
                     .returns(ReturnsResult)
-                    .sync_call();
+                    .sync_call_readonly();
                 EgldOrEsdtTokenIdentifier::esdt(token_id)
             }
             ExchangeSource::XEGLD => first_token_id.clone(),

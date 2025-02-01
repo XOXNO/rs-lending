@@ -94,13 +94,13 @@ fn test_liquidation() {
     let liquidator = TestAddress::new("liquidator");
     state.world.account(liquidator).nonce(1).esdt_balance(
         USDC_TOKEN,
-        BigUint::from(1000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
+        BigUint::from(10000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
     );
 
     state.liquidate_account(
         &liquidator,
         &USDC_TOKEN,
-        BigUint::from(1000u64),
+        BigUint::from(10000u64),
         2,
         USDC_DECIMALS,
     );
@@ -198,9 +198,13 @@ fn test_liquidation_bad_debt_multi_asset() {
         .block_timestamp(SECONDS_PER_DAY * 1000);
     state.update_account_positions(&borrower, 2);
     let borrowed = state.get_total_borrow_in_egld(2);
+    let borrowed_EGLD = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
     let collateral = state.get_total_collateral_in_egld(2);
     let collateral_weighted = state.get_liquidation_collateral_available(2);
     let health_factor = state.get_account_health_factor(2);
+    // 46341019210806527860
+    // 139 - 46 = 93 EGLD debt via USDC
+    println!("Total EGLD TOKEN Borrowed {:?}", borrowed_EGLD);
     println!("Total EGLD Borrowed {:?}", borrowed);
     println!("Total EGLD Deposite {:?}", collateral);
     println!("Total EGLD Weighted {:?}", collateral_weighted);
@@ -307,12 +311,14 @@ fn test_liquidation_single_position() {
     state
         .world
         .current_block()
-        .block_timestamp(SECONDS_PER_DAY * 1200);
+        .block_timestamp(SECONDS_PER_DAY * 1150);
     state.update_account_positions(&borrower, 2);
+    let borrowed_egld = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
     let borrowed = state.get_total_borrow_in_egld(2);
     let collateral = state.get_total_collateral_in_egld(2);
     let collateral_weighted = state.get_liquidation_collateral_available(2);
     let health_factor = state.get_account_health_factor(2);
+    println!("Total EGLD Token Borrowed {:?}", borrowed_egld); // 70000000000000000000
     println!("Total EGLD Borrowed {:?}", borrowed);
     println!("Total EGLD Deposite {:?}", collateral);
     println!("Total EGLD Weighted {:?}", collateral_weighted);
@@ -321,7 +327,22 @@ fn test_liquidation_single_position() {
     state.liquidate_account(
         &liquidator,
         &EGLD_TOKEN,
-        BigUint::from(100u64),
+        BigUint::from(50u64),
+        2,
+        EGLD_DECIMALS,
+    );
+    let borrowed = state.get_total_borrow_in_egld(2);
+    let collateral = state.get_total_collateral_in_egld(2);
+    let collateral_weighted = state.get_liquidation_collateral_available(2);
+    let health_factor = state.get_account_health_factor(2);
+    println!("Total EGLD Borrowed {:?}", borrowed);
+    println!("Total EGLD Deposite {:?}", collateral);
+    println!("Total EGLD Weighted {:?}", collateral_weighted);
+    println!("Health Factor {:?}", health_factor);
+    state.liquidate_account(
+        &liquidator,
+        &EGLD_TOKEN,
+        BigUint::from(40u64),
         2,
         EGLD_DECIMALS,
     );

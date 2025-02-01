@@ -101,13 +101,9 @@ pub trait OracleModule: storage::LendingStorageModule {
         if is_egld {
             return self.create_price_feed(BigUint::from(10u64).pow(18u32), 18);
         }
-        if storage_cache.prices.contains(&token_id.clone().into_name()) {
-            let cached_price = storage_cache.prices.get(&token_id.clone().into_name());
-            let cached_decimals = storage_cache.decimals.get(&token_id.clone().into_name());
-            return self.create_price_feed(
-                BigUint::from_bytes_be_buffer(&cached_price),
-                cached_decimals.parse_as_u64().unwrap() as u8,
-            );
+        if storage_cache.prices_cache.contains(&token_id) {
+            let cached_price_feed = storage_cache.prices_cache.get(&token_id);
+            return self.create_price_feed(cached_price_feed.price, cached_price_feed.decimals);
         }
 
         let oracle_data = self.token_oracle(token_id);
@@ -116,15 +112,7 @@ pub trait OracleModule: storage::LendingStorageModule {
 
         let price_feed = self.find_price_feed(&oracle_data.get(), token_id, storage_cache);
 
-        storage_cache.prices.put(
-            &token_id.clone().into_name(),
-            &price_feed.price.to_bytes_be_buffer(),
-        );
-
-        storage_cache.decimals.put(
-            &token_id.clone().into_name(),
-            &ManagedBuffer::new_from_bytes(&price_feed.decimals.to_be_bytes()),
-        );
+        storage_cache.prices_cache.put(token_id, &price_feed);
 
         price_feed
     }
@@ -216,7 +204,7 @@ pub trait OracleModule: storage::LendingStorageModule {
             .typed(proxy_legld::SalsaContractProxy)
             .token_price()
             .returns(ReturnsResult)
-            .sync_call();
+            .sync_call_readonly();
 
         self.create_price_feed(ratio, configs.decimals)
     }
@@ -231,7 +219,7 @@ pub trait OracleModule: storage::LendingStorageModule {
             .typed(xegld_proxy::LiquidStakingProxy)
             .get_exchange_rate()
             .returns(ReturnsResult)
-            .sync_call();
+            .sync_call_readonly();
 
         self.create_price_feed(ratio, configs.decimals)
     }
@@ -247,7 +235,7 @@ pub trait OracleModule: storage::LendingStorageModule {
             .typed(lxoxno_proxy::RsLiquidXoxnoProxy)
             .get_exchange_rate()
             .returns(ReturnsResult)
-            .sync_call();
+            .sync_call_readonly();
 
         let feed = self.get_token_price(&configs.first_token_id, storage_cache);
         let egld_price = self.get_token_amount_in_egld_raw(&ratio, &feed);
@@ -285,7 +273,7 @@ pub trait OracleModule: storage::LendingStorageModule {
                 EsdtTokenPayment::new(token_id.clone().unwrap_esdt(), 0, one_token),
             )
             .returns(ReturnsResult)
-            .sync_call();
+            .sync_call_readonly();
 
         let new_token_id = EgldOrEsdtTokenIdentifier::esdt(result.token_identifier.clone());
         let result_ticker = self.get_token_ticker(&new_token_id);
@@ -435,7 +423,7 @@ pub trait OracleModule: storage::LendingStorageModule {
                     &BigUint::from(10u64).pow(configs.decimals as u32),
                 )
                 .returns(ReturnsResult)
-                .sync_call();
+                .sync_call_readonly();
 
             let (first_token, second_token) = tokens.into_tuple();
             let first_token_data = self.get_token_price(
@@ -491,14 +479,6 @@ pub trait OracleModule: storage::LendingStorageModule {
         require!(!round_values.is_empty(), TOKEN_PAIR_NOT_FOUND_ERROR);
 
         let price_feed = self.make_price_feed(token_pair, round_values.get());
-
-        // let price_feed = self
-        //     .tx()
-        //     .to(price_aggregator_sc)
-        //     .typed(PriceAggregatorProxy)
-        //     .latest_price_feed(from_ticker, ManagedBuffer::new_from_bytes(USD_TICKER))
-        //     .returns(ReturnsResult)
-        //     .sync_call();
 
         self.create_price_feed(price_feed.price, price_feed.decimals)
     }

@@ -889,7 +889,8 @@ fn test_borrow_asset_as_isolated_debt_celling_case() {
         2,
         USDC_DECIMALS,
     );
-
+    let total_Egld_borrow = state.get_borrow_amount_for_token(2, USDC_TOKEN);
+    println!("total_Egld_borrow: {:?}", total_Egld_borrow);
     let borrow_amount = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
     println!("borrow_amount: {:?}", borrow_amount);
     assert!(borrow_amount > BigUint::zero());
@@ -1384,7 +1385,7 @@ fn test_withdraw_auto_liquidation_protection_error() {
     state.borrow_asset(
         &borrower,
         EGLD_TOKEN,
-        BigUint::from(50u64),
+        BigUint::from(80u64),
         2,
         EGLD_DECIMALS,
     );

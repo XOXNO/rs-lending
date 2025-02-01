@@ -4,7 +4,7 @@ multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
 #[type_abi]
-#[derive(TopEncode, TopDecode)]
+#[derive(TopEncode, TopDecode, Clone)]
 pub struct PoolParams<M: ManagedTypeApi> {
     pub r_max: ManagedDecimal<M, NumDecimals>,
     pub r_base: ManagedDecimal<M, NumDecimals>,

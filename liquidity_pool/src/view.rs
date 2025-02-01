@@ -27,7 +27,7 @@ pub trait ViewModule: rates::InterestRateMath + storage::StorageModule {
         self.compute_capital_utilisation(
             storage_cache.borrowed_amount.clone(),
             storage_cache.supplied_amount.clone(),
-            storage_cache.pool_params.decimals,
+            storage_cache.zero.clone(),
         )
     }
 
@@ -128,13 +128,6 @@ pub trait ViewModule: rates::InterestRateMath + storage::StorageModule {
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let capital_utilisation = self.get_capital_utilisation_internal(storage_cache);
 
-        self.compute_borrow_rate(
-            storage_cache.pool_params.r_max.clone(),
-            storage_cache.pool_params.r_base.clone(),
-            storage_cache.pool_params.r_slope1.clone(),
-            storage_cache.pool_params.r_slope2.clone(),
-            storage_cache.pool_params.u_optimal.clone(),
-            capital_utilisation,
-        )
+        self.compute_borrow_rate(storage_cache.pool_params.clone(), capital_utilisation)
     }
 }

@@ -37,6 +37,7 @@ pub trait LendingPool:
     + views::ViewsModule
     + multiply::MultiplyModule
     + helpers::math::MathsModule
+    + helpers::strategies::StrategiesModule
     + multiversx_sc_modules::default_issue_callbacks::DefaultIssueCallbacksModule
 {
     /// Initializes the lending pool contract
@@ -48,19 +49,23 @@ pub trait LendingPool:
     #[init]
     fn init(
         &self,
-        lp_template_address: ManagedAddress,
-        aggregator: ManagedAddress,
-        safe_view_address: ManagedAddress,
-        accumulator_address: ManagedAddress,
+        lp_template_address: &ManagedAddress,
+        aggregator: &ManagedAddress,
+        safe_view_address: &ManagedAddress,
+        accumulator_address: &ManagedAddress,
+        wegld_address: &ManagedAddress,
     ) {
-        self.liq_pool_template_address().set(&lp_template_address);
-        self.price_aggregator_address().set(&aggregator);
-        self.safe_price_view().set(&safe_view_address);
-        self.accumulator_address().set(&accumulator_address);
+        self.liq_pool_template_address().set(lp_template_address);
+        self.price_aggregator_address().set(aggregator);
+        self.safe_price_view().set(safe_view_address);
+        self.accumulator_address().set(accumulator_address);
+        self.wegld_wrapper().set(wegld_address);
     }
 
     #[upgrade]
-    fn upgrade(&self) {}
+    fn upgrade(&self, wegld_address: &ManagedAddress) {
+        self.wegld_wrapper().set(wegld_address);
+    }
 
     /// Supplies collaterals to the lending pool
     ///
@@ -142,14 +147,7 @@ pub trait LendingPool:
             );
 
             // 7. Check supply caps
-            self.validate_supply_cap(
-                &asset_info,
-                &collateral.amount,
-                &collateral.token_identifier,
-                is_vault,
-            );
-
-            let feed = self.get_token_price(&collateral.token_identifier, &mut storage_cache);
+            self.validate_supply_cap(&asset_info, &collateral, is_vault);
 
             // 8. Update position and get updated state
             self.update_supply_position(
@@ -157,9 +155,9 @@ pub trait LendingPool:
                 &collateral,
                 &asset_info,
                 is_vault,
-                &feed,
                 &caller,
                 &nft_attributes,
+                &mut storage_cache,
             );
         }
     }
@@ -196,16 +194,15 @@ pub trait LendingPool:
 
         for collateral in collaterals {
             // 2. Validate payment and parameters
-            self.validate_withdraw_payment(&collateral);
+            self.validate_payment(&collateral);
 
             // 3. Process withdrawal
             self._withdraw(
                 account.token_nonce,
-                &collateral.token_identifier,
-                collateral.amount,
+                collateral,
                 &caller,
                 false, // not liquidation
-                &BigUint::zero(),
+                &BigUint::zero(), // No fees
                 &mut storage_cache,
                 &attributes,
             );
@@ -262,6 +259,7 @@ pub trait LendingPool:
 
         self.validate_borrow_account(&account, &caller);
         let e_mode = self.validate_e_mode_exists(attributes.e_mode_category);
+        self.validate_not_depracated_e_mode(&e_mode);
         for borrowed_token in borrowed_tokens {
             // 3. Validate asset supported
             self.require_asset_supported(&borrowed_token.token_identifier);
@@ -284,7 +282,6 @@ pub trait LendingPool:
             );
 
             self.validate_e_mode_not_isolated(&asset_config, attributes.e_mode_category);
-            self.validate_not_depracated_e_mode(&e_mode);
 
             // 5. Update asset config if NFT has active e-mode
             self.update_asset_config_for_e_mode(&mut asset_config, &e_mode, asset_emode_config);
@@ -331,13 +328,10 @@ pub trait LendingPool:
 
             // In case of bulk borrows we need to update the borrows array position that is used to check the eligibility of LTV vs total borrow.
             if is_bulk_borrow {
-                let token_buffer = &updated_position.token_id.clone().into_name();
-                let existing_borrow = borrow_index_mapper.contains(&token_buffer);
+                let existing_borrow = borrow_index_mapper.contains(&updated_position.token_id);
                 if existing_borrow {
-                    let index = borrow_index_mapper
-                        .get(&token_buffer)
-                        .parse_as_u64()
-                        .unwrap() as usize;
+                    let safe_index = borrow_index_mapper.get(&updated_position.token_id);
+                    let index = safe_index - 1;
                     let token_id = &borrows.get(index).token_id.clone();
                     require!(
                         token_id == &updated_position.token_id,
@@ -345,13 +339,9 @@ pub trait LendingPool:
                     );
                     let _ = borrows.set(index, updated_position);
                 } else {
-                    // Add the new borrow and save it's position index in the cache
+                    let safe_index = &borrows.len() + 1;
+                    borrow_index_mapper.put(&updated_position.token_id, &safe_index);
                     borrows.push(updated_position);
-                    let last_index = borrows.len() - 1;
-                    borrow_index_mapper.put(
-                        &token_buffer,
-                        &ManagedBuffer::new_from_bytes(&last_index.to_be_bytes()),
-                    )
                 }
             };
         }
@@ -378,7 +368,7 @@ pub trait LendingPool:
         self.require_active_account(account_nonce);
         let attributes = self.account_attributes(account_nonce).get();
         for payment in payments.iter() {
-            self.validate_repay_payment(&payment);
+            self.validate_payment(&payment);
             let feed = self.get_token_price(&payment.token_identifier, &mut storage_cache);
 
             // 3. Process repay
@@ -435,14 +425,6 @@ pub trait LendingPool:
     /// * `contract_address` - Address of contract to receive funds
     /// * `endpoint` - Endpoint to call on receiving contract
     /// * `arguments` - Arguments to pass to endpoint
-    ///
-    /// # Flow
-    /// 1. Validates flash loan is enabled for asset
-    /// 2. Validates contract is on same shard
-    /// 3. Executes flash loan through pool:
-    ///    - Transfers tokens to contract
-    ///    - Calls specified endpoint
-    ///    - Verifies repayment with fee
     ///
     ///
     #[endpoint(flashLoan)]
@@ -524,8 +506,8 @@ pub trait LendingPool:
         self.require_active_account(account_nonce);
 
         let mut storage_cache = StorageCache::new(self);
-        let (borrows, _) = self.update_debt(account_nonce, &mut storage_cache, true, false);
         let deposits = self.update_interest(account_nonce, &mut storage_cache, true);
+        let (borrows, _) = self.update_debt(account_nonce, &mut storage_cache, true, false);
         (deposits, borrows).into()
     }
 

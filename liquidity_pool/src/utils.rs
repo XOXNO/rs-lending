@@ -68,9 +68,7 @@ pub trait UtilsModule:
         rewards_increase: ManagedDecimal<Self::Api, NumDecimals>,
         storage_cache: &mut StorageCache<Self>,
     ) {
-        if storage_cache.supplied_amount
-            != ManagedDecimal::from_raw_units(BigUint::zero(), storage_cache.pool_params.decimals)
-        {
+        if storage_cache.supplied_amount != storage_cache.zero {
             let bp_dec = ManagedDecimal::from_raw_units(BigUint::from(BP), DECIMAL_PRECISION);
 
             // Convert rewards to an index increase factor
@@ -160,18 +158,13 @@ pub trait UtilsModule:
         };
 
         let accumulated_interest_dec = self.compute_interest(
-            ManagedDecimal::from_raw_units(
-                position.get_total_amount(),
-                storage_cache.pool_params.decimals,
-            ),
+            storage_cache.get_decimal_value(&position.get_total_amount()),
             &index,
             &ManagedDecimal::from_raw_units(position.index.clone(), DECIMAL_PRECISION),
         );
 
-        let accumulated_interest = accumulated_interest_dec.into_raw_units();
-
-        if accumulated_interest.gt(&BigUint::zero()) {
-            position.accumulated_interest += accumulated_interest;
+        if accumulated_interest_dec.gt(&storage_cache.zero) {
+            position.accumulated_interest += accumulated_interest_dec.into_raw_units();
             position.timestamp = storage_cache.timestamp;
             position.index = index.into_raw_units().clone();
         }
@@ -180,19 +173,15 @@ pub trait UtilsModule:
     fn calculate_principal_and_interest(
         &self,
         received_payment_amount: &ManagedDecimal<Self::Api, NumDecimals>,
-        borrow_position: &AccountPosition<Self::Api>,
+        principal_amount: ManagedDecimal<Self::Api, NumDecimals>,
         total_owed_with_interest: ManagedDecimal<Self::Api, NumDecimals>,
-        decimals: usize,
     ) -> (
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
         let principal_portion = received_payment_amount
             .clone()
-            .mul(ManagedDecimal::from_raw_units(
-                borrow_position.amount.clone(),
-                decimals,
-            ))
+            .mul(principal_amount)
             .div(total_owed_with_interest);
 
         (
