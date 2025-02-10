@@ -36,6 +36,13 @@ impl<'a, C> StorageCache<'a, C>
 where
     C: crate::storage::StorageModule,
 {
+    /// Constructs a new StorageCache by reading the current state from on-chain storage.
+    ///
+    /// # Parameters
+    /// - `sc_ref`: A reference to the contract implementing StorageModule.
+    ///
+    /// # Returns
+    /// - `StorageCache<Self>`: A new instance containing cached market state.
     pub fn new(sc_ref: &'a C) -> Self {
         let params = sc_ref.pool_params().get();
         StorageCache {
@@ -97,6 +104,13 @@ impl<'a, C> StorageCache<'a, C>
 where
     C: crate::storage::StorageModule,
 {
+    /// Converts a raw BigUint value into a ManagedDecimal using the pool's decimal precision.
+    ///
+    /// # Parameters
+    /// - `value`: The raw BigUint value from storage.
+    ///
+    /// # Returns
+    /// - `ManagedDecimal<C::Api, NumDecimals>`: The converted decimal value.
     pub fn get_decimal_value(
         &self,
         value: &BigUint<C::Api>,
@@ -104,11 +118,10 @@ where
         ManagedDecimal::from_raw_units(value.clone(), self.pool_params.decimals)
     }
 
-    /// Returns the reserves of the pool.
-    /// This is the amount of the asset that is not reserved for protocol revenue.
-    /// Important as it protects the revenue from being borrowed by protocol users.
+    /// Computes the effective reserves available (reserves minus protocol revenue).
+    ///
     /// # Returns
-    /// - `ManagedDecimal<C::Api, NumDecimals>`: The reserves of the pool.
+    /// - `ManagedDecimal<C::Api, NumDecimals>`: The available reserves.
     pub fn get_reserves(&self) -> ManagedDecimal<C::Api, NumDecimals> {
         if self.reserves_amount >= self.protocol_revenue {
             self.reserves_amount.clone() - self.protocol_revenue.clone()
@@ -117,11 +130,10 @@ where
         }
     }
 
-    /// Returns the available revenue of the pool.
-    /// This is the amount of the asset that is reserved for protocol revenue.
-    /// If the reserves are less than the protocol revenue, the available revenue is 0. (Can happen when the debt was not paid back for a long time)
+    /// Returns the available protocol revenue (minimum of protocol revenue and reserves).
+    ///
     /// # Returns
-    /// - `ManagedDecimal<C::Api, NumDecimals>`: The available revenue of the pool.
+    /// - `ManagedDecimal<C::Api, NumDecimals>`: The available protocol revenue.
     pub fn available_revenue(&self) -> ManagedDecimal<C::Api, NumDecimals> {
         ManagedDecimal::from_raw_units(
             BigUint::min(

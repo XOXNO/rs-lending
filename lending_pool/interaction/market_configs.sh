@@ -31,6 +31,19 @@ list_markets() {
     jq -r 'keys[]' "$CONFIG_FILE" | sed 's/^/- /'
 }
 
+upgrade_all_markets() {
+    # Read all market names (keys) from the configuration file into an array
+    local markets
+    IFS=$'\n' read -d '' -r -a markets < <(jq -r 'keys[]' "$CONFIG_FILE" && printf '\0')
+    
+    for market in "${markets[@]}"; do
+        echo "Upgrading market: $market"
+        upgrade_market "$market"
+        # Optionally wait a few seconds to ensure that the tx is processed before sending the next one
+        sleep 5
+    done
+}
+
 # Function to build market arguments
 build_market_args() {
     local market_name=$1
@@ -265,6 +278,9 @@ case "$1" in
             exit 1
         fi
         upgrade_market "$2"
+        ;;
+    "upgradeAllMarkets")
+        upgrade_all_markets
         ;;
     "create_oracle")
         if [ -z "$2" ]; then

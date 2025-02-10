@@ -94,84 +94,6 @@ pub trait ViewsModule:
         self.compute_health_factor(&collateral_in_egld, &borrowed_egld)
     }
 
-    /// Calculates maximum amount of collateral that can be liquidated
-    ///
-    /// # Arguments
-    /// * `account_position` - NFT nonce of the account position
-    /// * `collateral_asset` - Token identifier of collateral to liquidate
-    /// * `in_usd` - Whether to return amount in USD (true) or token units (false)
-    ///
-    /// # Returns
-    /// * `BigUint` - Maximum liquidatable amount in USD or token units
-    ///
-    /// # Errors
-    /// * `ERROR_HEALTH_FACTOR` - If position is not liquidatable (HF >= 100%)
-    ///
-    /// # Example
-    /// ```
-    /// // Position:
-    /// // Collateral: 100 EGLD @ $100 each = $10,000
-    /// // Borrows: 9000 USDC @ $1 each = $9,000
-    /// // Health Factor: 90% (unhealthy)
-    /// // Liquidation Bonus: 10%
-    ///
-    /// // In USD:
-    /// get_max_liquidate_amount_for_collateral(1, "EGLD-123456", true) = 5000
-    /// // Can liquidate $5,000 worth of collateral
-    ///
-    /// // In EGLD:
-    /// get_max_liquidate_amount_for_collateral(1, "EGLD-123456", false) = 50
-    /// // Can liquidate 50 EGLD
-    /// ```
-    // #[view(getMaxLiquidateAmountForCollateral)]
-    // fn get_max_liquidate_amount_for_collateral(
-    //     &self,
-    //     account_position: u64,
-    //     collateral_asset: &EgldOrEsdtTokenIdentifier,
-    //     debt_asset: &EgldOrEsdtTokenIdentifier,
-    //     in_egld: bool,
-    // ) -> BigUint {
-    //     let bp = BigUint::from(BP);
-
-    //     let borrowed_egld = self.get_total_borrow_in_egld(account_position);
-    //     let collateral_in_egld = self.get_liquidation_collateral_available(account_position);
-    //     let health_factor = self.compute_health_factor(&collateral_in_egld, &borrowed_egld);
-
-    //     require!(health_factor < bp, ERROR_HEALTH_FACTOR);
-
-    //     let asset_config = self.asset_config(collateral_asset).get();
-    //     // Calculate collateral to receive with bonus
-
-    //     let mut storage_cache = StorageCache::new(self);
-    //     let feed: PriceFeedShort<<Self as ContractBase>::Api> =
-    //         self.get_token_price(collateral_asset, &mut storage_cache);
-    //     let feed_debt = self.get_token_price(debt_asset, &mut storage_cache);
-
-    //     // Calculate liquidation bonus based on health factor
-
-    //     // Calculate liquidation amount using Dutch auction mechanism
-    //     let (max_repay_debt, _) = self.calculate_single_asset_liquidation_amount(
-    //         &borrowed_egld,
-    //         &collateral_in_egld,
-    //         collateral_asset,
-    //         account_position,
-    //         OptionalValue::None,
-    //         &asset_config.liquidation_base_bonus,
-    //         &health_factor,
-    //         &feed,
-    //     );
-
-    //     // Convert USD value to collateral token amount
-    //     let collateral_amount_before_bonus =
-    //         self.compute_amount_in_tokens(&max_repay_debt, &feed_debt);
-
-    //     if in_egld {
-    //         max_repay_debt
-    //     } else {
-    //         collateral_amount_before_bonus
-    //     }
-    // }
-
     /// Gets the collateral amount for a specific token
     ///
     /// # Arguments
@@ -313,6 +235,7 @@ pub trait ViewsModule:
         let mut storage_cache = StorageCache::new(self);
         let (weighted_collateral, _, _) =
             self.sum_collaterals(&deposit_positions.values().collect(), &mut storage_cache);
+
         weighted_collateral
     }
 

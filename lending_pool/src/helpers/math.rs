@@ -309,6 +309,7 @@ pub trait MathsModule: oracle::OracleModule + storage::LendingStorageModule {
                 BigInt::from_biguint(Sign::Plus, total_debt * &target_hf / &bp),
                 EGLD_DECIMAL_PRECISION,
             );
+        
         let t: ManagedDecimalSigned<<Self as ContractBase>::Api, usize> =
             ManagedDecimalSigned::from_raw_units(
                 BigInt::from_biguint(
@@ -321,6 +322,7 @@ pub trait MathsModule: oracle::OracleModule + storage::LendingStorageModule {
         let denominator = t - target_hf_signed;
 
         let ideal_debt_to_repay = numerator.mul(bg_signed).div(denominator);
+
         require!(
             ideal_debt_to_repay.clone().sign().eq(&Sign::Plus),
             "Debt repaid can not be negative!"

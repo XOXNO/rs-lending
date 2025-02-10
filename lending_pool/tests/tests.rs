@@ -15,6 +15,218 @@ use std::ops::Mul;
 
 // Basic Operations
 #[test]
+fn test_edge_case_math_rounding() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    // Setup accounts
+    state.world.current_block().block_timestamp(0);
+    setup_accounts(&mut state, supplier, borrower);
+
+    // Test supply
+    state.supply_asset(
+        &supplier,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    state.supply_asset(
+        &supplier,
+        USDC_TOKEN,
+        BigUint::from(5000u64),
+        USDC_DECIMALS,
+        OptionalValue::Some(1),
+        OptionalValue::None,
+        false,
+    );
+
+    state.borrow_asset(
+        &supplier,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        1,
+        EGLD_DECIMALS,
+    );
+
+    // Verify amounts
+    let borrowed = state.get_borrow_amount_for_token(1, EGLD_TOKEN);
+    let collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    let utilization = state.get_market_utilization(state.egld_market.clone());
+
+    assert!(borrowed > BigUint::zero());
+    assert!(collateral > BigUint::zero());
+
+    println!("borrow_amount: {:?}", borrowed); //   100000000000000000000
+    println!("supply_amount: {:?}", collateral); // 100000000000000000000
+    println!("utilization: {:?}", utilization);
+
+    state.world.current_block().block_timestamp(1111u64);
+    state.update_account_positions(&supplier, 1);
+
+    let borrowed = state.get_borrow_amount_for_token(1, EGLD_TOKEN);
+    let collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    let utilization = state.get_market_utilization(state.egld_market.clone());
+    let revenue = state.get_market_revenue(state.egld_market.clone());
+    let reserves = state.get_market_reserves(state.egld_market.clone());
+
+    println!("reserves: {:?}", &collateral + &revenue); // 100019013258769247676
+    println!("borrow_amount: {:?}", borrowed); // 100019013258769247676
+    println!("supply_amount: {:?}", collateral); // 100013309281138473374
+    println!("revenue_value: {:?}", revenue); //      5703977630774302
+    println!("utilization: {:?}", utilization);
+    assert_eq!(
+        &collateral + &revenue,
+        borrowed,
+        "Collateral + revenue not equal with borrowed!"
+    );
+    assert_eq!(reserves, BigUint::zero());
+
+    state.repay_asset_deno(&supplier, &EGLD_TOKEN, borrowed, 1);
+
+    let borrowed = state.get_borrow_amount_for_token(1, EGLD_TOKEN);
+    let collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    let utilization = state.get_market_utilization(state.egld_market.clone());
+    let revenue = state.get_market_revenue(state.egld_market.clone());
+    let reserves = state.get_market_reserves(state.egld_market.clone());
+
+    println!("reserves: {:?}", &collateral + &revenue); // 100019013258769247676
+    println!("borrow_amount: {:?}", borrowed); // 100019013258769247676
+    println!("supply_amount: {:?}", collateral); // 100013309281138473374
+    println!("revenue_value: {:?}", revenue); //      5703977630774302
+    println!("utilization: {:?}", utilization);
+    assert_eq!(
+        &collateral + &revenue,
+        reserves,
+        "Collateral + revenue not equal with reserves after repayment!"
+    );
+
+    state.withdraw_asset_den(&supplier, EGLD_TOKEN, collateral, 1);
+    let borrowed = state.get_borrow_amount_for_token(1, EGLD_TOKEN);
+    let reserves = state.get_market_reserves(state.egld_market.clone());
+    let revenue = state.get_market_revenue(state.egld_market.clone());
+
+    println!("revenue_value: {:?}", revenue); //      5703977630774302
+    println!("borrow_amount: {:?}", borrowed); // 100019013258769247676
+    assert_eq!(borrowed, BigUint::zero());
+    assert_eq!(reserves, revenue);
+}
+
+#[test]
+fn test_edge_case_math_rounding_no_compound() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    // Setup accounts
+    state.world.current_block().block_timestamp(0);
+    setup_accounts(&mut state, supplier, borrower);
+
+    // Test supply
+    state.supply_asset(
+        &supplier,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    state.supply_asset(
+        &supplier,
+        USDC_TOKEN,
+        BigUint::from(5000u64),
+        USDC_DECIMALS,
+        OptionalValue::Some(1),
+        OptionalValue::None,
+        false,
+    );
+
+    state.borrow_asset(
+        &supplier,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        1,
+        EGLD_DECIMALS,
+    );
+
+    // Verify amounts
+    let borrowed = state.get_borrow_amount_for_token(1, EGLD_TOKEN);
+    let collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    let utilization = state.get_market_utilization(state.egld_market.clone());
+
+    assert!(borrowed > BigUint::zero());
+    assert!(collateral > BigUint::zero());
+
+    println!("borrow_amount: {:?}", borrowed); //   100000000000000000000
+    println!("supply_amount: {:?}", collateral); // 100000000000000000000
+    println!("utilization: {:?}", utilization);
+
+    state.world.current_block().block_timestamp(1111u64);
+    // state.update_account_positions(&supplier, 1);
+
+    let borrowed = state.get_borrow_amount_for_token(1, EGLD_TOKEN);
+    let collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    let utilization = state.get_market_utilization(state.egld_market.clone());
+    let revenue = state.get_market_revenue(state.egld_market.clone());
+    let reserves = state.get_market_reserves(state.egld_market.clone());
+
+    println!("reserves: {:?}", &collateral + &revenue); // 100019013258769247676
+    println!("borrow_amount: {:?}", borrowed); // 100019013258769247676
+    println!("supply_amount: {:?}", collateral); // 100013309281138473374
+    println!("revenue_value: {:?}", revenue); //      5703977630774302
+    println!("utilization: {:?}", utilization);
+    assert_eq!(reserves, BigUint::zero());
+
+    state.repay_asset(&supplier, &EGLD_TOKEN, BigUint::from(105u64), 1, EGLD_DECIMALS);
+
+    let borrowed = state.get_borrow_amount_for_token(1, EGLD_TOKEN);
+    let collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    let utilization = state.get_market_utilization(state.egld_market.clone());
+    let revenue = state.get_market_revenue(state.egld_market.clone());
+    let reserves = state.get_market_reserves(state.egld_market.clone());
+
+    println!("reserves: {:?}", reserves); // 100001056186524631708
+    println!("borrow_amount: {:?}", borrowed); // 0
+    println!("supply_amount: {:?}", collateral); // 100000000000000000000
+    println!("revenue_value: {:?}", revenue); //      1056186524631708
+    println!("utilization: {:?}", utilization);
+    assert!(reserves >  &collateral + &revenue, "Reserves are not enough");
+ 
+    state.withdraw_asset(&supplier, EGLD_TOKEN, BigUint::from(1u64), 1, EGLD_DECIMALS);
+    let reserves = state.get_market_reserves(state.egld_market.clone());
+    let revenue = state.get_market_revenue(state.egld_market.clone());
+    let collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+
+    println!("reserves: {:?}", reserves); //        99003495977396530955
+    println!("supply_amount: {:?}", collateral); // 99000000000000000000
+    println!("revenue_value: {:?}", revenue); //        1056186524631708
+    assert!(reserves >  &collateral + &revenue, "Reserves are not enough");
+    state.update_account_positions(&supplier, 1);
+    let reserves = state.get_market_reserves(state.egld_market.clone());
+    let revenue = state.get_market_revenue(state.egld_market.clone());
+    let collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    println!("reserves: {:?}", reserves); //        99003495977396530955
+    println!("supply_amount: {:?}", collateral); // 99002439790871899246
+    println!("revenue_value: {:?}", revenue); //        1056186524631708
+    // assert_eq!(borrowed, BigUint::zero());
+    assert!(reserves >  &collateral + &revenue, "Reserves are not enough");
+    state.withdraw_asset_den(&supplier, EGLD_TOKEN, collateral, 1);
+    let reserves = state.get_market_reserves(state.egld_market.clone());
+    let revenue = state.get_market_revenue(state.egld_market.clone());
+    println!("reserves: {:?}", reserves); //     1056186524631709
+    println!("revenue_value: {:?}", revenue); // 1056186524631708
+
+    assert!(reserves > revenue);
+}
+
+// Basic Operations
+#[test]
 fn test_basic_supply_and_borrow() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
@@ -213,7 +425,7 @@ fn test_complete_market_exit() {
     assert!(borrow_amount_in_dollars == BigUint::zero());
     state.update_borrows_with_debt(&borrower, 2);
     // state.update_interest_indexes(&supplier, 1);
-    state.world.current_block().block_timestamp(9000u64);
+    state.world.current_block().block_timestamp(90000u64);
 
     state.withdraw_asset(
         &borrower,

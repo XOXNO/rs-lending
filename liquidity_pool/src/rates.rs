@@ -3,20 +3,25 @@ use common_events::PoolParams;
 
 multiversx_sc::imports!();
 
+/// The InterestRateMath module provides functions for calculating market rates,
+/// interest accrual, and capital utilization based on the pool parameters and current state.
 #[multiversx_sc::module]
 pub trait InterestRateMath {
-    /// Computes the borrow rate based on the current utilization.
+    /// Computes the borrow rate based on current utilization and pool parameters.
+    ///
+    /// The borrow rate is determined by a two-part model:
+    /// - When `u_current` is less than or equal to `u_optimal`, the rate is:
+    ///   `borrow_rate = r_base + (u_current * r_slope1 / u_optimal)`
+    /// - When `u_current` exceeds `u_optimal`, an extra penalty is applied:
+    ///   `borrow_rate = r_base + r_slope1 + ((u_current - u_optimal) * r_slope2 / (1 - u_optimal))`
+    /// The result is capped by `r_max`.
     ///
     /// # Parameters
-    /// - `r_max`: The maximum borrow rate.
-    /// - `r_base`: The base borrow rate.
-    /// - `r_slope1`: The slope of the borrow rate before the optimal utilization.
-    /// - `r_slope2`: The slope of the borrow rate after the optimal utilization.
-    /// - `u_optimal`: The optimal utilization ratio.
-    /// - `u_current`: The current utilization ratio.
+    /// - `params`: The pool parameters (r_max, r_base, r_slope1, r_slope2, u_optimal, reserve_factor, decimals).
+    /// - `u_current`: The current utilization ratio as a ManagedDecimal.
     ///
     /// # Returns
-    /// - `BigUint`: The computed borrow rate.
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The computed borrow rate.
     fn compute_borrow_rate(
         &self,
         params: PoolParams<Self::Api>,
@@ -42,7 +47,7 @@ pub trait InterestRateMath {
             let numerator = u_current.sub(params.u_optimal).mul(params.r_slope2);
 
             // Compute intermediate rate: r_base + r_slope1
-            let intermediate_rate =params.r_base.add(params.r_slope1);
+            let intermediate_rate = params.r_base.add(params.r_slope1);
 
             // Compute the final result: intermediate_rate + (numerator / denominator)
             let result = intermediate_rate.add(numerator.div(denominator));
@@ -56,12 +61,16 @@ pub trait InterestRateMath {
         }
     }
 
-    /// Computes the deposit rate based on the current utilization.
+    /// Computes the deposit rate for suppliers based on current utilization.
+    ///
+    /// The deposit rate represents the yield suppliers earn and is calculated as:
+    /// `deposit_rate = u_current * borrow_rate * (1 - reserve_factor)`,
+    /// ensuring that the protocol's share is excluded.
     ///
     /// # Parameters
     /// - `u_current`: The current utilization ratio.
-    /// - `borrow_rate`: The borrow rate.
-    /// - `reserve_factor`: The reserve factor.
+    /// - `borrow_rate`: The current borrow rate.
+    /// - `reserve_factor`: The reserve factor representing the protocol's fee portion.
     ///
     /// # Returns
     /// - `ManagedDecimal<Self::Api, NumDecimals>`: The computed deposit rate.
@@ -83,13 +92,16 @@ pub trait InterestRateMath {
 
     /// Computes the capital utilization of the pool.
     ///
+    /// Utilization is defined as the ratio of the borrowed amount to the total supplied amount,
+    /// scaled by the base point (BP) for precision.
+    ///
     /// # Parameters
-    /// - `borrowed_amount`: The amount of the asset borrowed.
-    /// - `total_supplied`: The total amount of the asset supplied.
-    /// - `decimals`: The number of decimals of the asset.
+    /// - `borrowed_amount`: The current borrowed amount.
+    /// - `total_supplied`: The total supplied amount.
+    /// - `zero`: A ManagedDecimal representing zero (for comparison).
     ///
     /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The capital utilization.
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The computed utilization ratio.
     fn compute_capital_utilisation(
         &self,
         borrowed_amount: ManagedDecimal<Self::Api, NumDecimals>,
@@ -110,16 +122,19 @@ pub trait InterestRateMath {
         }
     }
 
-    /// Computes the interest earned on a position.
-    /// The formula is: amount * current_index / initial_index = interest
+    /// Computes the interest accrued on a given position.
+    ///
+    /// The accrued interest is calculated using the formula:
+    /// `interest = amount * (current_index / account_position_index) - amount`.
     ///
     /// # Parameters
-    /// - `amount`: The amount of the asset.
-    /// - `current_index`: The current market index.
-    /// - `account_position_index`: The initial position index.
+    /// - `amount`: The principal amount of the asset.
+    /// - `current_index`: The current market index (reflecting compounded interest).
+    /// - `account_position_index`: The index at the time the position was last updated.
     ///
     /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The interest earned.
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The interest accrued since the last update.
+
     fn compute_interest(
         &self,
         amount: ManagedDecimal<Self::Api, NumDecimals>, // Amount of the asset

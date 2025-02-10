@@ -1,4 +1,4 @@
-use common_constants::WEGLD_TICKER;
+use common_constants::{BP, WEGLD_TICKER};
 use common_events::{ExchangeSource, OracleProvider, OracleType};
 
 use crate::{lxoxno_proxy, oracle, proxy_xexchange_pair, storage, wegld_proxy, xegld_proxy};
@@ -166,20 +166,19 @@ pub trait StrategiesModule: oracle::OracleModule + storage::LendingStorageModule
                 let is_wegld_with_egld =
                     from_is_egld && (first_token_is_wegld || second_token_is_wegld);
 
-                if is_wegld_with_egld {
-                    self.wrap_egld(from_amount);
-                }
-
-                let is_first_token = from_token == &to_provider.first_token_id;
+                let is_first_token = from_token == &to_provider.first_token_id
+                    || (from_is_egld && first_token_is_wegld);
                 // Second token should be LSD token
-                let is_second_token = from_token == &to_provider.second_token_id;
+                let is_second_token = from_token == &to_provider.second_token_id
+                    || (from_is_egld && second_token_is_wegld);
 
                 require!(
                     is_first_token || is_second_token || is_wegld_with_egld,
                     "Impossible to convert the received token to a LP position"
                 );
 
-                let lsd_token_config = if is_first_token || (from_is_egld && first_token_is_wegld) {
+                // Even if we do not have a market for WEGLD we have a token oracle configuration as a clone of EGLD one
+                let lsd_token_config = if is_first_token {
                     self.token_oracle(&to_provider.second_token_id).get()
                 } else {
                     self.token_oracle(&to_provider.first_token_id).get()
@@ -202,7 +201,7 @@ pub trait StrategiesModule: oracle::OracleModule + storage::LendingStorageModule
                     .returns(ReturnsResult)
                     .sync_call_readonly()
                     .into_tuple();
-
+              
                 let (original_remaining, to_convert_in_lsd) = if is_first_token {
                     self.calculate_fix_lp_proportions(
                         from_amount,
@@ -221,11 +220,27 @@ pub trait StrategiesModule: oracle::OracleModule + storage::LendingStorageModule
 
                 require!(
                     &(&original_remaining + &to_convert_in_lsd) == from_amount,
-                    "Amount split has dust"
+                    "Amount split has dust {}, {}, {}",
+                    original_remaining,
+                    to_convert_in_lsd,
+                    from_amount
                 );
+
 
                 let converted_lsd =
                     self.convert_to_lsd(from_token, &to_convert_in_lsd, &lsd_token_config);
+
+                if is_wegld_with_egld {
+                    self.wrap_egld(&original_remaining);
+                }
+
+                sc_panic!(
+                    "First token {}, amount {}, Second token {}, amount {}",
+                    to_provider.first_token_id,
+                    converted_lsd.amount,
+                    to_provider.second_token_id,
+                    original_remaining
+                );
 
                 let (lp_token, lp_amount) = self.create_lp_token(
                     &to_provider.contract_address,
@@ -339,20 +354,24 @@ pub trait StrategiesModule: oracle::OracleModule + storage::LendingStorageModule
 
     fn calculate_fix_lp_proportions(
         &self,
-        payment_amount: &BigUint,
-        lsd_ratio: &BigUint,            // r = how many payment tokens = 1 LSD
-        first_token_reserve: &BigUint,  // Reserve of payment token in pool
-        second_token_reserve: &BigUint, // Reserve of LSD token in pool
+        payment_amount: &BigUint, // Amount of EGLD to be split (18 decimals)
+        lsd_ratio: &BigUint,      // 1 xEGLD = lsd_ratio EGLD (18 decimals)
+        first_token_reserve: &BigUint, // EGLD reserve (18 decimals)
+        second_token_reserve: &BigUint, // xEGLD reserve (18 decimals)
     ) -> (BigUint, BigUint) {
-        // p = second_token_reserve * lsd_ratio
-        let p = second_token_reserve * lsd_ratio;
-
-        // convert_value = (payment_amount * p) / (first_token_reserve + p)
+        // p is the xEGLD reserve expressed in EGLD value:
+        let p = (second_token_reserve * lsd_ratio) / &BigUint::from(BP);
+        // To add liquidity you must deposit tokens in the same ratio as the pool:
+        //   (EGLD deposit) : (xEGLD deposit in EGLD value) = first_token_reserve : p
+        // Let x = amount to convert (which becomes the xEGLD deposit in EGLD value)
+        // and (payment_amount – x) = EGLD you keep.
+        // Then (payment_amount – x) : x = first_token_reserve : p.
+        // Solving for x gives:
+        //
+        //   x = payment_amount * p / (first_token_reserve + p)
+        //
         let convert_value = (payment_amount * &p) / (first_token_reserve + &p);
-
-        // remain_value = payment_amount - convert_value
         let remain_value = payment_amount - &convert_value;
-
         (remain_value, convert_value)
     }
 

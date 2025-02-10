@@ -16,7 +16,6 @@ use multiversx_sc_scenario::{
     api::StaticApi, DebugApi, ScenarioTxRun, ScenarioTxWhitebox, ScenarioWorld, WhiteboxContract,
 };
 use pair::config::ConfigModule;
-use position::PositionModule;
 use rs_liquid_staking_sc::{
     proxy::proxy_liquid_staking::{self, ScoringConfig},
     storage::StorageModule,
@@ -26,7 +25,7 @@ use rs_liquid_xoxno::{config::ConfigModule as XoxnoConfigModule, rs_xoxno_proxy}
 use std::ops::Mul;
 use storage::LendingStorageModule;
 
-use lending_pool::*;
+use lending_pool::{positions::update::PositionUpdateModule, *};
 use multiversx_sc::types::{
     EgldOrEsdtTokenIdentifier, EsdtLocalRole, EsdtTokenPayment, ManagedVec, TestEsdtTransfer,
 };
@@ -551,6 +550,37 @@ impl LendingPoolTestState {
             .run();
     }
 
+    pub fn withdraw_asset_den(
+        &mut self,
+        from: &TestAddress,
+        token_id: TestTokenIdentifier,
+        amount: BigUint<StaticApi>,
+        account_nonce: u64,
+    ) {
+        let transfer = EsdtTokenPayment::new(
+            ACCOUNT_TOKEN.to_token_identifier(),
+            account_nonce,
+            BigUint::from(1u64),
+        );
+
+        let asset = EgldOrEsdtTokenPayment::new(
+            EgldOrEsdtTokenIdentifier::esdt(token_id.to_token_identifier()),
+            0,
+            amount,
+        );
+        let mut array: MultiValueEncoded<StaticApi, EgldOrEsdtTokenPayment<StaticApi>> =
+            MultiValueEncoded::new();
+        array.push(asset);
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .withdraw(array)
+            .esdt(transfer)
+            .run();
+    }
+
     pub fn withdraw_asset_error(
         &mut self,
         from: &TestAddress,
@@ -651,6 +681,25 @@ impl LendingPoolTestState {
         let amount_to_repay = amount.mul(BigUint::from(10u64).pow(decimals as u32));
 
         let transfer = EsdtTokenPayment::new(token.to_token_identifier(), 0, amount_to_repay);
+
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .repay(account_nonce)
+            .esdt(transfer)
+            .run();
+    }
+
+    pub fn repay_asset_deno(
+        &mut self,
+        from: &TestAddress,
+        token: &TestTokenIdentifier,
+        amount: BigUint<StaticApi>,
+        account_nonce: u64,
+    ) {
+        let transfer = EsdtTokenPayment::new(token.to_token_identifier(), 0, amount);
 
         self.world
             .tx()
@@ -776,6 +825,37 @@ impl LendingPoolTestState {
         utilization_ratio
     }
 
+    pub fn get_market_revenue(
+        &mut self,
+        market_address: ManagedAddress<StaticApi>,
+    ) -> BigUint<StaticApi> {
+        let revenue = self
+            .world
+            .query()
+            .to(market_address)
+            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
+            .protocol_revenue()
+            .returns(ReturnsResult)
+            .run();
+
+        revenue
+    }
+
+    pub fn get_market_reserves(
+        &mut self,
+        market_address: ManagedAddress<StaticApi>,
+    ) -> BigUint<StaticApi> {
+        let reserves = self
+            .world
+            .query()
+            .to(market_address)
+            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
+            .reserves()
+            .returns(ReturnsResult)
+            .run();
+
+        reserves
+    }
     pub fn get_market_borrow_rate(
         &mut self,
         market_address: ManagedAddress<StaticApi>,

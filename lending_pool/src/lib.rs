@@ -10,7 +10,7 @@ pub mod factory;
 pub mod helpers;
 pub mod multiply;
 pub mod oracle;
-pub mod position;
+pub mod positions;
 pub mod proxies;
 pub mod router;
 pub mod storage;
@@ -18,20 +18,27 @@ pub mod utils;
 pub mod validation;
 pub mod views;
 
+use crate::contexts::base::StorageCache;
 pub use common_structs::*;
-use contexts::base::StorageCache;
 pub use errors::*;
 pub use proxies::*;
 
 #[multiversx_sc::contract]
 pub trait LendingPool:
     factory::FactoryModule
+    + positions::account::PositionAccountModule
+    + positions::deposit::PositionDepositModule
+    + positions::withdraw::PositionWithdrawModule
+    + positions::borrow::PositionBorrowModule
+    + positions::repay::PositionRepayModule
+    + positions::liquidation::PositionLiquidationModule
+    + positions::update::PositionUpdateModule
+    + positions::emode::EModeModule
     + router::RouterModule
     + config::ConfigModule
     + common_events::EventsModule
     + storage::LendingStorageModule
     + oracle::OracleModule
-    + position::PositionModule
     + validation::ValidationModule
     + utils::LendingUtilsModule
     + views::ViewsModule
@@ -103,7 +110,7 @@ pub trait LendingPool:
         let first_asset_info = self.asset_config(&first_collateral.token_identifier).get();
 
         // 3. Get or create position and NFT attributes
-        let (account_nonce, nft_attributes) = self.get_or_create_account(
+        let (account_nonce, account_attributes) = self.get_or_create_account(
             &caller,
             first_asset_info.is_isolated,
             is_vault,
@@ -111,10 +118,12 @@ pub trait LendingPool:
             account_token.clone(),
         );
 
-        self.validate_vault_consistency(&nft_attributes, is_vault);
-        let e_mode = self.validate_e_mode_exists(nft_attributes.e_mode_category);
+        self.validate_vault_consistency(&account_attributes, is_vault);
+
+        let e_mode = self.validate_e_mode_exists(account_attributes.e_mode_category);
+        self.validate_not_depracated_e_mode(&e_mode);
+
         for collateral in &collaterals {
-            // 2. Get asset info and validate it can be used as collateral
             let mut asset_info = if collateral.token_identifier == first_collateral.token_identifier
             {
                 first_asset_info.clone()
@@ -123,14 +132,12 @@ pub trait LendingPool:
             };
 
             let asset_emode_config = self.validate_token_of_emode(
-                nft_attributes.e_mode_category,
+                account_attributes.e_mode_category,
                 &collateral.token_identifier,
             );
 
-            self.validate_e_mode_not_isolated(&asset_info, nft_attributes.e_mode_category);
-            self.validate_not_depracated_e_mode(&e_mode);
+            self.validate_e_mode_not_isolated(&asset_info, account_attributes.e_mode_category);
 
-            // 5. Update asset config if NFT has active e-mode
             self.update_asset_config_for_e_mode(&mut asset_info, &e_mode, asset_emode_config);
 
             require!(
@@ -138,25 +145,22 @@ pub trait LendingPool:
                 ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL
             );
 
-            // 6. Validate isolated collateral
             self.validate_isolated_collateral(
                 account_nonce,
                 &collateral.token_identifier,
                 &asset_info,
-                &nft_attributes,
+                &account_attributes,
             );
 
-            // 7. Check supply caps
-            self.validate_supply_cap(&asset_info, &collateral, is_vault);
+            self.validate_supply_cap(&asset_info, &collateral, account_attributes.is_vault);
 
-            // 8. Update position and get updated state
             self.update_supply_position(
                 account_nonce,
                 &collateral,
                 &asset_info,
-                is_vault,
+                account_attributes.is_vault,
                 &caller,
-                &nft_attributes,
+                &account_attributes,
                 &mut storage_cache,
             );
         }
@@ -187,7 +191,9 @@ pub trait LendingPool:
         self.account_token()
             .require_same_token(&account.token_identifier);
         self.require_non_zero_address(&caller);
+
         let attributes = self.nft_attributes(account.token_nonce, &account.token_identifier);
+        self.require_active_account(account.token_nonce);
 
         let mut storage_cache = StorageCache::new(self);
         storage_cache.allow_unsafe_price = false;
@@ -197,11 +203,11 @@ pub trait LendingPool:
             self.validate_payment(&collateral);
 
             // 3. Process withdrawal
-            self._withdraw(
+            self.internal_withdraw(
                 account.token_nonce,
                 collateral,
                 &caller,
-                false, // not liquidation
+                false,            // not liquidation
                 &BigUint::zero(), // No fees
                 &mut storage_cache,
                 &attributes,
@@ -258,8 +264,10 @@ pub trait LendingPool:
         let attributes = self.nft_attributes(account.token_nonce, &account.token_identifier);
 
         self.validate_borrow_account(&account, &caller);
+
         let e_mode = self.validate_e_mode_exists(attributes.e_mode_category);
         self.validate_not_depracated_e_mode(&e_mode);
+
         for borrowed_token in borrowed_tokens {
             // 3. Validate asset supported
             self.require_asset_supported(&borrowed_token.token_identifier);
@@ -372,7 +380,7 @@ pub trait LendingPool:
             let feed = self.get_token_price(&payment.token_identifier, &mut storage_cache);
 
             // 3. Process repay
-            self._repay(
+            self.internal_repay(
                 account_nonce,
                 &payment.token_identifier,
                 &payment.amount,

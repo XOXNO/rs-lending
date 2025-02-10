@@ -13,6 +13,7 @@ pub trait FlashMock {
     #[upgrade]
     fn upgrade(&self) {}
 
+    // Success case of a flash loan repayment endpoint called by the flash action
     #[payable("*")]
     #[endpoint(flash)]
     fn flash(&self) {
@@ -28,6 +29,7 @@ pub trait FlashMock {
         self.tx().to(&caller).payment(payment).transfer();
     }
 
+    // Test a flash loan that repays only a part not all the required fees
     #[payable("*")]
     #[endpoint(flashRepaySome)]
     fn flash_repay_some(&self) {
@@ -43,6 +45,7 @@ pub trait FlashMock {
         self.tx().to(&caller).payment(payment).transfer();
     }
 
+    // Fake a scammy flash loan that is not repaying back, tests should fail
     #[payable("*")]
     #[endpoint(flashNoRepay)]
     fn flash_no_repay(&self) {}

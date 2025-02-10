@@ -3,12 +3,15 @@ multiversx_sc::derive_imports!();
 
 use crate::{contexts::base::StorageCache, rates, storage};
 
+/// The ViewModule provides read-only endpoints for retrieving key market metrics.
 #[multiversx_sc::module]
 pub trait ViewModule: rates::InterestRateMath + storage::StorageModule {
-    /// Returns the capital utilisation of the pool.
+    /// Retrieves the current capital utilization of the pool.
+    ///
+    /// Capital utilization is defined as the ratio of borrowed tokens to the total supplied tokens.
     ///
     /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The capital utilisation.
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The current utilization ratio.
     #[view(getCapitalUtilisation)]
     fn get_capital_utilisation(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
         let mut storage_cache = StorageCache::new(self);
@@ -16,10 +19,10 @@ pub trait ViewModule: rates::InterestRateMath + storage::StorageModule {
         self.get_capital_utilisation_internal(&mut storage_cache)
     }
 
-    /// Returns the capital utilisation of the pool.
+    /// Internal function to compute the capital utilization.
     ///
     /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The capital utilisation.
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The computed utilization ratio.
     fn get_capital_utilisation_internal(
         &self,
         storage_cache: &mut StorageCache<Self>,
@@ -31,8 +34,9 @@ pub trait ViewModule: rates::InterestRateMath + storage::StorageModule {
         )
     }
 
-    /// Returns the total capital of the pool.
-    /// Total capital is the sum of the reserves and the borrowed amount.
+    /// Retrieves the total capital of the pool.
+    ///
+    /// Total capital is defined as the sum of reserves and borrowed tokens.
     ///
     /// # Returns
     /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total capital.
@@ -43,11 +47,10 @@ pub trait ViewModule: rates::InterestRateMath + storage::StorageModule {
         self.get_total_capital_internal(&mut storage_cache)
     }
 
-    /// Returns the total capital of the pool.
-    /// Total capital is the sum of the reserves and the borrowed amount.
+    /// Internal function to compute total capital.
     ///
     /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total capital.
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The sum of reserves and borrowed tokens.
     fn get_total_capital_internal(
         &self,
         storage_cache: &mut StorageCache<Self>,
@@ -58,14 +61,16 @@ pub trait ViewModule: rates::InterestRateMath + storage::StorageModule {
         reserve_amount + borrowed_amount
     }
 
-    /// Returns the total interest earned (compound) for the borrowers.
+    /// Computes the total accrued interest on a borrow position.
+    ///
+    /// The interest is computed based on the difference between the current and the initial borrow index.
     ///
     /// # Parameters
-    /// - `amount`: The amount of tokens to calculate the interest for.
-    /// - `initial_borrow_index`: The initial borrow index, which is the index at the time of the borrow from the position metadata.
+    /// - `amount`: The principal amount borrowed.
+    /// - `initial_borrow_index`: The borrow index at the time of borrowing.
     ///
     /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total interest earned.
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The accrued interest.
     #[view(getDebtInterest)]
     fn get_debt_interest(
         &self,
@@ -78,10 +83,12 @@ pub trait ViewModule: rates::InterestRateMath + storage::StorageModule {
         amount * borrow_index_diff
     }
 
-    /// Returns the deposit rate of the pool.
+    /// Retrieves the current deposit rate for the pool.
+    ///
+    /// The deposit rate is derived from capital utilization, the borrow rate, and the reserve factor.
     ///
     /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The deposit rate.
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The current deposit rate.
     #[view(getDepositRate)]
     fn get_deposit_rate(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
         let mut storage_cache = StorageCache::new(self);
@@ -89,10 +96,10 @@ pub trait ViewModule: rates::InterestRateMath + storage::StorageModule {
         self.get_deposit_rate_internal(&mut storage_cache)
     }
 
-    /// Returns the deposit rate of the pool.
+    /// Internal function to compute the deposit rate.
     ///
     /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The deposit rate.
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The computed deposit rate.
     fn get_deposit_rate_internal(
         &self,
         storage_cache: &mut StorageCache<Self>,
@@ -107,10 +114,10 @@ pub trait ViewModule: rates::InterestRateMath + storage::StorageModule {
         )
     }
 
-    /// Returns the borrow rate of the pool.
+    /// Retrieves the current borrow rate for the pool.
     ///
     /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The borrow rate.
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The current borrow rate.
     #[view(getBorrowRate)]
     fn get_borrow_rate(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
         let mut storage_cache = StorageCache::new(self);
@@ -118,10 +125,10 @@ pub trait ViewModule: rates::InterestRateMath + storage::StorageModule {
         self.get_borrow_rate_internal(&mut storage_cache)
     }
 
-    /// Returns the borrow rate of the pool.
+    /// Internal function to compute the borrow rate.
     ///
     /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The borrow rate.
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The computed borrow rate.
     fn get_borrow_rate_internal(
         &self,
         storage_cache: &mut StorageCache<Self>,

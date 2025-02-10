@@ -1,23 +1,25 @@
 multiversx_sc::imports!();
 
 use crate::{
-    contexts::base::StorageCache, helpers, lxoxno_proxy, oracle, position, proxy_pool, storage,
-    utils, validation, xegld_proxy, ERROR_ASSET_NOT_BORROWABLE,
-    ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL,
+    contexts::base::StorageCache, helpers, oracle, positions, proxy_pool, storage, utils,
+    validation, ERROR_ASSET_NOT_BORROWABLE, ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL,
 };
 use common_constants::BP;
-use common_events::{ExchangeSource, OracleType};
 
 #[multiversx_sc::module]
 pub trait MultiplyModule:
     storage::LendingStorageModule
     + oracle::OracleModule
     + validation::ValidationModule
-    + position::PositionModule
     + utils::LendingUtilsModule
     + common_events::EventsModule
     + helpers::math::MathsModule
     + helpers::strategies::StrategiesModule
+    + positions::account::PositionAccountModule
+    + positions::deposit::PositionDepositModule
+    + positions::borrow::PositionBorrowModule
+    + positions::withdraw::PositionWithdrawModule
+    + positions::emode::EModeModule
 {
     // e-mode 1
     // EGLD, xEGLD, xEGLD/EGLD LP
@@ -73,6 +75,7 @@ pub trait MultiplyModule:
 
         let (account, nft_attributes) =
             self.enter(&caller, false, false, OptionalValue::Some(e_mode_category));
+
         let e_mode_id = nft_attributes.e_mode_category;
         // 4. Validate e-mode constraints first
         let collateral_emode_config = self.validate_token_of_emode(e_mode_id, &collateral_token);
@@ -102,6 +105,7 @@ pub trait MultiplyModule:
             collateral_token,
             &collateral_oracle,
         );
+
         let initial_egld_collateral =
             self.get_token_amount_in_egld_raw(&initial_collateral.amount, &collateral_price_feed);
         let final_strategy_collateral = &initial_egld_collateral * leverage / &bp;

@@ -6,18 +6,23 @@ use crate::{contexts::base::StorageCache, rates, storage, view};
 use common_constants::{BP, DECIMAL_PRECISION, SECONDS_PER_YEAR};
 use common_structs::*;
 
+/// The UtilsModule trait contains helper functions for updating interest indexes,
+/// computing interest factors, and adjusting account positions with accrued interest.
 #[multiversx_sc::module]
 pub trait UtilsModule:
     rates::InterestRateMath + storage::StorageModule + common_events::EventsModule + view::ViewModule
 {
-    /// Computes the interest factor using a Taylor series expansion up to the fourth term.
+    /// Computes the interest factor for a given time delta using a linear approximation.
+    ///
+    /// The interest factor represents the growth multiplier for interest accrual over the time interval,
+    /// based on the current borrow rate.
     ///
     /// # Parameters
-    /// - `rate`: The interest rate as a `BigUint`.
-    /// - `delta_timestamp`: The time difference in seconds.
+    /// - `storage_cache`: A mutable reference to the StorageCache containing the current market state.
+    /// - `delta_timestamp`: The time elapsed (in seconds) since the last update.
     ///
     /// # Returns
-    /// - `BigUint`: The computed interest factor.
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The computed interest factor.
     fn calculate_interest_factor(
         &self,
         storage_cache: &mut StorageCache<Self>,
@@ -41,12 +46,13 @@ pub trait UtilsModule:
         x
     }
 
-    /// Updates the borrow index for the given storage cache.
+    /// Updates the borrow index using the provided interest factor.
+    ///
+    /// This function multiplies the current borrow index by the interest factor to reflect accrued interest.
     ///
     /// # Parameters
-    /// - `borrow_rate`: The borrow rate.
-    /// - `delta_timestamp`: The time difference in seconds, between the last update and the current timestamp.
-    /// - `storage_cache`: The storage cache to update.
+    /// - `storage_cache`: The StorageCache containing current market state.
+    /// - `interest_factor`: The computed interest factor.
     fn update_borrow_index(
         &self,
         storage_cache: &mut StorageCache<Self>,
@@ -58,11 +64,14 @@ pub trait UtilsModule:
             .mul_with_precision(interest_factor.clone(), DECIMAL_PRECISION);
     }
 
-    /// Updates the supply index for the given storage cache.
+    /// Updates the supply index based on net rewards for suppliers.
+    ///
+    /// Net rewards are calculated after subtracting the protocol fee from the total accrued interest.
+    /// The supply index is updated by applying a rewards factor that increases depositors' yield.
     ///
     /// # Parameters
-    /// - `rewards_increase`: The total interest earned (compound) for the suppliers.
-    /// - `storage_cache`: The storage cache to update.
+    /// - `rewards_increase`: The net accrued interest for suppliers.
+    /// - `storage_cache`: The StorageCache containing current state.
     fn update_supply_index(
         &self,
         rewards_increase: ManagedDecimal<Self::Api, NumDecimals>,
@@ -82,15 +91,17 @@ pub trait UtilsModule:
         }
     }
 
-    /// Updates the rewards reserves for the given storage cache.
+    /// Updates the rewards reserves by computing accrued interest on borrowings.
+    ///
+    /// The function calculates the new borrowed amount by applying the interest factor, determines the total accrued interest,
+    /// computes the protocol fee using the reserve factor, updates protocol revenue, and returns the net rewards for suppliers.
     ///
     /// # Parameters
-    /// - `borrow_rate`: The borrow rate.
-    /// - `delta_timestamp`: The time difference in seconds, between the last update and the current timestamp.
-    /// - `storage_cache`: The storage cache to update.
+    /// - `storage_cache`: The StorageCache with current market data.
+    /// - `interest_factor`: The computed interest factor.
     ///
     /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total interest earned (compound) for the suppliers.
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The net accrued interest for suppliers.
     fn update_rewards_reserves(
         &self,
         storage_cache: &mut StorageCache<Self>,
@@ -117,10 +128,14 @@ pub trait UtilsModule:
         rewards_increase - revenue
     }
 
-    /// Updates the interest indexes for the given storage cache.
+    /// Updates both borrow and supply indexes based on the elapsed time.
+    ///
+    /// This function computes the interest factor from the time delta, updates the borrow index,
+    /// calculates net rewards (by updating the rewards reserves), and applies these rewards to update the supply index.
+    /// Finally, it refreshes the last update timestamp.
     ///
     /// # Parameters
-    /// - `storage_cache`: The storage cache to update.
+    /// - `storage_cache`: The StorageCache containing the current state.
     fn update_interest_indexes(&self, storage_cache: &mut StorageCache<Self>) {
         let delta_timestamp = storage_cache.timestamp - storage_cache.last_update_timestamp;
 
@@ -135,11 +150,14 @@ pub trait UtilsModule:
         }
     }
 
-    /// Updates the position with interest for the given storage cache.
+    /// Updates an account position with the accrued interest.
+    ///
+    /// For a given account position (either a deposit or borrow), this function calculates the additional interest accrued
+    /// since the position's last update and adjusts the accumulated interest, timestamp, and index accordingly.
     ///
     /// # Parameters
-    /// - `position`: The position to update.
-    /// - `storage_cache`: The storage cache to update.
+    /// - `position`: The account position to update.
+    /// - `storage_cache`: The StorageCache containing current market state.
     fn internal_update_position_with_interest(
         &self,
         position: &mut AccountPosition<Self::Api>,
@@ -170,23 +188,58 @@ pub trait UtilsModule:
         }
     }
 
-    fn calculate_principal_and_interest(
+    /// Calculates how much of the repayment goes toward interest and how much toward principal.
+    ///
+    /// The function applies the received repayment first to cover as much of the outstanding
+    /// interest as possible, and then any remaining amount is used to reduce the principal.
+    /// In the case of an overpayment, the function will cap the amounts to the outstanding balances.
+    ///
+    /// # Parameters
+    /// - `repayment`: The total repayment amount received.
+    /// - `outstanding_interest`: The total interest that is currently owed.
+    /// - `outstanding_principal`: The total principal that is currently owed.
+    /// - `total_debt`: The total debt that is currently owed.
+    ///
+    /// # Returns
+    /// A tuple containing:
+    /// - `(principal_repaid, interest_repaid)`
+    ///   - `principal_repaid`: The portion of the repayment that will reduce the principal.
+    ///   - `interest_repaid`: The portion of the repayment that will reduce the interest.
+    ///   - `over_repaid`: The portion of the repayment that will be refunded to the caller.
+    fn calculate_interest_and_principal(
         &self,
-        received_payment_amount: &ManagedDecimal<Self::Api, NumDecimals>,
-        principal_amount: ManagedDecimal<Self::Api, NumDecimals>,
-        total_owed_with_interest: ManagedDecimal<Self::Api, NumDecimals>,
+        repayment: &ManagedDecimal<Self::Api, NumDecimals>,
+        outstanding_interest: ManagedDecimal<Self::Api, NumDecimals>,
+        outstanding_principal: ManagedDecimal<Self::Api, NumDecimals>,
+        total_debt: ManagedDecimal<Self::Api, NumDecimals>,
     ) -> (
-        ManagedDecimal<Self::Api, NumDecimals>,
-        ManagedDecimal<Self::Api, NumDecimals>,
+        ManagedDecimal<Self::Api, NumDecimals>, // principal_repaid
+        ManagedDecimal<Self::Api, NumDecimals>, // interest_repaid
+        BigUint,                                // over_repaid
     ) {
-        let principal_portion = received_payment_amount
-            .clone()
-            .mul(principal_amount)
-            .div(total_owed_with_interest);
-
-        (
-            principal_portion.clone(),
-            received_payment_amount.clone() - principal_portion,
-        )
+        if repayment >= &total_debt {
+            // Full repayment with possible overpayment.
+            let over_repaid = repayment.clone() - total_debt;
+            // The entire outstanding debt is cleared.
+            (
+                outstanding_principal,
+                outstanding_interest,
+                over_repaid.into_raw_units().clone(),
+            )
+        } else {
+            // Partial repayment: first cover interest, then principal.
+            let interest_repaid = if repayment > &outstanding_interest {
+                outstanding_interest.clone()
+            } else {
+                repayment.clone()
+            };
+            let remaining = repayment.clone() - interest_repaid.clone();
+            let principal_repaid = if remaining > outstanding_principal {
+                outstanding_principal.clone()
+            } else {
+                remaining
+            };
+            (principal_repaid, interest_repaid, BigUint::zero())
+        }
     }
 }

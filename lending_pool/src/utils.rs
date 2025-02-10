@@ -204,28 +204,6 @@ pub trait LendingUtilsModule:
         self.update_debt_ceiling_event(token_id, map.get());
     }
 
-    /// Gets NFT attributes for an account position
-    ///
-    /// # Arguments
-    /// * `account_nonce` - NFT nonce of the position
-    /// * `token_id` - NFT token identifier
-    ///
-    /// # Returns
-    /// * `NftAccountAttributes` - Decoded NFT attributes
-    fn nft_attributes(
-        &self,
-        account_nonce: u64,
-        token_id: &TokenIdentifier<Self::Api>,
-    ) -> NftAccountAttributes {
-        let data = self.blockchain().get_esdt_token_data(
-            &self.blockchain().get_sc_address(),
-            token_id,
-            account_nonce,
-        );
-
-        data.decode_attributes::<NftAccountAttributes>()
-    }
-
     /// Updates account position with interest
     /// - Updates position's interest amount
     /// - Updates position's last interest update timestamp
