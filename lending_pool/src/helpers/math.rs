@@ -122,45 +122,6 @@ pub trait MathsModule: oracle::OracleModule + storage::LendingStorageModule {
         tolerances
     }
 
-    /// Calculates a dynamic protocol fee based on position health
-    ///
-    /// # Arguments
-    /// * `health_factor` - Current health factor in basis points (10^21 = 100%)
-    /// * `base_protocol_fee` - Base protocol fee in basis points (10^21 = 100%)
-    ///
-    /// # Returns
-    /// * `BigUint` - Final protocol fee in basis points
-    fn calculate_dynamic_protocol_fee(
-        &self,
-        health_factor: &BigUint,
-        base_protocol_fee: &BigUint,
-    ) -> BigUint {
-        let bp = BigUint::from(BP);
-        let max_bonus = BigUint::from(MAX_BONUS); // 30%
-        let threshold = &bp * &BigUint::from(9u64) / &BigUint::from(10u64); // 90% threshold
-
-        // Only start reducing fee when health factor < 90% of BP
-        if health_factor > &threshold {
-            return base_protocol_fee.clone();
-        }
-
-        // Calculate how far below 90% the HF is
-        let distance_from_threshold = &threshold - health_factor;
-
-        // Similar to bonus calculation, multiply by 2 for steeper reduction
-        let health_factor_impact = distance_from_threshold.mul(2u64);
-
-        // Calculate fee reduction based on how unhealthy the position is
-        // More unhealthy = bigger fee reduction to incentivize quick liquidation
-        let fee_reduction = BigUint::min(&health_factor_impact * base_protocol_fee / bp, max_bonus);
-
-        // Ensure we never reduce more than 50% of the base fee
-        let max_allowed_reduction = base_protocol_fee / &BigUint::from(2u64);
-        let final_reduction = BigUint::min(fee_reduction, max_allowed_reduction);
-
-        base_protocol_fee - &final_reduction
-    }
-
     /// Calculates a dynamic liquidation bonus based on the current health factor
     ///
     /// # Arguments
@@ -353,30 +314,6 @@ pub trait MathsModule: oracle::OracleModule + storage::LendingStorageModule {
         let new_health_factor = &new_weighted * &bp / (total_debt - &debt_to_repay);
 
         (debt_to_repay, liquidation_bonus.clone(), new_health_factor)
-    }
-
-    /// Calculates the protocol fee for a liquidation based on the bonus amount
-    ///
-    /// # Arguments
-    /// * `collateral_amount_after_bonus` - Total collateral amount including the liquidation bonus
-    /// * `collateral_amount_before_bonus` - Original collateral amount without the bonus
-    /// * `asset_config` - Configuration of the collateral asset being liquidated
-    /// * `health_factor` - Current health factor of the position
-    ///
-    /// # Returns
-    /// * `BigUint` - Amount that goes to the protocol as fee
-    fn calculate_liquidation_fees(
-        &self,
-        liq_bonus_amount: &BigUint,
-        asset_config: &AssetConfig<Self::Api>,
-        health_factor: &BigUint,
-    ) -> BigUint {
-        // Calculate dynamic protocol fee based on health factor
-        let dynamic_fee =
-            self.calculate_dynamic_protocol_fee(health_factor, &asset_config.liquidation_max_fee);
-
-        // Calculate protocol's share of the bonus based on dynamic fee
-        liq_bonus_amount * &dynamic_fee / &BigUint::from(BP)
     }
 
     /// Estimates the amount of debt to repay and collateral to seize during liquidation

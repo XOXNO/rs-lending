@@ -305,23 +305,6 @@ impl LendingPoolTestState {
             .run();
     }
 
-    pub fn calculate_dynamic_protocol_fee(
-        &mut self,
-        health_factor: BigUint<DebugApi>,
-        base_protocol_fee: BigUint<DebugApi>,
-    ) -> BigUint<DebugApi> {
-        let mut result: BigUint<DebugApi> = BigUint::zero();
-        self.world
-            .query()
-            .to(self.lending_sc.clone())
-            .returns(ReturnsResult)
-            .whitebox(lending_pool::contract_obj, |sc| {
-                result = sc.calculate_dynamic_protocol_fee(&health_factor, &base_protocol_fee);
-                println!("Result: {:?}", result);
-            });
-        result
-    }
-
     pub fn get_usd_price_error(&mut self, token_id: TestTokenIdentifier, error_message: &[u8]) {
         self.world
             .query()

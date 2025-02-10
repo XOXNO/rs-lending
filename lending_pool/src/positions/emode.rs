@@ -1,11 +1,9 @@
 use common_events::{AssetConfig, EModeAssetConfig, EModeCategory};
 
 use crate::{
-    helpers, oracle, storage, utils, validation, ERROR_CANNOT_USE_EMODE_WITH_ISOLATED_ASSETS,
-    ERROR_EMODE_CATEGORY_DEPRECATED, ERROR_EMODE_CATEGORY_NOT_FOUND,
+    storage, ERROR_CANNOT_USE_EMODE_WITH_ISOLATED_ASSETS, ERROR_EMODE_CATEGORY_DEPRECATED,
+    ERROR_EMODE_CATEGORY_NOT_FOUND,
 };
-
-use super::{account, borrow, repay, update, withdraw};
 
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();

@@ -1,7 +1,4 @@
-use common_constants::BP;
-use common_events::{
-    AccountPosition, AccountPositionType, AssetConfig, NftAccountAttributes, PriceFeedShort,
-};
+use common_events::{AccountPosition, NftAccountAttributes, PriceFeedShort};
 
 use crate::{
     contexts::base::StorageCache, helpers, oracle, proxy_pool, storage, utils, validation,
