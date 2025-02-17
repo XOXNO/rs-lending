@@ -1,7 +1,8 @@
-use common_events::{AccountPosition, NftAccountAttributes, PriceFeedShort};
+use common_structs::{AccountPosition, NftAccountAttributes, PriceFeedShort};
 
 use crate::{
     contexts::base::StorageCache, helpers, oracle, proxy_pool, storage, utils, validation,
+    WAD_PRECISION,
 };
 
 use super::{account, borrow};
@@ -19,6 +20,7 @@ pub trait PositionRepayModule:
     + helpers::math::MathsModule
     + account::PositionAccountModule
     + borrow::PositionBorrowModule
+    + common_math::SharedMathModule
 {
     /// Processes repayment for a borrow position through liquidity pool
     ///
@@ -40,7 +42,7 @@ pub trait PositionRepayModule:
         &self,
         account_nonce: u64,
         repay_token_id: &EgldOrEsdtTokenIdentifier,
-        repay_amount: &BigUint,
+        repay_amount: &ManagedDecimal<Self::Api, NumDecimals>,
         caller: &ManagedAddress,
         mut borrow_position: AccountPosition<Self::Api>,
         debt_token_price_data: &PriceFeedShort<Self::Api>,
@@ -54,9 +56,9 @@ pub trait PositionRepayModule:
             .repay(
                 caller,
                 borrow_position.clone(),
-                &debt_token_price_data.price,
+                debt_token_price_data.price.clone(),
             )
-            .egld_or_single_esdt(repay_token_id, 0, repay_amount)
+            .egld_or_single_esdt(repay_token_id, 0, repay_amount.into_raw_units())
             .returns(ReturnsResult)
             .sync_call();
 
@@ -71,7 +73,13 @@ pub trait PositionRepayModule:
             OptionalValue::Some(attributes),
         );
 
-        if borrow_position.get_total_amount().gt(&BigUint::zero()) {
+        if borrow_position
+            .get_total_amount()
+            .gt(&ManagedDecimal::from_raw_units(
+                BigUint::zero(),
+                debt_token_price_data.decimals as usize,
+            ))
+        {
             borrow_positions.insert(repay_token_id.clone(), borrow_position);
         } else {
             borrow_positions.remove(repay_token_id);
@@ -92,7 +100,7 @@ pub trait PositionRepayModule:
         account_nonce: u64,
         position: &mut AccountPosition<Self::Api>,
         feed: &PriceFeedShort<Self::Api>,
-        repay_amount: &BigUint,
+        repay_amount: &ManagedDecimal<Self::Api, NumDecimals>,
         storage_cache: &mut StorageCache<Self>,
         attributes: &NftAccountAttributes,
     ) {
@@ -117,7 +125,7 @@ pub trait PositionRepayModule:
 
             self.update_isolated_debt_usd(
                 &collateral_token_id,
-                &debt_usd_amount,
+                debt_usd_amount,
                 false, // is_decrease
             );
         }
@@ -144,9 +152,9 @@ pub trait PositionRepayModule:
         &self,
         account_nonce: u64,
         repay_token_id: &EgldOrEsdtTokenIdentifier,
-        repay_amount: &BigUint,
+        repay_amount: &ManagedDecimal<Self::Api, NumDecimals>,
         caller: &ManagedAddress,
-        repay_amount_in_egld: BigUint,
+        repay_amount_in_egld: ManagedDecimal<Self::Api, NumDecimals>,
         debt_token_price_data: &PriceFeedShort<Self::Api>,
         storage_cache: &mut StorageCache<Self>,
         attributes: &NftAccountAttributes,
@@ -191,21 +199,25 @@ pub trait PositionRepayModule:
         &self,
         borrow_position: &AccountPosition<Self::Api>,
         debt_token_price_data: &PriceFeedShort<Self::Api>,
-        amount_to_repay_in_egld: &BigUint,
-    ) -> BigUint {
+        amount_to_repay_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let interest_egld_amount = self.get_token_amount_in_egld_raw(
             &borrow_position.accumulated_interest,
-            debt_token_price_data,
+            &debt_token_price_data.price,
         );
 
-        let total_principal_borrowed_egld_amount =
-            self.get_token_amount_in_egld_raw(&borrow_position.amount, debt_token_price_data);
+        let total_principal_borrowed_egld_amount = self
+            .get_token_amount_in_egld_raw(&borrow_position.amount, &debt_token_price_data.price);
 
         let principal_egld_amount = if amount_to_repay_in_egld > &interest_egld_amount {
-            (amount_to_repay_in_egld - &interest_egld_amount)
-                .min(total_principal_borrowed_egld_amount)
+            let diff = amount_to_repay_in_egld.clone() - interest_egld_amount;
+            return if diff > total_principal_borrowed_egld_amount {
+                total_principal_borrowed_egld_amount
+            } else {
+                diff
+            };
         } else {
-            BigUint::zero()
+            ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION)
         };
 
         principal_egld_amount

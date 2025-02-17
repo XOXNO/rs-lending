@@ -4,7 +4,6 @@ use crate::{
     contexts::base::StorageCache, helpers, oracle, positions, proxy_pool, storage, utils,
     validation, ERROR_ASSET_NOT_BORROWABLE, ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL,
 };
-use common_constants::BP;
 
 #[multiversx_sc::module]
 pub trait MultiplyModule:
@@ -20,6 +19,7 @@ pub trait MultiplyModule:
     + positions::borrow::PositionBorrowModule
     + positions::withdraw::PositionWithdrawModule
     + positions::emode::EModeModule
+    + common_math::SharedMathModule
 {
     // e-mode 1
     // EGLD, xEGLD, xEGLD/EGLD LP
@@ -29,21 +29,21 @@ pub trait MultiplyModule:
     #[endpoint]
     fn multiply(
         &self,
-        leverage: &BigUint,
+        leverage_raw: BigUint,
         e_mode_category: u8,
         collateral_token: &EgldOrEsdtTokenIdentifier,
         debt_token: &EgldOrEsdtTokenIdentifier,
     ) {
-        let bp = BigUint::from(BP);
+        let wad = self.wad();
         let payment = self.call_value().egld_or_single_esdt();
         let caller = self.blockchain().get_caller();
         let e_mode = self.validate_e_mode_exists(e_mode_category);
         self.validate_not_depracated_e_mode(&e_mode);
-
+        let leverage = self.to_decimal_wad(leverage_raw);
         let mut storage_cache = StorageCache::new(self);
 
-        let target = &bp * 2u32 / 100u32 + &bp; // 1.02
-        let reserves_factor = &bp / 5u64; // 20%
+        let target = wad.clone() * self.to_decimal_wad(BigUint::from(2u32)) / 100 + wad.clone(); // 1.02
+        let reserves_factor = wad.clone() / 5; // 20%
 
         let collateral_market_sc = self.require_asset_supported(collateral_token);
         let debt_market_sc = self.require_asset_supported(debt_token);
@@ -106,16 +106,26 @@ pub trait MultiplyModule:
             &collateral_oracle,
         );
 
-        let initial_egld_collateral =
-            self.get_token_amount_in_egld_raw(&initial_collateral.amount, &collateral_price_feed);
-        let final_strategy_collateral = &initial_egld_collateral * leverage / &bp;
-        let required_collateral = &final_strategy_collateral - &initial_egld_collateral;
+        let initial_collateral_amount_dec = ManagedDecimal::from_raw_units(
+            initial_collateral.amount.clone(),
+            collateral_price_feed.decimals as usize,
+        );
+
+        let initial_egld_collateral = self.get_token_amount_in_egld_raw(
+            &initial_collateral_amount_dec,
+            &collateral_price_feed.price,
+        );
+        let final_strategy_collateral =
+            initial_egld_collateral.clone() * leverage / storage_cache.wad_dec.clone();
+        let required_collateral = final_strategy_collateral - initial_egld_collateral;
 
         let debt_amount_to_flash_loan =
-            self.compute_amount_in_tokens(&required_collateral, &debt_price_feed);
+            self.compute_egld_in_tokens(&required_collateral, &debt_price_feed);
 
-        let flash_fee = &debt_amount_to_flash_loan * &debt_config.flash_loan_fee / &bp;
-        let total_borrowed = &debt_amount_to_flash_loan + &flash_fee;
+        let flash_fee = debt_amount_to_flash_loan.clone() * debt_config.flash_loan_fee.clone()
+            / storage_cache.bps_dec.clone();
+
+        let total_borrowed = debt_amount_to_flash_loan.clone() + flash_fee.clone();
 
         self.validate_borrow_cap(&debt_config, &total_borrowed, debt_token);
 
@@ -125,9 +135,9 @@ pub trait MultiplyModule:
             .typed(proxy_pool::LiquidityPoolProxy)
             .internal_create_strategy(
                 debt_token,
-                &debt_amount_to_flash_loan,
-                &flash_fee,
-                &debt_price_feed.price,
+                debt_amount_to_flash_loan.clone(),
+                flash_fee.clone(),
+                debt_price_feed.price.clone(),
             )
             .returns(ReturnsResult)
             .sync_call();
@@ -159,7 +169,7 @@ pub trait MultiplyModule:
         // Convert the debt token to the LSD token
         let final_collateral = self.process_flash_loan_to_collateral(
             &debt_token,
-            &debt_amount_to_flash_loan,
+            debt_amount_to_flash_loan.into_raw_units(),
             collateral_token,
             &initial_collateral.amount,
             &collateral_oracle,

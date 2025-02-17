@@ -1,6 +1,7 @@
-use common_constants::{BP, TOTAL_BORROWED_AMOUNT_STORAGE_KEY};
+use common_constants::{RAY, TOTAL_BORROWED_AMOUNT_STORAGE_KEY};
 use common_events::{
     AccountPosition, AccountPositionType, AssetConfig, NftAccountAttributes, PriceFeedShort,
+    RAY_PRECISION,
 };
 use multiversx_sc::storage::StorageKey;
 
@@ -24,6 +25,7 @@ pub trait PositionBorrowModule:
     + utils::LendingUtilsModule
     + helpers::math::MathsModule
     + account::PositionAccountModule
+    + common_math::SharedMathModule
 {
     /// Processes borrow operation
     ///
@@ -48,8 +50,8 @@ pub trait PositionBorrowModule:
         &self,
         account_nonce: u64,
         asset_to_borrow: &EgldOrEsdtTokenIdentifier,
-        amount: &BigUint,
-        amount_in_usd: &BigUint,
+        amount: ManagedDecimal<Self::Api, NumDecimals>,
+        amount_in_usd: ManagedDecimal<Self::Api, NumDecimals>,
         caller: &ManagedAddress,
         asset_config: &AssetConfig<Self::Api>,
         account: &NftAccountAttributes,
@@ -71,7 +73,7 @@ pub trait PositionBorrowModule:
             .tx()
             .to(pool_address)
             .typed(proxy_pool::LiquidityPoolProxy)
-            .borrow(caller, amount, borrow_position, &feed.price)
+            .borrow(caller, amount, borrow_position, feed.price.clone())
             .returns(ReturnsResult)
             .sync_call();
 
@@ -83,11 +85,11 @@ pub trait PositionBorrowModule:
             self.validate_isolated_debt_ceiling(
                 &collateral_config,
                 collateral_token_id,
-                &amount_in_usd,
+                amount_in_usd.clone(),
             );
             self.update_isolated_debt_usd(
                 collateral_token_id,
-                &amount_in_usd,
+                amount_in_usd,
                 true, // is_increase
             );
         }
@@ -126,14 +128,15 @@ pub trait PositionBorrowModule:
             borrow_positions.remove(token_id);
             position
         } else {
+            let price_data = self.token_oracle(token_id).get();
             AccountPosition::new(
                 AccountPositionType::Borrow,
                 token_id.clone(),
-                BigUint::zero(),
-                BigUint::zero(),
+                ManagedDecimal::from_raw_units(BigUint::zero(), price_data.decimals as usize),
+                ManagedDecimal::from_raw_units(BigUint::zero(), price_data.decimals as usize),
                 account_nonce,
                 self.blockchain().get_block_timestamp(),
-                BigUint::from(BP),
+                ManagedDecimal::from_raw_units(BigUint::from(RAY), RAY_PRECISION),
                 asset_info.liquidation_threshold.clone(),
                 asset_info.liquidation_base_bonus.clone(),
                 asset_info.liquidation_max_fee.clone(),
@@ -182,7 +185,7 @@ pub trait PositionBorrowModule:
     fn validate_borrow_cap(
         &self,
         asset_config: &AssetConfig<Self::Api>,
-        amount: &BigUint,
+        amount: &ManagedDecimal<Self::Api, NumDecimals>,
         asset: &EgldOrEsdtTokenIdentifier,
     ) {
         if asset_config.borrow_cap.is_some() {
@@ -190,14 +193,18 @@ pub trait PositionBorrowModule:
             let borrow_cap = asset_config.borrow_cap.clone().unwrap();
             let total_borrow = self.get_total_borrow(pool).get();
 
-            require!(total_borrow + amount <= borrow_cap, ERROR_BORROW_CAP);
+            require!(
+                total_borrow.clone() + amount.clone()
+                    <= ManagedDecimal::from_raw_units(borrow_cap, total_borrow.scale()),
+                ERROR_BORROW_CAP
+            );
         }
     }
 
     fn get_total_borrow(
         &self,
         pair_address: ManagedAddress,
-    ) -> SingleValueMapper<BigUint, ManagedAddress> {
+    ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>, ManagedAddress> {
         SingleValueMapper::<_, _, ManagedAddress>::new_from_address(
             pair_address,
             StorageKey::new(TOTAL_BORROWED_AMOUNT_STORAGE_KEY),
@@ -215,12 +222,13 @@ pub trait PositionBorrowModule:
     /// to cover existing and new borrows
     fn validate_borrow_collateral(
         &self,
-        ltv_collateral_in_egld: &BigUint,
-        borrowed_amount_in_egld: &BigUint,
-        amount_to_borrow_in_egld: &BigUint,
+        ltv_collateral_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
+        borrowed_amount_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
+        amount_to_borrow_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
     ) {
         require!(
-            ltv_collateral_in_egld >= &(borrowed_amount_in_egld + amount_to_borrow_in_egld),
+            ltv_collateral_in_egld
+                >= &(borrowed_amount_in_egld.clone() + amount_to_borrow_in_egld.clone()),
             ERROR_INSUFFICIENT_COLLATERAL
         );
     }
@@ -241,23 +249,30 @@ pub trait PositionBorrowModule:
     /// Calculates EGLD values and validates collateral sufficiency
     fn validate_and_get_borrow_amounts(
         &self,
-        ltv_collateral: &BigUint,
+        ltv_collateral: &ManagedDecimal<Self::Api, NumDecimals>,
         asset_to_borrow: &EgldOrEsdtTokenIdentifier,
-        amount: &BigUint,
+        amount_raw: &BigUint,
         borrow_positions: &ManagedVec<AccountPosition<Self::Api>>,
         storage_cache: &mut StorageCache<Self>,
-    ) -> (BigUint, PriceFeedShort<Self::Api>) {
+    ) -> (
+        ManagedDecimal<Self::Api, NumDecimals>,
+        PriceFeedShort<Self::Api>,
+        ManagedDecimal<Self::Api, NumDecimals>,
+    ) {
         let asset_data_feed = self.get_token_price(asset_to_borrow, storage_cache);
-        let egld_amount = self.get_token_amount_in_egld_raw(amount, &asset_data_feed);
+        let amount =
+            ManagedDecimal::from_raw_units(amount_raw.clone(), asset_data_feed.decimals as usize);
+
+        let egld_amount = self.get_token_amount_in_egld_raw(&amount, &asset_data_feed.price);
 
         let egld_total_borrowed = self.sum_borrows(borrow_positions, storage_cache);
 
-        self.validate_borrow_collateral(&ltv_collateral, &egld_total_borrowed, &egld_amount);
+        self.validate_borrow_collateral(ltv_collateral, &egld_total_borrowed, &egld_amount);
 
-        let amount_in_usd =
-            self.get_token_amount_in_dollars_raw(&egld_amount, &storage_cache.egld_price_feed);
+        let amount_in_usd = self
+            .get_token_amount_in_dollars_raw(&egld_amount, &storage_cache.egld_price_feed);
 
-        (amount_in_usd, asset_data_feed)
+        (amount_in_usd, asset_data_feed, amount)
     }
 
     /// Validates borrowing constraints for an asset
@@ -353,7 +368,7 @@ pub trait PositionBorrowModule:
         &self,
         asset_config: &AssetConfig<Self::Api>,
         token_id: &EgldOrEsdtTokenIdentifier,
-        amount_to_borrow_in_dollars: &BigUint,
+        amount_to_borrow_in_dollars: ManagedDecimal<Self::Api, NumDecimals>,
     ) {
         let current_debt = self.isolated_asset_debt_usd(token_id).get();
         let total_debt = current_debt + amount_to_borrow_in_dollars;

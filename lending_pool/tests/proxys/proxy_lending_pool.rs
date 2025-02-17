@@ -424,8 +424,9 @@ where
         Arg16: ProxyArg<bool>,
         Arg17: ProxyArg<bool>,
         Arg18: ProxyArg<bool>,
-        Arg19: ProxyArg<OptionalValue<BigUint<Env::Api>>>,
+        Arg19: ProxyArg<usize>,
         Arg20: ProxyArg<OptionalValue<BigUint<Env::Api>>>,
+        Arg21: ProxyArg<OptionalValue<BigUint<Env::Api>>>,
     >(
         self,
         base_asset: Arg0,
@@ -447,8 +448,9 @@ where
         is_siloed: Arg16,
         flashloan_enabled: Arg17,
         can_borrow_in_isolation: Arg18,
-        borrow_cap: Arg19,
-        supply_cap: Arg20,
+        decimals: Arg19,
+        borrow_cap: Arg20,
+        supply_cap: Arg21,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
@@ -472,6 +474,7 @@ where
             .argument(&is_siloed)
             .argument(&flashloan_enabled)
             .argument(&can_borrow_in_isolation)
+            .argument(&decimals)
             .argument(&borrow_cap)
             .argument(&supply_cap)
             .original_result()
@@ -1024,7 +1027,7 @@ where
     >(
         self,
         token_id: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getIsolatedAssetDebtUsd")
@@ -1039,7 +1042,7 @@ where
     >(
         self,
         token_id: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getVaultSuppliedAmount")
@@ -1085,19 +1088,6 @@ where
             .original_result()
     }
 
-    pub fn get_all_markets<
-        Arg0: ProxyArg<MultiValueEncoded<Env::Api, EgldOrEsdtTokenIdentifier<Env::Api>>>,
-    >(
-        self,
-        tokens: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedVec<Env::Api, common_structs::AssetExtendedConfigView<Env::Api>>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getAllMarkets")
-            .argument(&tokens)
-            .original_result()
-    }
-
     /// Checks if an account position can be liquidated 
     ///  
     /// # Arguments 
@@ -1106,19 +1096,6 @@ where
     /// # Returns 
     /// * `bool` - True if position can be liquidated (health factor < 100%) 
     ///  
-    /// # Example 
-    /// ``` 
-    /// // Position 1: Healthy 
-    /// // Collateral: $150 weighted 
-    /// // Borrows: $100 
-    /// // Health Factor: 150% (15000 bp) 
-    /// can_be_liquidated(1) = false 
-    ///  
-    /// // Position 2: Unhealthy 
-    /// // Collateral: $90 weighted 
-    /// // Borrows: $100 
-    /// // Health Factor: 90% (9000 bp) 
-    /// can_be_liquidated(2) = true 
     /// ``` 
     pub fn can_be_liquidated<
         Arg0: ProxyArg<u64>,
@@ -1158,7 +1135,7 @@ where
     >(
         self,
         account_position: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getHealthFactor")
@@ -1166,35 +1143,6 @@ where
             .original_result()
     }
 
-    /// Calculates maximum amount of collateral that can be liquidated 
-    ///  
-    /// # Arguments 
-    /// * `account_position` - NFT nonce of the account position 
-    /// * `collateral_asset` - Token identifier of collateral to liquidate 
-    /// * `in_usd` - Whether to return amount in USD (true) or token units (false) 
-    ///  
-    /// # Returns 
-    /// * `BigUint` - Maximum liquidatable amount in USD or token units 
-    ///  
-    /// # Errors 
-    /// * `ERROR_HEALTH_FACTOR` - If position is not liquidatable (HF >= 100%) 
-    ///  
-    /// # Example 
-    /// ``` 
-    /// // Position: 
-    /// // Collateral: 100 EGLD @ $100 each = $10,000 
-    /// // Borrows: 9000 USDC @ $1 each = $9,000 
-    /// // Health Factor: 90% (unhealthy) 
-    /// // Liquidation Bonus: 10% 
-    ///  
-    /// // In USD: 
-    /// get_max_liquidate_amount_for_collateral(1, "EGLD-123456", true) = 5000 
-    /// // Can liquidate $5,000 worth of collateral 
-    ///  
-    /// // In EGLD: 
-    /// get_max_liquidate_amount_for_collateral(1, "EGLD-123456", false) = 50 
-    /// // Can liquidate 50 EGLD 
-    /// ``` 
     /// Gets the collateral amount for a specific token 
     ///  
     /// # Arguments 
@@ -1204,15 +1152,6 @@ where
     /// # Returns 
     /// * `BigUint` - Amount of token supplied as collateral 
     ///  
-    /// # Example 
-    /// ``` 
-    /// // Position has: 
-    /// // - 100 EGLD supplied 
-    /// // - 1000 USDC supplied 
-    ///  
-    /// get_collateral_amount_for_token(1, "EGLD-123456") = 100_000_000_000_000_000_000 
-    /// get_collateral_amount_for_token(1, "USDC-123456") = 1_000_000_000 
-    /// get_collateral_amount_for_token(1, "USDT-123456") = 0 // No USDT supplied 
     /// ``` 
     pub fn get_collateral_amount_for_token<
         Arg0: ProxyArg<u64>,
@@ -1221,7 +1160,7 @@ where
         self,
         account_position: Arg0,
         token_id: Arg1,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getCollateralAmountForToken")
@@ -1239,15 +1178,6 @@ where
     /// # Returns 
     /// * `BigUint` - Amount of token borrowed 
     ///  
-    /// # Example 
-    /// ``` 
-    /// // Position has: 
-    /// // - 50 EGLD borrowed 
-    /// // - 500 USDC borrowed 
-    ///  
-    /// get_borrow_amount_for_token(1, "EGLD-123456") = 50_000_000_000_000_000_000 
-    /// get_borrow_amount_for_token(1, "USDC-123456") = 500_000_000 
-    /// get_borrow_amount_for_token(1, "USDT-123456") = 0 // No USDT borrowed 
     /// ``` 
     pub fn get_borrow_amount_for_token<
         Arg0: ProxyArg<u64>,
@@ -1256,7 +1186,7 @@ where
         self,
         account_position: Arg0,
         token_id: Arg1,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getBorrowAmountForToken")
@@ -1286,7 +1216,7 @@ where
     >(
         self,
         account_position: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getTotalBorrowInEgld")
@@ -1315,7 +1245,7 @@ where
     >(
         self,
         account_position: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getTotalCollateralInEgld")
@@ -1344,7 +1274,7 @@ where
     >(
         self,
         account_nonce: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getLiquidationCollateralAvailable")
@@ -1373,7 +1303,7 @@ where
     >(
         self,
         account_position: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getLtvCollateralInEgld")
@@ -1399,7 +1329,7 @@ where
     >(
         self,
         token_id: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getTokenPriceUSD")
@@ -1412,7 +1342,7 @@ where
     >(
         self,
         token_id: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getTokenPriceEGLD")
@@ -1427,45 +1357,17 @@ where
         Arg3: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
     >(
         self,
-        leverage: Arg0,
+        leverage_raw: Arg0,
         e_mode_category: Arg1,
         collateral_token: Arg2,
         debt_token: Arg3,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("multiply")
-            .argument(&leverage)
+            .argument(&leverage_raw)
             .argument(&e_mode_category)
             .argument(&collateral_token)
             .argument(&debt_token)
-            .original_result()
-    }
-
-    pub fn calculate_max_leverage<
-        Arg0: ProxyArg<BigUint<Env::Api>>,
-        Arg1: ProxyArg<BigUint<Env::Api>>,
-        Arg2: ProxyArg<Option<common_structs::EModeCategory<Env::Api>>>,
-        Arg3: ProxyArg<common_structs::AssetConfig<Env::Api>>,
-        Arg4: ProxyArg<BigUint<Env::Api>>,
-        Arg5: ProxyArg<BigUint<Env::Api>>,
-    >(
-        self,
-        initial_deposit: Arg0,
-        health_factor: Arg1,
-        e_mode: Arg2,
-        asset_config: Arg3,
-        total_reserves: Arg4,
-        reserve_buffer: Arg5,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getMaxLeverage")
-            .argument(&initial_deposit)
-            .argument(&health_factor)
-            .argument(&e_mode)
-            .argument(&asset_config)
-            .argument(&total_reserves)
-            .argument(&reserve_buffer)
             .original_result()
     }
 }

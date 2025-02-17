@@ -3,48 +3,129 @@ multiversx_sc::derive_imports!();
 
 use crate::{contexts::base::StorageCache, rates, storage, view};
 
-use common_constants::{BP, DECIMAL_PRECISION, SECONDS_PER_YEAR};
+use common_constants::{RAY, RAY_PRECISION, SECONDS_PER_YEAR};
 use common_structs::*;
 
 /// The UtilsModule trait contains helper functions for updating interest indexes,
 /// computing interest factors, and adjusting account positions with accrued interest.
 #[multiversx_sc::module]
 pub trait UtilsModule:
-    rates::InterestRateMath + storage::StorageModule + common_events::EventsModule + view::ViewModule
+    rates::InterestRateMath
+    + storage::StorageModule
+    + common_events::EventsModule
+    + view::ViewModule
+    + common_math::SharedMathModule
 {
-    /// Computes the interest factor for a given time delta using a linear approximation.
-    ///
-    /// The interest factor represents the growth multiplier for interest accrual over the time interval,
-    /// based on the current borrow rate.
-    ///
-    /// # Parameters
-    /// - `storage_cache`: A mutable reference to the StorageCache containing the current market state.
-    /// - `delta_timestamp`: The time elapsed (in seconds) since the last update.
-    ///
-    /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The computed interest factor.
     fn calculate_interest_factor(
         &self,
         storage_cache: &mut StorageCache<Self>,
-        delta_timestamp: u64,
+        exp: u64,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        // Constants
-        let rate = self.get_borrow_rate_internal(storage_cache);
+        let ray = self.ray(); // ManagedDecimal::from_raw_units(BigUint::from(RAY), RAY_PRECISION)
+        if exp == 0 {
+            return ray;
+        }
 
-        let bp = ManagedDecimal::from_raw_units(BigUint::from(BP), DECIMAL_PRECISION);
-        let seconds_per_year_dec =
-            ManagedDecimal::from_raw_units(BigUint::from(SECONDS_PER_YEAR), 0);
-        // Convert `delta_timestamp` to ManagedDecimal
-        let delta_dec = ManagedDecimal::from_raw_units(BigUint::from(delta_timestamp), 0);
-        // Calculate x = (rate * delta_timestamp) / SECONDS_PER_YEAR
-        let x = rate
-            .clone()
-            .mul_with_precision(delta_dec, DECIMAL_PRECISION)
-            .div(seconds_per_year_dec)
-            .add(bp);
+        let exp_dec = ManagedDecimal::from_raw_units(BigUint::from(exp), 0);
+        let per_second_rate = self.get_borrow_rate_internal(storage_cache);
+        sc_print!("Per-second rate: {}", per_second_rate);
 
-        x
+        let exp_minus_one = exp - 1;
+        let exp_minus_two = if exp > 2 { exp - 2 } else { 0 };
+        let exp_minus_one_dec = ManagedDecimal::from_raw_units(BigUint::from(exp_minus_one), 0);
+        let exp_minus_two_dec = ManagedDecimal::from_raw_units(BigUint::from(exp_minus_two), 0);
+
+        // Base powers using per-second rate
+        let base_power_two = self.mul_half_up(&per_second_rate, &per_second_rate, RAY_PRECISION);
+        let base_power_three = self.mul_half_up(&base_power_two, &per_second_rate, RAY_PRECISION);
+
+        // Second term: (exp * (exp - 1) * base_power_two) / 2
+        let second_term = self.div_half_up(
+            &self.mul_half_up(
+                &self.mul_half_up(&exp_dec, &exp_minus_one_dec, RAY_PRECISION),
+                &base_power_two,
+                RAY_PRECISION,
+            ),
+            &ManagedDecimal::from_raw_units(BigUint::from(2u64), 0),
+            RAY_PRECISION,
+        );
+
+        // Third term: (exp * (exp - 1) * (exp - 2) * base_power_three) / 6
+        let third_term = self.div_half_up(
+            &self.mul_half_up(
+                &self.mul_half_up(
+                    &self.mul_half_up(&exp_dec, &exp_minus_one_dec, RAY_PRECISION),
+                    &exp_minus_two_dec,
+                    RAY_PRECISION,
+                ),
+                &base_power_three,
+                RAY_PRECISION,
+            ),
+            &ManagedDecimal::from_raw_units(BigUint::from(6u64), 0),
+            RAY_PRECISION,
+        );
+
+        // Main term: per_second_rate * exp
+        let main_term = self.mul_half_up(&per_second_rate, &exp_dec, RAY_PRECISION);
+
+        // Interest factor = 1 + main_term + second_term + third_term
+        let interest_factor = ray + main_term + second_term + third_term;
+        sc_print!("Interest factor: {}", interest_factor);
+        interest_factor
     }
+    // fn calculate_interest_factor(
+    //     &self,
+    //     storage_cache: &mut StorageCache<Self>,
+    //     exp: u64,
+    // ) -> ManagedDecimal<Self::Api, NumDecimals> {
+    //     // if exp == 0 {
+    //     //     return self.ray();
+    //     // }
+
+    //     // let exp_dec = ManagedDecimal::from_raw_units(BigUint::from(exp), 0);
+    //     // let per_second_rate = self.get_borrow_rate_internal(storage_cache);
+
+    //     // // Linear approximation: interest_factor = 1 + (per_second_rate * exp)
+    //     // let interest_factor =
+    //     //     self.ray() + self.mul_half_up(&per_second_rate, &exp_dec, RAY_PRECISION);
+    //     // interest_factor
+    //     // let ray = ManagedDecimal::from_raw_units(BigUint::from(RAY), RAY_PRECISION);
+
+    //     // if exp == 0 {
+    //     //     return self.ray();
+    //     // };
+
+    //     // let exp_dec = ManagedDecimal::from_raw_units(BigUint::from(exp), 0);
+
+    //     // let rate = self.get_borrow_rate_internal(storage_cache);
+
+    //     // let seconds_per_year_dec =
+    //     //     ManagedDecimal::from_raw_units(BigUint::from(SECONDS_PER_YEAR), 0);
+
+    //     // let exp_minus_one = exp - 1;
+    //     // let exp_minus_two = if exp > 2 { exp - 2 } else { 0 };
+    //     // let exp_minus_one_dec = ManagedDecimal::from_raw_units(BigUint::from(exp_minus_one), 0);
+    //     // let exp_minus_two_dec = ManagedDecimal::from_raw_units(BigUint::from(exp_minus_two), 0);
+
+    //     // let base_power_two = rate.clone().mul_with_precision(rate.clone(), RAY_PRECISION)
+    //     //     / (seconds_per_year_dec.clone() * seconds_per_year_dec.clone());
+
+    //     // let base_power_three = base_power_two
+    //     //     .clone()
+    //     //     .mul_with_precision(rate.clone(), RAY_PRECISION)
+    //     //     / seconds_per_year_dec.clone();
+
+    //     // let second_term = (exp_dec
+    //     //     .clone()
+    //     //     .mul_with_precision(exp_minus_one_dec.clone(), RAY_PRECISION)
+    //     //     .mul_with_precision(base_power_two.clone(), RAY_PRECISION))
+    //     //     / 2;
+
+    //     // let third_term =
+    //     //     (exp_dec.clone() * exp_minus_one_dec * exp_minus_two_dec * base_power_three) / 6;
+
+    //     // self.ray() + (rate * exp_dec) / seconds_per_year_dec + second_term + third_term
+    // }
 
     /// Updates the borrow index using the provided interest factor.
     ///
@@ -58,12 +139,9 @@ pub trait UtilsModule:
         storage_cache: &mut StorageCache<Self>,
         interest_factor: &ManagedDecimal<Self::Api, NumDecimals>,
     ) {
-        storage_cache.borrow_index = storage_cache
-            .borrow_index
-            .clone()
-            .mul_with_precision(interest_factor.clone(), DECIMAL_PRECISION);
+        storage_cache.borrow_index =
+            self.mul_half_up(&storage_cache.borrow_index, &interest_factor, RAY_PRECISION);
     }
-
     /// Updates the supply index based on net rewards for suppliers.
     ///
     /// Net rewards are calculated after subtracting the protocol fee from the total accrued interest.
@@ -78,16 +156,19 @@ pub trait UtilsModule:
         storage_cache: &mut StorageCache<Self>,
     ) {
         if storage_cache.supplied_amount != storage_cache.zero {
-            let bp_dec = ManagedDecimal::from_raw_units(BigUint::from(BP), DECIMAL_PRECISION);
+            let ray = storage_cache.ray.clone();
+            let total_supplied_amount = self.mul_half_up(
+                &storage_cache.supplied_amount,
+                &storage_cache.supply_index,
+                RAY_PRECISION,
+            );
 
-            // Convert rewards to an index increase factor
-            let rewards_factor =
-                rewards_increase * bp_dec.clone() / storage_cache.supplied_amount.clone() + bp_dec;
+            let rewards_ratio =
+                self.div_half_up(&rewards_increase, &total_supplied_amount, RAY_PRECISION);
 
-            storage_cache.supply_index = storage_cache
-                .supply_index
-                .clone()
-                .mul_with_precision(rewards_factor, DECIMAL_PRECISION);
+            let rewards_factor = ray + rewards_ratio;
+            storage_cache.supply_index =
+                self.mul_half_up(&storage_cache.supply_index, &rewards_factor, RAY_PRECISION);
         }
     }
 
@@ -105,27 +186,36 @@ pub trait UtilsModule:
     fn update_rewards_reserves(
         &self,
         storage_cache: &mut StorageCache<Self>,
-        interest_factor: &ManagedDecimal<Self::Api, NumDecimals>,
+        old_borrow_index: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let borrowed_amount_dec = storage_cache.borrowed_amount.clone();
-        // 2. Calculate total interest earned (compound)
-        let new_borrowed_amount = borrowed_amount_dec
-            .clone()
-            .mul_with_precision(interest_factor.clone(), storage_cache.pool_params.decimals);
+        // // Get total borrow + interest with old borrow index
+        let total_debt_current_debt_with_interest = self
+            .mul_half_up(
+                &storage_cache.borrowed_amount,
+                old_borrow_index,
+                RAY_PRECISION,
+            )
+            .rescale(storage_cache.pool_params.decimals);
 
-        let rewards_increase = new_borrowed_amount - borrowed_amount_dec;
-
-        // 3. Calculate protocol's share
-        let revenue = rewards_increase.clone().mul_with_precision(
-            storage_cache.pool_params.reserve_factor.clone(),
-            storage_cache.pool_params.decimals,
+        let new_interest = self.compute_interest(
+            &total_debt_current_debt_with_interest,
+            &storage_cache.borrow_index,
+            old_borrow_index,
         );
 
+        // 3. Calculate protocol's share
+        let revenue = self
+            .mul_half_up(
+                &new_interest,
+                &storage_cache.pool_params.reserve_factor,
+                RAY_PRECISION,
+            )
+            .rescale(storage_cache.pool_params.decimals);
         // 4. Update reserves
         storage_cache.protocol_revenue += &revenue;
 
         // 5. Return suppliers' share
-        rewards_increase - revenue
+        new_interest - revenue
     }
 
     /// Updates both borrow and supply indexes based on the elapsed time.
@@ -137,17 +227,49 @@ pub trait UtilsModule:
     /// # Parameters
     /// - `storage_cache`: The StorageCache containing the current state.
     fn update_interest_indexes(&self, storage_cache: &mut StorageCache<Self>) {
-        let delta_timestamp = storage_cache.timestamp - storage_cache.last_update_timestamp;
+        let delta_timestamp = storage_cache.timestamp - storage_cache.last_timestamp;
 
         if delta_timestamp > 0 {
-            let interest_factor = self.calculate_interest_factor(storage_cache, delta_timestamp);
+            let factor = self.calculate_interest_factor(storage_cache, delta_timestamp);
 
-            self.update_borrow_index(storage_cache, &interest_factor);
-            let rewards = self.update_rewards_reserves(storage_cache, &interest_factor);
-            self.update_supply_index(rewards, storage_cache);
-            // Update the last used round
-            storage_cache.last_update_timestamp = storage_cache.timestamp;
+            let old_borrow_index = storage_cache.borrow_index.clone();
+
+            self.update_borrow_index(storage_cache, &factor);
+
+            let rewards = self.update_rewards_reserves(storage_cache, &old_borrow_index);
+            self.update_supply_index(rewards.clone(), storage_cache);
+
+            // Update the last used timestamp
+            storage_cache.last_timestamp = storage_cache.timestamp;
         }
+    }
+
+    /// Computes the interest accrued on a given position.
+    ///
+    /// The accrued interest is calculated using the formula:
+    /// `interest = amount * (current_index / account_position_index) - amount`.
+    ///
+    /// # Parameters
+    /// - `amount`: The principal amount of the asset.
+    /// - `current_index`: The current market index (reflecting compounded interest).
+    /// - `account_position_index`: The index at the time the position was last updated.
+    ///
+    /// # Returns
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The interest accrued since the last update.
+
+    fn compute_interest(
+        &self,
+        amount: &ManagedDecimal<Self::Api, NumDecimals>, // Amount of the asset
+        current_index: &ManagedDecimal<Self::Api, NumDecimals>, // Market index
+        account_position_index: &ManagedDecimal<Self::Api, NumDecimals>, // Account position index
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        // // Auto keeps the decimals of the amount
+        let numerator = self.mul_half_up(amount, current_index, RAY_PRECISION);
+        let new_amount = self
+            .div_half_up(&numerator, account_position_index, RAY_PRECISION)
+            .rescale(amount.scale());
+
+        new_amount.sub(amount.clone())
     }
 
     /// Updates an account position with the accrued interest.
@@ -163,28 +285,25 @@ pub trait UtilsModule:
         position: &mut AccountPosition<Self::Api>,
         storage_cache: &mut StorageCache<Self>,
     ) {
-        if position.get_total_amount().eq(&BigUint::zero()) {
-            return;
-        }
-
         let is_supply = position.deposit_type == AccountPositionType::Deposit;
-
         let index = if is_supply {
             storage_cache.supply_index.clone()
         } else {
             storage_cache.borrow_index.clone()
         };
 
-        let accumulated_interest_dec = self.compute_interest(
-            storage_cache.get_decimal_value(&position.get_total_amount()),
-            &index,
-            &ManagedDecimal::from_raw_units(position.index.clone(), DECIMAL_PRECISION),
-        );
-
-        if accumulated_interest_dec.gt(&storage_cache.zero) {
-            position.accumulated_interest += accumulated_interest_dec.into_raw_units();
+        if position.get_total_amount().eq(&storage_cache.zero) {
             position.timestamp = storage_cache.timestamp;
-            position.index = index.into_raw_units().clone();
+            position.index = index.clone();
+            return;
+        }
+        let accumulated_interest =
+            self.compute_interest(&position.get_total_amount(), &index, &position.index);
+
+        if accumulated_interest.gt(&storage_cache.zero) {
+            position.accumulated_interest += &accumulated_interest;
+            position.timestamp = storage_cache.timestamp;
+            position.index = index.clone();
         }
     }
 
@@ -208,7 +327,7 @@ pub trait UtilsModule:
     ///   - `over_repaid`: The portion of the repayment that will be refunded to the caller.
     fn calculate_interest_and_principal(
         &self,
-        repayment: &ManagedDecimal<Self::Api, NumDecimals>,
+        repayment: ManagedDecimal<Self::Api, NumDecimals>,
         outstanding_interest: ManagedDecimal<Self::Api, NumDecimals>,
         outstanding_principal: ManagedDecimal<Self::Api, NumDecimals>,
         total_debt: ManagedDecimal<Self::Api, NumDecimals>,
@@ -217,9 +336,9 @@ pub trait UtilsModule:
         ManagedDecimal<Self::Api, NumDecimals>, // interest_repaid
         BigUint,                                // over_repaid
     ) {
-        if repayment >= &total_debt {
+        if repayment >= total_debt {
             // Full repayment with possible overpayment.
-            let over_repaid = repayment.clone() - total_debt;
+            let over_repaid = repayment - total_debt;
             // The entire outstanding debt is cleared.
             (
                 outstanding_principal,
@@ -228,14 +347,14 @@ pub trait UtilsModule:
             )
         } else {
             // Partial repayment: first cover interest, then principal.
-            let interest_repaid = if repayment > &outstanding_interest {
+            let interest_repaid = if repayment > outstanding_interest {
                 outstanding_interest.clone()
             } else {
                 repayment.clone()
             };
-            let remaining = repayment.clone() - interest_repaid.clone();
+            let remaining = repayment - interest_repaid.clone();
             let principal_repaid = if remaining > outstanding_principal {
-                outstanding_principal.clone()
+                outstanding_principal
             } else {
                 remaining
             };

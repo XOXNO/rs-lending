@@ -1,4 +1,4 @@
-use common_constants::{BP, TOTAL_SUPPLY_AMOUNT_STORAGE_KEY};
+use common_constants::{RAY, RAY_PRECISION, TOTAL_SUPPLY_AMOUNT_STORAGE_KEY};
 use common_events::{
     AccountPosition, AccountPositionType, AssetConfig, NftAccountAttributes, PriceFeedShort,
 };
@@ -23,6 +23,7 @@ pub trait PositionDepositModule:
     + utils::LendingUtilsModule
     + helpers::math::MathsModule
     + account::PositionAccountModule
+    + common_math::SharedMathModule
 {
     /// Retrieves existing deposit position or creates new one
     ///
@@ -50,14 +51,15 @@ pub trait PositionDepositModule:
             positions.remove(token_id);
             position
         } else {
+            let data = self.token_oracle(token_id).get();
             AccountPosition::new(
                 AccountPositionType::Deposit,
                 token_id.clone(),
-                BigUint::zero(),
-                BigUint::zero(),
+                ManagedDecimal::from_raw_units(BigUint::zero(), data.decimals as usize),
+                ManagedDecimal::from_raw_units(BigUint::zero(), data.decimals as usize),
                 account_nonce,
                 self.blockchain().get_block_timestamp(),
-                BigUint::from(BP),
+                ManagedDecimal::from_raw_units(BigUint::from(RAY), RAY_PRECISION),
                 asset_info.liquidation_threshold.clone(),
                 asset_info.liquidation_base_bonus.clone(),
                 asset_info.liquidation_max_fee.clone(),
@@ -100,14 +102,23 @@ pub trait PositionDepositModule:
             is_vault,
         );
 
+        // Auto upgrade values when changed on demand
         if position.entry_ltv != asset_info.ltv {
             position.entry_ltv = asset_info.ltv.clone();
+        }
+
+        if position.entry_liquidation_bonus != asset_info.liquidation_base_bonus {
+            position.entry_liquidation_bonus = asset_info.liquidation_base_bonus.clone();
+        }
+
+        if position.entry_liquidation_fees != asset_info.liquidation_max_fee {
+            position.entry_liquidation_fees = asset_info.liquidation_max_fee.clone();
         }
 
         if is_vault {
             self.increase_vault_position(
                 &mut position,
-                &collateral.amount,
+                &ManagedDecimal::from_raw_units(collateral.amount.clone(), feed.decimals as usize),
                 &collateral.token_identifier,
             );
         } else {
@@ -120,7 +131,7 @@ pub trait PositionDepositModule:
         }
 
         self.update_position_event(
-            &collateral.amount,
+            &ManagedDecimal::from_raw_units(collateral.amount.clone(), feed.decimals as usize),
             &position,
             OptionalValue::Some(feed.price.clone()),
             OptionalValue::Some(caller),
@@ -156,12 +167,8 @@ pub trait PositionDepositModule:
             .tx()
             .to(pool_address)
             .typed(proxy_pool::LiquidityPoolProxy)
-            .supply(position.clone(), &feed.price)
-            .payment(EgldOrEsdtTokenPayment::new(
-                token_id.clone(),
-                0,
-                amount.clone(),
-            ))
+            .supply(position.clone(), feed.price.clone())
+            .egld_or_single_esdt(token_id, 0, amount)
             .returns(ReturnsResult)
             .sync_call();
     }
@@ -179,7 +186,7 @@ pub trait PositionDepositModule:
     fn increase_vault_position(
         &self,
         position: &mut AccountPosition<Self::Api>,
-        amount: &BigUint,
+        amount: &ManagedDecimal<Self::Api, NumDecimals>,
         token_id: &EgldOrEsdtTokenIdentifier,
     ) {
         let last_value = self.vault_supplied_amount(token_id).update(|am| {
@@ -187,7 +194,7 @@ pub trait PositionDepositModule:
             am.clone()
         });
 
-        self.update_vault_supplied_amount_event(token_id, last_value);
+        self.update_vault_supplied_amount_event(token_id, last_value.clone());
         position.amount += amount;
     }
 
@@ -262,7 +269,7 @@ pub trait PositionDepositModule:
     fn get_total_supply(
         &self,
         pair_address: ManagedAddress,
-    ) -> SingleValueMapper<BigUint, ManagedAddress> {
+    ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>, ManagedAddress> {
         SingleValueMapper::<_, _, ManagedAddress>::new_from_address(
             pair_address,
             StorageKey::new(TOTAL_SUPPLY_AMOUNT_STORAGE_KEY),
@@ -298,7 +305,8 @@ pub trait PositionDepositModule:
                 total_supplied += vault_supplied_amount;
             }
             require!(
-                total_supplied + &collateral.amount <= asset_info.supply_cap.clone().unwrap(),
+                total_supplied.into_raw_units() + &collateral.amount
+                    <= asset_info.supply_cap.clone().unwrap(),
                 ERROR_SUPPLY_CAP
             );
         }

@@ -28,13 +28,14 @@ where
     pub supply_index: ManagedDecimal<C::Api, NumDecimals>,
     // Zero value
     pub zero: ManagedDecimal<C::Api, NumDecimals>,
+    pub ray: ManagedDecimal<C::Api, NumDecimals>,
     /// The timestamp of the last update.
-    pub last_update_timestamp: u64,
+    pub last_timestamp: u64,
 }
 
 impl<'a, C> StorageCache<'a, C>
 where
-    C: crate::storage::StorageModule,
+    C: crate::storage::StorageModule + common_math::SharedMathModule,
 {
     /// Constructs a new StorageCache by reading the current state from on-chain storage.
     ///
@@ -47,28 +48,17 @@ where
         let params = sc_ref.pool_params().get();
         StorageCache {
             zero: ManagedDecimal::from_raw_units(BigUint::zero(), params.decimals),
-            supplied_amount: ManagedDecimal::from_raw_units(
-                sc_ref.supplied_amount().get(),
-                params.decimals,
-            ),
-            reserves_amount: ManagedDecimal::from_raw_units(
-                sc_ref.reserves().get(),
-                params.decimals,
-            ),
-            borrowed_amount: ManagedDecimal::from_raw_units(
-                sc_ref.borrowed_amount().get(),
-                params.decimals,
-            ),
-            protocol_revenue: ManagedDecimal::from_raw_units(
-                sc_ref.protocol_revenue().get(),
-                params.decimals,
-            ),
+            ray: sc_ref.ray(),
+            supplied_amount: sc_ref.supplied_amount().get(),
+            reserves_amount: sc_ref.reserves().get(),
+            borrowed_amount: sc_ref.borrowed_amount().get(),
+            protocol_revenue: sc_ref.protocol_revenue().get(),
             timestamp: sc_ref.blockchain().get_block_timestamp(),
             pool_asset: sc_ref.pool_asset().get(),
             pool_params: params,
             borrow_index: sc_ref.borrow_index().get(),
             supply_index: sc_ref.supply_index().get(),
-            last_update_timestamp: sc_ref.last_update_timestamp().get(),
+            last_timestamp: sc_ref.last_timestamp().get(),
             sc_ref,
         }
     }
@@ -80,23 +70,15 @@ where
 {
     fn drop(&mut self) {
         // commit changes to storage for the mutable fields
-        self.sc_ref
-            .supplied_amount()
-            .set(&self.supplied_amount.into_raw_units().clone());
-        self.sc_ref
-            .reserves()
-            .set(&self.reserves_amount.into_raw_units().clone());
-        self.sc_ref
-            .borrowed_amount()
-            .set(&self.borrowed_amount.into_raw_units().clone());
-        self.sc_ref
-            .protocol_revenue()
-            .set(&self.protocol_revenue.into_raw_units().clone());
+        self.sc_ref.supplied_amount().set(&self.supplied_amount);
+        self.sc_ref.reserves().set(&self.reserves_amount);
+        self.sc_ref.borrowed_amount().set(&self.borrowed_amount);
+        self.sc_ref.protocol_revenue().set(&self.protocol_revenue);
         self.sc_ref.borrow_index().set(&self.borrow_index);
         self.sc_ref.supply_index().set(&self.supply_index);
         self.sc_ref
-            .last_update_timestamp()
-            .set(&self.last_update_timestamp);
+            .last_timestamp()
+            .set(&self.last_timestamp);
     }
 }
 

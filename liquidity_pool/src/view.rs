@@ -5,7 +5,9 @@ use crate::{contexts::base::StorageCache, rates, storage};
 
 /// The ViewModule provides read-only endpoints for retrieving key market metrics.
 #[multiversx_sc::module]
-pub trait ViewModule: rates::InterestRateMath + storage::StorageModule {
+pub trait ViewModule:
+    rates::InterestRateMath + storage::StorageModule + common_math::SharedMathModule
+{
     /// Retrieves the current capital utilization of the pool.
     ///
     /// Capital utilization is defined as the ratio of borrowed tokens to the total supplied tokens.
@@ -28,9 +30,9 @@ pub trait ViewModule: rates::InterestRateMath + storage::StorageModule {
         storage_cache: &mut StorageCache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         self.compute_capital_utilisation(
-            storage_cache.borrowed_amount.clone(),
-            storage_cache.supplied_amount.clone(),
-            storage_cache.zero.clone(),
+            &storage_cache.borrowed_amount,
+            &storage_cache.supplied_amount,
+            &storage_cache.zero,
         )
     }
 

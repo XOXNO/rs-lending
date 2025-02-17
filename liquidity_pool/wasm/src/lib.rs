@@ -28,7 +28,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         getPoolParams => pool_params
         getBorrowIndex => borrow_index
         getSupplyIndex => supply_index
-        getLastUpdateTimestamp => last_update_timestamp
+        getLastUpdateTimestamp => last_timestamp
         updateIndexes => update_indexes
         updatePositionInterest => update_position_with_interest
         supply => supply

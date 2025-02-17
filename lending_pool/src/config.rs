@@ -16,6 +16,7 @@ pub trait ConfigModule:
     + common_events::EventsModule
     + oracle::OracleModule
     + helpers::math::MathsModule
+    + common_math::SharedMathModule
 {
     #[only_owner]
     #[payable("EGLD")]
@@ -37,7 +38,7 @@ pub trait ConfigModule:
     fn set_token_oracle(
         &self,
         market_token: &EgldOrEsdtTokenIdentifier,
-        decimals: u8,
+        decimals: usize,
         contract_address: &ManagedAddress,
         pricing_method: PricingMethod,
         token_type: OracleType,
@@ -192,9 +193,9 @@ pub trait ConfigModule:
         let last_id = map.get();
         let category = EModeCategory {
             id: last_id + 1,
-            ltv,
-            liquidation_threshold,
-            liquidation_bonus,
+            ltv: self.to_decimal_bps(ltv),
+            liquidation_threshold: self.to_decimal_bps(liquidation_threshold),
+            liquidation_bonus: self.to_decimal_bps(liquidation_bonus),
             is_deprecated: false,
         };
 
@@ -371,16 +372,16 @@ pub trait ConfigModule:
         let old_config = map.get();
 
         let new_config = &AssetConfig {
-            ltv,
-            liquidation_threshold,
-            liquidation_base_bonus,
-            liquidation_max_fee,
+            ltv: self.to_decimal_bps(ltv),
+            liquidation_threshold: self.to_decimal_bps(liquidation_threshold),
+            liquidation_base_bonus: self.to_decimal_bps(liquidation_base_bonus),
+            liquidation_max_fee: self.to_decimal_bps(liquidation_max_fee),
             is_e_mode_enabled: old_config.is_e_mode_enabled,
             is_isolated,
-            debt_ceiling_usd,
+            debt_ceiling_usd: self.to_decimal_bps(debt_ceiling_usd),
             is_siloed,
             flashloan_enabled,
-            flash_loan_fee,
+            flash_loan_fee: self.to_decimal_bps(flash_loan_fee),
             can_be_collateral,
             can_be_borrowed,
             can_borrow_in_isolation,
@@ -394,6 +395,7 @@ pub trait ConfigModule:
             } else {
                 Some(supply_cap)
             },
+            // decimals: old_config.decimals
         };
 
         map.set(new_config);

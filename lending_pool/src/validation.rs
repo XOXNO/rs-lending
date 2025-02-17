@@ -16,6 +16,7 @@ pub trait ValidationModule:
     + oracle::OracleModule
     + helpers::math::MathsModule
     + positions::account::PositionAccountModule
+    + common_math::SharedMathModule
 {
     fn get_total_reserves(
         &self,
@@ -85,7 +86,7 @@ pub trait ValidationModule:
     /// # Errors
     /// * `ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO` - If amount is not greater than zero
     fn require_amount_greater_than_zero(&self, amount: &BigUint) {
-        require!(amount > &0, ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO);
+        require!(amount > &BigUint::zero(), ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO);
     }
 
     /// Validates that an address is not zero

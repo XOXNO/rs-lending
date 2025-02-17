@@ -1,14 +1,13 @@
 use crate::{constants::*, proxys::*};
-use common_constants::{DECIMAL_PRECISION, EGLD_TICKER, MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE};
+use common_constants::{EGLD_TICKER, MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE};
 
 use contexts::base::StorageCache;
 
-use helpers::math::MathsModule;
 use multiversx_sc::{
     imports::OptionalValue,
     types::{
         BigUint, EgldOrEsdtTokenPayment, ManagedAddress, ManagedArgBuffer, ManagedBuffer,
-        ManagedDecimal, MultiValueEncoded, ReturnsNewManagedAddress, ReturnsResult,
+        ManagedDecimal, MultiValueEncoded, NumDecimals, ReturnsNewManagedAddress, ReturnsResult,
         TestTokenIdentifier,
     },
 };
@@ -136,32 +135,32 @@ impl LendingPoolTestState {
         }
     }
 
-    pub fn calculate_max_leverage(
-        &mut self,
-        initial_deposit: BigUint<StaticApi>,
-        target_hf: BigUint<StaticApi>,
-        reserves: BigUint<StaticApi>,
-        reservers_factor: BigUint<StaticApi>,
-    ) -> BigUint<StaticApi> {
-        let max_liquidate_amount = self
-            .world
-            .query()
-            .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
-            .calculate_max_leverage(
-                &initial_deposit,
-                &target_hf,
-                Option::<EModeCategory<StaticApi>>::None,
-                get_usdc_config().config,
-                &reserves,
-                &reservers_factor,
-            )
-            .returns(ReturnsResult)
-            .run();
+    // pub fn calculate_max_leverage(
+    //     &mut self,
+    //     initial_deposit: BigUint<StaticApi>,
+    //     target_hf: BigUint<StaticApi>,
+    //     reserves: BigUint<StaticApi>,
+    //     reservers_factor: BigUint<StaticApi>,
+    // ) -> BigUint<StaticApi> {
+    //     // let max_liquidate_amount = self
+    //     //     .world
+    //     //     .query()
+    //     //     .to(self.lending_sc.clone())
+    //     //     .typed(proxy_lending_pool::LendingPoolProxy)
+    //     //     .calculate_max_leverage(
+    //     //         &initial_deposit,
+    //     //         &target_hf,
+    //     //         Option::<EModeCategory<StaticApi>>::None,
+    //     //         get_usdc_config().config,
+    //     //         &reserves,
+    //     //         &reservers_factor,
+    //     //     )
+    //     //     .returns(ReturnsResult)
+    //     //     .run();
 
-        println!("Max Leverage: {:?}", max_liquidate_amount);
-        return max_liquidate_amount;
-    }
+    //     // println!("Max Leverage: {:?}", max_liquidate_amount);
+    //     // return max_liquidate_amount;
+    // }
 
     pub fn get_max_liquidate_amount_for_collateral(
         &mut self,
@@ -181,18 +180,17 @@ impl LendingPoolTestState {
 
         // max_liquidate_amount
     }
-    pub fn get_usd_price(&mut self, token_id: TestTokenIdentifier) -> u64 {
-        (self
-            .world
+    pub fn get_usd_price(
+        &mut self,
+        token_id: TestTokenIdentifier,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        self.world
             .query()
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::LendingPoolProxy)
             .get_usd_price(token_id)
             .returns(ReturnsResult)
             .run()
-            / BigUint::from(BP))
-        .to_u64()
-        .unwrap()
     }
 
     pub fn flash_loan(
@@ -324,6 +322,7 @@ impl LendingPoolTestState {
         r_slope2: u64,
         u_optimal: u64,
         reserve_factor: u64,
+        decimals: usize,
     ) -> ManagedAddress<StaticApi> {
         let market_address = self
             .world
@@ -339,18 +338,19 @@ impl LendingPoolTestState {
                 r_slope2,
                 u_optimal,
                 reserve_factor,
-                config.ltv,
-                config.liquidation_threshold,
-                config.liquidation_base_bonus,
-                config.liquidation_max_fee,
+                config.ltv.into_raw_units(),
+                config.liquidation_threshold.into_raw_units(),
+                config.liquidation_base_bonus.into_raw_units(),
+                config.liquidation_max_fee.into_raw_units(),
                 config.can_be_collateral,
                 config.can_be_borrowed,
                 config.is_isolated,
-                config.debt_ceiling_usd,
-                config.flash_loan_fee,
+                config.debt_ceiling_usd.into_raw_units(),
+                config.flash_loan_fee.into_raw_units(),
                 config.is_siloed,
                 config.flashloan_enabled,
                 config.can_borrow_in_isolation,
+                decimals,
                 OptionalValue::from(config.borrow_cap),
                 OptionalValue::from(config.supply_cap),
             )
@@ -719,6 +719,30 @@ impl LendingPoolTestState {
             .run();
     }
 
+
+    pub fn liquidate_account_den(
+        &mut self,
+        from: &TestAddress,
+        liquidator_payment: &TestTokenIdentifier,
+        amount_to_transfer: BigUint<StaticApi>,
+        account_nonce: u64,
+    ) {
+        let transfer = EsdtTokenPayment::new(
+            liquidator_payment.to_token_identifier(),
+            0,
+            amount_to_transfer,
+        );
+
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .liquidate(account_nonce)
+            .esdt(transfer)
+            .run();
+    }
+
     pub fn liquidate_account_dem(
         &mut self,
         from: &TestAddress,
@@ -757,7 +781,7 @@ impl LendingPoolTestState {
                     ManagedBuffer::from(from),
                     ManagedBuffer::from(DOLLAR_TICKER),
                     timestamp,
-                    BigUint::from(price).mul(BigUint::from(BP)),
+                    BigUint::from(price).mul(BigUint::from(WAD)),
                 )
                 .run();
         }
@@ -811,7 +835,7 @@ impl LendingPoolTestState {
     pub fn get_market_revenue(
         &mut self,
         market_address: ManagedAddress<StaticApi>,
-    ) -> BigUint<StaticApi> {
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
         let revenue = self
             .world
             .query()
@@ -827,7 +851,7 @@ impl LendingPoolTestState {
     pub fn get_market_reserves(
         &mut self,
         market_address: ManagedAddress<StaticApi>,
-    ) -> BigUint<StaticApi> {
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
         let reserves = self
             .world
             .query()
@@ -857,7 +881,7 @@ impl LendingPoolTestState {
     pub fn get_account_health_factor(
         &mut self,
         account_position: u64,
-    ) -> ManagedDecimal<StaticApi, usize> {
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
         let health_factor = self
             .world
             .query()
@@ -867,7 +891,7 @@ impl LendingPoolTestState {
             .returns(ReturnsResult)
             .run();
 
-        ManagedDecimal::from_raw_units(health_factor, DECIMAL_PRECISION)
+        health_factor
     }
 
     pub fn can_be_liquidated(&mut self, account_position: u64) -> bool {
@@ -960,7 +984,7 @@ impl LendingPoolTestState {
     pub fn get_vault_supplied_amount(
         &mut self,
         token_id: TestTokenIdentifier,
-    ) -> BigUint<StaticApi> {
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
         self.world
             .query()
             .to(self.lending_sc.clone())
@@ -974,7 +998,7 @@ impl LendingPoolTestState {
         &mut self,
         account_position: u64,
         token_id: TestTokenIdentifier,
-    ) -> BigUint<StaticApi> {
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
         let collateral_amount = self
             .world
             .query()
@@ -987,11 +1011,26 @@ impl LendingPoolTestState {
         collateral_amount
     }
 
+    pub fn get_collateral_amount_for_token_non_existing(
+        &mut self,
+        account_position: u64,
+        token_id: TestTokenIdentifier,
+        error_message: &[u8],
+    ) {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .get_collateral_amount_for_token(account_position, token_id)
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
     pub fn get_borrow_amount_for_token(
         &mut self,
         account_position: u64,
         token_id: TestTokenIdentifier,
-    ) -> BigUint<StaticApi> {
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
         let token_amount = self
             .world
             .query()
@@ -1004,10 +1043,25 @@ impl LendingPoolTestState {
         token_amount
     }
 
+    pub fn get_borrow_amount_for_token_non_existing(
+        &mut self,
+        account_position: u64,
+        token_id: TestTokenIdentifier,
+        error_message: &[u8],
+    ) {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .get_borrow_amount_for_token(account_position, token_id)
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
     pub fn get_used_isolated_asset_debt_usd(
         &mut self,
         token_id: &TestTokenIdentifier,
-    ) -> BigUint<StaticApi> {
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
         self.world
             .query()
             .to(self.lending_sc.clone())
@@ -1017,7 +1071,10 @@ impl LendingPoolTestState {
             .run()
     }
 
-    pub fn get_total_borrow_in_egld(&mut self, account_position: u64) -> u64 {
+    pub fn get_total_borrow_in_egld_big(
+        &mut self,
+        account_position: u64,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
         let borrow_amount = self
             .world
             .query()
@@ -1027,12 +1084,29 @@ impl LendingPoolTestState {
             .returns(ReturnsResult)
             .run();
 
-        (borrow_amount / BigUint::from(10u64).pow(EGLD_DECIMALS as u32))
-            .to_u64()
-            .unwrap()
+        borrow_amount
     }
 
-    pub fn get_total_collateral_in_egld(&mut self, account_position: u64) -> u64 {
+    pub fn get_total_borrow_in_egld(
+        &mut self,
+        account_position: u64,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        let borrow_amount = self
+            .world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .get_total_borrow_in_egld(account_position)
+            .returns(ReturnsResult)
+            .run();
+
+        borrow_amount
+    }
+
+    pub fn get_total_collateral_in_egld_big(
+        &mut self,
+        account_position: u64,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
         let collateral_amount_egld = self
             .world
             .query()
@@ -1042,12 +1116,29 @@ impl LendingPoolTestState {
             .returns(ReturnsResult)
             .run();
 
-        (collateral_amount_egld / BigUint::from(10u64).pow(EGLD_DECIMALS as u32))
-            .to_u64()
-            .unwrap()
+        collateral_amount_egld
     }
 
-    pub fn get_liquidation_collateral_available(&mut self, account_position: u64) -> u64 {
+    pub fn get_total_collateral_in_egld(
+        &mut self,
+        account_position: u64,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        let collateral_amount_egld = self
+            .world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .get_total_collateral_in_egld(account_position)
+            .returns(ReturnsResult)
+            .run();
+
+        collateral_amount_egld
+    }
+
+    pub fn get_liquidation_collateral_available(
+        &mut self,
+        account_position: u64,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
         let liquidation_collateral_available = self
             .world
             .query()
@@ -1057,9 +1148,7 @@ impl LendingPoolTestState {
             .returns(ReturnsResult)
             .run();
 
-        (liquidation_collateral_available / BigUint::from(10u64).pow(EGLD_DECIMALS as u32))
-            .to_u64()
-            .unwrap()
+        liquidation_collateral_available
     }
 }
 
@@ -1923,7 +2012,7 @@ pub fn submit_price(
                 ManagedBuffer::from(from),
                 ManagedBuffer::from(DOLLAR_TICKER),
                 0u64,
-                BigUint::from(price).mul(BigUint::from(BP)),
+                BigUint::from(price).mul(BigUint::from(WAD)),
             )
             .run();
     }
@@ -2009,18 +2098,19 @@ pub fn setup_market(
             BigUint::from(R_SLOPE2),
             BigUint::from(U_OPTIMAL),
             BigUint::from(RESERVE_FACTOR),
-            config.config.ltv,
-            config.config.liquidation_threshold,
-            config.config.liquidation_base_bonus,
-            config.config.liquidation_max_fee,
+            config.config.ltv.into_raw_units(),
+            config.config.liquidation_threshold.into_raw_units(),
+            config.config.liquidation_base_bonus.into_raw_units(),
+            config.config.liquidation_max_fee.into_raw_units(),
             config.config.can_be_collateral,
             config.config.can_be_borrowed,
             config.config.is_isolated,
-            config.config.debt_ceiling_usd,
-            config.config.flash_loan_fee,
+            config.config.debt_ceiling_usd.into_raw_units(),
+            config.config.flash_loan_fee.into_raw_units(),
             config.config.is_siloed,
             config.config.flashloan_enabled,
             config.config.can_borrow_in_isolation,
+            config.decimals,
             OptionalValue::from(config.config.borrow_cap),
             OptionalValue::from(config.config.supply_cap),
         )
@@ -2046,7 +2136,7 @@ pub fn setup_accounts(
         )
         .esdt_balance(
             EGLD_TOKEN,
-            BigUint::from(1000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+            BigUint::from(1000000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
         )
         .esdt_balance(
             XOXNO_TOKEN,
@@ -2066,7 +2156,7 @@ pub fn setup_accounts(
         )
         .esdt_balance(
             XEGLD_TOKEN,
-            BigUint::from(1000u64) * BigUint::from(10u64).pow(XEGLD_DECIMALS as u32),
+            BigUint::from(10000000u64) * BigUint::from(10u64).pow(XEGLD_DECIMALS as u32),
         )
         .esdt_balance(
             SEGLD_TOKEN,
@@ -2074,7 +2164,7 @@ pub fn setup_accounts(
         )
         .esdt_balance(
             USDC_TOKEN,
-            BigUint::from(10000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
+            BigUint::from(1000000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
         );
 
     state
@@ -2087,7 +2177,7 @@ pub fn setup_accounts(
         )
         .esdt_balance(
             EGLD_TOKEN,
-            BigUint::from(1000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+            BigUint::from(588649983367169591u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
         )
         .esdt_balance(
             XOXNO_TOKEN,
@@ -2107,7 +2197,7 @@ pub fn setup_accounts(
         )
         .esdt_balance(
             XEGLD_TOKEN,
-            BigUint::from(1000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+            BigUint::from(10000000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
         )
         .esdt_balance(
             SEGLD_TOKEN,
@@ -2115,7 +2205,7 @@ pub fn setup_accounts(
         )
         .esdt_balance(
             USDC_TOKEN,
-            BigUint::from(10000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
+            BigUint::from(1000000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
         );
 }
 

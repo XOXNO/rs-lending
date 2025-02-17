@@ -1,0 +1,14 @@
+[package]
+name    = "common-math"
+version = "0.0.0"
+authors = ["Mihai Eremin <mihai@xoxno.com>"]
+edition = "2018"
+
+[lib]
+path = "src/math.rs"
+
+[dependencies.multiversx-sc]
+version = "0.56.0"
+
+[dependencies.common-constants]
+path = "../constants"

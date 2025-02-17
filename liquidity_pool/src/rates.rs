@@ -1,4 +1,4 @@
-use common_constants::{BP, DECIMAL_PRECISION};
+use common_constants::{RAY_PRECISION, SECONDS_PER_YEAR};
 use common_events::PoolParams;
 
 multiversx_sc::imports!();
@@ -6,7 +6,7 @@ multiversx_sc::imports!();
 /// The InterestRateMath module provides functions for calculating market rates,
 /// interest accrual, and capital utilization based on the pool parameters and current state.
 #[multiversx_sc::module]
-pub trait InterestRateMath {
+pub trait InterestRateMath: common_math::SharedMathModule {
     /// Computes the borrow rate based on current utilization and pool parameters.
     ///
     /// The borrow rate is determined by a two-part model:
@@ -27,10 +27,9 @@ pub trait InterestRateMath {
         params: PoolParams<Self::Api>,
         u_current: ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        // Represent 1.0 in ManagedDecimal using BP (Basis Points)
-        let one_dec = ManagedDecimal::from_raw_units(BigUint::from(BP), DECIMAL_PRECISION);
+        let seconds_per_year = ManagedDecimal::from_raw_units(BigUint::from(SECONDS_PER_YEAR), 0);
 
-        if u_current <= params.u_optimal {
+        let annual_rate = if u_current <= params.u_optimal {
             // Calculate utilization ratio: (u_current * r_slope1) / u_optimal
             let utilization_ratio = u_current.mul(params.r_slope1).div(params.u_optimal);
 
@@ -41,24 +40,28 @@ pub trait InterestRateMath {
             borrow_rate_dec
         } else {
             // Calculate denominator: BP - u_optimal
-            let denominator = one_dec.sub(params.u_optimal.clone());
-
+            let denominator = self.ray().sub(params.u_optimal.clone());
             // Calculate numerator: (u_current - u_optimal) * r_slope2
-            let numerator = u_current.sub(params.u_optimal).mul(params.r_slope2);
-
+            let numerator = u_current
+                .sub(params.u_optimal)
+                .mul_with_precision(params.r_slope2, RAY_PRECISION);
             // Compute intermediate rate: r_base + r_slope1
             let intermediate_rate = params.r_base.add(params.r_slope1);
-
             // Compute the final result: intermediate_rate + (numerator / denominator)
             let result = intermediate_rate.add(numerator.div(denominator));
-
             // Compare with r_max and return the minimum
-            if result > params.r_max {
+            let capped_rate = if result > params.r_max {
                 params.r_max
             } else {
                 result
-            }
-        }
+            };
+            capped_rate
+        };
+
+        // Convert annual rate to per-second rate
+        let per_second_rate = annual_rate / seconds_per_year;
+
+        per_second_rate.rescale(RAY_PRECISION)
     }
 
     /// Computes the deposit rate for suppliers based on current utilization.
@@ -81,13 +84,18 @@ pub trait InterestRateMath {
         reserve_factor: ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         // Perform calculations using ManagedDecimal
-        let one_dec = ManagedDecimal::from_raw_units(BigUint::from(BP), DECIMAL_PRECISION);
+        let factor_ray = self
+            .ray()
+            .clone()
+            .mul_with_precision(reserve_factor, RAY_PRECISION);
 
-        let deposit_rate_dec = u_current
-            .mul_with_precision(borrow_rate, DECIMAL_PRECISION)
-            .mul_with_precision(one_dec.sub(reserve_factor), DECIMAL_PRECISION);
+        let rate = self.mul_half_up(
+            &self.mul_half_up(&u_current, &borrow_rate, RAY_PRECISION),
+            &self.ray().sub(factor_ray),
+            RAY_PRECISION,
+        );
 
-        deposit_rate_dec
+        rate
     }
 
     /// Computes the capital utilization of the pool.
@@ -104,48 +112,17 @@ pub trait InterestRateMath {
     /// - `ManagedDecimal<Self::Api, NumDecimals>`: The computed utilization ratio.
     fn compute_capital_utilisation(
         &self,
-        borrowed_amount: ManagedDecimal<Self::Api, NumDecimals>,
-        total_supplied: ManagedDecimal<Self::Api, NumDecimals>,
-        zero: ManagedDecimal<Self::Api, NumDecimals>,
+        borrowed_amount: &ManagedDecimal<Self::Api, NumDecimals>,
+        total_supplied: &ManagedDecimal<Self::Api, NumDecimals>,
+        zero: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         if total_supplied == zero {
-            zero
+            self.ray()
         } else {
-            let utilization_ratio = borrowed_amount
-                .mul(ManagedDecimal::from_raw_units(
-                    BigUint::from(BP),
-                    DECIMAL_PRECISION,
-                ))
-                .div(total_supplied);
+            let utilization_ratio =
+                self.div_half_up(borrowed_amount, total_supplied, RAY_PRECISION);
 
             utilization_ratio
         }
-    }
-
-    /// Computes the interest accrued on a given position.
-    ///
-    /// The accrued interest is calculated using the formula:
-    /// `interest = amount * (current_index / account_position_index) - amount`.
-    ///
-    /// # Parameters
-    /// - `amount`: The principal amount of the asset.
-    /// - `current_index`: The current market index (reflecting compounded interest).
-    /// - `account_position_index`: The index at the time the position was last updated.
-    ///
-    /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The interest accrued since the last update.
-
-    fn compute_interest(
-        &self,
-        amount: ManagedDecimal<Self::Api, NumDecimals>, // Amount of the asset
-        current_index: &ManagedDecimal<Self::Api, NumDecimals>, // Market index
-        account_position_index: &ManagedDecimal<Self::Api, NumDecimals>, // Account position index
-    ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let new_amount = amount
-            .clone()
-            .mul(current_index.clone())
-            .div(account_position_index.clone());
-
-        new_amount - amount
     }
 }

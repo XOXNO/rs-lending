@@ -23,7 +23,7 @@ pub trait StorageModule {
     /// - `BigUint`: The current reserves.
     #[view(getReserves)]
     #[storage_mapper("reserves")]
-    fn reserves(&self) -> SingleValueMapper<BigUint>;
+    fn reserves(&self) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
 
     /// Retrieves the total amount supplied to the pool.
     ///
@@ -31,7 +31,7 @@ pub trait StorageModule {
     /// - `BigUint`: The total supplied tokens.
     #[view(getSuppliedAmount)]
     #[storage_mapper("supplied_amount")]
-    fn supplied_amount(&self) -> SingleValueMapper<BigUint>;
+    fn supplied_amount(&self) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
 
     /// Retrieves the protocol revenue accrued from borrow interest fees.
     ///
@@ -39,7 +39,7 @@ pub trait StorageModule {
     /// - `BigUint`: The accumulated protocol revenue.
     #[view(getProtocolRevenue)]
     #[storage_mapper("protocol_revenue")]
-    fn protocol_revenue(&self) -> SingleValueMapper<BigUint>;
+    fn protocol_revenue(&self) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
 
     /// Retrieves the total borrowed amount from the pool.
     ///
@@ -47,7 +47,7 @@ pub trait StorageModule {
     /// - `BigUint`: The total tokens borrowed.
     #[view(getTotalBorrow)]
     #[storage_mapper("borrowed_amount")]
-    fn borrowed_amount(&self) -> SingleValueMapper<BigUint>;
+    fn borrowed_amount(&self) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
 
     /// Returns the pool parameters.
     ///
@@ -67,7 +67,9 @@ pub trait StorageModule {
     /// - `ManagedDecimal<Self::Api, NumDecimals>`: The current borrow index.
     #[view(getBorrowIndex)]
     #[storage_mapper("borrow_index")]
-    fn borrow_index(&self) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
+    fn borrow_index(
+        &self,
+    ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
 
     /// Retrieves the current supply index.
     ///
@@ -77,13 +79,15 @@ pub trait StorageModule {
     /// - `ManagedDecimal<Self::Api, NumDecimals>`: The current supply index.
     #[view(getSupplyIndex)]
     #[storage_mapper("supply_index")]
-    fn supply_index(&self) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
+    fn supply_index(
+        &self,
+    ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
 
     /// Retrieves the last update timestamp for the interest indexes.
     ///
     /// # Returns
     /// - `u64`: The timestamp when indexes were last updated.
     #[view(getLastUpdateTimestamp)]
-    #[storage_mapper("last_update_timestamp")]
-    fn last_update_timestamp(&self) -> SingleValueMapper<u64>;
+    #[storage_mapper("last_timestamp")]
+    fn last_timestamp(&self) -> SingleValueMapper<u64>;
 }

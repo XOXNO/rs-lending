@@ -43,6 +43,25 @@ where
     From: TxFrom<Env>,
     Gas: TxGas<Env>,
 {
+    /// Initializes the liquidity pool for a specific asset. 
+    ///  
+    /// This function sets the asset for the pool, initializes the interest rate parameters 
+    /// (maximum rate, base rate, slopes, optimal utilization, reserve factor) using a given decimal precision, 
+    /// and initializes both the borrow and supply indexes to the base point (BP). It also sets the protocol revenue 
+    /// to zero and records the current blockchain timestamp. 
+    ///  
+    /// # Parameters 
+    /// - `asset`: The asset identifier (EgldOrEsdtTokenIdentifier) for the pool. 
+    /// - `r_max`: The maximum borrow rate. 
+    /// - `r_base`: The base borrow rate. 
+    /// - `r_slope1`: The slope before optimal utilization. 
+    /// - `r_slope2`: The slope after optimal utilization. 
+    /// - `u_optimal`: The optimal utilization ratio. 
+    /// - `reserve_factor`: The fraction (reserve factor) of accrued interest reserved as protocol fee. 
+    /// - `decimals`: The number of decimals for the underlying asset. 
+    ///  
+    /// # Returns 
+    /// - Nothing. 
     pub fn init<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
@@ -87,6 +106,21 @@ where
     To: TxTo<Env>,
     Gas: TxGas<Env>,
 {
+    /// Upgrades the liquidity pool parameters. 
+    ///  
+    /// This function updates the pool's interest rate parameters and reserve factor. It emits an event 
+    /// reflecting the new parameters, and then updates the on-chain pool parameters accordingly. 
+    ///  
+    /// # Parameters 
+    /// - `r_max`: The new maximum borrow rate. 
+    /// - `r_base`: The new base borrow rate. 
+    /// - `r_slope1`: The new slope before optimal utilization. 
+    /// - `r_slope2`: The new slope after optimal utilization. 
+    /// - `u_optimal`: The new optimal utilization ratio. 
+    /// - `reserve_factor`: The new reserve factor. 
+    ///  
+    /// # Returns 
+    /// - Nothing. 
     pub fn upgrade<
         Arg0: ProxyArg<BigUint<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
@@ -125,10 +159,10 @@ where
     To: TxTo<Env>,
     Gas: TxGas<Env>,
 {
-    /// Returns the pool asset. 
+    /// Returns the pool asset identifier. 
     ///  
     /// # Returns 
-    /// - `EgldOrEsdtTokenIdentifier`: The pool asset. 
+    /// - `EgldOrEsdtTokenIdentifier`: The asset managed by this pool. 
     pub fn pool_asset(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, EgldOrEsdtTokenIdentifier<Env::Api>> {
@@ -138,56 +172,54 @@ where
             .original_result()
     }
 
-    /// Returns the reserves. 
-    /// Reserves are the amount of tokens that are currently in the pool available for borrowing or withdrawing. 
+    /// Retrieves the current reserves available in the pool. 
+    ///  
+    /// Reserves represent tokens held in the pool that are available for borrowing or withdrawal. 
     ///  
     /// # Returns 
-    /// - `BigUint`: The reserves. 
+    /// - `BigUint`: The current reserves. 
     pub fn reserves(
         self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getReserves")
             .original_result()
     }
 
-    /// Returns the supplied amount. 
-    /// Supplied amount is the amount of tokens that were supplied to the pool. 
+    /// Retrieves the total amount supplied to the pool. 
     ///  
     /// # Returns 
-    /// - `BigUint`: The supplied amount. 
+    /// - `BigUint`: The total supplied tokens. 
     pub fn supplied_amount(
         self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getSuppliedAmount")
             .original_result()
     }
 
-    /// Returns the rewards reserves. 
-    /// Rewards reserves are the amount of tokens that were earned by the protocol from the borrowers debt repayments. 
+    /// Retrieves the protocol revenue accrued from borrow interest fees. 
     ///  
     /// # Returns 
-    /// - `BigUint`: The rewards reserves. 
+    /// - `BigUint`: The accumulated protocol revenue. 
     pub fn protocol_revenue(
         self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getProtocolRevenue")
             .original_result()
     }
 
-    /// Returns the borrowed amount. 
-    /// Borrowed amount is the amount of tokens that were borrowed from the pool. 
+    /// Retrieves the total borrowed amount from the pool. 
     ///  
     /// # Returns 
-    /// - `BigUint`: The borrowed amount. 
+    /// - `BigUint`: The total tokens borrowed. 
     pub fn borrowed_amount(
         self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, BigUint<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getTotalBorrow")
@@ -195,10 +227,11 @@ where
     }
 
     /// Returns the pool parameters. 
-    /// Pool parameters are the parameters of the pool. 
+    ///  
+    /// These include interest rate parameters and asset decimals. 
     ///  
     /// # Returns 
-    /// - `PoolParams<Self::Api>`: The pool parameters. 
+    /// - `PoolParams<Self::Api>`: The pool configuration. 
     pub fn pool_params(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::PoolParams<Env::Api>> {
@@ -208,12 +241,12 @@ where
             .original_result()
     }
 
-    /// Returns the borrow index. 
-    /// Borrow index is the index of the borrow rate. 
-    /// It is used to calculate the debt accrued by the borrowers. 
+    /// Retrieves the current borrow index. 
+    ///  
+    /// The borrow index is used to calculate accrued interest on borrow positions. 
     ///  
     /// # Returns 
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The borrow index. 
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The current borrow index. 
     pub fn borrow_index(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
@@ -223,12 +256,12 @@ where
             .original_result()
     }
 
-    /// Returns the supply index. 
-    /// Supply index is the index of the supply rate. 
-    /// It is used to calculate the interest earned by the suppliers. 
+    /// Retrieves the current supply index. 
+    ///  
+    /// The supply index is used to compute the yield for suppliers. 
     ///  
     /// # Returns 
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The supply index. 
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The current supply index. 
     pub fn supply_index(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
@@ -238,12 +271,11 @@ where
             .original_result()
     }
 
-    /// Returns the last update timestamp. 
-    /// Last update timestamp is the last time when the indexes were updated. 
+    /// Retrieves the last update timestamp for the interest indexes. 
     ///  
     /// # Returns 
-    /// - `u64`: The last update timestamp. 
-    pub fn last_update_timestamp(
+    /// - `u64`: The timestamp when indexes were last updated. 
+    pub fn last_timestamp(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, u64> {
         self.wrapped_tx
@@ -252,12 +284,19 @@ where
             .original_result()
     }
 
-    /// Updates the indexes of the pool. 
+    /// Updates the market's interest indexes based on elapsed time. 
+    ///  
+    /// This function updates both the borrow and supply indexes. It first creates a StorageCache to read the 
+    /// current state, then updates the indexes by computing an interest factor based on the elapsed time, 
+    /// and finally emits a market state event. 
     ///  
     /// # Parameters 
-    /// - `asset_price`: The price of the asset. 
+    /// - `asset_price`: The current price of the asset. 
+    ///  
+    /// # Returns 
+    /// - Nothing. 
     pub fn update_indexes<
-        Arg0: ProxyArg<BigUint<Env::Api>>,
+        Arg0: ProxyArg<ManagedDecimal<Env::Api, usize>>,
     >(
         self,
         asset_price: Arg0,
@@ -269,17 +308,21 @@ where
             .original_result()
     }
 
-    /// Updates the position with interest. 
+    /// Updates an account position with accrued interest. 
+    ///  
+    /// This function takes an `AccountPosition` (passed from the Controller SC) and updates it by applying the 
+    /// accrued interest since the last update. Optionally, if an asset price is provided, it emits an event to update 
+    /// the market state. 
     ///  
     /// # Parameters 
-    /// - `position`: The position to update. 
-    /// - `asset_price`: The price of the asset, used to update the market state event. 
+    /// - `position`: The account position to update. 
+    /// - `asset_price`: An optional asset price used for updating market state events. 
     ///  
     /// # Returns 
-    /// - `AccountPosition<Self::Api>`: The updated position. 
+    /// - `AccountPosition<Self::Api>`: The updated account position with accrued interest. 
     pub fn update_position_with_interest<
         Arg0: ProxyArg<common_structs::AccountPosition<Env::Api>>,
-        Arg1: ProxyArg<OptionalValue<BigUint<Env::Api>>>,
+        Arg1: ProxyArg<OptionalValue<ManagedDecimal<Env::Api, usize>>>,
     >(
         self,
         position: Arg0,
@@ -295,53 +338,54 @@ where
 
     /// Supplies liquidity to the pool. 
     ///  
-    /// # Parameters 
-    /// - `deposit_position`: The position to update. 
-    /// - `asset_price`: The price of the asset, used to update the market state event. 
+    /// This function is called by the Controller SC to deposit assets into the market. It validates the asset, 
+    /// updates the depositor's position with accrued interest, increases the pool's reserves and total supplied amount, 
+    /// and emits a market state event. 
     ///  
-    /// # Payment 
-    /// - `*`: The asset to deposit, has to be the same as the pool asset. 
+    /// # Parameters 
+    /// - `deposit_position`: The current account position of the supplier. 
+    /// - `asset_price`: The current price of the asset. 
     ///  
     /// # Returns 
-    /// - `AccountPosition<Self::Api>`: The updated position. 
+    /// - `AccountPosition<Self::Api>`: The updated deposit position. 
     pub fn supply<
         Arg0: ProxyArg<common_structs::AccountPosition<Env::Api>>,
-        Arg1: ProxyArg<BigUint<Env::Api>>,
+        Arg1: ProxyArg<ManagedDecimal<Env::Api, usize>>,
     >(
         self,
-        deposit_position: Arg0,
+        position: Arg0,
         asset_price: Arg1,
     ) -> TxTypedCall<Env, From, To, (), Gas, common_structs::AccountPosition<Env::Api>> {
         self.wrapped_tx
             .raw_call("supply")
-            .argument(&deposit_position)
+            .argument(&position)
             .argument(&asset_price)
             .original_result()
     }
 
     /// Borrows liquidity from the pool. 
     ///  
-    /// # Parameters 
-    /// - `initial_caller`: The address of the caller. 
-    /// - `borrow_amount`: The amount of the asset to borrow. 
-    /// - `existing_borrow_position`: The position to update. 
-    /// - `asset_price`: The price of the asset, used to update the market state event. 
+    /// This function is called by the Controller SC to borrow assets. It updates the borrower's position with accrued interest, 
+    /// ensures sufficient liquidity is available, increases the total borrowed amount, deducts reserves, and transfers tokens to the borrower. 
     ///  
-    /// # Payment 
-    /// - `*`: The asset to borrow, has to be the same as the pool asset. 
+    /// # Parameters 
+    /// - `initial_caller`: The address of the borrower. 
+    /// - `borrow_amount`: The amount to borrow. 
+    /// - `borrow_position`: The borrower's current account position. 
+    /// - `asset_price`: The current asset price. 
     ///  
     /// # Returns 
-    /// - `AccountPosition<Self::Api>`: The updated position. 
+    /// - `AccountPosition<Self::Api>`: The updated borrow position. 
     pub fn borrow<
         Arg0: ProxyArg<ManagedAddress<Env::Api>>,
-        Arg1: ProxyArg<BigUint<Env::Api>>,
+        Arg1: ProxyArg<ManagedDecimal<Env::Api, usize>>,
         Arg2: ProxyArg<common_structs::AccountPosition<Env::Api>>,
-        Arg3: ProxyArg<BigUint<Env::Api>>,
+        Arg3: ProxyArg<ManagedDecimal<Env::Api, usize>>,
     >(
         self,
         initial_caller: Arg0,
         borrow_amount: Arg1,
-        borrow_position: Arg2,
+        position: Arg2,
         asset_price: Arg3,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::AccountPosition<Env::Api>> {
         self.wrapped_tx
@@ -349,68 +393,68 @@ where
             .raw_call("borrow")
             .argument(&initial_caller)
             .argument(&borrow_amount)
-            .argument(&borrow_position)
+            .argument(&position)
             .argument(&asset_price)
             .original_result()
     }
 
-    /// Withdraws liquidity from the pool. 
+    /// Withdraws liquidity from the pool via normal withdraw or liquidations 
     ///  
     /// # Parameters 
     /// - `initial_caller`: The address of the caller. 
     /// - `amount`: The amount of the asset to withdraw. 
     /// - `mut deposit_position`: The position to update. 
-    /// - `is_liquidation`: Whether the withdrawal is a liquidation. 
-    /// - `protocol_liquidation_fee`: The protocol liquidation fee. 
-    /// - `asset_price`: The price of the asset, used to update the market state event. 
+    /// - `is_liquidation`: Whether the withdrawal is part of a liquidation process. 
+    /// - `protocol_liquidation_fee`: The protocol liquidation fee (if applicable, if not will be 0). 
+    /// - `asset_price`: The current asset price used to update market state. 
     ///  
     /// # Returns 
-    /// - `AccountPosition<Self::Api>`: The updated position. 
+    /// - `AccountPosition<Self::Api>`: The updated deposit position. 
     pub fn withdraw<
         Arg0: ProxyArg<ManagedAddress<Env::Api>>,
-        Arg1: ProxyArg<BigUint<Env::Api>>,
+        Arg1: ProxyArg<ManagedDecimal<Env::Api, usize>>,
         Arg2: ProxyArg<common_structs::AccountPosition<Env::Api>>,
         Arg3: ProxyArg<bool>,
-        Arg4: ProxyArg<BigUint<Env::Api>>,
-        Arg5: ProxyArg<BigUint<Env::Api>>,
+        Arg4: ProxyArg<Option<ManagedDecimal<Env::Api, usize>>>,
+        Arg5: ProxyArg<ManagedDecimal<Env::Api, usize>>,
     >(
         self,
         initial_caller: Arg0,
-        amount: Arg1,
+        requested_amount: Arg1,
         deposit_position: Arg2,
         is_liquidation: Arg3,
-        protocol_liquidation_fee: Arg4,
+        protocol_fee_opt: Arg4,
         asset_price: Arg5,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::AccountPosition<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("withdraw")
             .argument(&initial_caller)
-            .argument(&amount)
+            .argument(&requested_amount)
             .argument(&deposit_position)
             .argument(&is_liquidation)
-            .argument(&protocol_liquidation_fee)
+            .argument(&protocol_fee_opt)
             .argument(&asset_price)
             .original_result()
     }
 
-    /// Repays a borrow position. 
+    /// Processes a repayment for a borrow position. 
+    ///  
+    /// This function handles both full and partial repayments. It updates the borrower's position with accrued interest, 
+    /// splits the repayment into principal and interest, issues refunds if the repayment exceeds the total debt, and 
+    /// updates the pool state accordingly. 
     ///  
     /// # Parameters 
     /// - `initial_caller`: The address of the caller. 
-    /// - `mut borrow_position`: The position to update. 
-    /// - `asset_price`: The price of the asset, used to update the market state event. 
-    ///  
-    /// # Payment 
-    /// - `*`: The asset to repay, has to be the same as the pool asset. 
+    /// - `mut position`: The borrower's current account position. 
+    /// - `asset_price`: The current asset price used for updating market state. 
     ///  
     /// # Returns 
-    /// - `AccountPosition<Self::Api>`: The updated position. 
-    /// -  Extra amount is sent back to the caller if the repayment is greater than the total owed. 
+    /// - `AccountPosition<Self::Api>`: The updated borrow position. 
     pub fn repay<
         Arg0: ProxyArg<ManagedAddress<Env::Api>>,
         Arg1: ProxyArg<common_structs::AccountPosition<Env::Api>>,
-        Arg2: ProxyArg<BigUint<Env::Api>>,
+        Arg2: ProxyArg<ManagedDecimal<Env::Api, usize>>,
     >(
         self,
         initial_caller: Arg0,
@@ -425,28 +469,35 @@ where
             .original_result()
     }
 
-    /// Handles a flash loan. 
+    /// Provides a flash loan from the pool. 
+    ///  
+    /// This function allows a flash loan operation. It deducts the loan amount from reserves, computes the fee, 
+    /// makes an external call to the borrower's contract, verifies that the repayment (including fee) meets the minimum requirement, 
+    /// and then updates the pool state accordingly. 
     ///  
     /// # Parameters 
-    /// - `borrowed_token`: The token to borrow. 
-    /// - `amount`: The amount of the token to borrow. 
-    /// - `contract_address`: The address of the contract to call. 
-    /// - `endpoint`: The endpoint to call. 
-    /// - `arguments`: The arguments to pass to the endpoint. 
-    /// - `fees`: The fees to pay for the flash loan. 
-    /// - `asset_price`: The price of the asset, used to update the market state event. 
+    /// - `borrowed_token`: The token to be flash loaned (must match the pool asset). 
+    /// - `amount`: The amount to flash loan. 
+    /// - `contract_address`: The address of the contract to be called. 
+    /// - `endpoint`: The endpoint of the target contract. 
+    /// - `arguments`: The arguments to pass to the target contract. 
+    /// - `fees`: The fee rate for the flash loan. 
+    /// - `asset_price`: The current asset price. 
+    ///  
+    /// # Returns 
+    /// - Nothing. 
     pub fn flash_loan<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-        Arg1: ProxyArg<BigUint<Env::Api>>,
+        Arg1: ProxyArg<ManagedDecimal<Env::Api, usize>>,
         Arg2: ProxyArg<ManagedAddress<Env::Api>>,
         Arg3: ProxyArg<ManagedBuffer<Env::Api>>,
         Arg4: ProxyArg<ManagedArgBuffer<Env::Api>>,
-        Arg5: ProxyArg<BigUint<Env::Api>>,
-        Arg6: ProxyArg<BigUint<Env::Api>>,
+        Arg5: ProxyArg<ManagedDecimal<Env::Api, usize>>,
+        Arg6: ProxyArg<ManagedDecimal<Env::Api, usize>>,
     >(
         self,
         borrowed_token: Arg0,
-        amount: Arg1,
+        loaned_amount: Arg1,
         contract_address: Arg2,
         endpoint: Arg3,
         arguments: Arg4,
@@ -457,7 +508,7 @@ where
             .payment(NotPayable)
             .raw_call("flashLoan")
             .argument(&borrowed_token)
-            .argument(&amount)
+            .argument(&loaned_amount)
             .argument(&contract_address)
             .argument(&endpoint)
             .argument(&arguments)
@@ -466,37 +517,55 @@ where
             .original_result()
     }
 
+    /// Simulates a flash loan strategy. 
+    ///  
+    /// This function is used internally to simulate a strategy where a flash loan is taken (without immediate repayment), 
+    /// the accrued fee is added as interest to the position, and the tokens are transferred to the caller. 
+    /// It returns the current borrow index and timestamp for later updates to the position. 
+    ///  
+    /// # Parameters 
+    /// - `token`: The token identifier (must match the pool asset). 
+    /// - `amount`: The amount to flash borrow for the strategy. 
+    /// - `fee`: The fee for the flash loan. 
+    /// - `asset_price`: The current asset price. 
+    ///  
+    /// # Returns 
+    /// - `(BigUint, u64)`: A tuple containing the latest borrow index and the current timestamp. 
     pub fn internal_create_strategy<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-        Arg1: ProxyArg<BigUint<Env::Api>>,
-        Arg2: ProxyArg<BigUint<Env::Api>>,
-        Arg3: ProxyArg<BigUint<Env::Api>>,
+        Arg1: ProxyArg<ManagedDecimal<Env::Api, usize>>,
+        Arg2: ProxyArg<ManagedDecimal<Env::Api, usize>>,
+        Arg3: ProxyArg<ManagedDecimal<Env::Api, usize>>,
     >(
         self,
         token: Arg0,
-        amount: Arg1,
-        fee: Arg2,
+        strategy_amount: Arg1,
+        strategy_fee: Arg2,
         asset_price: Arg3,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, (BigUint<Env::Api>, u64)> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, (ManagedDecimal<Env::Api, usize>, u64)> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("createStrategy")
             .argument(&token)
-            .argument(&amount)
-            .argument(&fee)
+            .argument(&strategy_amount)
+            .argument(&strategy_fee)
             .argument(&asset_price)
             .original_result()
     }
 
-    /// Adds vault liquidation rewards to the pool. 
+    /// Adds external protocol revenue to the pool. 
+    ///  
+    /// This function accepts an external payment (e.g., from vault liquidations) in the pool asset, 
+    /// converts it to a ManagedDecimal using the pool's decimals, and adds it to both the protocol revenue and reserves. 
+    /// It then updates the market state event. 
     ///  
     /// # Parameters 
-    /// - `asset_price`: The price of the asset, used to update the market state event. 
+    /// - `asset_price`: The current asset price. 
     ///  
-    /// # Payment 
-    /// - `*`: The asset to add, has to be the same as the pool asset. 
+    /// # Returns 
+    /// - Nothing. 
     pub fn add_external_protocol_revenue<
-        Arg0: ProxyArg<BigUint<Env::Api>>,
+        Arg0: ProxyArg<ManagedDecimal<Env::Api, usize>>,
     >(
         self,
         asset_price: Arg0,
@@ -507,15 +576,19 @@ where
             .original_result()
     }
 
-    /// Claims the revenue of the pool. 
+    /// Claims the protocol revenue. 
+    ///  
+    /// This function updates the market's interest indexes, calculates the available protocol revenue (by taking the minimum 
+    /// of the protocol revenue and reserves), and transfers that amount to the protocol owner. 
+    /// It then emits an event with the updated market state. 
     ///  
     /// # Parameters 
-    /// - `asset_price`: The price of the asset, used to update the market state event. 
+    /// - `asset_price`: The current asset price. 
     ///  
     /// # Returns 
-    /// - `EgldOrEsdtTokenPayment<Self::Api>`: The payment of the revenue. 
+    /// - `EgldOrEsdtTokenPayment<Self::Api>`: The payment representing the claimed protocol revenue. 
     pub fn claim_revenue<
-        Arg0: ProxyArg<BigUint<Env::Api>>,
+        Arg0: ProxyArg<ManagedDecimal<Env::Api, usize>>,
     >(
         self,
         asset_price: Arg0,
@@ -527,10 +600,12 @@ where
             .original_result()
     }
 
-    /// Returns the capital utilisation of the pool. 
+    /// Retrieves the current capital utilization of the pool. 
+    ///  
+    /// Capital utilization is defined as the ratio of borrowed tokens to the total supplied tokens. 
     ///  
     /// # Returns 
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The capital utilisation. 
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The current utilization ratio. 
     pub fn get_capital_utilisation(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
@@ -540,8 +615,9 @@ where
             .original_result()
     }
 
-    /// Returns the total capital of the pool. 
-    /// Total capital is the sum of the reserves and the borrowed amount. 
+    /// Retrieves the total capital of the pool. 
+    ///  
+    /// Total capital is defined as the sum of reserves and borrowed tokens. 
     ///  
     /// # Returns 
     /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total capital. 
@@ -554,14 +630,16 @@ where
             .original_result()
     }
 
-    /// Returns the total interest earned (compound) for the borrowers. 
+    /// Computes the total accrued interest on a borrow position. 
+    ///  
+    /// The interest is computed based on the difference between the current and the initial borrow index. 
     ///  
     /// # Parameters 
-    /// - `amount`: The amount of tokens to calculate the interest for. 
-    /// - `initial_borrow_index`: The initial borrow index, which is the index at the time of the borrow from the position metadata. 
+    /// - `amount`: The principal amount borrowed. 
+    /// - `initial_borrow_index`: The borrow index at the time of borrowing. 
     ///  
     /// # Returns 
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total interest earned. 
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The accrued interest. 
     pub fn get_debt_interest<
         Arg0: ProxyArg<ManagedDecimal<Env::Api, usize>>,
         Arg1: ProxyArg<ManagedDecimal<Env::Api, usize>>,
@@ -578,10 +656,12 @@ where
             .original_result()
     }
 
-    /// Returns the deposit rate of the pool. 
+    /// Retrieves the current deposit rate for the pool. 
+    ///  
+    /// The deposit rate is derived from capital utilization, the borrow rate, and the reserve factor. 
     ///  
     /// # Returns 
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The deposit rate. 
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The current deposit rate. 
     pub fn get_deposit_rate(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
@@ -591,10 +671,10 @@ where
             .original_result()
     }
 
-    /// Returns the borrow rate of the pool. 
+    /// Retrieves the current borrow rate for the pool. 
     ///  
     /// # Returns 
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The borrow rate. 
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The current borrow rate. 
     pub fn get_borrow_rate(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {

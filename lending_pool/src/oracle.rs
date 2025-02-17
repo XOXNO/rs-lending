@@ -1,10 +1,12 @@
 multiversx_sc::imports!();
 use common_constants::{
-    BP, EGLD_TICKER, PRICE_AGGREGATOR_ROUNDS_STORAGE_KEY, PRICE_AGGREGATOR_STATUS_STORAGE_KEY,
-    SECONDS_PER_HOUR, SECONDS_PER_MINUTE, STATE_PAIR_STORAGE_KEY, USD_TICKER, WEGLD_TICKER,
+    BPS, BPS_PRECISION, EGLD_TICKER, PRICE_AGGREGATOR_ROUNDS_STORAGE_KEY,
+    PRICE_AGGREGATOR_STATUS_STORAGE_KEY, SECONDS_PER_HOUR, SECONDS_PER_MINUTE,
+    STATE_PAIR_STORAGE_KEY, USD_TICKER, WAD_PRECISION, WEGLD_TICKER,
 };
 use common_events::{ExchangeSource, OracleProvider, OracleType, PriceFeedShort, PricingMethod};
 use multiversx_sc::storage::StorageKey;
+
 use price_aggregator::{
     errors::{PAUSED_ERROR, TOKEN_PAIR_NOT_FOUND_ERROR},
     structs::{TimestampedPrice, TokenPair},
@@ -12,6 +14,7 @@ use price_aggregator::{
 
 use crate::{
     contexts::base::StorageCache,
+    helpers,
     proxies::{lxoxno_proxy, proxy_legld, xegld_proxy},
     proxy_price_aggregator::PriceFeed,
     proxy_xexchange_pair::State,
@@ -21,39 +24,9 @@ use crate::{
 };
 
 #[multiversx_sc::module]
-pub trait OracleModule: storage::LendingStorageModule {
-    /// Compute amount in tokens
-    ///
-    /// This function is used to compute the amount of a token in tokens from the amount in egld
-    /// It uses the price of the token to convert the amount to tokens
-    fn compute_amount_in_tokens(
-        &self,
-        amount_in_egld: &BigUint,
-        token_data: &PriceFeedShort<Self::Api>,
-    ) -> BigUint {
-        amount_in_egld
-            .mul(&BigUint::from(BP))
-            .div(&token_data.price)
-            .mul(BigUint::from(10u64).pow(token_data.decimals as u32))
-            .div(&BigUint::from(BP))
-    }
-
-    /// Get token amount in dollars raw
-    ///
-    /// This function is used to get the amount of a token in dollars from the raw price
-    /// It uses the price of the token to convert the amount to dollars
-    fn get_token_amount_in_dollars_raw(
-        &self,
-        amount: &BigUint,
-        token_data: &PriceFeedShort<Self::Api>,
-    ) -> BigUint {
-        amount
-            .mul(&BigUint::from(BP))
-            .mul(&token_data.price)
-            .div(BigUint::from(10u64).pow(token_data.decimals as u32))
-            .div(&BigUint::from(BP))
-    }
-
+pub trait OracleModule:
+    storage::LendingStorageModule + helpers::math::MathsModule + common_math::SharedMathModule
+{
     /// Get token amount in egld
     ///
     /// This function is used to get the amount of a token in egld from the price
@@ -61,27 +34,11 @@ pub trait OracleModule: storage::LendingStorageModule {
     fn get_token_amount_in_egld(
         &self,
         token_id: &EgldOrEsdtTokenIdentifier,
-        amount: &BigUint,
+        amount: &ManagedDecimal<Self::Api, NumDecimals>,
         storage_cache: &mut StorageCache<Self>,
-    ) -> BigUint {
-        let token_data = self.get_token_price(token_id, storage_cache);
-        self.get_token_amount_in_egld_raw(amount, &token_data)
-    }
-
-    /// Get token amount in egld raw
-    ///
-    /// This function is used to get the amount of a token in egld from the raw price
-    /// It converts the amount of the token to egld using the price of the token and the decimals
-    fn get_token_amount_in_egld_raw(
-        &self,
-        amount: &BigUint,
-        token_data: &PriceFeedShort<Self::Api>,
-    ) -> BigUint {
-        amount
-            .mul(&BigUint::from(BP))
-            .mul(&token_data.price)
-            .div(BigUint::from(10u64).pow(token_data.decimals as u32))
-            .div(&BigUint::from(BP))
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        let feed = self.get_token_price(token_id, storage_cache);
+        self.get_token_amount_in_egld_raw(amount, &feed.price)
     }
 
     /// Get token price data
@@ -99,22 +56,29 @@ pub trait OracleModule: storage::LendingStorageModule {
         let egld_ticker = ManagedBuffer::new_from_bytes(EGLD_TICKER);
         let is_egld = ticker == egld_ticker;
         if is_egld {
-            return self.create_price_feed(BigUint::from(10u64).pow(18u32), 18);
+            return PriceFeedShort {
+                decimals: WAD_PRECISION,
+                price: storage_cache.wad_dec.clone(),
+            };
         }
         if storage_cache.prices_cache.contains(&token_id) {
-            let cached_price_feed = storage_cache.prices_cache.get(&token_id);
-            return self.create_price_feed(cached_price_feed.price, cached_price_feed.decimals);
+            let feed = storage_cache.prices_cache.get(&token_id);
+            return feed;
         }
 
         let oracle_data = self.token_oracle(token_id);
 
         require!(!oracle_data.is_empty(), ERROR_ORACLE_TOKEN_NOT_FOUND);
+        let data = oracle_data.get();
+        let price = self.find_price_feed(&data, token_id, storage_cache);
+        let feed = PriceFeedShort {
+            decimals: data.decimals,
+            price: price,
+        };
 
-        let price_feed = self.find_price_feed(&oracle_data.get(), token_id, storage_cache);
+        storage_cache.prices_cache.put(token_id, &feed);
 
-        storage_cache.prices_cache.put(token_id, &price_feed);
-
-        price_feed
+        feed
     }
 
     /// Find price feed
@@ -129,7 +93,7 @@ pub trait OracleModule: storage::LendingStorageModule {
         configs: &OracleProvider<Self::Api>,
         original_market_token: &EgldOrEsdtTokenIdentifier,
         storage_cache: &mut StorageCache<Self>,
-    ) -> PriceFeedShort<Self::Api> {
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
         match configs.token_type {
             OracleType::Derived => self.get_derived_price(configs, storage_cache),
             OracleType::Lp => self.get_safe_lp_price(configs, storage_cache),
@@ -144,26 +108,25 @@ pub trait OracleModule: storage::LendingStorageModule {
         &self,
         configs: &OracleProvider<Self::Api>,
         storage_cache: &mut StorageCache<Self>,
-    ) -> PriceFeedShort<Self::Api> {
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let short_interval = self.get_lp_price(configs, SECONDS_PER_MINUTE * 10, storage_cache);
         let long_interval = self.get_lp_price(configs, SECONDS_PER_HOUR, storage_cache);
 
         let tolerances = &configs.tolerance;
 
         let final_price = {
-            let avg_price =
-                (&short_interval.price + &long_interval.price).div(&BigUint::from(2u64));
+            let avg_price = (short_interval.clone() + long_interval.clone()) / 2;
 
             if self.is_within_anchor(
-                &short_interval.price,
-                &long_interval.price,
+                &short_interval,
+                &long_interval,
                 &tolerances.first_upper_ratio,
                 &tolerances.first_lower_ratio,
             ) {
-                short_interval.price
+                short_interval
             } else if self.is_within_anchor(
-                &short_interval.price,
-                &long_interval.price,
+                &short_interval,
+                &long_interval,
                 &tolerances.last_upper_ratio,
                 &tolerances.last_lower_ratio,
             ) {
@@ -173,11 +136,11 @@ pub trait OracleModule: storage::LendingStorageModule {
                     storage_cache.allow_unsafe_price,
                     ERROR_UN_SAFE_PRICE_NOT_ALLOWED
                 );
-                long_interval.price
+                long_interval
             }
         };
 
-        self.create_price_feed(final_price, configs.decimals)
+        final_price
     }
 
     // Derived Price Functions
@@ -185,7 +148,7 @@ pub trait OracleModule: storage::LendingStorageModule {
         &self,
         configs: &OracleProvider<Self::Api>,
         storage_cache: &mut StorageCache<Self>,
-    ) -> PriceFeedShort<Self::Api> {
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
         match configs.source {
             ExchangeSource::XEGLD => self.get_xegld_derived_price(configs),
             ExchangeSource::LEGLD => self.get_legld_derived_price(configs),
@@ -197,7 +160,7 @@ pub trait OracleModule: storage::LendingStorageModule {
     fn get_legld_derived_price(
         &self,
         configs: &OracleProvider<Self::Api>,
-    ) -> PriceFeedShort<Self::Api> {
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let ratio = self
             .tx()
             .to(&configs.contract_address)
@@ -206,13 +169,13 @@ pub trait OracleModule: storage::LendingStorageModule {
             .returns(ReturnsResult)
             .sync_call_readonly();
 
-        self.create_price_feed(ratio, configs.decimals)
+        self.to_decimal_wad(ratio)
     }
 
     fn get_xegld_derived_price(
         &self,
         configs: &OracleProvider<Self::Api>,
-    ) -> PriceFeedShort<Self::Api> {
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let ratio = self
             .tx()
             .to(&configs.contract_address)
@@ -221,14 +184,14 @@ pub trait OracleModule: storage::LendingStorageModule {
             .returns(ReturnsResult)
             .sync_call_readonly();
 
-        self.create_price_feed(ratio, configs.decimals)
+        self.to_decimal_wad(ratio)
     }
 
     fn get_lxoxno_derived_price(
         &self,
         configs: &OracleProvider<Self::Api>,
         storage_cache: &mut StorageCache<Self>,
-    ) -> PriceFeedShort<Self::Api> {
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let ratio = self
             .tx()
             .to(&configs.contract_address)
@@ -236,11 +199,11 @@ pub trait OracleModule: storage::LendingStorageModule {
             .get_exchange_rate()
             .returns(ReturnsResult)
             .sync_call_readonly();
+        let ratio_dec = ManagedDecimal::from_raw_units(ratio, configs.decimals as usize);
+        let main_price = self.get_token_price(&configs.first_token_id, storage_cache);
+        let egld_price = self.get_token_amount_in_egld_raw(&ratio_dec, &main_price.price);
 
-        let feed = self.get_token_price(&configs.first_token_id, storage_cache);
-        let egld_price = self.get_token_amount_in_egld_raw(&ratio, &feed);
-
-        self.create_price_feed(egld_price, feed.decimals)
+        egld_price
     }
 
     fn get_pair_state(&self, pair: &ManagedAddress) -> State {
@@ -257,7 +220,7 @@ pub trait OracleModule: storage::LendingStorageModule {
         configs: &OracleProvider<Self::Api>,
         token_id: &EgldOrEsdtTokenIdentifier,
         storage_cache: &mut StorageCache<Self>,
-    ) -> BigUint {
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let egld_ticker = ManagedBuffer::new_from_bytes(EGLD_TICKER);
 
         let one_token = BigUint::from(10u64).pow(configs.decimals as u32);
@@ -279,7 +242,7 @@ pub trait OracleModule: storage::LendingStorageModule {
         let result_ticker = self.get_token_ticker(&new_token_id);
 
         if result_ticker == egld_ticker {
-            return result.amount;
+            return self.to_decimal_wad(result.amount);
         }
 
         self.get_token_price(&new_token_id, storage_cache).price
@@ -297,7 +260,7 @@ pub trait OracleModule: storage::LendingStorageModule {
         configs: &OracleProvider<Self::Api>,
         original_market_token: &EgldOrEsdtTokenIdentifier,
         storage_cache: &mut StorageCache<Self>,
-    ) -> PriceFeedShort<Self::Api> {
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let token_price_in_egld_opt = if configs.pricing_method == PricingMethod::Aggregator
             || configs.pricing_method == PricingMethod::Mix
         {
@@ -319,7 +282,7 @@ pub trait OracleModule: storage::LendingStorageModule {
         let final_price = if safe_price.is_some() && token_price_in_egld_opt.is_some() {
             let token_price_in_egld = token_price_in_egld_opt.into_option().unwrap();
             let anchor_price = safe_price.into_option().unwrap();
-            let avg_price = (&token_price_in_egld + &anchor_price).div(&BigUint::from(2u64));
+            let avg_price = (token_price_in_egld.clone() + anchor_price.clone()) / 2;
             let tolerances = &configs.tolerance;
 
             if self.is_within_anchor(
@@ -351,7 +314,7 @@ pub trait OracleModule: storage::LendingStorageModule {
             sc_panic!(ERROR_NO_LAST_PRICE_FOUND);
         };
 
-        self.create_price_feed(final_price, configs.decimals)
+        final_price
     }
 
     /// Get token price in egld from aggregator
@@ -362,14 +325,13 @@ pub trait OracleModule: storage::LendingStorageModule {
         &self,
         token_id: &EgldOrEsdtTokenIdentifier,
         storage_cache: &mut StorageCache<Self>,
-    ) -> BigUint {
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
         // Get price feeds
-        let token_price_feed =
+        let token_price =
             self.get_aggregator_price_feed(token_id, &storage_cache.price_aggregator_sc);
-        // For other tokens, continue with normal calculation
-        let one_egld = BigUint::from(10u64).pow(storage_cache.egld_price_feed.decimals as u32);
 
-        &token_price_feed.price * &one_egld / &storage_cache.egld_price_feed.price
+        // For other tokens, continue with normal calculation
+        self.div_half_up(&token_price, &storage_cache.egld_price_feed, WAD_PRECISION)
     }
 
     /// Check if the price is within the anchor
@@ -377,17 +339,14 @@ pub trait OracleModule: storage::LendingStorageModule {
     /// This function compares the price of a token with the safe price and the aggregator price.
     fn is_within_anchor(
         &self,
-        aggregator_price: &BigUint,
-        safe_price: &BigUint,
-        upper_bound_ratio: &BigUint,
-        lower_bound_ratio: &BigUint,
+        aggregator_price: &ManagedDecimal<Self::Api, NumDecimals>,
+        safe_price: &ManagedDecimal<Self::Api, NumDecimals>,
+        upper_bound_ratio: &ManagedDecimal<Self::Api, NumDecimals>,
+        lower_bound_ratio: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> bool {
-        let anchor_ratio = safe_price * &BigUint::from(BP) / aggregator_price;
-        &anchor_ratio <= upper_bound_ratio && &anchor_ratio >= lower_bound_ratio
-    }
+        let anchor_ratio = safe_price.clone() * self.bps() / aggregator_price.clone();
 
-    fn create_price_feed(&self, price: BigUint, decimals: u8) -> PriceFeedShort<Self::Api> {
-        PriceFeedShort { price, decimals }
+        &anchor_ratio <= upper_bound_ratio && &anchor_ratio >= lower_bound_ratio
     }
 
     /// Get token ticker
@@ -413,7 +372,7 @@ pub trait OracleModule: storage::LendingStorageModule {
         configs: &OracleProvider<Self::Api>,
         time_offest: u64,
         storage_cache: &mut StorageCache<Self>,
-    ) -> PriceFeedShort<Self::Api> {
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
         if configs.source == ExchangeSource::XExchange {
             let tokens = self
                 .safe_price_proxy(self.safe_price_view().get())
@@ -426,26 +385,30 @@ pub trait OracleModule: storage::LendingStorageModule {
                 .sync_call_readonly();
 
             let (first_token, second_token) = tokens.into_tuple();
-            let first_token_data = self.get_token_price(
-                &EgldOrEsdtTokenIdentifier::esdt(first_token.token_identifier),
-                storage_cache,
-            );
 
-            let second_token_data = self.get_token_price(
-                &EgldOrEsdtTokenIdentifier::esdt(second_token.token_identifier),
-                storage_cache,
-            );
+            let first = &EgldOrEsdtTokenIdentifier::esdt(first_token.token_identifier);
+            let second = &EgldOrEsdtTokenIdentifier::esdt(second_token.token_identifier);
 
-            let first_token_egld_price =
-                self.get_token_amount_in_egld_raw(&first_token.amount, &first_token_data);
-            let second_token_egld_price =
-                self.get_token_amount_in_egld_raw(&second_token.amount, &second_token_data);
+            let first_token_data = self.get_token_price(first, storage_cache);
+            let second_token_data = self.get_token_price(second, storage_cache);
+
+            let first_token_egld_price = self.get_token_amount_in_egld_raw(
+                &ManagedDecimal::from_raw_units(
+                    first_token.amount,
+                    first_token_data.decimals as usize,
+                ),
+                &first_token_data.price,
+            );
+            let second_token_egld_price = self.get_token_amount_in_egld_raw(
+                &ManagedDecimal::from_raw_units(
+                    second_token.amount,
+                    second_token_data.decimals as usize,
+                ),
+                &second_token_data.price,
+            );
 
             // TODO: Add anchor checks and more ways of getting the LP price
-            self.create_price_feed(
-                first_token_egld_price + second_token_egld_price,
-                configs.decimals,
-            )
+            first_token_egld_price + second_token_egld_price
         } else {
             sc_panic!(ERROR_INVALID_EXCHANGE_SOURCE);
         }
@@ -455,7 +418,7 @@ pub trait OracleModule: storage::LendingStorageModule {
         &self,
         token_id: &EgldOrEsdtTokenIdentifier,
         price_aggregator_sc: &ManagedAddress,
-    ) -> PriceFeedShort<Self::Api> {
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let from_ticker = self.get_token_ticker(token_id);
 
         require!(
@@ -480,7 +443,7 @@ pub trait OracleModule: storage::LendingStorageModule {
 
         let price_feed = self.make_price_feed(token_pair, round_values.get());
 
-        self.create_price_feed(price_feed.price, price_feed.decimals)
+        self.to_decimal_wad(price_feed.price)
     }
 
     fn token_oracle_prices_round(

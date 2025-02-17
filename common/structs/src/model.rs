@@ -3,6 +3,8 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
+pub use common_constants::{BPS_PRECISION, RAY_PRECISION, WAD_PRECISION};
+
 /// PoolParams defines the core parameters for a liquidity pool, including
 /// the interest rate model settings and the asset’s decimal precision.
 ///
@@ -49,15 +51,15 @@ pub struct AccountPosition<M: ManagedTypeApi> {
     pub deposit_type: AccountPositionType,
     pub account_nonce: u64,
     pub token_id: EgldOrEsdtTokenIdentifier<M>,
-    pub amount: BigUint<M>,
-    pub accumulated_interest: BigUint<M>,
+    pub amount: ManagedDecimal<M, NumDecimals>,
+    pub accumulated_interest: ManagedDecimal<M, NumDecimals>,
     pub timestamp: u64,
-    pub index: BigUint<M>,
+    pub index: ManagedDecimal<M, NumDecimals>,
     pub is_vault: bool,
-    pub entry_liquidation_threshold: BigUint<M>,
-    pub entry_liquidation_bonus: BigUint<M>,
-    pub entry_liquidation_fees: BigUint<M>,
-    pub entry_ltv: BigUint<M>,
+    pub entry_liquidation_threshold: ManagedDecimal<M, NumDecimals>,
+    pub entry_liquidation_bonus: ManagedDecimal<M, NumDecimals>,
+    pub entry_liquidation_fees: ManagedDecimal<M, NumDecimals>,
+    pub entry_ltv: ManagedDecimal<M, NumDecimals>,
 }
 
 impl<M: ManagedTypeApi> AccountPosition<M> {
@@ -82,15 +84,15 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
     pub fn new(
         deposit_type: AccountPositionType,
         token_id: EgldOrEsdtTokenIdentifier<M>,
-        amount: BigUint<M>,
-        accumulated_interest: BigUint<M>,
+        amount: ManagedDecimal<M, NumDecimals>,
+        accumulated_interest: ManagedDecimal<M, NumDecimals>,
         account_nonce: u64,
         timestamp: u64,
-        index: BigUint<M>,
-        entry_liquidation_threshold: BigUint<M>,
-        entry_liquidation_bonus: BigUint<M>,
-        entry_liquidation_fees: BigUint<M>,
-        entry_ltv: BigUint<M>,
+        index: ManagedDecimal<M, NumDecimals>,
+        entry_liquidation_threshold: ManagedDecimal<M, NumDecimals>,
+        entry_liquidation_bonus: ManagedDecimal<M, NumDecimals>,
+        entry_liquidation_fees: ManagedDecimal<M, NumDecimals>,
+        entry_ltv: ManagedDecimal<M, NumDecimals>,
         is_vault: bool,
     ) -> Self {
         AccountPosition {
@@ -113,8 +115,8 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
     ///
     /// # Returns
     /// - `BigUint<M>`: The total amount in the position.
-    pub fn get_total_amount(&self) -> BigUint<M> {
-        &self.amount + &self.accumulated_interest
+    pub fn get_total_amount(&self) -> ManagedDecimal<M, NumDecimals> {
+        self.amount.clone() + self.accumulated_interest.clone()
     }
 }
 
@@ -125,14 +127,10 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
 #[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode, Clone)]
 pub struct AssetConfig<M: ManagedTypeApi> {
     // Basic parameters
-    pub ltv: BigUint<M>,
-    pub liquidation_threshold: BigUint<M>,
-    pub liquidation_base_bonus: BigUint<M>,
-    pub liquidation_max_fee: BigUint<M>,
-
-    // Caps
-    pub borrow_cap: Option<BigUint<M>>, // Maximum borrowable amount.
-    pub supply_cap: Option<BigUint<M>>, // Maximum supplied amount.
+    pub ltv: ManagedDecimal<M, NumDecimals>,
+    pub liquidation_threshold: ManagedDecimal<M, NumDecimals>,
+    pub liquidation_base_bonus: ManagedDecimal<M, NumDecimals>,
+    pub liquidation_max_fee: ManagedDecimal<M, NumDecimals>,
 
     // Asset usage flags
     pub can_be_collateral: bool,
@@ -143,40 +141,43 @@ pub struct AssetConfig<M: ManagedTypeApi> {
 
     // Isolation mode settings
     pub is_isolated: bool,
-    pub debt_ceiling_usd: BigUint<M>, // Maximum debt ceiling in isolation mode.
+    pub debt_ceiling_usd: ManagedDecimal<M, NumDecimals>, // Maximum debt ceiling in isolation mode.
 
     // Siloed borrowing flag
     pub is_siloed: bool,
 
     // Flashloan properties
     pub flashloan_enabled: bool,
-    pub flash_loan_fee: BigUint<M>,
+    pub flash_loan_fee: ManagedDecimal<M, NumDecimals>,
 
     // Borrow flags in isolation mode (typically for stablecoins)
     pub can_borrow_in_isolation: bool,
+
+    // Caps
+    pub borrow_cap: Option<BigUint<M>>, // Maximum borrowable amount.
+    pub supply_cap: Option<BigUint<M>>, // Maximum supplied amount.
 }
 
 /// AssetExtendedConfigView provides an extended view of an asset's configuration,
 /// including its token identifier, the full asset configuration, the market contract address,
 /// and current prices in EGLD and USD.
-#[type_abi]
-#[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode, Clone)]
-pub struct AssetExtendedConfigView<M: ManagedTypeApi> {
-    pub token: EgldOrEsdtTokenIdentifier<M>,
-    pub asset_config: AssetConfig<M>,
-    pub market_address: ManagedAddress<M>,
-    pub egld_price: BigUint<M>,
-    pub usd_price: BigUint<M>,
-}
+// #[type_abi]
+// #[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode, Clone)]
+// pub struct AssetExtendedConfigView<M: ManagedTypeApi> {
+//     pub token: EgldOrEsdtTokenIdentifier<M>,
+//     pub asset_config: AssetConfig<M>,
+//     pub market_address: ManagedAddress<M>,
+//     pub egld_price: ManagedDecimal<M, NumDecimals>,
+// }
 
 /// EModeCategory represents a risk category for e-mode assets, defining parameters like LTV and liquidation settings.
 #[type_abi]
 #[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode, Clone)]
 pub struct EModeCategory<M: ManagedTypeApi> {
     pub id: u8,
-    pub ltv: BigUint<M>,
-    pub liquidation_threshold: BigUint<M>,
-    pub liquidation_bonus: BigUint<M>,
+    pub ltv: ManagedDecimal<M, NumDecimals>,
+    pub liquidation_threshold: ManagedDecimal<M, NumDecimals>,
+    pub liquidation_bonus: ManagedDecimal<M, NumDecimals>,
     pub is_deprecated: bool,
 }
 
@@ -260,19 +261,16 @@ pub struct OracleProvider<M: ManagedTypeApi> {
     pub pricing_method: PricingMethod,
     pub token_type: OracleType,
     pub source: ExchangeSource,
-    pub decimals: u8,
+    pub decimals: usize,
 }
 
 /// PriceFeedShort provides a compact representation of a token's price,
 /// including the price value and the number of decimals used.
 #[type_abi]
 #[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode, Clone)]
-pub struct PriceFeedShort<Api>
-where
-    Api: ManagedTypeApi,
-{
-    pub price: BigUint<Api>,
-    pub decimals: u8,
+pub struct PriceFeedShort<M: ManagedTypeApi> {
+    pub price: ManagedDecimal<M, NumDecimals>,
+    pub decimals: usize,
 }
 
 /// OraclePriceFluctuation contains tolerance ratios that define acceptable price fluctuations
@@ -280,8 +278,8 @@ where
 #[type_abi]
 #[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode)]
 pub struct OraclePriceFluctuation<M: ManagedTypeApi> {
-    pub first_upper_ratio: BigUint<M>,
-    pub first_lower_ratio: BigUint<M>,
-    pub last_upper_ratio: BigUint<M>,
-    pub last_lower_ratio: BigUint<M>,
+    pub first_upper_ratio: ManagedDecimal<M, NumDecimals>,
+    pub first_lower_ratio: ManagedDecimal<M, NumDecimals>,
+    pub last_upper_ratio: ManagedDecimal<M, NumDecimals>,
+    pub last_lower_ratio: ManagedDecimal<M, NumDecimals>,
 }

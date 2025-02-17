@@ -156,8 +156,7 @@ pub trait UtilsModule:
             self.last_submission_timestamp(&token_pair).clear();
             self.rounds_new(&token_pair.from, &token_pair.to)
                 .set(&price_feed);
-            // self.rounds(&token_pair.from, &token_pair.to)
-            //     .push(&price_feed);
+
             self.emit_new_round_event(&token_pair, round_id, &price_feed);
         }
     }

@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           63
+// Endpoints:                           61
 // Async Callback:                       1
-// Total number of exported functions:  66
+// Total number of exported functions:  64
 
 #![no_std]
 
@@ -69,7 +69,6 @@ multiversx_sc_wasm_adapter::endpoints! {
         getVaultSuppliedAmount => vault_supplied_amount
         getTokenOracle => token_oracle
         getPoolAddress => get_pool_address
-        getAllMarkets => get_all_markets
         canBeLiquidated => can_be_liquidated
         getHealthFactor => get_health_factor
         getCollateralAmountForToken => get_collateral_amount_for_token
@@ -82,7 +81,6 @@ multiversx_sc_wasm_adapter::endpoints! {
         getTokenPriceUSD => get_usd_price
         getTokenPriceEGLD => get_egld_price
         multiply => multiply
-        getMaxLeverage => calculate_max_leverage
     )
 }
 

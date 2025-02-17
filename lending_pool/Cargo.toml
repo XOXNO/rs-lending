@@ -1,5 +1,5 @@
 [package]
-name = "lending-pool"
+name    = "lending-pool"
 version = "0.0.0"
 authors = ["you"]
 edition = "2018"
@@ -23,6 +23,9 @@ path = "../liquidity_pool"
 [dependencies.common-structs]
 path = "../common/structs"
 
+[dependencies.common-math]
+path = "../common/math"
+
 [dependencies.common-events]
 path = "../common/events"
 
@@ -36,10 +39,10 @@ path = "../price_aggregator"
 path = "../flash_mock"
 
 [dev-dependencies]
-num-bigint = "0.4.2"
-num-traits = "0.2"
-hex = "0.4"
+num-bigint             = "0.4.2"
+num-traits             = "0.2"
+hex                    = "0.4"
 multiversx-sc-scenario = "0.56.0"
-rs-liquid-xoxno = { git = "https://github.com/XOXNO/rs-liquid-xoxno" }
-rs-liquid-staking-sc = { git = "https://github.com/XOXNO/rs-liquid-staking-sc", package = "liquid-staking" }
-pair = { git = "https://github.com/mihaieremia/mx-exchange-sc", package = "pair" }
+rs-liquid-xoxno        = { git = "https://github.com/XOXNO/rs-liquid-xoxno" }
+rs-liquid-staking-sc   = { git = "https://github.com/XOXNO/rs-liquid-staking-sc", package = "liquid-staking" }
+pair                   = { git = "https://github.com/mihaieremia/mx-exchange-sc", package = "pair" }

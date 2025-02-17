@@ -122,7 +122,7 @@ pub trait LendingStorageModule {
     fn isolated_asset_debt_usd(
         &self,
         token_id: &EgldOrEsdtTokenIdentifier,
-    ) -> SingleValueMapper<BigUint>;
+    ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
 
     /// Get the vault supplied amount per token
     /// This storage mapper holds the supplied amount per token in the vault.
@@ -131,7 +131,7 @@ pub trait LendingStorageModule {
     fn vault_supplied_amount(
         &self,
         token_id: &EgldOrEsdtTokenIdentifier,
-    ) -> SingleValueMapper<BigUint>;
+    ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
 
     /// Get the token oracle
     /// This storage mapper holds the oracle of a token, used to get the price of a token.

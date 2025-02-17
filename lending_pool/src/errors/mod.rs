@@ -118,3 +118,5 @@ pub static ERROR_ENABLE_VAULT_MODE_FAILED: &[u8] = b"Enable vault mode failed.";
 pub static ERROR_VAULT_ALREADY_DISABLED: &[u8] = b"Vault already disabled.";
 
 pub static ERROR_VAULT_ALREADY_ENABLED: &[u8] = b"Vault already enabled.";
+
+pub static ERROR_DEBT_CAN_NOT_BE_NEGATIVE: &[u8] = b"Debt repaid can not be negative!";

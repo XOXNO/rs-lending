@@ -91,16 +91,16 @@ pub trait EventsModule {
         borrowed_amount: &ManagedDecimal<Self::Api, NumDecimals>,
         protocol_revenue: &ManagedDecimal<Self::Api, NumDecimals>,
         base_asset: &EgldOrEsdtTokenIdentifier,
-        asset_price: &BigUint,
+        asset_price: &ManagedDecimal<Self::Api, NumDecimals>,
     ) {
         self._emit_update_market_state_event(
             timestamp,
-            supply_index.into_raw_units(),
-            borrow_index.into_raw_units(),
-            reserves.into_raw_units(),
-            supplied_amount.into_raw_units(),
-            borrowed_amount.into_raw_units(),
-            protocol_revenue.into_raw_units(),
+            supply_index,
+            borrow_index,
+            reserves,
+            supplied_amount,
+            borrowed_amount,
+            protocol_revenue,
             base_asset,
             asset_price,
         );
@@ -125,14 +125,14 @@ pub trait EventsModule {
     fn _emit_update_market_state_event(
         &self,
         #[indexed] timestamp: u64,
-        #[indexed] supply_index: &BigUint,
-        #[indexed] borrow_index: &BigUint,
-        #[indexed] reserves: &BigUint,
-        #[indexed] supplied_amount: &BigUint,
-        #[indexed] borrowed_amount: &BigUint,
-        #[indexed] protocol_revenue: &BigUint,
+        #[indexed] supply_index: &ManagedDecimal<Self::Api, NumDecimals>,
+        #[indexed] borrow_index: &ManagedDecimal<Self::Api, NumDecimals>,
+        #[indexed] reserves: &ManagedDecimal<Self::Api, NumDecimals>,
+        #[indexed] supplied_amount: &ManagedDecimal<Self::Api, NumDecimals>,
+        #[indexed] borrowed_amount: &ManagedDecimal<Self::Api, NumDecimals>,
+        #[indexed] protocol_revenue: &ManagedDecimal<Self::Api, NumDecimals>,
         #[indexed] base_asset: &EgldOrEsdtTokenIdentifier,
-        #[indexed] asset_price: &BigUint,
+        #[indexed] asset_price: &ManagedDecimal<Self::Api, NumDecimals>,
     );
 
     /// Emits an event to update an account's position.
@@ -152,9 +152,9 @@ pub trait EventsModule {
     #[event("update_position")]
     fn update_position_event(
         &self,
-        #[indexed] amount: &BigUint,
+        #[indexed] amount: &ManagedDecimal<Self::Api, NumDecimals>,
         #[indexed] position: &AccountPosition<Self::Api>,
-        #[indexed] asset_price: OptionalValue<BigUint>,
+        #[indexed] asset_price: OptionalValue<ManagedDecimal<Self::Api, NumDecimals>>,
         #[indexed] caller: OptionalValue<&ManagedAddress>, // When is none, then the position is updated by the protocol and the amount is the interest, either for borrow or supply
         #[indexed] account_attributes: OptionalValue<&NftAccountAttributes>,
     );
@@ -171,7 +171,7 @@ pub trait EventsModule {
     fn update_debt_ceiling_event(
         &self,
         #[indexed] asset: &EgldOrEsdtTokenIdentifier,
-        #[indexed] amount: BigUint,
+        #[indexed] amount: ManagedDecimal<Self::Api, NumDecimals>,
     );
 
     /// Emits an event to update the supplied amount in the global vault of an market.
@@ -186,7 +186,7 @@ pub trait EventsModule {
     fn update_vault_supplied_amount_event(
         &self,
         #[indexed] asset: &EgldOrEsdtTokenIdentifier,
-        #[indexed] amount: BigUint,
+        #[indexed] amount: ManagedDecimal<Self::Api, NumDecimals>,
     );
 
     /// Emits an event when the asset configuration is updated.

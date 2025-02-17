@@ -4,7 +4,6 @@ multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
 pub mod rates;
-use common_constants::{BP, DECIMAL_PRECISION};
 pub use rates::*;
 pub mod contexts;
 pub mod errors;
@@ -22,6 +21,7 @@ pub trait LiquidityPool:
     + rates::InterestRateMath
     + liquidity::LiquidityModule
     + utils::UtilsModule
+    + common_math::SharedMathModule
     + view::ViewModule
 {
     /// Initializes the liquidity pool for a specific asset.
@@ -47,39 +47,42 @@ pub trait LiquidityPool:
     fn init(
         &self,
         asset: &EgldOrEsdtTokenIdentifier,
-        r_max: &BigUint,
-        r_base: &BigUint,
-        r_slope1: &BigUint,
-        r_slope2: &BigUint,
-        u_optimal: &BigUint,
-        reserve_factor: &BigUint,
+        r_max: BigUint,
+        r_base: BigUint,
+        r_slope1: BigUint,
+        r_slope2: BigUint,
+        u_optimal: BigUint,
+        reserve_factor: BigUint,
         decimals: usize,
     ) {
         self.pool_asset().set(asset);
         self.pool_params().set(&PoolParams {
-            r_max: ManagedDecimal::from_raw_units(r_max.clone(), DECIMAL_PRECISION),
-            r_base: ManagedDecimal::from_raw_units(r_base.clone(), DECIMAL_PRECISION),
-            r_slope1: ManagedDecimal::from_raw_units(r_slope1.clone(), DECIMAL_PRECISION),
-            r_slope2: ManagedDecimal::from_raw_units(r_slope2.clone(), DECIMAL_PRECISION),
-            u_optimal: ManagedDecimal::from_raw_units(u_optimal.clone(), DECIMAL_PRECISION),
-            reserve_factor: ManagedDecimal::from_raw_units(
-                reserve_factor.clone(),
-                DECIMAL_PRECISION,
-            ),
+            r_max: self.to_decimal_ray(r_max),
+            r_base: self.to_decimal_ray(r_base),
+            r_slope1: self.to_decimal_ray(r_slope1),
+            r_slope2: self.to_decimal_ray(r_slope2),
+            u_optimal: self.to_decimal_ray(u_optimal),
+            reserve_factor: self.to_decimal_bps(reserve_factor),
             decimals,
         });
-        self.borrow_index().set(ManagedDecimal::from_raw_units(
-            BigUint::from(BP),
-            DECIMAL_PRECISION,
-        ));
-        self.supply_index().set(ManagedDecimal::from_raw_units(
-            BigUint::from(BP),
-            DECIMAL_PRECISION,
-        ));
+        self.borrow_index().set(self.ray());
 
-        self.protocol_revenue().set(BigUint::zero());
-        self.last_update_timestamp()
-            .set(self.blockchain().get_block_timestamp());
+        self.supply_index().set(self.ray());
+
+        self.supplied_amount()
+            .set(ManagedDecimal::from_raw_units(BigUint::zero(), decimals));
+
+        self.reserves()
+            .set(ManagedDecimal::from_raw_units(BigUint::zero(), decimals));
+
+        self.borrowed_amount()
+            .set(ManagedDecimal::from_raw_units(BigUint::zero(), decimals));
+
+        self.protocol_revenue()
+            .set(ManagedDecimal::from_raw_units(BigUint::zero(), decimals));
+
+        let timestamp = self.blockchain().get_block_timestamp();
+        self.last_timestamp().set(timestamp);
     }
 
     /// Upgrades the liquidity pool parameters.
@@ -118,16 +121,12 @@ pub trait LiquidityPool:
         );
 
         self.pool_params().update(|pool_params| {
-            pool_params.r_max = ManagedDecimal::from_raw_units(r_max.clone(), DECIMAL_PRECISION);
-            pool_params.r_base = ManagedDecimal::from_raw_units(r_base.clone(), DECIMAL_PRECISION);
-            pool_params.r_slope1 =
-                ManagedDecimal::from_raw_units(r_slope1.clone(), DECIMAL_PRECISION);
-            pool_params.r_slope2 =
-                ManagedDecimal::from_raw_units(r_slope2.clone(), DECIMAL_PRECISION);
-            pool_params.u_optimal =
-                ManagedDecimal::from_raw_units(u_optimal.clone(), DECIMAL_PRECISION);
-            pool_params.reserve_factor =
-                ManagedDecimal::from_raw_units(reserve_factor.clone(), DECIMAL_PRECISION);
+            pool_params.r_max = self.to_decimal_ray(r_max);
+            pool_params.r_base = self.to_decimal_ray(r_base);
+            pool_params.r_slope1 = self.to_decimal_ray(r_slope1);
+            pool_params.r_slope2 = self.to_decimal_ray(r_slope2);
+            pool_params.u_optimal = self.to_decimal_ray(u_optimal);
+            pool_params.reserve_factor = self.to_decimal_bps(reserve_factor);
         });
     }
 }

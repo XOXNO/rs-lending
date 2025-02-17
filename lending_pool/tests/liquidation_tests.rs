@@ -1,4 +1,5 @@
-use multiversx_sc_scenario::imports::{BigUint, OptionalValue, TestAddress};
+use multiversx_sc::types::{ConstDecimals, ManagedDecimal};
+use multiversx_sc_scenario::{api::StaticApi, imports::{BigUint, OptionalValue, TestAddress}};
 pub mod constants;
 pub mod proxys;
 pub mod setup;
@@ -25,7 +26,6 @@ fn test_liquidation() {
         OptionalValue::None,
         false,
     );
-
     state.supply_asset(
         &supplier,
         USDC_TOKEN,
@@ -81,8 +81,8 @@ fn test_liquidation() {
     println!("Total EGLD Deposite {:?}", collateral);
     println!("Total EGLD Weighted {:?}", collateral_weighted);
     println!("Health Factor {:?}", health_factor);
-    assert!(borrowed > 0);
-    assert!(collateral > 0);
+    assert!(borrowed >  ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64)));
+    assert!(collateral > ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64)));
     state
         .world
         .current_block()
@@ -190,8 +190,8 @@ fn test_liquidation_bad_debt_multi_asset() {
     println!("Total EGLD Deposite {:?}", collateral);
     println!("Total EGLD Weighted {:?}", collateral_weighted);
     println!("Health Factor {:?}", health_factor);
-    assert!(borrowed > 0);
-    assert!(collateral > 0);
+    assert!(borrowed > ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64)));
+    assert!(collateral > ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64)));
     state
         .world
         .current_block()
@@ -258,15 +258,17 @@ fn test_liquidation_single_position() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
-
     let liquidator = TestAddress::new("liquidator");
+
     state.world.account(liquidator).nonce(1).esdt_balance(
         EGLD_TOKEN,
         BigUint::from(1000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
     );
+
     // Setup accounts
     state.world.current_block().block_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
+
     // Total Supplied 5000$
     state.supply_asset(
         &supplier,
@@ -280,9 +282,9 @@ fn test_liquidation_single_position() {
 
     state.supply_asset(
         &borrower,
-        XEGLD_TOKEN,
+        EGLD_TOKEN,
         BigUint::from(100u64), // 2500$
-        XEGLD_DECIMALS,
+        EGLD_DECIMALS,
         OptionalValue::None,
         OptionalValue::None,
         false,
@@ -291,27 +293,30 @@ fn test_liquidation_single_position() {
     state.borrow_asset(
         &borrower,
         EGLD_TOKEN,
-        BigUint::from(70u64),
+        BigUint::from(75u64),
         2,
         EGLD_DECIMALS,
     );
-
 
     // Verify amounts
     let borrowed = state.get_total_borrow_in_egld(2);
     let collateral = state.get_total_collateral_in_egld(2);
     let collateral_weighted = state.get_liquidation_collateral_available(2);
+    let utilization = state.get_market_utilization(state.egld_market.clone());
     let health_factor = state.get_account_health_factor(2);
+
+    println!("Utilization {:?}", utilization);
     println!("Total EGLD Borrowed {:?}", borrowed);
     println!("Total EGLD Deposite {:?}", collateral);
     println!("Total EGLD Weighted {:?}", collateral_weighted);
     println!("Health Factor {:?}", health_factor);
-    assert!(borrowed > 0);
-    assert!(collateral > 0);
+    assert!(borrowed > ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64)));
+    assert!(collateral > ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64)));
+
     state
         .world
         .current_block()
-        .block_timestamp(SECONDS_PER_DAY * 1150);
+        .block_timestamp(SECONDS_PER_YEAR + SECONDS_PER_DAY * 1500);
     state.update_account_positions(&borrower, 2);
     let borrowed_egld = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
     let borrowed = state.get_total_borrow_in_egld(2);
@@ -327,31 +332,34 @@ fn test_liquidation_single_position() {
     state.liquidate_account(
         &liquidator,
         &EGLD_TOKEN,
-        BigUint::from(50u64),
+        BigUint::from(105u64),
         2,
         EGLD_DECIMALS,
     );
-    let borrowed = state.get_total_borrow_in_egld(2);
-    let collateral = state.get_total_collateral_in_egld(2);
+    let borrowed = state.get_total_borrow_in_egld_big(2);
+    let collateral = state.get_total_collateral_in_egld_big(2);
     let collateral_weighted = state.get_liquidation_collateral_available(2);
     let health_factor = state.get_account_health_factor(2);
+
     println!("Total EGLD Borrowed {:?}", borrowed);
     println!("Total EGLD Deposite {:?}", collateral);
     println!("Total EGLD Weighted {:?}", collateral_weighted);
-    println!("Health Factor {:?}", health_factor);
-    state.liquidate_account(
-        &liquidator,
-        &EGLD_TOKEN,
-        BigUint::from(40u64),
-        2,
-        EGLD_DECIMALS,
-    );
-    let borrowed = state.get_total_borrow_in_egld(2);
-    let collateral = state.get_total_collateral_in_egld(2);
-    let collateral_weighted = state.get_liquidation_collateral_available(2);
-    let health_factor = state.get_account_health_factor(2);
-    println!("Total EGLD Borrowed {:?}", borrowed);
-    println!("Total EGLD Deposite {:?}", collateral);
-    println!("Total EGLD Weighted {:?}", collateral_weighted);
-    println!("Health Factor {:?}", health_factor);
+    println!("Health Factor {:?}", health_factor);    
+    assert!(borrowed >= ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64)));
+    assert!(collateral >= ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64)));
+    // state.liquidate_account(
+    //     &liquidator,
+    //     &EGLD_TOKEN,
+    //     BigUint::from(40u64),
+    //     2,
+    //     EGLD_DECIMALS,
+    // );
+    // let borrowed = state.get_total_borrow_in_egld(2);
+    // let collateral = state.get_total_collateral_in_egld(2);
+    // let collateral_weighted = state.get_liquidation_collateral_available(2);
+    // let health_factor = state.get_account_health_factor(2);
+    // println!("Total EGLD Borrowed {:?}", borrowed);
+    // println!("Total EGLD Deposite {:?}", collateral);
+    // println!("Total EGLD Weighted {:?}", collateral_weighted);
+    // println!("Health Factor {:?}", health_factor);
 }

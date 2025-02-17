@@ -1,14 +1,21 @@
-use common_constants::{BP, WEGLD_TICKER};
+use common_constants::{WAD, WEGLD_TICKER};
 use common_events::{ExchangeSource, OracleProvider, OracleType};
 
 use crate::{lxoxno_proxy, oracle, proxy_xexchange_pair, storage, wegld_proxy, xegld_proxy};
+
+use super::math;
 
 multiversx_sc::imports!();
 
 pub struct MathHelpers;
 
 #[multiversx_sc::module]
-pub trait StrategiesModule: oracle::OracleModule + storage::LendingStorageModule {
+pub trait StrategiesModule:
+    oracle::OracleModule
+    + storage::LendingStorageModule
+    + math::MathsModule
+    + common_math::SharedMathModule
+{
     fn get_xegld(&self, egld_amount: &BigUint, sc_address: &ManagedAddress) -> EsdtTokenPayment {
         let result = self
             .tx()
@@ -201,7 +208,7 @@ pub trait StrategiesModule: oracle::OracleModule + storage::LendingStorageModule
                     .returns(ReturnsResult)
                     .sync_call_readonly()
                     .into_tuple();
-              
+
                 let (original_remaining, to_convert_in_lsd) = if is_first_token {
                     self.calculate_fix_lp_proportions(
                         from_amount,
@@ -225,7 +232,6 @@ pub trait StrategiesModule: oracle::OracleModule + storage::LendingStorageModule
                     to_convert_in_lsd,
                     from_amount
                 );
-
 
                 let converted_lsd =
                     self.convert_to_lsd(from_token, &to_convert_in_lsd, &lsd_token_config);
@@ -360,7 +366,8 @@ pub trait StrategiesModule: oracle::OracleModule + storage::LendingStorageModule
         second_token_reserve: &BigUint, // xEGLD reserve (18 decimals)
     ) -> (BigUint, BigUint) {
         // p is the xEGLD reserve expressed in EGLD value:
-        let p = (second_token_reserve * lsd_ratio) / &BigUint::from(BP);
+        // TODO: Verify if / WAD make sense for other token LPs
+        let p = (second_token_reserve * lsd_ratio) / &BigUint::from(WAD);
         // To add liquidity you must deposit tokens in the same ratio as the pool:
         //   (EGLD deposit) : (xEGLD deposit in EGLD value) = first_token_reserve : p
         // Let x = amount to convert (which becomes the xEGLD deposit in EGLD value)

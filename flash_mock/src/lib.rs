@@ -1,9 +1,10 @@
 #![no_std]
 
-use common_constants::BP;
+use common_constants::BPS;
+
 pub mod proxy_lending;
 multiversx_sc::imports!();
-pub const FLASH_FEES: u128 = 5_000_000_000_000_000_000;
+pub const FLASH_FEES: u128 = 50;
 
 #[multiversx_sc::contract]
 pub trait FlashMock {
@@ -24,7 +25,7 @@ pub trait FlashMock {
             .amount
             .clone()
             .mul(BigUint::from(FLASH_FEES))
-            .div(BigUint::from(BP));
+            .div(BigUint::from(BPS));
 
         self.tx().to(&caller).payment(payment).transfer();
     }
@@ -40,7 +41,7 @@ pub trait FlashMock {
             .amount
             .clone()
             .mul(BigUint::from(FLASH_FEES))
-            .div(BigUint::from(BP));
+            .div(BigUint::from(BPS));
 
         self.tx().to(&caller).payment(payment).transfer();
     }

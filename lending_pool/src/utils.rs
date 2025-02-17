@@ -2,7 +2,7 @@ multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
 use crate::contexts::base::StorageCache;
-use crate::{helpers, oracle, proxy_pool, storage, ERROR_NO_POOL_FOUND};
+use crate::{helpers, oracle, proxy_pool, storage, ERROR_NO_POOL_FOUND, WAD_PRECISION};
 use common_structs::*;
 
 #[multiversx_sc::module]
@@ -10,6 +10,7 @@ pub trait LendingUtilsModule:
     storage::LendingStorageModule
     + oracle::OracleModule
     + common_events::EventsModule
+    + common_math::SharedMathModule
     + helpers::math::MathsModule
 {
     /// Gets the liquidity pool address for a given asset
@@ -44,18 +45,27 @@ pub trait LendingUtilsModule:
         &self,
         positions: &ManagedVec<AccountPosition<Self::Api>>,
         storage_cache: &mut StorageCache<Self>,
-    ) -> (BigUint, BigUint, BigUint) {
-        let mut weighted_collateral_in_egld = BigUint::zero();
-        let mut total_collateral_in_egld = BigUint::zero();
-        let mut total_ltv_collateral_in_egld = BigUint::zero();
+    ) -> (
+        ManagedDecimal<Self::Api, NumDecimals>,
+        ManagedDecimal<Self::Api, NumDecimals>,
+        ManagedDecimal<Self::Api, NumDecimals>,
+    ) {
+        let mut weighted_collateral_in_egld = self.to_decimal_wad(BigUint::zero());
+        let mut total_collateral_in_egld = self.to_decimal_wad(BigUint::zero());
+        let mut total_ltv_collateral_in_egld = self.to_decimal_wad(BigUint::zero());
 
         for dp in positions {
             let collateral_in_egld =
                 self.get_token_amount_in_egld(&dp.token_id, &dp.get_total_amount(), storage_cache);
-            weighted_collateral_in_egld +=
-                &collateral_in_egld * &dp.entry_liquidation_threshold / &storage_cache.bp;
-            total_ltv_collateral_in_egld += &collateral_in_egld * &dp.entry_ltv / &storage_cache.bp;
-            total_collateral_in_egld += collateral_in_egld;
+
+            total_collateral_in_egld += &collateral_in_egld;
+            weighted_collateral_in_egld += self.mul_half_up(
+                &collateral_in_egld,
+                &dp.entry_liquidation_threshold,
+                WAD_PRECISION,
+            );
+            total_ltv_collateral_in_egld +=
+                self.mul_half_up(&collateral_in_egld, &dp.entry_ltv, WAD_PRECISION);
         }
 
         (
@@ -67,20 +77,27 @@ pub trait LendingUtilsModule:
 
     fn proportion_of_weighted_seized(
         &self,
-        total_collateral_in_egld: &BigUint,
+        total_collateral_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
         positions: &ManagedVec<AccountPosition<Self::Api>>,
         storage_cache: &mut StorageCache<Self>,
-    ) -> (BigUint, BigUint) {
-        let mut proportion_of_weighted_seized = BigUint::zero();
-        let mut weighted_bonus = BigUint::zero();
+    ) -> (
+        ManagedDecimal<Self::Api, NumDecimals>,
+        ManagedDecimal<Self::Api, NumDecimals>,
+    ) {
+        let mut proportion_of_weighted_seized =
+            ManagedDecimal::from_raw_units(BigUint::zero(), BPS_PRECISION);
+        let mut weighted_bonus = ManagedDecimal::from_raw_units(BigUint::zero(), BPS_PRECISION);
 
         for dp in positions {
             let collateral_in_egld =
                 self.get_token_amount_in_egld(&dp.token_id, &dp.get_total_amount(), storage_cache);
-            let fraction = collateral_in_egld * &storage_cache.bp / total_collateral_in_egld;
-            proportion_of_weighted_seized +=
-                &fraction * &dp.entry_liquidation_threshold / &storage_cache.bp;
-            weighted_bonus += fraction * &dp.entry_liquidation_bonus / &storage_cache.bp;
+            let fraction = collateral_in_egld * storage_cache.bps_dec.clone()
+                / total_collateral_in_egld.clone();
+            proportion_of_weighted_seized += fraction.clone()
+                * dp.entry_liquidation_threshold.clone()
+                / storage_cache.bps_dec.clone();
+            weighted_bonus +=
+                fraction * dp.entry_liquidation_bonus.clone() / storage_cache.bps_dec.clone();
         }
 
         (proportion_of_weighted_seized, weighted_bonus)
@@ -99,8 +116,8 @@ pub trait LendingUtilsModule:
         &self,
         positions: &ManagedVec<AccountPosition<Self::Api>>,
         storage_cache: &mut StorageCache<Self>,
-    ) -> BigUint {
-        let mut total_borrow_in_egld = BigUint::zero();
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        let mut total_borrow_in_egld = self.to_decimal_wad(BigUint::zero());
 
         for bp in positions {
             total_borrow_in_egld +=
@@ -136,39 +153,59 @@ pub trait LendingUtilsModule:
         borrows_index_map: ManagedMapEncoded<Self::Api, EgldOrEsdtTokenIdentifier, usize>,
         storage_cache: &mut StorageCache<Self>,
     ) -> (
-        BigUint,
-        ManagedVec<MultiValue3<EgldOrEsdtTokenPayment, BigUint, PriceFeedShort<Self::Api>>>,
+        ManagedDecimal<Self::Api, NumDecimals>,
+        ManagedVec<
+            MultiValue3<
+                EgldOrEsdtTokenPayment,
+                ManagedDecimal<Self::Api, NumDecimals>,
+                PriceFeedShort<Self::Api>,
+            >,
+        >,
     ) {
-        let mut total_repaid = BigUint::zero();
-        let mut tokens_egld_value = ManagedVec::new();
-        for mut payment in repayments.clone() {
-            let token_feed = self.get_token_price(&payment.token_identifier, storage_cache);
-            let original_borrow =
-                self.get_position_by_index(&payment.token_identifier, borrows, &borrows_index_map);
+        let mut total_repaid = self.to_decimal_wad(BigUint::zero());
+        let mut repaid_tokens = ManagedVec::new();
+        for payment_ref in repayments {
+            let token_feed = self.get_token_price(&payment_ref.token_identifier, storage_cache);
+            let original_borrow = self.get_position_by_index(
+                &payment_ref.token_identifier,
+                borrows,
+                &borrows_index_map,
+            );
+            let amount_dec = ManagedDecimal::from_raw_units(
+                payment_ref.amount.clone(),
+                token_feed.decimals as usize,
+            );
 
-            let token_egld_amount = self.get_token_amount_in_egld_raw(&payment.amount, &token_feed);
+            let token_egld_amount =
+                self.get_token_amount_in_egld_raw(&amount_dec, &token_feed.price);
 
-            let borrowed_egld_amount =
-                self.get_token_amount_in_egld_raw(&original_borrow.get_total_amount(), &token_feed);
-
+            let borrowed_egld_amount = self.get_token_amount_in_egld_raw(
+                &original_borrow.get_total_amount(),
+                &token_feed.price,
+            );
+            let mut payment = payment_ref.clone();
             if token_egld_amount > borrowed_egld_amount {
-                total_repaid += &borrowed_egld_amount;
-                let egld_excess = token_egld_amount - &borrowed_egld_amount;
-                let original_excess_paid = self.compute_amount_in_tokens(&egld_excess, &token_feed);
-                payment.amount -= &original_excess_paid;
-                tokens_egld_value.push((payment.clone(), borrowed_egld_amount, token_feed).into());
+                let egld_excess = token_egld_amount - borrowed_egld_amount.clone();
+                let original_excess_paid = self.compute_egld_in_tokens(&egld_excess, &token_feed);
+                let token_excess_amount = original_excess_paid.into_raw_units().clone();
+
+                payment.amount -= &token_excess_amount;
+
                 refunds.push(EgldOrEsdtTokenPayment::new(
-                    payment.token_identifier,
-                    payment.token_nonce,
-                    original_excess_paid,
+                    payment_ref.token_identifier.clone(),
+                    payment_ref.token_nonce.clone(),
+                    token_excess_amount,
                 ));
+
+                total_repaid += &borrowed_egld_amount;
+                repaid_tokens.push((payment, borrowed_egld_amount, token_feed).into());
             } else {
                 total_repaid += &token_egld_amount;
-                tokens_egld_value.push((payment.clone(), token_egld_amount, token_feed).into());
+                repaid_tokens.push((payment, token_egld_amount, token_feed).into());
             }
         }
 
-        (total_repaid, tokens_egld_value)
+        (total_repaid, repaid_tokens)
     }
 
     /// Updates isolated asset debt tracking
@@ -186,10 +223,13 @@ pub trait LendingUtilsModule:
     fn update_isolated_debt_usd(
         &self,
         token_id: &EgldOrEsdtTokenIdentifier,
-        amount_in_usd: &BigUint,
+        amount_in_usd: ManagedDecimal<Self::Api, NumDecimals>,
         is_increase: bool,
     ) {
-        if amount_in_usd.eq(&BigUint::zero()) {
+        if amount_in_usd.eq(&ManagedDecimal::from_raw_units(
+            BigUint::zero(),
+            WAD_PRECISION,
+        )) {
             return;
         }
 
@@ -198,7 +238,13 @@ pub trait LendingUtilsModule:
         if is_increase {
             map.update(|debt| *debt += amount_in_usd);
         } else {
-            map.update(|debt| *debt -= amount_in_usd.min(&debt.clone()));
+            map.update(|debt| {
+                *debt -= if debt.into_raw_units() > amount_in_usd.into_raw_units() {
+                    amount_in_usd
+                } else {
+                    debt.clone()
+                }
+            });
         }
 
         self.update_debt_ceiling_event(token_id, map.get());
@@ -221,7 +267,7 @@ pub trait LendingUtilsModule:
         &self,
         asset_address: &ManagedAddress,
         position: &mut AccountPosition<Self::Api>,
-        price: OptionalValue<BigUint>,
+        price: OptionalValue<ManagedDecimal<Self::Api, NumDecimals>>,
     ) {
         *position = self
             .tx()
@@ -248,31 +294,43 @@ pub trait LendingUtilsModule:
     /// * `(BigUint, BigUint)` - Maximum EGLD value of the specific collateral that can be liquidated and the bonus
     fn calculate_max_debt_repayment(
         &self,
-        total_debt_in_egld: &BigUint,
-        total_collateral_in_egld: &BigUint,
-        weighted_collateral_in_egld: BigUint,
-        proportion_of_weighted_seized: &BigUint,
-        base_liquidation_bonus: &BigUint,
-        health_factor: &BigUint,
-        debt_payment: OptionalValue<BigUint>,
-    ) -> (BigUint, BigUint) {
+        total_debt_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
+        total_collateral_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
+        weighted_collateral_in_egld: ManagedDecimal<Self::Api, NumDecimals>,
+        proportion_of_weighted_seized: &ManagedDecimal<Self::Api, NumDecimals>,
+        base_liquidation_bonus: &ManagedDecimal<Self::Api, NumDecimals>,
+        health_factor: &ManagedDecimal<Self::Api, NumDecimals>,
+        debt_payment: OptionalValue<ManagedDecimal<Self::Api, NumDecimals>>,
+    ) -> (
+        ManagedDecimal<Self::Api, NumDecimals>,
+        ManagedDecimal<Self::Api, NumDecimals>,
+    ) {
         let (max_repayable_debt, bonus) = self.estimate_liquidation_amount(
-            weighted_collateral_in_egld,
-            proportion_of_weighted_seized,
-            total_collateral_in_egld,
-            total_debt_in_egld,
-            base_liquidation_bonus,
-            health_factor,
+            weighted_collateral_in_egld.into_raw_units(),
+            proportion_of_weighted_seized.into_raw_units(),
+            total_collateral_in_egld.into_raw_units(),
+            total_debt_in_egld.into_raw_units(),
+            base_liquidation_bonus.into_raw_units(),
+            health_factor.into_raw_units(),
         );
 
         if debt_payment.is_some() {
             // Take the minimum between what we need and what's available and what the liquidator is paying
             (
-                BigUint::min(debt_payment.into_option().unwrap(), max_repayable_debt),
-                bonus,
+                ManagedDecimal::from_raw_units(
+                    BigUint::min(
+                        debt_payment.into_option().unwrap().into_raw_units().clone(),
+                        max_repayable_debt,
+                    ),
+                    WAD_PRECISION,
+                ),
+                ManagedDecimal::from_raw_units(bonus, BPS_PRECISION),
             )
         } else {
-            (max_repayable_debt, bonus)
+            (
+                ManagedDecimal::from_raw_units(max_repayable_debt, WAD_PRECISION),
+                ManagedDecimal::from_raw_units(bonus, BPS_PRECISION),
+            )
         }
     }
 }

@@ -3,7 +3,7 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
-use common_events::AssetConfig;
+use common_events::{AssetConfig, BPS_PRECISION};
 
 use crate::{
     contexts::base::StorageCache, helpers, oracle, positions, proxy_accumulator, proxy_pool,
@@ -23,6 +23,7 @@ pub trait RouterModule:
     + validation::ValidationModule
     + helpers::math::MathsModule
     + positions::account::PositionAccountModule
+    + common_math::SharedMathModule
 {
     #[allow_multiple_var_args]
     #[only_owner]
@@ -48,6 +49,7 @@ pub trait RouterModule:
         is_siloed: bool,
         flashloan_enabled: bool,
         can_borrow_in_isolation: bool,
+        decimals: usize,
         borrow_cap: OptionalValue<BigUint>,
         supply_cap: OptionalValue<BigUint>,
     ) -> ManagedAddress {
@@ -72,24 +74,30 @@ pub trait RouterModule:
         self.pools_map(&base_asset).set(address.clone());
         self.pools_allowed().insert(address.clone());
 
+        // Init ManagedDecimal for future usage and avoiding storage decode errors for checks
+        self.vault_supplied_amount(&base_asset)
+            .set(ManagedDecimal::from_raw_units(BigUint::zero(), decimals));
+        self.isolated_asset_debt_usd(&base_asset)
+            .set(ManagedDecimal::from_raw_units(BigUint::zero(), decimals));
+
         require!(
             &liquidation_threshold > &ltv,
             ERROR_INVALID_LIQUIDATION_THRESHOLD
         );
 
         let asset_config = &AssetConfig {
-            ltv,
-            liquidation_threshold,
-            liquidation_base_bonus,
-            liquidation_max_fee,
+            ltv: self.to_decimal_bps(ltv),
+            liquidation_threshold: self.to_decimal_bps(liquidation_threshold),
+            liquidation_base_bonus: self.to_decimal_bps(liquidation_base_bonus),
+            liquidation_max_fee: self.to_decimal_bps(liquidation_max_fee),
             borrow_cap: borrow_cap.into_option(),
             supply_cap: supply_cap.into_option(),
             can_be_collateral,
             can_be_borrowed,
             is_e_mode_enabled: false,
             is_isolated,
-            debt_ceiling_usd,
-            flash_loan_fee,
+            debt_ceiling_usd: self.to_decimal_wad(debt_ceiling_usd),
+            flash_loan_fee: self.to_decimal_bps(flash_loan_fee),
             is_siloed,
             flashloan_enabled,
             can_borrow_in_isolation,
@@ -161,7 +169,7 @@ pub trait RouterModule:
                 .tx()
                 .to(pool_address)
                 .typed(proxy_pool::LiquidityPoolProxy)
-                .claim_revenue(&data.price)
+                .claim_revenue(data.price.clone())
                 .returns(ReturnsResult)
                 .sync_call();
 

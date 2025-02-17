@@ -1,20 +1,57 @@
 use common_constants::{
-    BP, BP_EGLD, DECIMAL_PRECISION, EGLD_DECIMAL_PRECISION, MAX_BONUS, MAX_FIRST_TOLERANCE,
-    MAX_LAST_TOLERANCE, MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE,
+    BPS, MAX_FIRST_TOLERANCE, MAX_LAST_TOLERANCE, MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE, WAD,
+    WAD_PRECISION,
 };
-use common_events::{AccountPosition, AssetConfig, EModeCategory, OraclePriceFluctuation};
+use common_events::{OraclePriceFluctuation, PriceFeedShort, BPS_PRECISION, RAY_PRECISION};
 
 use crate::{
-    contexts::base::StorageCache, oracle, storage, ERROR_UNEXPECTED_ANCHOR_TOLERANCES,
+    ERROR_DEBT_CAN_NOT_BE_NEGATIVE, ERROR_UNEXPECTED_ANCHOR_TOLERANCES,
     ERROR_UNEXPECTED_FIRST_TOLERANCE, ERROR_UNEXPECTED_LAST_TOLERANCE,
 };
 
 multiversx_sc::imports!();
 
-pub struct MathHelpers;
-
 #[multiversx_sc::module]
-pub trait MathsModule: oracle::OracleModule + storage::LendingStorageModule {
+pub trait MathsModule: common_math::SharedMathModule {
+    /// Compute amount in tokens
+    ///
+    /// This function is used to compute the amount of a token in tokens from the amount in egld
+    /// It uses the price of the token to convert the amount to tokens
+    fn compute_egld_in_tokens(
+        &self,
+        amount_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
+        token_data: &PriceFeedShort<Self::Api>,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        self.div_half_up(amount_in_egld, &token_data.price, RAY_PRECISION)
+            .rescale(token_data.decimals)
+    }
+
+    /// Get token amount in dollars raw
+    ///
+    /// This function is used to get the amount of a token in dollars from the raw price
+    /// It uses the price of the token to convert the amount to dollars
+    fn get_token_amount_in_dollars_raw(
+        &self,
+        amount: &ManagedDecimal<Self::Api, NumDecimals>,
+        token_price: &ManagedDecimal<Self::Api, NumDecimals>,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        self.mul_half_up(amount, token_price, RAY_PRECISION)
+            .rescale(WAD_PRECISION)
+    }
+
+    /// Get token amount in egld raw
+    ///
+    /// This function is used to get the amount of a token in egld from the raw price
+    /// It converts the amount of the token to egld using the price of the token and the decimals
+    fn get_token_amount_in_egld_raw(
+        &self,
+        amount: &ManagedDecimal<Self::Api, NumDecimals>,
+        token_price: &ManagedDecimal<Self::Api, NumDecimals>,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        self.mul_half_up(amount, token_price, RAY_PRECISION)
+            .rescale(WAD_PRECISION)
+    }
+
     /// Computes the health factor for a position based on weighted collateral and borrowed value
     ///
     /// # Arguments
@@ -26,18 +63,21 @@ pub trait MathsModule: oracle::OracleModule + storage::LendingStorageModule {
     /// ```
     fn compute_health_factor(
         &self,
-        weighted_collateral_in_egld: &BigUint,
-        borrowed_value_in_egld: &BigUint,
-    ) -> BigUint {
+        weighted_collateral_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
+        borrowed_value_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
         // If there's no borrowed value, health factor is "infinite" (represented by max value)
-        if borrowed_value_in_egld == &BigUint::zero() {
-            return BigUint::from(u128::MAX);
+        if borrowed_value_in_egld == &self.to_decimal_wad(BigUint::zero()) {
+            return self.to_decimal_wad(BigUint::from(u128::MAX));
         }
-        let health_factor = weighted_collateral_in_egld
-            .mul(&BigUint::from(BP))
-            .div(borrowed_value_in_egld);
 
-        health_factor
+        let health_factor = self.div_half_up(
+            weighted_collateral_in_egld,
+            borrowed_value_in_egld,
+            RAY_PRECISION,
+        );
+
+        health_factor.rescale(WAD_PRECISION)
     }
 
     /// Calculates upper and lower bounds for a given tolerance
@@ -47,16 +87,26 @@ pub trait MathsModule: oracle::OracleModule + storage::LendingStorageModule {
     ///
     /// # Returns
     /// * `(BigUint, BigUint)` - Tuple containing:
-    ///   - Upper bound (BP + tolerance)
-    ///   - Lower bound (BP * BP / upper)
+    ///   - Upper bound (wad + tolerance)
+    ///   - Lower bound (wad * wad / upper)
     ///
     /// ```
-    fn get_range(&self, tolerance: &BigUint) -> (BigUint, BigUint) {
-        let bp = BigUint::from(BP);
-        let upper = &bp + tolerance;
-        let lower = &bp * &bp / &upper;
+    fn get_range(
+        &self,
+        tolerance: &BigUint,
+    ) -> (
+        ManagedDecimal<Self::Api, NumDecimals>,
+        ManagedDecimal<Self::Api, NumDecimals>,
+    ) {
+        let bps = BigUint::from(BPS);
+        let tolerance_in_wad = (tolerance * &bps) / &bps;
+        let upper = &bps + &tolerance_in_wad;
+        let lower = &bps * &bps / &upper;
 
-        (upper, lower)
+        (
+            ManagedDecimal::from_raw_units(upper, BPS_PRECISION),
+            ManagedDecimal::from_raw_units(lower, BPS_PRECISION),
+        )
     }
 
     /// Validates and calculates oracle price fluctuation tolerances
@@ -139,12 +189,9 @@ pub trait MathsModule: oracle::OracleModule + storage::LendingStorageModule {
         liquidation_bonus_min: &BigUint,
         liquidation_bonus_max: &BigUint,
     ) -> BigUint {
-        let bp = BigUint::from(BP);
-
-        // Scale the bonus linearly between minHF and BP
-        let scaling_factor = (target_hf - old_hf) * &bp / target_hf; // Normalized between 0 and HF target
-        let liquidation_bonus =
-            liquidation_bonus_min + &((scaling_factor * liquidation_bonus_min) * 2u64 / &bp);
+        let bonus_range = liquidation_bonus_max - liquidation_bonus_min;
+        let bonus_increase = (bonus_range * (target_hf - old_hf)) / target_hf;
+        let liquidation_bonus = liquidation_bonus_min + &bonus_increase;
 
         return BigUint::min(liquidation_bonus, liquidation_bonus_max.clone()); // Ensure it does not exceed the maximum
     }
@@ -170,62 +217,46 @@ pub trait MathsModule: oracle::OracleModule + storage::LendingStorageModule {
     /// Maximum feasible bonus in base points (e.g. 1000 = 10%)
     fn get_max_feasible_bonus(
         &self,
-        total_collateral_value: &BigUint,
-        total_debt_value: &BigUint,
-        proportion_of_weighted_seized: &BigUint,
-        target_hf: &BigUint,
-        proportion_of_weighted_bonus: &BigUint,
+        total_collateral_value: &BigUint, // in WAD (e.g. collateral value in EGLD, 18 decimals)
+        total_debt_value: &BigUint,       // in WAD
+        proportion_of_weighted_seized: &BigUint, // in BPS (e.g. 8000 means 80%)
+        target_hf: &BigUint,              // in WAD (e.g. 1.02e18 for 1.02)
+        proportion_of_weighted_bonus: &BigUint, // in BPS (minimum allowed bonus)
     ) -> BigUint {
-        let bp = &BigUint::from(BP);
+        let wad = BigUint::from(WAD); // e.g., 1e18
+        let bps = BigUint::from(BPS); // e.g., 10000
 
-        // Calculate 'n' term which appears in multiple places
-        // n = target_hf * total_debt - proportion_seized * total_collateral
-        // This term represents the "gap" between current and desired position
-        // - If n > 0: Position needs more collateral to reach target HF
-        // - If n < 0: Position has excess collateral
-        let n =
-            target_hf * total_debt_value - proportion_of_weighted_seized * total_collateral_value;
+        // Convert the raw BPS inputs to WAD-scale fractions.
+        // p: the proportion seized, in WAD (so 8000 BPS becomes 0.8*wad)
+        let p = (proportion_of_weighted_seized * &wad) / &bps;
 
-        // BOUND 1: Ensures denominator in repayment calculation stays negative
-        // The repayment formula denominator is: (p*(1+b) - T) where:
-        // - p is proportion_seized
-        // - b is bonus
-        // - T is target_HF
-        //
-        // For the denominator to stay negative:
-        // p*(1+b) - T < 0
-        // p*(1+b) < T
-        // 1 + b < T/p
-        // b < T/p - 1
-        //
-        // Therefore bound1 = T/p - 1
-        let bound1_numerator = target_hf * bp / proportion_of_weighted_seized;
-        let bound1 = bound1_numerator - bp;
+        // 1. Calculate 'n'
+        // n = target_hf * total_debt - p * total_collateral
+        let n = target_hf * total_debt_value - &p * total_collateral_value;
 
-        // BOUND 2: Ensures we don't try to seize more collateral than available
-        // This comes from solving the repayment equation for the bonus:
-        // (C - px(1+b))/(D-x) = T
-        // where x is the repayment amount
-        //
-        // After algebraic manipulation:
-        // b ≤ (C*T - C*p - n)/(n + C*p)
-        let numerator = (total_collateral_value * target_hf * bp)
-            - (total_collateral_value * proportion_of_weighted_seized * bp)
-            - &n;
+        // 2. BOUND 1: bonus < (T / p) - 1, with T and p in WAD.
+        // Compute: bound1 = (target_hf / p - 1) scaled to WAD = target_hf * wad / p - wad
+        let bound1_numerator = target_hf * &wad / &p;
+        let bound1 = &bound1_numerator - &wad;
 
-        let denominator = n + total_collateral_value * proportion_of_weighted_seized;
-        let bound2 = numerator / denominator;
+        // 3. BOUND 2: bonus ≤ (C * T - C * p - n) / (n + C * p)
+        // Multiply numerator by wad to maintain consistent WAD scaling:
+        let numerator =
+            (total_collateral_value * target_hf * &wad) - (total_collateral_value * &p * &wad) - &n;
+        let denominator = n + total_collateral_value * &p;
+        let bound2 = &numerator / &denominator;
 
-        // Take the minimum of both bounds (to satisfy both constraints)
-        // Then take maximum with minimum required bonus to ensure we don't go below minimum
-        //
-        // bound1: Prevents denominator from becoming positive
-        // bound2: Prevents overseizing of collateral
-        // proportion_of_weighted_bonus: Minimum allowed bonus
-        BigUint::max(
-            proportion_of_weighted_bonus.clone(),
-            BigUint::min(bound1, bound2),
-        )
+        // Convert the minimum allowed bonus (given in BPS) into WAD-scale:
+        let bonus_min = (proportion_of_weighted_bonus * &wad) / &bps;
+
+        // Choose the smaller of the two bounds, but at least bonus_min:
+        let bonus_wad = BigUint::max(bonus_min, BigUint::min(bound1, bound2));
+
+        // Now, convert the bonus from WAD-scale back to BPS:
+        // bonus_bps = (bonus_wad * bps) / wad
+        let bonus_bps = (bonus_wad * &bps) / &wad;
+
+        bonus_bps
     }
 
     /// Calculates the amount of debt to repay and collateral to seize during liquidation
@@ -242,58 +273,50 @@ pub trait MathsModule: oracle::OracleModule + storage::LendingStorageModule {
     /// * `(BigUint, BigUint)` - Amount of debt to repay and collateral to seize
     fn calculate_liquidation(
         &self,
-        total_collateral_all_assets: &BigUint, // Total EGLD value of ALL collaterals
-        weighted_collateral_in_egld: &BigUint, // Total Weighted EGLD value of ALL collaterals
-        proportion_of_weighted_seized: &BigUint, // How much I lose per 1$ liquidated, example for each 1$ paid the weighted amount lowers by 0.8$
-        liquidation_bonus: &BigUint, // Weighted bonus of all assets part of the position
-        total_debt: &BigUint,        // Total EGLD value of all debt
-        target_hf: BigUint, // Where we would like to bring the user health factor after this potential liquidation
+        total_collateral_all_assets: &BigUint,
+        weighted_collateral_in_egld: &BigUint,
+        proportion_of_weighted_seized: &BigUint,
+        liquidation_bonus: &BigUint,
+        total_debt: &BigUint,
+        target_hf: BigUint,
     ) -> (BigUint, BigUint, BigUint) {
-        let bp = BigUint::from(BP);
-        let target_hf_signed = ManagedDecimalSigned::from_raw_units(
-            BigInt::from_biguint(Sign::Plus, target_hf.clone()),
-            DECIMAL_PRECISION,
-        );
-        let bg_signed = ManagedDecimalSigned::from_raw_units(
-            BigInt::from_biguint(Sign::Plus, bp.clone()),
-            DECIMAL_PRECISION,
-        );
-        // 1. Calculate the ideal debt to repay to reach the target health factor.
-        // Note that we use total_collateral_all_assets here, as the health factor is based on the overall collateral.
-        let weighted_egld = ManagedDecimalSigned::from_raw_units(
-            BigInt::from_biguint(Sign::Plus, weighted_collateral_in_egld.clone()),
-            EGLD_DECIMAL_PRECISION,
-        );
+        // Constants in BigUint
+        let wad = BigUint::from(WAD);
+        let bps = BigUint::from(BPS);
 
-        let numerator = weighted_egld
-            - ManagedDecimalSigned::from_raw_units(
-                BigInt::from_biguint(Sign::Plus, total_debt * &target_hf / &bp),
-                EGLD_DECIMAL_PRECISION,
-            );
-        
-        let t: ManagedDecimalSigned<<Self as ContractBase>::Api, usize> =
-            ManagedDecimalSigned::from_raw_units(
-                BigInt::from_biguint(
-                    Sign::Plus,
-                    proportion_of_weighted_seized * &(&bp + liquidation_bonus) / &bp,
-                ),
-                DECIMAL_PRECISION,
-            );
+        // Convert target_hf and wad to decimal type once.
+        let target_hf_dec = self.to_decimal_signed_wad(target_hf.clone());
+        let wad_dec = self.to_decimal_signed_wad(wad.clone());
+        let weighted_egld_dec = self.to_decimal_signed_wad(weighted_collateral_in_egld.clone());
 
-        let denominator = t - target_hf_signed;
+        // 1. Compute the health gap (n): required collateral vs. actual weighted collateral.
+        // health_gap = weighted_egld - (total_debt * target_hf / wad)
+        let required_collateral = self.to_decimal_signed_wad(total_debt * &target_hf / &wad);
+        let health_gap = weighted_egld_dec - required_collateral;
 
-        let ideal_debt_to_repay = numerator.mul(bg_signed).div(denominator);
+        // Convert the raw seized proportion to a WAD value.
+        let p_wad = (proportion_of_weighted_seized * &wad) / &bps;
 
+        // Compute the collateral loss factor t.
+        // t = p_wad * (bps + liquidation_bonus) / bps (with rounding adjustment)
+        let collateral_loss_factor =
+            self.to_decimal_signed_wad((p_wad * (&bps + liquidation_bonus) + &bps / 2u32) / &bps);
+
+        // Denom: difference between loss factor and target health factor.
+        let denom = collateral_loss_factor - target_hf_dec;
+
+        // Ideal debt to repay:
+        let ideal_debt_to_repay = health_gap.mul(wad_dec).div(denom);
         require!(
             ideal_debt_to_repay.clone().sign().eq(&Sign::Plus),
-            "Debt repaid can not be negative!"
+            ERROR_DEBT_CAN_NOT_BE_NEGATIVE
         );
 
-        // 2. Calculate the maximum debt that can be liquidated based on the available collateral of the specific asset.
-        // max_debt_to_liquidate = (total_collateral_of_asset * bp) / (bp + liquidation_bonus)
-        let max_debt_to_liquidate = (total_collateral_all_assets * &bp) / (&bp + liquidation_bonus);
+        // 2. Maximum debt that can be liquidated based on available collateral:
+        let max_debt_to_liquidate =
+            (total_collateral_all_assets * &bps) / (&bps + liquidation_bonus);
 
-        // 3. Determine the actual debt to be repaid, which is the minimum of what's allowed and what's ideal.
+        // 3. Actual debt to repay is the minimum of ideal and maximum allowed.
         let debt_to_repay = BigUint::min(
             max_debt_to_liquidate,
             ideal_debt_to_repay
@@ -302,16 +325,15 @@ pub trait MathsModule: oracle::OracleModule + storage::LendingStorageModule {
                 .clone(),
         );
 
-        // 3) "t" factor = proportion_of_weighted_seized * (bp + liquidation_bonus) / bp
-        //    same as in your code (we do a Signed decimal to keep the same style)
+        // 4. Compute the weighted collateral seized based on the proportion.
         let seized_weighted = BigUint::min(
-            proportion_of_weighted_seized * &debt_to_repay * &(&bp + liquidation_bonus) / &bp / &bp,
+            proportion_of_weighted_seized * &debt_to_repay * (&bps + liquidation_bonus)
+                / &bps
+                / &bps,
             weighted_collateral_in_egld.clone(),
         );
-
         let new_weighted = weighted_collateral_in_egld - &seized_weighted;
-
-        let new_health_factor = &new_weighted * &bp / (total_debt - &debt_to_repay);
+        let new_health_factor = &new_weighted * &wad / (total_debt - &debt_to_repay);
 
         (debt_to_repay, liquidation_bonus.clone(), new_health_factor)
     }
@@ -330,18 +352,19 @@ pub trait MathsModule: oracle::OracleModule + storage::LendingStorageModule {
     /// * `(BigUint, BigUint)` - Estimated amount of debt to repay and collateral to seize
     fn estimate_liquidation_amount(
         &self,
-        weighted_collateral_in_egld: BigUint,
+        weighted_collateral_in_egld: &BigUint,
         proportion_of_weighted_seized: &BigUint,
         total_collateral: &BigUint,
         total_debt: &BigUint,
         min_bonus: &BigUint,
         old_hf: &BigUint,
     ) -> (BigUint, BigUint) {
-        let bp = BigUint::from(BP);
-        let target_best = &bp * 2u32 / 100u32 + &bp;
+        let wad = BigUint::from(WAD);
+        let bps = BigUint::from(BPS);
+        let target_best = &wad * 2u32 / 100u32 + &wad;
         // Try to bring it to at least 1.02 HF to be in a safer position
         let (safest_debt, safest_bonus, safe_new_hf) = self.simulation_target_liquidation(
-            &weighted_collateral_in_egld,
+            weighted_collateral_in_egld,
             proportion_of_weighted_seized,
             total_collateral,
             total_debt,
@@ -349,29 +372,33 @@ pub trait MathsModule: oracle::OracleModule + storage::LendingStorageModule {
             old_hf,
             target_best,
         );
-
-        if &safe_new_hf >= &bp {
+        if &safe_new_hf >= &wad {
             return (safest_debt, safest_bonus);
         }
 
         // When 1.02 is not possible try to bring it to minimum 1.0 if possible
-        let (limit_debt, limit_bonus, _) = self.simulation_target_liquidation(
-            &weighted_collateral_in_egld,
+        let (limit_debt, limit_bonus, max_safe_hf) = self.simulation_target_liquidation(
+            weighted_collateral_in_egld,
             proportion_of_weighted_seized,
             total_collateral,
             total_debt,
             min_bonus,
             old_hf,
-            bp.clone(),
+            wad.clone(),
         );
 
-        if &limit_debt >= &bp {
+        if &max_safe_hf >= &wad {
             return (limit_debt, limit_bonus);
         }
 
-        // When 1.02 or 1.00 targets can not be reached we consider the position as bad debt and we fallback to max_debt using min bonus.
-        let max_debt_to_liquidate = (total_collateral * &bp) / (&bp + min_bonus);
-
+        // let max_debt_to_liquidate = (total_collateral * &bps) / (&bps + &((min_bonus + &bps) / &bps));
+        let numerator = total_collateral * &bps;
+        let denominator = &bps + min_bonus;
+        let max_debt_to_liquidate =
+            (numerator + denominator.clone() / BigUint::from(2u64)) / denominator;
+        sc_print!("max_debt_to_liquidate {}", max_debt_to_liquidate);
+        sc_print!("total_collateral      {}", total_collateral);
+        sc_print!("min_bonus             {}", min_bonus);
         // return (max_debt_to_liquidate, min_bonus);
         return (max_debt_to_liquidate, min_bonus.clone());
     }
@@ -409,92 +436,57 @@ pub trait MathsModule: oracle::OracleModule + storage::LendingStorageModule {
         );
     }
 
-    fn seize_collateral_proportionally(
-        &self,
-        collaterals: &ManagedVec<AccountPosition<Self::Api>>,
-        total_collateral_value: &BigUint,
-        debt_to_be_repaid: &BigUint,
-        bonus: &BigUint,
-        storage_cache: &mut StorageCache<Self>,
-    ) -> ManagedVec<MultiValue2<EgldOrEsdtTokenPayment, BigUint>> {
-        let mut seized_amounts_by_collateral = ManagedVec::new();
-        let bp = BigUint::from(BP);
-        let bp_egld = BigUint::from(BP_EGLD);
-        for asset in collaterals {
-            // proportion of total let collateral_in_egld =
-            let total_amount = asset.get_total_amount();
-            let asset_data = self.get_token_price(&asset.token_id, storage_cache);
-            let asset_egld_value = self.get_token_amount_in_egld_raw(&total_amount, &asset_data);
+    // #[view(getMaxLeverage)]
+    // fn calculate_max_leverage(
+    //     &self,
+    //     initial_deposit: &BigUint,
+    //     health_factor: &BigUint,
+    //     e_mode: &Option<EModeCategory<Self::Api>>,
+    //     asset_config: &AssetConfig<Self::Api>,
+    //     total_reserves: &BigUint,
+    //     reserve_buffer: &BigUint,
+    // ) -> BigUint {
+    //     let wad = BigUint::from(WAD);
+    //     let wad_dec = ManagedDecimal::from_raw_units(BigUint::from(WAD), WAD_PRECISION);
+    //     let liquidation_threshold = if let Some(mode) = e_mode {
+    //         &mode.liquidation_threshold
+    //     } else {
+    //         &asset_config.liquidation_threshold
+    //     };
+    //     let flash_loan_fee = &asset_config.flash_loan_fee;
+    //     // If both `health_factor` and `flash_loan_fee` are already scaled by BP, then
+    //     //    (1 + fee) = (bp + flash_loan_fee), also in BP scale.
+    //     // We multiply them and THEN divide by BP to keep the result in the same BP scale.
+    //     let hf_plus_fee = (health_factor * (wad_dec + flash_loan_fee.clone())) / &wad;
 
-            let proportion = &asset_egld_value * &bp_egld / total_collateral_value;
+    //     // `liquidation_threshold` is already in the same BP scale as HF, so we subtract it directly.
+    //     // The denominator is HF*(1+F) - LT, all in the same BP scale.
+    //     // let max_l_hf_numerator = &hf_plus_fee;
+    //     let max_l_hf_denominator = &hf_plus_fee - liquidation_threshold;
 
-            let seized_egld = &proportion * debt_to_be_repaid / &bp_egld;
-            let seized_units = self.compute_amount_in_tokens(&seized_egld, &asset_data);
-            let seized_units_after_bonus = &seized_units * &(&bp + bonus) / &bp;
-            let protocol_fee =
-                (&seized_units_after_bonus - &seized_units) * &asset.entry_liquidation_fees / &bp;
+    //     // The final result for max leverage by HF formula:
+    //     //   MaxL_HF = [ HF*(1 + fee) ] / [ HF*(1 + fee) - liquidation_threshold ]
+    //     // Since everything is in BP scale, we multiply by BP one more time to keep output in BP scale.
+    //     let max_l_hf = &hf_plus_fee * &wad / &max_l_hf_denominator;
 
-            let final_amount = BigUint::min(seized_units_after_bonus, total_amount);
+    //     // --- Reserve-based constraint:
+    //     // AR = total_reserves * (1 - reserve_buffer).
+    //     // Because `reserve_buffer` is in BP scale, do the appropriate scaling by `bp` to get normal units.
+    //     let available_reserves = (total_reserves * &(&wad - reserve_buffer)) / &wad;
 
-            seized_amounts_by_collateral.push(MultiValue2::from((
-                EgldOrEsdtTokenPayment::new(asset.token_id.clone(), 0, final_amount),
-                protocol_fee,
-            )));
-        }
+    //     // Suppose we want to say:
+    //     //   "If we have AR available, how many times bigger is that than `initial_deposit`?"
+    //     //   ratio = AR / D  (but in normal arithmetic, ratio is dimensionless).
+    //     //   Then leverage-limited = ratio + 1  => in BP scale => ratio * BP + BP
+    //     // So we do:
+    //     //   ratio_in_bp = (AR * BP) / D
+    //     //   max_l_reserves = ratio_in_bp + BP
+    //     let ratio_in_bp = (&available_reserves * &wad) / initial_deposit;
+    //     let max_l_reserves = ratio_in_bp + &wad;
 
-        seized_amounts_by_collateral
-    }
+    //     // Final max leverage is the minimum of the HF-based limit and the Reserve-based limit
+    //     let max_l = BigUint::min(max_l_hf, max_l_reserves);
 
-    #[view(getMaxLeverage)]
-    fn calculate_max_leverage(
-        &self,
-        initial_deposit: &BigUint,
-        health_factor: &BigUint,
-        e_mode: &Option<EModeCategory<Self::Api>>,
-        asset_config: &AssetConfig<Self::Api>,
-        total_reserves: &BigUint,
-        reserve_buffer: &BigUint,
-    ) -> BigUint {
-        let bp = BigUint::from(BP);
-        let liquidation_threshold = if let Some(mode) = e_mode {
-            &mode.liquidation_threshold
-        } else {
-            &asset_config.liquidation_threshold
-        };
-        let flash_loan_fee = &asset_config.flash_loan_fee;
-        // If both `health_factor` and `flash_loan_fee` are already scaled by BP, then
-        //    (1 + fee) = (bp + flash_loan_fee), also in BP scale.
-        // We multiply them and THEN divide by BP to keep the result in the same BP scale.
-        let hf_plus_fee = (health_factor * &(&bp + flash_loan_fee)) / &bp;
-
-        // `liquidation_threshold` is already in the same BP scale as HF, so we subtract it directly.
-        // The denominator is HF*(1+F) - LT, all in the same BP scale.
-        // let max_l_hf_numerator = &hf_plus_fee;
-        let max_l_hf_denominator = &hf_plus_fee - liquidation_threshold;
-
-        // The final result for max leverage by HF formula:
-        //   MaxL_HF = [ HF*(1 + fee) ] / [ HF*(1 + fee) - liquidation_threshold ]
-        // Since everything is in BP scale, we multiply by BP one more time to keep output in BP scale.
-        let max_l_hf = &hf_plus_fee * &bp / &max_l_hf_denominator;
-
-        // --- Reserve-based constraint:
-        // AR = total_reserves * (1 - reserve_buffer).
-        // Because `reserve_buffer` is in BP scale, do the appropriate scaling by `bp` to get normal units.
-        let available_reserves = (total_reserves * &(&bp - reserve_buffer)) / &bp;
-
-        // Suppose we want to say:
-        //   "If we have AR available, how many times bigger is that than `initial_deposit`?"
-        //   ratio = AR / D  (but in normal arithmetic, ratio is dimensionless).
-        //   Then leverage-limited = ratio + 1  => in BP scale => ratio * BP + BP
-        // So we do:
-        //   ratio_in_bp = (AR * BP) / D
-        //   max_l_reserves = ratio_in_bp + BP
-        let ratio_in_bp = (&available_reserves * &bp) / initial_deposit;
-        let max_l_reserves = ratio_in_bp + &bp;
-
-        // Final max leverage is the minimum of the HF-based limit and the Reserve-based limit
-        let max_l = BigUint::min(max_l_hf, max_l_reserves);
-
-        max_l
-    }
+    //     max_l
+    // }
 }

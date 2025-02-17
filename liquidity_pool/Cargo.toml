@@ -14,12 +14,14 @@ version = "0.56.0"
 [dependencies.common-structs]
 path = "../common/structs"
 
+[dependencies.common-math]
+path = "../common/math"
+
 [dependencies.common-constants]
 path = "../common/constants"
 
 [dependencies.common-events]
 path = "../common/events"
-
 
 [dev-dependencies.multiversx-sc-scenario]
 version = "0.56.0"

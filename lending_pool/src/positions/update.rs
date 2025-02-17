@@ -16,6 +16,7 @@ pub trait PositionUpdateModule:
     + utils::LendingUtilsModule
     + helpers::math::MathsModule
     + account::PositionAccountModule
+    + common_math::SharedMathModule
 {
     /// Updates all borrow positions for an account with accumulated interest
     ///
@@ -42,6 +43,7 @@ pub trait PositionUpdateModule:
         let mut positions: ManagedVec<Self::Api, AccountPosition<Self::Api>> = ManagedVec::new();
         let mut index_position =
             ManagedMapEncoded::<Self::Api, EgldOrEsdtTokenIdentifier, usize>::new();
+
         for (index, token_id) in borrow_positions.keys().enumerate() {
             let mut bp = borrow_positions.get(&token_id).unwrap();
             let asset_address = self.get_pool_address(&bp.token_id);
@@ -56,7 +58,7 @@ pub trait PositionUpdateModule:
 
             if fetch_price {
                 self.update_position_event(
-                    &BigUint::zero(),
+                    &ManagedDecimal::from_raw_units(BigUint::zero(), 0usize),
                     &bp,
                     OptionalValue::None,
                     OptionalValue::None,
@@ -65,7 +67,9 @@ pub trait PositionUpdateModule:
             }
 
             if return_map {
+                // Required to make + 1 because 0 value will not be detected during .includes()
                 let safe_index = index + 1;
+                // We are sure the token can not be twice in the same account position
                 index_position.put(&bp.token_id, &safe_index);
             }
 
@@ -76,8 +80,6 @@ pub trait PositionUpdateModule:
         }
         (positions, index_position)
     }
-
-
 
     /// Updates all collateral positions for an account with accumulated interest
     ///
@@ -112,7 +114,7 @@ pub trait PositionUpdateModule:
 
                 if fetch_price {
                     self.update_position_event(
-                        &BigUint::zero(),
+                        &ManagedDecimal::from_raw_units(BigUint::zero(), 0usize),
                         &dp,
                         OptionalValue::None,
                         OptionalValue::None,
@@ -129,5 +131,4 @@ pub trait PositionUpdateModule:
         }
         positions
     }
-
 }

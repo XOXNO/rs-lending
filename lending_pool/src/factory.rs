@@ -1,11 +1,15 @@
-use crate::{oracle, proxies::*, storage, ERROR_TEMPLATE_EMPTY};
+use crate::{helpers, oracle, proxies::*, storage, ERROR_TEMPLATE_EMPTY};
 
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
 #[multiversx_sc::module]
 pub trait FactoryModule:
-    common_events::EventsModule + oracle::OracleModule + storage::LendingStorageModule
+    common_events::EventsModule
+    + oracle::OracleModule
+    + storage::LendingStorageModule
+    + helpers::math::MathsModule
+    + common_math::SharedMathModule
 {
     fn create_pool(
         &self,
