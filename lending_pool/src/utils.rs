@@ -84,20 +84,21 @@ pub trait LendingUtilsModule:
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
-        let mut proportion_of_weighted_seized =
-            ManagedDecimal::from_raw_units(BigUint::zero(), BPS_PRECISION);
-        let mut weighted_bonus = ManagedDecimal::from_raw_units(BigUint::zero(), BPS_PRECISION);
+        let mut proportion_of_weighted_seized = self.to_decimal_bps(BigUint::zero());
+        let mut weighted_bonus = self.to_decimal_bps(BigUint::zero());
 
         for dp in positions {
             let collateral_in_egld =
                 self.get_token_amount_in_egld(&dp.token_id, &dp.get_total_amount(), storage_cache);
-            let fraction = collateral_in_egld * storage_cache.bps_dec.clone()
-                / total_collateral_in_egld.clone();
-            proportion_of_weighted_seized += fraction.clone()
-                * dp.entry_liquidation_threshold.clone()
-                / storage_cache.bps_dec.clone();
-            weighted_bonus +=
-                fraction * dp.entry_liquidation_bonus.clone() / storage_cache.bps_dec.clone();
+            let fraction = self
+                .div_half_up(&collateral_in_egld, total_collateral_in_egld, RAY_PRECISION)
+                .rescale(BPS_PRECISION);
+            proportion_of_weighted_seized += self
+                .mul_half_up(&fraction, &dp.entry_liquidation_threshold, RAY_PRECISION)
+                .rescale(BPS_PRECISION);
+            weighted_bonus += self
+                .mul_half_up(&fraction, &dp.entry_liquidation_bonus, RAY_PRECISION)
+                .rescale(BPS_PRECISION);
         }
 
         (proportion_of_weighted_seized, weighted_bonus)
@@ -139,6 +140,7 @@ pub trait LendingUtilsModule:
             key_token
         );
         let safe_index = borrows_index_map.get(key_token);
+        // -1 is required to by pass the issue of index = 0 which will throw at the above .contains
         let index = safe_index - 1;
         let position = borrows.get(index).clone();
 
@@ -226,10 +228,7 @@ pub trait LendingUtilsModule:
         amount_in_usd: ManagedDecimal<Self::Api, NumDecimals>,
         is_increase: bool,
     ) {
-        if amount_in_usd.eq(&ManagedDecimal::from_raw_units(
-            BigUint::zero(),
-            WAD_PRECISION,
-        )) {
+        if amount_in_usd.eq(&self.to_decimal_wad(BigUint::zero())) {
             return;
         }
 
@@ -317,19 +316,16 @@ pub trait LendingUtilsModule:
         if debt_payment.is_some() {
             // Take the minimum between what we need and what's available and what the liquidator is paying
             (
-                ManagedDecimal::from_raw_units(
-                    BigUint::min(
-                        debt_payment.into_option().unwrap().into_raw_units().clone(),
-                        max_repayable_debt,
-                    ),
-                    WAD_PRECISION,
-                ),
-                ManagedDecimal::from_raw_units(bonus, BPS_PRECISION),
+                self.to_decimal_wad(BigUint::min(
+                    debt_payment.into_option().unwrap().into_raw_units().clone(),
+                    max_repayable_debt,
+                )),
+                self.to_decimal_bps(bonus),
             )
         } else {
             (
-                ManagedDecimal::from_raw_units(max_repayable_debt, WAD_PRECISION),
-                ManagedDecimal::from_raw_units(bonus, BPS_PRECISION),
+                self.to_decimal_wad(max_repayable_debt),
+                self.to_decimal_bps(bonus),
             )
         }
     }

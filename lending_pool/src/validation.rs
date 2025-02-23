@@ -21,7 +21,7 @@ pub trait ValidationModule:
     fn get_total_reserves(
         &self,
         pair_address: ManagedAddress,
-    ) -> SingleValueMapper<BigUint, ManagedAddress> {
+    ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>, ManagedAddress> {
         SingleValueMapper::<_, _, ManagedAddress>::new_from_address(
             pair_address,
             StorageKey::new(TOTAL_RESERVES_AMOUNT_STORAGE_KEY),

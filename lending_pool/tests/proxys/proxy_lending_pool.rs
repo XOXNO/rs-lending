@@ -55,6 +55,7 @@ where
         Arg2: ProxyArg<ManagedAddress<Env::Api>>,
         Arg3: ProxyArg<ManagedAddress<Env::Api>>,
         Arg4: ProxyArg<ManagedAddress<Env::Api>>,
+        Arg5: ProxyArg<ManagedAddress<Env::Api>>,
     >(
         self,
         lp_template_address: Arg0,
@@ -62,6 +63,7 @@ where
         safe_view_address: Arg2,
         accumulator_address: Arg3,
         wegld_address: Arg4,
+        ash_swap: Arg5,
     ) -> TxTypedDeploy<Env, From, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
@@ -71,6 +73,7 @@ where
             .argument(&safe_view_address)
             .argument(&accumulator_address)
             .argument(&wegld_address)
+            .argument(&ash_swap)
             .original_result()
     }
 }
@@ -84,16 +87,12 @@ where
     To: TxTo<Env>,
     Gas: TxGas<Env>,
 {
-    pub fn upgrade<
-        Arg0: ProxyArg<ManagedAddress<Env::Api>>,
-    >(
+    pub fn upgrade(
         self,
-        wegld_address: Arg0,
     ) -> TxTypedUpgrade<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_upgrade()
-            .argument(&wegld_address)
             .original_result()
     }
 }
@@ -416,17 +415,19 @@ where
         Arg8: ProxyArg<BigUint<Env::Api>>,
         Arg9: ProxyArg<BigUint<Env::Api>>,
         Arg10: ProxyArg<BigUint<Env::Api>>,
-        Arg11: ProxyArg<bool>,
-        Arg12: ProxyArg<bool>,
+        Arg11: ProxyArg<BigUint<Env::Api>>,
+        Arg12: ProxyArg<BigUint<Env::Api>>,
         Arg13: ProxyArg<bool>,
-        Arg14: ProxyArg<BigUint<Env::Api>>,
-        Arg15: ProxyArg<BigUint<Env::Api>>,
-        Arg16: ProxyArg<bool>,
-        Arg17: ProxyArg<bool>,
+        Arg14: ProxyArg<bool>,
+        Arg15: ProxyArg<bool>,
+        Arg16: ProxyArg<BigUint<Env::Api>>,
+        Arg17: ProxyArg<BigUint<Env::Api>>,
         Arg18: ProxyArg<bool>,
-        Arg19: ProxyArg<usize>,
-        Arg20: ProxyArg<OptionalValue<BigUint<Env::Api>>>,
-        Arg21: ProxyArg<OptionalValue<BigUint<Env::Api>>>,
+        Arg19: ProxyArg<bool>,
+        Arg20: ProxyArg<bool>,
+        Arg21: ProxyArg<usize>,
+        Arg22: ProxyArg<OptionalValue<BigUint<Env::Api>>>,
+        Arg23: ProxyArg<OptionalValue<BigUint<Env::Api>>>,
     >(
         self,
         base_asset: Arg0,
@@ -434,23 +435,25 @@ where
         r_base: Arg2,
         r_slope1: Arg3,
         r_slope2: Arg4,
-        u_optimal: Arg5,
-        reserve_factor: Arg6,
-        ltv: Arg7,
-        liquidation_threshold: Arg8,
-        liquidation_base_bonus: Arg9,
-        liquidation_max_fee: Arg10,
-        can_be_collateral: Arg11,
-        can_be_borrowed: Arg12,
-        is_isolated: Arg13,
-        debt_ceiling_usd: Arg14,
-        flash_loan_fee: Arg15,
-        is_siloed: Arg16,
-        flashloan_enabled: Arg17,
-        can_borrow_in_isolation: Arg18,
-        decimals: Arg19,
-        borrow_cap: Arg20,
-        supply_cap: Arg21,
+        r_slope3: Arg5,
+        u_mid: Arg6,
+        u_optimal: Arg7,
+        reserve_factor: Arg8,
+        ltv: Arg9,
+        liquidation_threshold: Arg10,
+        liquidation_base_bonus: Arg11,
+        liquidation_max_fee: Arg12,
+        can_be_collateral: Arg13,
+        can_be_borrowed: Arg14,
+        is_isolated: Arg15,
+        debt_ceiling_usd: Arg16,
+        flash_loan_fee: Arg17,
+        is_siloed: Arg18,
+        flashloan_enabled: Arg19,
+        can_borrow_in_isolation: Arg20,
+        decimals: Arg21,
+        borrow_cap: Arg22,
+        supply_cap: Arg23,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
@@ -460,6 +463,8 @@ where
             .argument(&r_base)
             .argument(&r_slope1)
             .argument(&r_slope2)
+            .argument(&r_slope3)
+            .argument(&u_mid)
             .argument(&u_optimal)
             .argument(&reserve_factor)
             .argument(&ltv)
@@ -488,6 +493,8 @@ where
         Arg4: ProxyArg<BigUint<Env::Api>>,
         Arg5: ProxyArg<BigUint<Env::Api>>,
         Arg6: ProxyArg<BigUint<Env::Api>>,
+        Arg7: ProxyArg<BigUint<Env::Api>>,
+        Arg8: ProxyArg<BigUint<Env::Api>>,
     >(
         self,
         base_asset: Arg0,
@@ -495,8 +502,10 @@ where
         r_base: Arg2,
         r_slope1: Arg3,
         r_slope2: Arg4,
-        u_optimal: Arg5,
-        reserve_factor: Arg6,
+        r_slope3: Arg5,
+        u_mid: Arg6,
+        u_optimal: Arg7,
+        reserve_factor: Arg8,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
@@ -506,6 +515,8 @@ where
             .argument(&r_base)
             .argument(&r_slope1)
             .argument(&r_slope2)
+            .argument(&r_slope3)
+            .argument(&u_mid)
             .argument(&u_optimal)
             .argument(&reserve_factor)
             .original_result()
@@ -546,7 +557,7 @@ where
 
     pub fn set_token_oracle<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-        Arg1: ProxyArg<u8>,
+        Arg1: ProxyArg<usize>,
         Arg2: ProxyArg<ManagedAddress<Env::Api>>,
         Arg3: ProxyArg<common_structs::PricingMethod>,
         Arg4: ProxyArg<common_structs::OracleType>,
@@ -939,7 +950,7 @@ where
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getSafePriceView")
+            .raw_call("getSafePriceAddress")
             .original_result()
     }
 
@@ -950,6 +961,15 @@ where
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getEGLDWrapperAddress")
+            .original_result()
+    }
+
+    pub fn aggregator(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getAggregatorAddress")
             .original_result()
     }
 
@@ -1117,18 +1137,6 @@ where
     ///  
     /// # Returns 
     /// * `BigUint` - Health factor in basis points (10000 = 100%) 
-    ///  
-    /// # Example 
-    /// ``` 
-    /// // Position with: 
-    /// // Collateral: 100 EGLD @ $100 each = $10,000 
-    /// // Liquidation threshold: 80% 
-    /// // Weighted collateral: $8,000 
-    ///  
-    /// // Borrows: 5000 USDC @ $1 each = $5,000 
-    ///  
-    /// // Health Factor = $8,000 * 10000 / $5,000 = 16000 (160%) 
-    /// get_health_factor(1) = 16000 
     /// ``` 
     pub fn get_health_factor<
         Arg0: ProxyArg<u64>,
@@ -1311,19 +1319,6 @@ where
             .original_result()
     }
 
-    pub fn get_token_price_data_view<
-        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-    >(
-        self,
-        token_id: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::PriceFeedShort<Env::Api>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getTokenPriceData")
-            .argument(&token_id)
-            .original_result()
-    }
-
     pub fn get_usd_price<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
     >(
@@ -1355,12 +1350,16 @@ where
         Arg1: ProxyArg<u8>,
         Arg2: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg3: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+        Arg4: ProxyArg<OptionalValue<ManagedVec<Env::Api, AggregatorStep<Env::Api>>>>,
+        Arg5: ProxyArg<OptionalValue<ManagedVec<Env::Api, TokenAmount<Env::Api>>>>,
     >(
         self,
         leverage_raw: Arg0,
         e_mode_category: Arg1,
         collateral_token: Arg2,
         debt_token: Arg3,
+        steps: Arg4,
+        limits: Arg5,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("multiply")
@@ -1368,6 +1367,80 @@ where
             .argument(&e_mode_category)
             .argument(&collateral_token)
             .argument(&debt_token)
+            .argument(&steps)
+            .argument(&limits)
             .original_result()
     }
+
+    pub fn swap_collateral<
+        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+        Arg1: ProxyArg<BigUint<Env::Api>>,
+        Arg2: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+        Arg3: ProxyArg<OptionalValue<ManagedVec<Env::Api, AggregatorStep<Env::Api>>>>,
+        Arg4: ProxyArg<OptionalValue<ManagedVec<Env::Api, TokenAmount<Env::Api>>>>,
+    >(
+        self,
+        from_token: Arg0,
+        from_amount: Arg1,
+        to_token: Arg2,
+        steps: Arg3,
+        limits: Arg4,
+    ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
+        self.wrapped_tx
+            .raw_call("swapCollateral")
+            .argument(&from_token)
+            .argument(&from_amount)
+            .argument(&to_token)
+            .argument(&steps)
+            .argument(&limits)
+            .original_result()
+    }
+
+    pub fn repay_debt_with_collateral<
+        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+        Arg1: ProxyArg<BigUint<Env::Api>>,
+        Arg2: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+        Arg3: ProxyArg<OptionalValue<ManagedVec<Env::Api, AggregatorStep<Env::Api>>>>,
+        Arg4: ProxyArg<OptionalValue<ManagedVec<Env::Api, TokenAmount<Env::Api>>>>,
+    >(
+        self,
+        from_token: Arg0,
+        from_amount: Arg1,
+        debt_token: Arg2,
+        steps: Arg3,
+        limits: Arg4,
+    ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
+        self.wrapped_tx
+            .raw_call("repayDebtWithCollateral")
+            .argument(&from_token)
+            .argument(&from_amount)
+            .argument(&debt_token)
+            .argument(&steps)
+            .argument(&limits)
+            .original_result()
+    }
+}
+
+#[type_abi]
+#[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, PartialEq, Clone, ManagedVecItem)]
+pub struct AggregatorStep<Api>
+where
+    Api: ManagedTypeApi,
+{
+    pub token_in: TokenIdentifier<Api>,
+    pub token_out: TokenIdentifier<Api>,
+    pub amount_in: BigUint<Api>,
+    pub pool_address: ManagedAddress<Api>,
+    pub function_name: ManagedBuffer<Api>,
+    pub arguments: ManagedVec<Api, ManagedBuffer<Api>>,
+}
+
+#[type_abi]
+#[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, PartialEq, Clone, ManagedVecItem)]
+pub struct TokenAmount<Api>
+where
+    Api: ManagedTypeApi,
+{
+    pub token: TokenIdentifier<Api>,
+    pub amount: BigUint<Api>,
 }

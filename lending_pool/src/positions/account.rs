@@ -71,7 +71,7 @@ pub trait PositionAccountModule:
         is_isolated: bool,
         is_vault: bool,
         e_mode_category: OptionalValue<u8>,
-        account_nonce: Option<EgldOrEsdtTokenPayment<Self::Api>>,
+        account_nonce: Option<EsdtTokenPayment<Self::Api>>,
     ) -> (u64, NftAccountAttributes) {
         if let Some(account) = account_nonce {
             self.require_active_account(account.token_nonce);

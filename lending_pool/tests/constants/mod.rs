@@ -10,13 +10,15 @@ pub const SECONDS_PER_DAY: u64 = 86_400; // 24 * 60 * 60
 
 pub const DOLLAR_TICKER: &[u8] = b"USD";
 
-pub const R_BASE: u128 = 20_000_000_000_000_000_000_000_000; // 2e25, 2%
-pub const R_MAX: u128 = 1_000_000_000_000_000_000_000_000_000; // 1e27, 100%
-pub const R_SLOPE1: u128 = 100_000_000_000_000_000_000_000_000; // 1e26, 10%
-pub const R_SLOPE2: u128 = 1_000_000_000_000_000_000_000_000_000; // 1e27, 100%
-pub const U_OPTIMAL: u128 = 800_000_000_000_000_000_000_000_000; // 8e26, 80%
+pub const R_BASE: u128 =   10000000000000000000000000; // 1e25, 1%
+pub const R_MAX: u128 =    690000000000000000000000000; // 69%
+pub const R_SLOPE1: u128 = 50000000000000000000000000; // 1e26, 5%
+pub const R_SLOPE2: u128 = 150000000000000000000000000; // 1e26, 10%
+pub const R_SLOPE3: u128 = 500000000000000000000000000; // 2e26, 20%
+pub const U_MID: u128 =    650000000000000000000000000; // 65%
+pub const U_OPTIMAL: u128 =900000000000000000000000000; // 90%
 
-pub const RESERVE_FACTOR: u128 = 3_000; // 30%
+pub const RESERVE_FACTOR: u128 = 2_500; // 25%
 
 pub const WAD: u128 = 1_000_000_000_000_000_000;
 
@@ -24,9 +26,9 @@ pub const LTV: u128 = 7_500; // 75%
 pub const E_MODE_LTV: u128 = 8_000; // 80%
 pub const LIQ_THRESOLD: u128 = 8_000; // 80%
 pub const E_MODE_LIQ_THRESOLD: u128 = 8_500; // 85%
-pub const LIQ_BONUS: u128 = 100; // 1%
+pub const LIQ_BONUS: u128 = 500; // 1%
 pub const E_MODE_LIQ_BONUS: u128 = 500; // 5%
-pub const LIQ_BASE_FEE: u128 = 100; // 1%
+pub const LIQ_BASE_FEE: u128 = 500; // 1%
 pub const FLASH_LOAN_FEE: u128 = 50; // 0.05%
 
 pub const ACCOUNT_TOKEN: TestTokenIdentifier = TestTokenIdentifier::new("ACC-abcdef");
@@ -173,7 +175,7 @@ pub fn get_usdc_config() -> SetupConfig {
         r_slope2: R_SLOPE2,
         u_optimal: U_OPTIMAL,
         reserve_factor: RESERVE_FACTOR,
-        decimals: USDC_DECIMALS
+        decimals: USDC_DECIMALS,
     }
 }
 
@@ -216,7 +218,7 @@ pub fn get_egld_config() -> SetupConfig {
         r_slope2: R_SLOPE2,
         u_optimal: U_OPTIMAL,
         reserve_factor: RESERVE_FACTOR,
-        decimals: EGLD_DECIMALS
+        decimals: EGLD_DECIMALS,
     }
 }
 
@@ -259,7 +261,7 @@ pub fn get_xegld_config() -> SetupConfig {
         r_slope2: R_SLOPE2,
         u_optimal: U_OPTIMAL,
         reserve_factor: RESERVE_FACTOR,
-        decimals: XEGLD_DECIMALS
+        decimals: XEGLD_DECIMALS,
     }
 }
 
@@ -302,7 +304,7 @@ pub fn get_segld_config() -> SetupConfig {
         r_slope2: R_SLOPE2,
         u_optimal: U_OPTIMAL,
         reserve_factor: RESERVE_FACTOR,
-        decimals: SEGLD_DECIMALS
+        decimals: SEGLD_DECIMALS,
     }
 }
 
@@ -343,7 +345,7 @@ pub fn get_legld_config() -> SetupConfig {
         r_slope2: R_SLOPE2,
         u_optimal: U_OPTIMAL,
         reserve_factor: RESERVE_FACTOR,
-        decimals: LEGLD_DECIMALS
+        decimals: LEGLD_DECIMALS,
     }
 }
 
@@ -384,7 +386,7 @@ pub fn get_xoxno_config() -> SetupConfig {
         r_slope2: R_SLOPE2,
         u_optimal: U_OPTIMAL,
         reserve_factor: RESERVE_FACTOR,
-        decimals: XOXNO_DECIMALS
+        decimals: XOXNO_DECIMALS,
     }
 }
 
@@ -428,7 +430,7 @@ pub fn get_isolated_config() -> SetupConfig {
         r_slope2: R_SLOPE2,
         u_optimal: U_OPTIMAL,
         reserve_factor: RESERVE_FACTOR,
-        decimals: ISOLATED_DECIMALS
+        decimals: ISOLATED_DECIMALS,
     }
 }
 
@@ -469,7 +471,7 @@ pub fn get_siloed_config() -> SetupConfig {
         r_slope2: R_SLOPE2,
         u_optimal: U_OPTIMAL,
         reserve_factor: RESERVE_FACTOR,
-        decimals: SILOED_DECIMALS
+        decimals: SILOED_DECIMALS,
     }
 }
 
@@ -514,6 +516,6 @@ pub fn get_capped_config() -> SetupConfig {
         r_slope2: R_SLOPE2,
         u_optimal: U_OPTIMAL,
         reserve_factor: RESERVE_FACTOR,
-        decimals: CAPPED_DECIMALS
+        decimals: CAPPED_DECIMALS,
     }
 }

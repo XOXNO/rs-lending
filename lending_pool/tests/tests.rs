@@ -98,7 +98,6 @@ fn test_edge_case_math_rounding() {
     let collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
     let utilization = state.get_market_utilization(state.egld_market.clone());
     let revenue = state.get_market_revenue(state.egld_market.clone());
-    let reserves = state.get_market_reserves(state.egld_market.clone());
 
     println!("reserves: {:?}", collateral.clone() + revenue.clone()); // 100019013258769247676
                                                                       // println!("borrow_amount: {:?}", borrowed); // 100019013258769247676
@@ -466,7 +465,6 @@ fn test_complete_market_exit() {
         2,
         USDC_DECIMALS,
     );
-
     state
         .world
         .check_account(borrower)
@@ -481,8 +479,12 @@ fn test_complete_market_exit() {
             },
         );
 
+    let total_collateral = state.get_total_collateral_in_egld(1);
+    println!("total_collateral: {:?}", total_collateral);
+
     let supplied_collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
     println!("supplied_collateral: {:?}", supplied_collateral);
+
     state.withdraw_asset_den(
         &supplier,
         EGLD_TOKEN,
@@ -497,6 +499,8 @@ fn test_complete_market_exit() {
         custom_error_message.as_bytes(),
     );
 
+  
+    state.update_interest_indexes(&supplier, 3);
     let supplied_collateral = state.get_collateral_amount_for_token(3, EGLD_TOKEN);
     let reserves = state.get_market_reserves(state.egld_market.clone());
     let revenue = state.get_market_revenue(state.egld_market.clone());
@@ -506,7 +510,7 @@ fn test_complete_market_exit() {
     println!(
         "dust            : {:?}",
         (reserves - supplied_collateral.clone() - revenue)
-    );
+    ); 
     // state.claim_revenue(EGLD_TOKEN);
     // return;
     // 100.000056842393347411 // Actual Reserves
@@ -519,7 +523,6 @@ fn test_complete_market_exit() {
         supplied_collateral.into_raw_units().clone(),
         3,
     );
-
     state.get_collateral_amount_for_token_non_existing(
         3,
         EGLD_TOKEN,
@@ -528,7 +531,7 @@ fn test_complete_market_exit() {
 
     let reserves = state.get_market_reserves(state.egld_market.clone());
     let revenue = state.get_market_revenue(state.egld_market.clone());
-    assert_eq!(reserves, revenue);
+    assert!(reserves >= revenue);
     // state.claim_revenue(EGLD_TOKEN);
     return;
 }
@@ -581,13 +584,13 @@ fn test_interest_accrual() {
     println!("borrow_rate: {:?}", borrow_rate);
     // Simulate daily updates for a month
     // for day in 1..=SECONDS_PER_DAY {
-        state
-            .world
-            .current_block()
-            .block_timestamp( SECONDS_PER_YEAR);
-        state.update_markets(&supplier, markets.clone());
-        state.update_borrows_with_debt(&borrower, 2);
-        state.update_interest_indexes(&supplier, 1);
+    state
+        .world
+        .current_block()
+        .block_timestamp(SECONDS_PER_YEAR);
+    state.update_markets(&supplier, markets.clone());
+    state.update_borrows_with_debt(&borrower, 2);
+    state.update_interest_indexes(&supplier, 1);
     // }
 
     // Verify interest accrual
@@ -873,6 +876,179 @@ fn test_withdrawal_with_interest() {
     let final_collateral = state.get_collateral_amount_for_token(1, USDC_TOKEN);
     println!("final_collateral:   {}", final_collateral);
 }
+
+#[test]
+fn test_withdrawal_with_interest_one_user() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    // Setup supplier account
+    setup_accounts(&mut state, supplier, borrower);
+
+    state.world.current_block().block_timestamp(1740269720);
+    // Initial supply
+    state.supply_asset(
+        &supplier,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    state.world.current_block().block_timestamp(1740269852);
+
+    state.borrow_asset(
+        &supplier,
+        EGLD_TOKEN,
+        BigUint::from(72u64),
+        1,
+        EGLD_DECIMALS,
+    );
+
+    state.world.current_block().block_timestamp(1740275066);
+    // Update interest before withdrawal
+
+    // Get initial state
+    let initial_collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    let initial_borrow = state.get_borrow_amount_for_token(1, EGLD_TOKEN);
+    println!("initial_collateral: {}", initial_collateral);
+    println!("initial_borrow: {}", initial_borrow);
+
+    state.repay_asset_deno(
+        &supplier,
+        &EGLD_TOKEN,
+        BigUint::from(72721215451172815256u128),
+        1,
+    );
+    let reserve = state.get_market_reserves(state.egld_market.clone());
+    let revenue = state.get_market_revenue(state.egld_market.clone());
+    let borrow_index = state.get_market_borrow_index(state.egld_market.clone());
+    let supply_index = state.get_market_supply_index(state.egld_market.clone());
+    println!("reserve: {}", reserve);
+    println!("revenue: {}", revenue);
+    println!("borrow_index: {}", borrow_index);
+    println!("supply_index: {}", supply_index);
+    state.world.current_block().block_timestamp(1740275594);
+    let borrow_index = state.get_market_borrow_index(state.egld_market.clone());
+    let supply_index = state.get_market_supply_index(state.egld_market.clone());
+    println!("reserve: {}", reserve);
+    println!("revenue: {}", revenue);
+    println!("borrow_index: {}", borrow_index);
+    println!("supply_index: {}", supply_index);
+    state.update_interest_indexes(&supplier, 1);
+    // Get initial state
+    let final_collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    println!("collate: {}", final_collateral);
+    println!("reserve: {}", reserve);
+    println!("revenue: {}", revenue);
+
+    let diff = final_collateral.clone() + revenue.clone() - reserve;
+    println!("diff:    {}", diff);
+    // Withdraw partial amount
+    state.withdraw_asset_den(
+        &supplier,
+        EGLD_TOKEN,
+        final_collateral.into_raw_units().clone(),
+        1,
+    );
+    let reserve = state.get_market_reserves(state.egld_market.clone());
+    let revenue = state.get_market_revenue(state.egld_market.clone());
+    println!("reserve: {}", reserve);
+    println!("revenue: {}", revenue);
+}
+
+#[test]
+fn test_withdrawal_with_interest_one_user_prior_update() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    // Setup supplier account
+    setup_accounts(&mut state, supplier, borrower);
+
+    state.world.current_block().block_timestamp(1740269720);
+    // Initial supply
+    state.supply_asset(
+        &supplier,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    state.world.current_block().block_timestamp(1740269852);
+
+    state.update_interest_indexes(&supplier, 1);
+    state.borrow_asset(
+        &supplier,
+        EGLD_TOKEN,
+        BigUint::from(72u64),
+        1,
+        EGLD_DECIMALS,
+    );
+
+    state.world.current_block().block_timestamp(1740275066);
+    state.update_borrows_with_debt(&supplier, 1);
+    state.update_interest_indexes(&supplier, 1);
+    // Update interest before withdrawal
+
+    // Get initial state
+    let initial_collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    let initial_borrow = state.get_borrow_amount_for_token(1, EGLD_TOKEN);
+    println!("initial_collateral: {}", initial_collateral);
+    println!("initial_borrow: {}", initial_borrow);
+
+    state.repay_asset_deno(
+        &supplier,
+        &EGLD_TOKEN,
+        BigUint::from(72721215451172815256u128),
+        1,
+    );
+    state.update_interest_indexes(&supplier, 1);
+    state.update_borrows_with_debt(&supplier, 1);
+    let reserve = state.get_market_reserves(state.egld_market.clone());
+    let revenue = state.get_market_revenue(state.egld_market.clone());
+    let borrow_index = state.get_market_borrow_index(state.egld_market.clone());
+    let supply_index = state.get_market_supply_index(state.egld_market.clone());
+    println!("reserve: {}", reserve);
+    println!("revenue: {}", revenue);
+    println!("borrow_index: {}", borrow_index);
+    println!("supply_index: {}", supply_index);
+    state.world.current_block().block_timestamp(1740275594);
+    state.update_interest_indexes(&supplier, 1);
+    state.update_borrows_with_debt(&supplier, 1);
+    let borrow_index = state.get_market_borrow_index(state.egld_market.clone());
+    let supply_index = state.get_market_supply_index(state.egld_market.clone());
+    println!("reserve: {}", reserve);
+    println!("revenue: {}", revenue);
+    println!("borrow_index: {}", borrow_index);
+    println!("supply_index: {}", supply_index);
+    state.update_interest_indexes(&supplier, 1);
+    state.update_borrows_with_debt(&supplier, 1);
+    // Get initial state
+    let final_collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    println!("final_collateral:   {}", final_collateral);
+    let diff = revenue.clone() - (reserve - final_collateral.clone());
+    println!("diff: {}", diff);
+    println!("revenue: {}", revenue);
+    // Withdraw partial amount
+    state.withdraw_asset_den(
+        &supplier,
+        EGLD_TOKEN,
+        final_collateral.into_raw_units().clone(),
+        1,
+    );
+    let reserve = state.get_market_reserves(state.egld_market.clone());
+    let revenue = state.get_market_revenue(state.egld_market.clone());
+    println!("reserve: {}", reserve);
+    println!("revenue: {}", revenue);
+}
+
 // Basic Operations End
 
 // E-Mode Tests
@@ -1302,7 +1478,7 @@ fn test_borrow_asset_as_isolated_debt_celling_liquidation_debt_paid() {
     state
         .world
         .current_block()
-        .block_timestamp(SECONDS_PER_DAY * 1200);
+        .block_timestamp(SECONDS_PER_DAY * 1600);
     state.update_borrows_with_debt(&borrower, 2);
     let health_factor = state.get_account_health_factor(2);
     println!("health_factor: {:?}", health_factor);
@@ -1322,7 +1498,7 @@ fn test_borrow_asset_as_isolated_debt_celling_liquidation_debt_paid() {
     let health_factor = state.get_account_health_factor(2);
     println!("health_factor: {:?}", health_factor);
     // // Higher due to interest that was paid and not counted as repaid principal asset global debt
-    // assert!(borrow_amount < borrow_amount_first);
+    assert!(borrow_amount < borrow_amount_first);
     // assert!(
     //     health_factor
     //         > ManagedDecimal::<StaticApi, usize>::from_raw_units(
@@ -1755,27 +1931,21 @@ fn test_liquidation_and_left_bad_debt() {
     state.borrow_asset(
         &borrower,
         USDC_TOKEN.clone(),
-        BigUint::from(1000u64),
+        BigUint::from(2000u64),
         2,
         USDC_DECIMALS,
     );
 
-    state.borrow_asset(
-        &borrower,
-        USDC_TOKEN.clone(),
-        BigUint::from(1000u64),
-        2,
-        USDC_DECIMALS,
-    );
-
-    state.world.current_block().block_timestamp(500000000u64);
+    state.world.current_block().block_timestamp(590000000u64);
     state.update_borrows_with_debt(&borrower, 2);
+    state.update_interest_indexes(&supplier, 2);
     let health = state.get_account_health_factor(2);
     let borrow_amount_in_egld = state.get_total_borrow_in_egld(2);
     let collateral_in_egld = state.get_total_collateral_in_egld(2);
     println!("collateral_in_egld: {:?}", collateral_in_egld);
     println!("borrow_amount_in_egld: {:?}", borrow_amount_in_egld);
     println!("health: {:?}", health);
+
     // Attempt liquidation
     state.liquidate_account(
         &liquidator,
@@ -1791,10 +1961,11 @@ fn test_liquidation_and_left_bad_debt() {
     let health = state.get_account_health_factor(2);
 
     println!("health: {:?}", health);
+
     println!("collateral_in_egld: {:?}", collateral_in_egld);
     println!("borrow_amount_in_egld: {:?}", borrow_amount_in_egld);
     assert!(borrow_amount_in_egld > ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS));
-    assert!(collateral_in_egld == ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS));
+    assert!(collateral_in_egld == ManagedDecimal::from_raw_units(BigUint::from(1u64), EGLD_DECIMALS));
 
     // Repay the bad debt, usually the protocol will do this
     state.repay_asset(

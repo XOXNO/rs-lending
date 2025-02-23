@@ -2,7 +2,7 @@ use common_constants::{
     BPS, MAX_FIRST_TOLERANCE, MAX_LAST_TOLERANCE, MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE, WAD,
     WAD_PRECISION,
 };
-use common_events::{OraclePriceFluctuation, PriceFeedShort, BPS_PRECISION, RAY_PRECISION};
+use common_events::{OraclePriceFluctuation, PriceFeedShort, RAY_PRECISION};
 
 use crate::{
     ERROR_DEBT_CAN_NOT_BE_NEGATIVE, ERROR_UNEXPECTED_ANCHOR_TOLERANCES,
@@ -103,10 +103,7 @@ pub trait MathsModule: common_math::SharedMathModule {
         let upper = &bps + &tolerance_in_wad;
         let lower = &bps * &bps / &upper;
 
-        (
-            ManagedDecimal::from_raw_units(upper, BPS_PRECISION),
-            ManagedDecimal::from_raw_units(lower, BPS_PRECISION),
-        )
+        (self.to_decimal_bps(upper), self.to_decimal_bps(lower))
     }
 
     /// Validates and calculates oracle price fluctuation tolerances
@@ -292,21 +289,24 @@ pub trait MathsModule: common_math::SharedMathModule {
         // 1. Compute the health gap (n): required collateral vs. actual weighted collateral.
         // health_gap = weighted_egld - (total_debt * target_hf / wad)
         let required_collateral = self.to_decimal_signed_wad(total_debt * &target_hf / &wad);
+        // sc_print!("required_collateral {}", required_collateral);
         let health_gap = weighted_egld_dec - required_collateral;
+        // sc_print!("health_gap {}", health_gap);
 
         // Convert the raw seized proportion to a WAD value.
         let p_wad = (proportion_of_weighted_seized * &wad) / &bps;
-
+        // sc_print!("p_wad {}", p_wad);
         // Compute the collateral loss factor t.
         // t = p_wad * (bps + liquidation_bonus) / bps (with rounding adjustment)
         let collateral_loss_factor =
             self.to_decimal_signed_wad((p_wad * (&bps + liquidation_bonus) + &bps / 2u32) / &bps);
-
+        // sc_print!("collateral_loss_factor {}", collateral_loss_factor);
         // Denom: difference between loss factor and target health factor.
         let denom = collateral_loss_factor - target_hf_dec;
-
+        // sc_print!("denom {}", denom);
         // Ideal debt to repay:
         let ideal_debt_to_repay = health_gap.mul(wad_dec).div(denom);
+        sc_print!("ideal_debt_to_repay {}", ideal_debt_to_repay);
         require!(
             ideal_debt_to_repay.clone().sign().eq(&Sign::Plus),
             ERROR_DEBT_CAN_NOT_BE_NEGATIVE
@@ -315,7 +315,7 @@ pub trait MathsModule: common_math::SharedMathModule {
         // 2. Maximum debt that can be liquidated based on available collateral:
         let max_debt_to_liquidate =
             (total_collateral_all_assets * &bps) / (&bps + liquidation_bonus);
-
+        sc_print!("max_debt_to_liquidate {}", max_debt_to_liquidate);
         // 3. Actual debt to repay is the minimum of ideal and maximum allowed.
         let debt_to_repay = BigUint::min(
             max_debt_to_liquidate,
@@ -324,6 +324,7 @@ pub trait MathsModule: common_math::SharedMathModule {
                 .into_raw_units()
                 .clone(),
         );
+        // sc_print!("debt_to_repay {}", debt_to_repay);
 
         // 4. Compute the weighted collateral seized based on the proportion.
         let seized_weighted = BigUint::min(
@@ -335,6 +336,8 @@ pub trait MathsModule: common_math::SharedMathModule {
         let new_weighted = weighted_collateral_in_egld - &seized_weighted;
         let new_health_factor = &new_weighted * &wad / (total_debt - &debt_to_repay);
 
+        // sc_print!("new_weighted {}", new_weighted);
+        // sc_print!("new_health_factor {}", new_health_factor);
         (debt_to_repay, liquidation_bonus.clone(), new_health_factor)
     }
 
@@ -362,6 +365,7 @@ pub trait MathsModule: common_math::SharedMathModule {
         let wad = BigUint::from(WAD);
         let bps = BigUint::from(BPS);
         let target_best = &wad * 2u32 / 100u32 + &wad;
+
         // Try to bring it to at least 1.02 HF to be in a safer position
         let (safest_debt, safest_bonus, safe_new_hf) = self.simulation_target_liquidation(
             weighted_collateral_in_egld,
@@ -372,6 +376,7 @@ pub trait MathsModule: common_math::SharedMathModule {
             old_hf,
             target_best,
         );
+
         if &safe_new_hf >= &wad {
             return (safest_debt, safest_bonus);
         }
@@ -391,16 +396,17 @@ pub trait MathsModule: common_math::SharedMathModule {
             return (limit_debt, limit_bonus);
         }
 
-        // let max_debt_to_liquidate = (total_collateral * &bps) / (&bps + &((min_bonus + &bps) / &bps));
-        let numerator = total_collateral * &bps;
-        let denominator = &bps + min_bonus;
-        let max_debt_to_liquidate =
-            (numerator + denominator.clone() / BigUint::from(2u64)) / denominator;
+        let max_debt_to_liquidate = self.div_half_up(
+            &self.to_decimal_wad(total_collateral.clone()),
+            &self.to_decimal_bps(bps + min_bonus.clone()),
+            RAY_PRECISION,
+        ).rescale(WAD_PRECISION); //(total_collateral * &bps) / (&bps + min_bonus);
         sc_print!("max_debt_to_liquidate {}", max_debt_to_liquidate);
-        sc_print!("total_collateral      {}", total_collateral);
-        sc_print!("min_bonus             {}", min_bonus);
         // return (max_debt_to_liquidate, min_bonus);
-        return (max_debt_to_liquidate, min_bonus.clone());
+        return (
+            max_debt_to_liquidate.into_raw_units().clone(),
+            min_bonus.clone(),
+        );
     }
 
     fn simulation_target_liquidation(
@@ -421,7 +427,7 @@ pub trait MathsModule: common_math::SharedMathModule {
             &target_hf,
             min_bonus,
         );
-
+        // sc_print!("Max bonus: {}", max_bonus);
         // Does a liniar scaling from the base bonus towards the max bonus based on the health factor difference
         let bonus =
             self.calculate_dynamic_liquidation_bonus(&old_hf, &target_hf, min_bonus, &max_bonus);

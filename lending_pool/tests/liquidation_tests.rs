@@ -86,7 +86,7 @@ fn test_liquidation() {
     state
         .world
         .current_block()
-        .block_timestamp(SECONDS_PER_DAY * 100);
+        .block_timestamp(SECONDS_PER_DAY * 500);
     state.update_account_positions(&borrower, 2);
     let health_factor = state.get_account_health_factor(2);
     println!("Health Factor {:?}", health_factor);
@@ -198,13 +198,13 @@ fn test_liquidation_bad_debt_multi_asset() {
         .block_timestamp(SECONDS_PER_DAY * 1000);
     state.update_account_positions(&borrower, 2);
     let borrowed = state.get_total_borrow_in_egld(2);
-    let borrowed_EGLD = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+    let borrowed_egld = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
     let collateral = state.get_total_collateral_in_egld(2);
     let collateral_weighted = state.get_liquidation_collateral_available(2);
     let health_factor = state.get_account_health_factor(2);
     // 46341019210806527860
     // 139 - 46 = 93 EGLD debt via USDC
-    println!("Total EGLD TOKEN Borrowed {:?}", borrowed_EGLD);
+    println!("Total EGLD TOKEN Borrowed {:?}", borrowed_egld);
     println!("Total EGLD Borrowed {:?}", borrowed);
     println!("Total EGLD Deposite {:?}", collateral);
     println!("Total EGLD Weighted {:?}", collateral_weighted);
@@ -221,15 +221,17 @@ fn test_liquidation_bad_debt_multi_asset() {
     state.liquidate_account(
         &liquidator,
         &EGLD_TOKEN,
-        BigUint::from(100u64),
+        BigUint::from(50u64),
         2,
         EGLD_DECIMALS,
     );
 
     let borrowed = state.get_total_borrow_in_egld(2);
+    let borrowed_usdc = state.get_borrow_amount_for_token(2, USDC_TOKEN);
     let collateral = state.get_total_collateral_in_egld(2);
     let collateral_weighted = state.get_liquidation_collateral_available(2);
     let health_factor = state.get_account_health_factor(2);
+    println!("Total USDC Borrowed {:?}", borrowed_usdc);
     println!("Total EGLD Borrowed {:?}", borrowed);
     println!("Total EGLD Deposite {:?}", collateral);
     println!("Total EGLD Weighted {:?}", collateral_weighted);

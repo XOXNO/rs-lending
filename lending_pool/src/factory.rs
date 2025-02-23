@@ -18,6 +18,8 @@ pub trait FactoryModule:
         r_base: &BigUint,
         r_slope1: &BigUint,
         r_slope2: &BigUint,
+        r_slope3: &BigUint,
+        u_mid: &BigUint,
         u_optimal: &BigUint,
         reserve_factor: &BigUint,
     ) -> ManagedAddress {
@@ -37,12 +39,14 @@ pub trait FactoryModule:
                 r_base,
                 r_slope1,
                 r_slope2,
+                r_slope3,
+                u_mid,
                 u_optimal,
                 reserve_factor,
                 decimals as usize,
             )
             .from_source(self.liq_pool_template_address().get())
-            .code_metadata(CodeMetadata::UPGRADEABLE)
+            .code_metadata(CodeMetadata::UPGRADEABLE | CodeMetadata::READABLE)
             .returns(ReturnsNewManagedAddress)
             .sync_call();
 
@@ -56,6 +60,8 @@ pub trait FactoryModule:
         r_base: BigUint,
         r_slope1: BigUint,
         r_slope2: BigUint,
+        r_slope3: BigUint,
+        u_mid: BigUint,
         u_optimal: BigUint,
         reserve_factor: BigUint,
     ) {
@@ -66,9 +72,18 @@ pub trait FactoryModule:
         self.tx()
             .to(lp_address)
             .typed(proxy_pool::LiquidityPoolProxy)
-            .upgrade(r_max, r_base, r_slope1, r_slope2, u_optimal, reserve_factor)
+            .upgrade(
+                r_max,
+                r_base,
+                r_slope1,
+                r_slope2,
+                r_slope3,
+                u_mid,
+                u_optimal,
+                reserve_factor,
+            )
             .from_source(self.liq_pool_template_address().get())
-            .code_metadata(CodeMetadata::UPGRADEABLE)
+            .code_metadata(CodeMetadata::UPGRADEABLE | CodeMetadata::READABLE)
             .upgrade_async_call_and_exit();
     }
 }

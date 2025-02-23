@@ -32,6 +32,8 @@ pub trait EventsModule {
         #[indexed] r_base: &BigUint,
         #[indexed] r_slope1: &BigUint,
         #[indexed] r_slope2: &BigUint,
+        #[indexed] r_slope3: &BigUint,
+        #[indexed] u_mid: &BigUint,
         #[indexed] u_optimal: &BigUint,
         #[indexed] reserve_factor: &BigUint,
         #[indexed] market_address: &ManagedAddress,
@@ -59,6 +61,8 @@ pub trait EventsModule {
         #[indexed] r_base: &BigUint,
         #[indexed] r_slope1: &BigUint,
         #[indexed] r_slope2: &BigUint,
+        #[indexed] r_slope3: &BigUint,
+        #[indexed] u_mid: &BigUint,
         #[indexed] u_optimal: &BigUint,
         #[indexed] reserve_factor: &BigUint,
     );

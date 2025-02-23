@@ -1,5 +1,4 @@
-use common_constants::WAD;
-use common_events::PriceFeedShort;
+use common_events::AssetExtendedConfigView;
 
 use crate::{contexts::base::StorageCache, helpers, oracle, storage, utils};
 
@@ -14,30 +13,28 @@ pub trait ViewsModule:
     + helpers::math::MathsModule
     + common_math::SharedMathModule
 {
-    // #[view(getAllMarkets)]
-    // fn get_all_markets(
-    //     &self,
-    //     tokens: MultiValueEncoded<EgldOrEsdtTokenIdentifier>,
-    // ) -> ManagedVec<AssetExtendedConfigView<Self::Api>> {
-    //     let mut storage_cache = StorageCache::new(self);
-    //     let mut markets = ManagedVec::new();
-    //     for token in tokens {
-    //         let pool_address = self.pools_map(&token).get();
-    //         let pool = self.asset_config(&token).get();
-    //         let egld_price = self.get_token_price(&token, &mut storage_cache);
-    //         let usd_price = self
-    //             .get_token_amount_in_dollars_raw(&egld_price.price, storage_cache.egld_price_feed);
+    #[view(getAllMarkets)]
+    fn get_all_markets(
+        &self,
+        tokens: MultiValueEncoded<EgldOrEsdtTokenIdentifier>,
+    ) -> ManagedVec<AssetExtendedConfigView<Self::Api>> {
+        let mut storage_cache = StorageCache::new(self);
+        let mut markets = ManagedVec::new();
+        for token in tokens {
+            let pool_address = self.pools_map(&token).get();
+            let feed = self.get_token_price(&token, &mut storage_cache);
+            let usd =
+                self.get_token_amount_in_dollars_raw(&feed.price, &storage_cache.egld_price_feed);
 
-    //         markets.push(AssetExtendedConfigView {
-    //             token,
-    //             asset_config: pool,
-    //             market_address: pool_address,
-    //             egld_price: egld_price.price.clone(),
-    //             usd_price: usd_price.clone(),
-    //         });
-    //     }
-    //     markets
-    // }
+            markets.push(AssetExtendedConfigView {
+                token,
+                market_address: pool_address,
+                egld_price: feed.price,
+                usd_price: usd,
+            });
+        }
+        markets
+    }
 
     /// Checks if an account position can be liquidated
     ///
@@ -51,7 +48,7 @@ pub trait ViewsModule:
     #[view(canBeLiquidated)]
     fn can_be_liquidated(&self, account_position: u64) -> bool {
         let health_factor = self.get_health_factor(account_position);
-        health_factor < self.to_decimal_wad(BigUint::from(WAD))
+        health_factor < self.wad()
     }
 
     /// Gets the current health factor for an account position
@@ -61,18 +58,6 @@ pub trait ViewsModule:
     ///
     /// # Returns
     /// * `BigUint` - Health factor in basis points (10000 = 100%)
-    ///
-    /// # Example
-    /// ```
-    /// // Position with:
-    /// // Collateral: 100 EGLD @ $100 each = $10,000
-    /// // Liquidation threshold: 80%
-    /// // Weighted collateral: $8,000
-    ///
-    /// // Borrows: 5000 USDC @ $1 each = $5,000
-    ///
-    /// // Health Factor = $8,000 * 10000 / $5,000 = 16000 (160%)
-    /// get_health_factor(1) = 16000
     /// ```
     #[view(getHealthFactor)]
     fn get_health_factor(&self, account_position: u64) -> ManagedDecimal<Self::Api, NumDecimals> {
@@ -250,15 +235,6 @@ pub trait ViewsModule:
             self.sum_collaterals(&deposit_positions.values().collect(), &mut storage_cache);
 
         ltv_collateral
-    }
-
-    #[view(getTokenPriceData)]
-    fn get_token_price_data_view(
-        &self,
-        token_id: &EgldOrEsdtTokenIdentifier,
-    ) -> PriceFeedShort<Self::Api> {
-        let mut storage_cache = StorageCache::new(self);
-        self.get_token_price(token_id, &mut storage_cache)
     }
 
     #[view(getTokenPriceUSD)]

@@ -29,38 +29,36 @@ pub trait InterestRateMath: common_math::SharedMathModule {
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let seconds_per_year = ManagedDecimal::from_raw_units(BigUint::from(SECONDS_PER_YEAR), 0);
 
-        let annual_rate = if u_current <= params.u_optimal {
-            // Calculate utilization ratio: (u_current * r_slope1) / u_optimal
-            let utilization_ratio = u_current.mul(params.r_slope1).div(params.u_optimal);
-
-            // Compute borrow rate: r_base + utilization_ratio
-            let borrow_rate_dec = params.r_base.add(utilization_ratio);
-
-            // Rescale and convert back to BigUint
-            borrow_rate_dec
+        let annual_rate = if u_current < params.u_mid {
+            // Region 1: u_current < u_mid
+            let utilization_ratio = u_current.mul(params.r_slope1).div(params.u_mid);
+            params.r_base.add(utilization_ratio)
+        } else if u_current < params.u_optimal {
+            // Region 2: u_mid <= u_current < u_optimal
+            let excess_utilization = u_current.sub(params.u_mid.clone());
+            let slope_contribution = excess_utilization
+                .mul(params.r_slope2)
+                .div(params.u_optimal.sub(params.u_mid));
+            params.r_base.add(params.r_slope1).add(slope_contribution)
         } else {
-            // Calculate denominator: BP - u_optimal
-            let denominator = self.ray().sub(params.u_optimal.clone());
-            // Calculate numerator: (u_current - u_optimal) * r_slope2
-            let numerator = u_current
-                .sub(params.u_optimal)
-                .mul_with_precision(params.r_slope2, RAY_PRECISION);
-            // Compute intermediate rate: r_base + r_slope1
-            let intermediate_rate = params.r_base.add(params.r_slope1);
-            // Compute the final result: intermediate_rate + (numerator / denominator)
-            let result = intermediate_rate.add(numerator.div(denominator));
-            // Compare with r_max and return the minimum
-            let capped_rate = if result > params.r_max {
-                params.r_max
-            } else {
-                result
-            };
-            capped_rate
+            // Region 3: u_current >= u_optimal, linear growth
+            let base_rate = params.r_base.add(params.r_slope1).add(params.r_slope2);
+            let excess_utilization = u_current.sub(params.u_optimal.clone());
+            let slope_contribution = excess_utilization
+                .mul(params.r_slope3)
+                .div(self.ray().sub(params.u_optimal));
+            base_rate.add(slope_contribution)
+        };
+
+        // Cap the rate at r_max
+        let capped_rate = if annual_rate > params.r_max {
+            params.r_max
+        } else {
+            annual_rate
         };
 
         // Convert annual rate to per-second rate
-        let per_second_rate = annual_rate / seconds_per_year;
-
+        let per_second_rate = capped_rate / seconds_per_year;
         per_second_rate.rescale(RAY_PRECISION)
     }
 
@@ -117,7 +115,7 @@ pub trait InterestRateMath: common_math::SharedMathModule {
         zero: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         if total_supplied == zero {
-            self.ray()
+            self.to_decimal_ray(BigUint::zero())
         } else {
             let utilization_ratio =
                 self.div_half_up(borrowed_amount, total_supplied, RAY_PRECISION);

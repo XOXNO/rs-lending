@@ -1,5 +1,5 @@
 use common_constants::{BPS, BPS_PRECISION, WAD, WAD_PRECISION};
-use common_events::PriceFeedShort;
+use common_events::{AssetConfig, PriceFeedShort};
 
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
@@ -11,6 +11,10 @@ where
     _sc_ref: &'a C,
     pub prices_cache:
         ManagedMapEncoded<C::Api, EgldOrEsdtTokenIdentifier<C::Api>, PriceFeedShort<C::Api>>,
+    pub asset_configs:
+        ManagedMapEncoded<C::Api, EgldOrEsdtTokenIdentifier<C::Api>, AssetConfig<C::Api>>,
+    pub asset_pools:
+        ManagedMapEncoded<C::Api, EgldOrEsdtTokenIdentifier<C::Api>, ManagedAddress<C::Api>>,
     pub egld_price_feed: ManagedDecimal<C::Api, NumDecimals>,
     pub price_aggregator_sc: ManagedAddress<C::Api>,
     pub allow_unsafe_price: bool,
@@ -24,7 +28,7 @@ where
 
 impl<'a, C> StorageCache<'a, C>
 where
-    C: crate::oracle::OracleModule,
+    C: crate::oracle::OracleModule + crate::storage::LendingStorageModule,
 {
     pub fn new(sc_ref: &'a C) -> Self {
         let price_aggregator = sc_ref.price_aggregator_address().get();
@@ -34,6 +38,16 @@ where
                 C::Api,
                 EgldOrEsdtTokenIdentifier<C::Api>,
                 PriceFeedShort<C::Api>,
+            >::new(),
+            asset_configs: ManagedMapEncoded::<
+                C::Api,
+                EgldOrEsdtTokenIdentifier<C::Api>,
+                AssetConfig<C::Api>,
+            >::new(),
+            asset_pools: ManagedMapEncoded::<
+                C::Api,
+                EgldOrEsdtTokenIdentifier<C::Api>,
+                ManagedAddress<C::Api>,
             >::new(),
             egld_price_feed: sc_ref
                 .get_aggregator_price_feed(&EgldOrEsdtTokenIdentifier::egld(), &price_aggregator),
@@ -46,5 +60,32 @@ where
             bps_dec_zero: ManagedDecimal::from_raw_units(BigUint::zero(), BPS_PRECISION),
             wad_dec_zero: ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION),
         }
+    }
+
+    pub fn get_cached_asset_info(
+        &mut self,
+        token_id: &EgldOrEsdtTokenIdentifier<C::Api>,
+    ) -> AssetConfig<C::Api> {
+        let existing = self.asset_configs.contains(token_id);
+        if existing {
+            return self.asset_configs.get(token_id);
+        }
+        let new = self._sc_ref.asset_config(&token_id).get();
+        self.asset_configs.put(token_id, &new);
+        new
+    }
+
+    pub fn get_cached_pool_address(
+        &mut self,
+        token_id: &EgldOrEsdtTokenIdentifier<C::Api>,
+    ) -> ManagedAddress<C::Api> {
+        let existing = self.asset_pools.contains(token_id);
+        if existing {
+            return self.asset_pools.get(token_id);
+        }
+        let address = self._sc_ref.pools_map(&token_id).get();
+        self.asset_pools.put(token_id, &address);
+
+        address
     }
 }

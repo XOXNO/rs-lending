@@ -32,6 +32,9 @@ path = "../common/events"
 [dependencies.common-constants]
 path = "../common/constants"
 
+[dependencies.common-errors]
+path = "../common/errors"
+
 [dependencies.price_aggregator]
 path = "../price_aggregator"
 

@@ -70,7 +70,9 @@ where
         Arg4: ProxyArg<BigUint<Env::Api>>,
         Arg5: ProxyArg<BigUint<Env::Api>>,
         Arg6: ProxyArg<BigUint<Env::Api>>,
-        Arg7: ProxyArg<usize>,
+        Arg7: ProxyArg<BigUint<Env::Api>>,
+        Arg8: ProxyArg<BigUint<Env::Api>>,
+        Arg9: ProxyArg<usize>,
     >(
         self,
         asset: Arg0,
@@ -78,9 +80,11 @@ where
         r_base: Arg2,
         r_slope1: Arg3,
         r_slope2: Arg4,
-        u_optimal: Arg5,
-        reserve_factor: Arg6,
-        decimals: Arg7,
+        r_slope3: Arg5,
+        u_mid: Arg6,
+        u_optimal: Arg7,
+        reserve_factor: Arg8,
+        decimals: Arg9,
     ) -> TxTypedDeploy<Env, From, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
@@ -90,6 +94,8 @@ where
             .argument(&r_base)
             .argument(&r_slope1)
             .argument(&r_slope2)
+            .argument(&r_slope3)
+            .argument(&u_mid)
             .argument(&u_optimal)
             .argument(&reserve_factor)
             .argument(&decimals)
@@ -128,14 +134,18 @@ where
         Arg3: ProxyArg<BigUint<Env::Api>>,
         Arg4: ProxyArg<BigUint<Env::Api>>,
         Arg5: ProxyArg<BigUint<Env::Api>>,
+        Arg6: ProxyArg<BigUint<Env::Api>>,
+        Arg7: ProxyArg<BigUint<Env::Api>>,
     >(
         self,
         r_max: Arg0,
         r_base: Arg1,
         r_slope1: Arg2,
         r_slope2: Arg3,
-        u_optimal: Arg4,
-        reserve_factor: Arg5,
+        r_slope3: Arg4,
+        u_mid: Arg5,
+        u_optimal: Arg6,
+        reserve_factor: Arg7,
     ) -> TxTypedUpgrade<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
@@ -144,6 +154,8 @@ where
             .argument(&r_base)
             .argument(&r_slope1)
             .argument(&r_slope2)
+            .argument(&r_slope3)
+            .argument(&u_mid)
             .argument(&u_optimal)
             .argument(&reserve_factor)
             .original_result()

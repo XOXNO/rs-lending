@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           61
+// Endpoints:                           64
 // Async Callback:                       1
-// Total number of exported functions:  64
+// Total number of exported functions:  67
 
 #![no_std]
 
@@ -58,8 +58,9 @@ multiversx_sc_wasm_adapter::endpoints! {
         getAccumulatorAddress => accumulator_address
         getPoolsMap => pools_map
         getPriceAggregatorAddress => price_aggregator_address
-        getSafePriceView => safe_price_view
+        getSafePriceAddress => safe_price_view
         getEGLDWrapperAddress => wegld_wrapper
+        getAggregatorAddress => aggregator
         getAssetConfig => asset_config
         lastEModeCategoryId => last_e_mode_category_id
         getEModes => e_mode_category
@@ -69,6 +70,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         getVaultSuppliedAmount => vault_supplied_amount
         getTokenOracle => token_oracle
         getPoolAddress => get_pool_address
+        getAllMarkets => get_all_markets
         canBeLiquidated => can_be_liquidated
         getHealthFactor => get_health_factor
         getCollateralAmountForToken => get_collateral_amount_for_token
@@ -77,10 +79,11 @@ multiversx_sc_wasm_adapter::endpoints! {
         getTotalCollateralInEgld => get_total_collateral_in_egld
         getLiquidationCollateralAvailable => get_liquidation_collateral_available
         getLtvCollateralInEgld => get_ltv_collateral_in_egld
-        getTokenPriceData => get_token_price_data_view
         getTokenPriceUSD => get_usd_price
         getTokenPriceEGLD => get_egld_price
         multiply => multiply
+        swapCollateral => swap_collateral
+        repayDebtWithCollateral => repay_debt_with_collateral
     )
 }
 

@@ -73,7 +73,7 @@ pub trait LendingStorageModule {
 
     /// Get the safe price view address
     /// This storage mapper holds the address of the safe price view, used to get the price of a token out of the DEX pair.
-    #[view(getSafePriceView)]
+    #[view(getSafePriceAddress)]
     #[storage_mapper("safe_price_view")]
     fn safe_price_view(&self) -> SingleValueMapper<ManagedAddress>;
 
@@ -81,6 +81,10 @@ pub trait LendingStorageModule {
     #[view(getEGLDWrapperAddress)]
     #[storage_mapper("wegld_wrapper_address")]
     fn wegld_wrapper(&self) -> SingleValueMapper<ManagedAddress>;
+
+    #[view(getAggregatorAddress)]
+    #[storage_mapper("aggregator_address")]
+    fn aggregator(&self) -> SingleValueMapper<ManagedAddress>;
 
     /// Get the asset config
     /// This storage mapper holds the configuration of an asset, used to retrieve the config of an asset.

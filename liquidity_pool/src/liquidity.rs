@@ -213,7 +213,7 @@ pub trait LiquidityModule:
     fn withdraw(
         &self,
         initial_caller: &ManagedAddress,
-        requested_amount: &ManagedDecimal<Self::Api, NumDecimals>,
+        mut requested_amount: ManagedDecimal<Self::Api, NumDecimals>,
         mut deposit_position: AccountPosition<Self::Api>,
         is_liquidation: bool,
         protocol_fee_opt: Option<ManagedDecimal<Self::Api, NumDecimals>>,
@@ -223,9 +223,14 @@ pub trait LiquidityModule:
 
         self.update_interest_indexes(&mut storage_cache);
 
+        // Cap the requested amount to the total amount + interest of the position
+        if requested_amount.gt(&deposit_position.get_total_amount()) {
+            requested_amount = deposit_position.get_total_amount();
+        }
+
         // Unaccrued interest for the wanted amount
         let extra_interest = self.compute_interest(
-            requested_amount,
+            &requested_amount,
             &storage_cache.supply_index,
             &deposit_position.index,
         );
@@ -243,18 +248,14 @@ pub trait LiquidityModule:
         // Update the reserves amount
         storage_cache.reserves_amount -= &total_withdraw;
 
-        let mut accumulated_interest = deposit_position.accumulated_interest;
-
         // If the total withdrawal amount is greater than the accumulated interest, we need to subtract the accumulated interest from the withdrawal amount
-        if principal_amount >= accumulated_interest {
-            principal_amount -= accumulated_interest;
-            accumulated_interest = storage_cache.zero.clone();
+        if principal_amount >= deposit_position.accumulated_interest {
+            principal_amount -= deposit_position.accumulated_interest;
+            deposit_position.accumulated_interest = storage_cache.zero.clone();
         } else {
-            accumulated_interest -= principal_amount;
+            deposit_position.accumulated_interest -= principal_amount;
             principal_amount = storage_cache.zero.clone();
         }
-
-        deposit_position.accumulated_interest = accumulated_interest;
 
         // Check if there is enough liquidity to cover the withdrawal after the interest was subtracted
         if principal_amount.gt(&storage_cache.zero) {
@@ -290,10 +291,6 @@ pub trait LiquidityModule:
                 )
                 .transfer_if_not_empty();
         }
-        sc_print!("reserves_amount  {}", storage_cache.reserves_amount);
-        sc_print!("borrowed_amount  {}", storage_cache.borrowed_amount);
-        sc_print!("supplied_amount  {}", storage_cache.supplied_amount);
-        sc_print!("protocol_revenue {}", storage_cache.protocol_revenue);
 
         self.update_market_state_event(
             storage_cache.timestamp,
@@ -433,7 +430,7 @@ pub trait LiquidityModule:
 
         // Calculate flash loan min repayment amount
         let min_repayment_amount = self
-            .mul_half_up(loaned_amount, fees, RAY_PRECISION)
+            .mul_half_up(loaned_amount, &(self.bps() + fees.clone()), RAY_PRECISION)
             .rescale(storage_cache.pool_params.decimals);
 
         // Prevent re entry attacks with loop flash loans
@@ -475,7 +472,7 @@ pub trait LiquidityModule:
         };
 
         require!(
-            repayment_amount >= min_repayment_amount && loaned_amount <= &repayment_amount,
+            repayment_amount >= min_repayment_amount && loaned_amount < &min_repayment_amount,
             ERROR_INVALID_FLASHLOAN_REPAYMENT
         );
 

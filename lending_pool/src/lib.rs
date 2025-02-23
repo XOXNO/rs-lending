@@ -62,18 +62,18 @@ pub trait LendingPool:
         safe_view_address: &ManagedAddress,
         accumulator_address: &ManagedAddress,
         wegld_address: &ManagedAddress,
+        ash_swap: &ManagedAddress,
     ) {
         self.liq_pool_template_address().set(lp_template_address);
         self.price_aggregator_address().set(aggregator);
         self.safe_price_view().set(safe_view_address);
         self.accumulator_address().set(accumulator_address);
         self.wegld_wrapper().set(wegld_address);
+        self.aggregator().set(ash_swap);
     }
 
     #[upgrade]
-    fn upgrade(&self, wegld_address: &ManagedAddress) {
-        self.wegld_wrapper().set(wegld_address);
-    }
+    fn upgrade(&self) {}
 
     /// Supplies collaterals to the lending pool
     ///
@@ -85,16 +85,6 @@ pub trait LendingPool:
     /// Accepts 1-2 ESDT payments:
     /// - Optional account NFT (if user has an existing position)
     /// - Collateral token to supply
-    ///
-    /// # Flow
-    /// 1. Validates payments and extracts tokens
-    /// 2. Gets/creates position and NFT attributes, returns NFT to owner
-    /// 3. Validates e-mode constraints
-    /// 4. Validates vault consistency
-    /// 5. Validates isolated collateral rules
-    /// 6. Checks supply caps
-    /// 7. Updates position
-    /// 8. Emits event
     ///
     /// ```
     #[payable("*")]
@@ -110,7 +100,8 @@ pub trait LendingPool:
         let first_collateral = collaterals.get(0);
 
         self.validate_payment(&first_collateral);
-        let first_asset_info = self.asset_config(&first_collateral.token_identifier).get();
+        let first_asset_info =
+            storage_cache.get_cached_asset_info(&first_collateral.token_identifier);
 
         // 3. Get or create position and NFT attributes
         let (account_nonce, account_attributes) = self.get_or_create_account(
@@ -123,51 +114,13 @@ pub trait LendingPool:
 
         self.validate_vault_consistency(&account_attributes, is_vault);
 
-        let e_mode = self.validate_e_mode_exists(account_attributes.e_mode_category);
-        self.validate_not_depracated_e_mode(&e_mode);
-
-        for collateral in &collaterals {
-            self.validate_payment(&collateral);
-            let mut asset_info = if collateral.token_identifier == first_collateral.token_identifier
-            {
-                first_asset_info.clone()
-            } else {
-                self.asset_config(&collateral.token_identifier).get()
-            };
-
-            let asset_emode_config = self.validate_token_of_emode(
-                account_attributes.e_mode_category,
-                &collateral.token_identifier,
-            );
-
-            self.validate_e_mode_not_isolated(&asset_info, account_attributes.e_mode_category);
-
-            self.update_asset_config_for_e_mode(&mut asset_info, &e_mode, asset_emode_config);
-
-            require!(
-                asset_info.can_be_collateral,
-                ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL
-            );
-
-            self.validate_isolated_collateral(
-                account_nonce,
-                &collateral.token_identifier,
-                &asset_info,
-                &account_attributes,
-            );
-
-            self.validate_supply_cap(&asset_info, &collateral, account_attributes.is_vault);
-
-            self.update_supply_position(
-                account_nonce,
-                &collateral,
-                &asset_info,
-                account_attributes.is_vault,
-                &caller,
-                &account_attributes,
-                &mut storage_cache,
-            );
-        }
+        self.internal_supply(
+            &caller,
+            account_nonce,
+            account_attributes,
+            &collaterals,
+            &mut storage_cache,
+        );
     }
 
     /// Withdraws collateral from the lending pool
@@ -215,6 +168,7 @@ pub trait LendingPool:
                 None,  // No fees
                 &mut storage_cache,
                 &attributes,
+                false,
             );
         }
 
@@ -278,7 +232,8 @@ pub trait LendingPool:
             self.require_amount_greater_than_zero(&borrowed_token.amount);
 
             // 4. Get asset configs
-            let mut asset_config = self.asset_config(&borrowed_token.token_identifier).get();
+            let mut asset_config =
+                storage_cache.get_cached_asset_info(&borrowed_token.token_identifier);
 
             // 5. Validate borrowing constraints
             self.validate_borrow_asset(
@@ -286,6 +241,7 @@ pub trait LendingPool:
                 &borrowed_token.token_identifier,
                 &attributes,
                 &borrows,
+                &mut storage_cache,
             );
 
             let asset_emode_config = self.validate_token_of_emode(
@@ -328,6 +284,7 @@ pub trait LendingPool:
                 &attributes,
                 &collaterals,
                 &feed,
+                &mut storage_cache,
             );
 
             // 10. Emit event
@@ -559,7 +516,7 @@ pub trait LendingPool:
             bp.is_vault = false;
 
             self.update_position_event(
-                &ManagedDecimal::from_raw_units(BigUint::zero(), 0usize),
+                &bp.zero_decimal(),
                 &bp,
                 OptionalValue::None,
                 OptionalValue::None,
@@ -571,7 +528,7 @@ pub trait LendingPool:
         }
 
         for mut dp in deposit_positions.values() {
-            let pool_address = self.get_pool_address(&dp.token_id);
+            let pool_address = storage_cache.get_cached_pool_address(&dp.token_id);
 
             let feed = self.get_token_price(&dp.token_id, &mut storage_cache);
             let old_amount = dp.amount.clone();
@@ -583,8 +540,8 @@ pub trait LendingPool:
             self.update_vault_supplied_amount_event(&dp.token_id, last_value);
             // Reset the amount to 0 to avoid double increase from the market shared pool
             // It also avoid giving the user interest of the funds that are being moved to the market shared pool
-            let zero = ManagedDecimal::from_raw_units(BigUint::zero(), feed.decimals as usize);
-            dp.amount = zero.clone();
+            dp.amount = dp.zero_decimal();
+
             dp = self
                 .tx()
                 .to(pool_address)
@@ -593,10 +550,11 @@ pub trait LendingPool:
                 .egld_or_single_esdt(&dp.token_id, 0, old_amount.into_raw_units())
                 .returns(ReturnsResult)
                 .sync_call();
+
             dp.is_vault = false;
 
             self.update_position_event(
-                &zero,
+                &dp.zero_decimal(),
                 &dp,
                 OptionalValue::None,
                 OptionalValue::None,
@@ -692,11 +650,7 @@ pub trait LendingPool:
                 .returns(ReturnsResult)
                 .sync_call();
 
-            require!(
-                dp.get_total_amount()
-                    == ManagedDecimal::from_raw_units(BigUint::zero(), feed.decimals as usize),
-                ERROR_ENABLE_VAULT_MODE_FAILED
-            );
+            require!(dp.can_remove(), ERROR_ENABLE_VAULT_MODE_FAILED);
 
             dp.is_vault = true;
             dp.amount = total_amount_with_interest.clone();
@@ -711,7 +665,7 @@ pub trait LendingPool:
                 .insert(dp.token_id.clone(), dp.clone());
 
             self.update_position_event(
-                &ManagedDecimal::from_raw_units(BigUint::zero(), feed.decimals as usize),
+                &dp.zero_decimal(),
                 &dp,
                 OptionalValue::None,
                 OptionalValue::None,

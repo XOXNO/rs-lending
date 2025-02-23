@@ -1,8 +1,8 @@
 multiversx_sc::imports!();
 use common_constants::{
-    BPS, BPS_PRECISION, EGLD_TICKER, PRICE_AGGREGATOR_ROUNDS_STORAGE_KEY,
-    PRICE_AGGREGATOR_STATUS_STORAGE_KEY, SECONDS_PER_HOUR, SECONDS_PER_MINUTE,
-    STATE_PAIR_STORAGE_KEY, USD_TICKER, WAD_PRECISION, WEGLD_TICKER,
+    EGLD_TICKER, PRICE_AGGREGATOR_ROUNDS_STORAGE_KEY, PRICE_AGGREGATOR_STATUS_STORAGE_KEY,
+    SECONDS_PER_HOUR, SECONDS_PER_MINUTE, STATE_PAIR_STORAGE_KEY, USD_TICKER, WAD_PRECISION,
+    WEGLD_TICKER,
 };
 use common_events::{ExchangeSource, OracleProvider, OracleType, PriceFeedShort, PricingMethod};
 use multiversx_sc::storage::StorageKey;
@@ -95,16 +95,16 @@ pub trait OracleModule:
         storage_cache: &mut StorageCache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         match configs.token_type {
-            OracleType::Derived => self.get_derived_price(configs, storage_cache),
-            OracleType::Lp => self.get_safe_lp_price(configs, storage_cache),
+            OracleType::Derived => self._get_derived_price(configs, storage_cache),
+            OracleType::Lp => self._get_safe_lp_price(configs, storage_cache),
             OracleType::Normal => {
-                self.get_normal_price_in_egld(configs, original_market_token, storage_cache)
+                self._get_normal_price_in_egld(configs, original_market_token, storage_cache)
             }
             _ => sc_panic!(ERROR_INVALID_ORACLE_TOKEN_TYPE),
         }
     }
 
-    fn get_safe_lp_price(
+    fn _get_safe_lp_price(
         &self,
         configs: &OracleProvider<Self::Api>,
         storage_cache: &mut StorageCache<Self>,
@@ -144,20 +144,20 @@ pub trait OracleModule:
     }
 
     // Derived Price Functions
-    fn get_derived_price(
+    fn _get_derived_price(
         &self,
         configs: &OracleProvider<Self::Api>,
         storage_cache: &mut StorageCache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         match configs.source {
-            ExchangeSource::XEGLD => self.get_xegld_derived_price(configs),
-            ExchangeSource::LEGLD => self.get_legld_derived_price(configs),
-            ExchangeSource::LXOXNO => self.get_lxoxno_derived_price(configs, storage_cache),
+            ExchangeSource::XEGLD => self._get_xegld_derived_price(configs),
+            ExchangeSource::LEGLD => self._get_legld_derived_price(configs),
+            ExchangeSource::LXOXNO => self._get_lxoxno_derived_price(configs, storage_cache),
             _ => sc_panic!(ERROR_INVALID_EXCHANGE_SOURCE),
         }
     }
 
-    fn get_legld_derived_price(
+    fn _get_legld_derived_price(
         &self,
         configs: &OracleProvider<Self::Api>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
@@ -172,7 +172,7 @@ pub trait OracleModule:
         self.to_decimal_wad(ratio)
     }
 
-    fn get_xegld_derived_price(
+    fn _get_xegld_derived_price(
         &self,
         configs: &OracleProvider<Self::Api>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
@@ -187,7 +187,7 @@ pub trait OracleModule:
         self.to_decimal_wad(ratio)
     }
 
-    fn get_lxoxno_derived_price(
+    fn _get_lxoxno_derived_price(
         &self,
         configs: &OracleProvider<Self::Api>,
         storage_cache: &mut StorageCache<Self>,
@@ -215,7 +215,7 @@ pub trait OracleModule:
     }
 
     // Safe Price Functions
-    fn get_safe_price(
+    fn _get_safe_price(
         &self,
         configs: &OracleProvider<Self::Api>,
         token_id: &EgldOrEsdtTokenIdentifier,
@@ -230,7 +230,7 @@ pub trait OracleModule:
 
         let result = self
             .safe_price_proxy(self.safe_price_view().get())
-            .get_safe_price_by_timestamp_offset(
+            ._get_safe_price_by_timestamp_offset(
                 &configs.contract_address,
                 SECONDS_PER_HOUR,
                 EsdtTokenPayment::new(token_id.clone().unwrap_esdt(), 0, one_token),
@@ -255,7 +255,7 @@ pub trait OracleModule:
     /// If the pricing method is aggregator, it uses the aggregator to get the price
     /// If the pricing method is safe, it uses the safe price to get the price
     /// If the pricing method is mix, it uses the aggregator and safe price to get the price
-    fn get_normal_price_in_egld(
+    fn _get_normal_price_in_egld(
         &self,
         configs: &OracleProvider<Self::Api>,
         original_market_token: &EgldOrEsdtTokenIdentifier,
@@ -274,7 +274,7 @@ pub trait OracleModule:
         let safe_price = if configs.pricing_method == PricingMethod::Safe
             || configs.pricing_method == PricingMethod::Mix
         {
-            OptionalValue::Some(self.get_safe_price(configs, original_market_token, storage_cache))
+            OptionalValue::Some(self._get_safe_price(configs, original_market_token, storage_cache))
         } else {
             OptionalValue::None
         };
@@ -427,7 +427,7 @@ pub trait OracleModule:
         );
 
         require!(
-            !self.get_aggregator_status(price_aggregator_sc),
+            !self._get_aggregator_status(price_aggregator_sc),
             PAUSED_ERROR
         );
 
@@ -437,16 +437,16 @@ pub trait OracleModule:
         };
 
         let round_values =
-            self.token_oracle_prices_round(&token_pair.from, &token_pair.to, price_aggregator_sc);
+            self._token_oracle_prices_round(&token_pair.from, &token_pair.to, price_aggregator_sc);
 
         require!(!round_values.is_empty(), TOKEN_PAIR_NOT_FOUND_ERROR);
 
-        let price_feed = self.make_price_feed(token_pair, round_values.get());
+        let price_feed = self._make_price_feed(token_pair, round_values.get());
 
         self.to_decimal_wad(price_feed.price)
     }
 
-    fn token_oracle_prices_round(
+    fn _token_oracle_prices_round(
         &self,
         from: &ManagedBuffer,
         to: &ManagedBuffer,
@@ -458,7 +458,7 @@ pub trait OracleModule:
         SingleValueMapper::<_, _, ManagedAddress>::new_from_address(address.clone(), key)
     }
 
-    fn get_aggregator_status(&self, address: &ManagedAddress) -> bool {
+    fn _get_aggregator_status(&self, address: &ManagedAddress) -> bool {
         SingleValueMapper::<_, _, ManagedAddress>::new_from_address(
             address.clone(),
             StorageKey::new(PRICE_AGGREGATOR_STATUS_STORAGE_KEY),
@@ -466,7 +466,7 @@ pub trait OracleModule:
         .get()
     }
 
-    fn make_price_feed(
+    fn _make_price_feed(
         &self,
         token_pair: TokenPair<Self::Api>,
         last_price: TimestampedPrice<Self::Api>,
@@ -491,7 +491,7 @@ mod safe_price_proxy {
     #[multiversx_sc::proxy]
     pub trait SafePriceContract {
         #[view(getSafePriceByTimestampOffset)]
-        fn get_safe_price_by_timestamp_offset(
+        fn _get_safe_price_by_timestamp_offset(
             &self,
             pair_address: ManagedAddress,
             timestamp_offset: u64,

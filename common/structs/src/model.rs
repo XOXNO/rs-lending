@@ -22,6 +22,8 @@ pub struct PoolParams<M: ManagedTypeApi> {
     pub r_base: ManagedDecimal<M, NumDecimals>,
     pub r_slope1: ManagedDecimal<M, NumDecimals>,
     pub r_slope2: ManagedDecimal<M, NumDecimals>,
+    pub r_slope3: ManagedDecimal<M, NumDecimals>,
+    pub u_mid: ManagedDecimal<M, NumDecimals>,
     pub u_optimal: ManagedDecimal<M, NumDecimals>,
     pub reserve_factor: ManagedDecimal<M, NumDecimals>,
     pub decimals: usize,
@@ -118,6 +120,18 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
     pub fn get_total_amount(&self) -> ManagedDecimal<M, NumDecimals> {
         self.amount.clone() + self.accumulated_interest.clone()
     }
+
+    pub fn make_amount_decimal(&self, amount: BigUint<M>) -> ManagedDecimal<M, NumDecimals> {
+        ManagedDecimal::from_raw_units(amount, self.amount.scale())
+    }
+
+    pub fn zero_decimal(&self) -> ManagedDecimal<M, NumDecimals> {
+        ManagedDecimal::from_raw_units(BigUint::zero(), self.amount.scale())
+    }
+
+    pub fn can_remove(&self) -> bool {
+        self.get_total_amount().eq(&self.zero_decimal())
+    }
 }
 
 /// AssetConfig defines the risk and usage configuration for an asset in the market.
@@ -158,17 +172,47 @@ pub struct AssetConfig<M: ManagedTypeApi> {
     pub supply_cap: Option<BigUint<M>>, // Maximum supplied amount.
 }
 
+impl<M: ManagedTypeApi> AssetConfig<M> {
+    pub fn can_supply(&self) -> bool {
+        self.can_be_collateral
+    }
+
+    pub fn can_borrow(&self) -> bool {
+        self.can_be_borrowed
+    }
+
+    pub fn is_isolated(&self) -> bool {
+        self.is_isolated
+    }
+
+    pub fn has_emode(&self) -> bool {
+        self.is_e_mode_enabled
+    }
+
+    pub fn can_borrow_in_isolation(&self) -> bool {
+        self.can_borrow_in_isolation
+    }
+
+    pub fn can_flashloan(&self) -> bool {
+        self.flashloan_enabled
+    }
+
+    pub fn get_flash_loan_fee(&self) -> ManagedDecimal<M, NumDecimals> {
+        self.flash_loan_fee.clone()
+    }
+}
+
 /// AssetExtendedConfigView provides an extended view of an asset's configuration,
 /// including its token identifier, the full asset configuration, the market contract address,
 /// and current prices in EGLD and USD.
-// #[type_abi]
-// #[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode, Clone)]
-// pub struct AssetExtendedConfigView<M: ManagedTypeApi> {
-//     pub token: EgldOrEsdtTokenIdentifier<M>,
-//     pub asset_config: AssetConfig<M>,
-//     pub market_address: ManagedAddress<M>,
-//     pub egld_price: ManagedDecimal<M, NumDecimals>,
-// }
+#[type_abi]
+#[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode, Clone)]
+pub struct AssetExtendedConfigView<M: ManagedTypeApi> {
+    pub token: EgldOrEsdtTokenIdentifier<M>,
+    pub market_address: ManagedAddress<M>,
+    pub egld_price: ManagedDecimal<M, NumDecimals>,
+    pub usd_price: ManagedDecimal<M, NumDecimals>,
+}
 
 /// EModeCategory represents a risk category for e-mode assets, defining parameters like LTV and liquidation settings.
 #[type_abi]
@@ -181,12 +225,32 @@ pub struct EModeCategory<M: ManagedTypeApi> {
     pub is_deprecated: bool,
 }
 
+impl<M: ManagedTypeApi> EModeCategory<M> {
+    pub fn is_deprecated(&self) -> bool {
+        self.is_deprecated
+    }
+
+    pub fn get_id(&self) -> u8 {
+        self.id
+    }
+}
+
 /// EModeAssetConfig specifies whether an asset can be used as collateral and/or borrowed under e-mode.
 #[type_abi]
 #[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode)]
 pub struct EModeAssetConfig {
     pub can_be_collateral: bool,
     pub can_be_borrowed: bool,
+}
+
+impl EModeAssetConfig {
+    pub fn can_borrow(&self) -> bool {
+        self.can_be_borrowed
+    }
+
+    pub fn can_supply(&self) -> bool {
+        self.can_be_collateral
+    }
 }
 
 /// NftAccountAttributes encapsulates attributes related to an account’s NFT,
@@ -200,6 +264,23 @@ pub struct NftAccountAttributes {
     pub is_vault: bool,
 }
 
+impl NftAccountAttributes {
+    pub fn is_vault(&self) -> bool {
+        self.is_vault
+    }
+
+    pub fn has_emode(&self) -> bool {
+        self.e_mode_category > 0
+    }
+
+    pub fn get_emode_id(&self) -> u8 {
+        self.e_mode_category
+    }
+
+    pub fn is_isolated(&self) -> bool {
+        self.is_isolated
+    }
+}
 /// PricingMethod enumerates the methods used to determine token prices.
 /// - `None`: No pricing method.
 /// - `Safe`: A method focused on safety, possibly averaging multiple data sources.

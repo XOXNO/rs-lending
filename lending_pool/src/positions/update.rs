@@ -46,7 +46,7 @@ pub trait PositionUpdateModule:
 
         for (index, token_id) in borrow_positions.keys().enumerate() {
             let mut bp = borrow_positions.get(&token_id).unwrap();
-            let asset_address = self.get_pool_address(&bp.token_id);
+            let asset_address = storage_cache.get_cached_pool_address(&bp.token_id);
             let price = if fetch_price {
                 let result = self.get_token_price(&bp.token_id, storage_cache);
                 OptionalValue::Some(result.price)
@@ -102,7 +102,7 @@ pub trait PositionUpdateModule:
         let positions_map = self.deposit_positions(account_position);
         let mut positions: ManagedVec<Self::Api, AccountPosition<Self::Api>> = ManagedVec::new();
         for mut dp in positions_map.values() {
-            let asset_address = self.get_pool_address(&dp.token_id);
+            let asset_address = storage_cache.get_cached_pool_address(&dp.token_id);
             if !dp.is_vault {
                 let price = if fetch_price {
                     let result = self.get_token_price(&dp.token_id, storage_cache);

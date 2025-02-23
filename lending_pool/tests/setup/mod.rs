@@ -162,24 +162,6 @@ impl LendingPoolTestState {
     //     // return max_liquidate_amount;
     // }
 
-    pub fn get_max_liquidate_amount_for_collateral(
-        &mut self,
-        nonce: u64,
-        collateral_token: TestTokenIdentifier,
-        debt_token: TestTokenIdentifier,
-        in_egld: bool,
-    ) {
-        // let max_liquidate_amount = self
-        //     .world
-        //     .query()
-        //     .to(self.lending_sc.clone())
-        //     .typed(proxy_lending_pool::LendingPoolProxy)
-        //     .get_max_liquidate_amount_for_collateral(nonce, collateral_token, debt_token, in_egld)
-        //     .returns(ReturnsResult)
-        //     .run();
-
-        // max_liquidate_amount
-    }
     pub fn get_usd_price(
         &mut self,
         token_id: TestTokenIdentifier,
@@ -189,6 +171,19 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::LendingPoolProxy)
             .get_usd_price(token_id)
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    pub fn get_egld_price(
+        &mut self,
+        token_id: TestTokenIdentifier,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .get_egld_price(token_id)
             .returns(ReturnsResult)
             .run()
     }
@@ -320,6 +315,8 @@ impl LendingPoolTestState {
         r_base: u64,
         r_slope1: u64,
         r_slope2: u64,
+        r_slope3: u64,
+        u_mid: u64,
         u_optimal: u64,
         reserve_factor: u64,
         decimals: usize,
@@ -336,6 +333,8 @@ impl LendingPoolTestState {
                 r_base,
                 r_slope1,
                 r_slope2,
+                r_slope3,
+                u_mid,
                 u_optimal,
                 reserve_factor,
                 config.ltv.into_raw_units(),
@@ -719,7 +718,6 @@ impl LendingPoolTestState {
             .run();
     }
 
-
     pub fn liquidate_account_den(
         &mut self,
         from: &TestAddress,
@@ -746,7 +744,6 @@ impl LendingPoolTestState {
     pub fn liquidate_account_dem(
         &mut self,
         from: &TestAddress,
-        collateral_to_liquidate: &TestTokenIdentifier,
         liquidator_payment: &TestTokenIdentifier,
         amount: BigUint<StaticApi>,
         account_nonce: u64,
@@ -846,6 +843,38 @@ impl LendingPoolTestState {
             .run();
 
         revenue
+    }
+
+    pub fn get_market_borrow_index(
+        &mut self,
+        market_address: ManagedAddress<StaticApi>,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        let borrow_index = self
+            .world
+            .query()
+            .to(market_address)
+            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
+            .borrow_index()
+            .returns(ReturnsResult)
+            .run();
+
+        borrow_index
+    }
+
+    pub fn get_market_supply_index(
+        &mut self,
+        market_address: ManagedAddress<StaticApi>,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        let supply_index = self
+            .world
+            .query()
+            .to(market_address)
+            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
+            .supply_index()
+            .returns(ReturnsResult)
+            .run();
+
+        supply_index
     }
 
     pub fn get_market_reserves(
@@ -1201,6 +1230,7 @@ pub fn setup_lending_pool(
             safe_view_sc.clone(),
             safe_view_sc.clone(), // TODO: Add real accumulator
             safe_view_sc.clone(), // TODO Add wrap SC for WEGLD
+            safe_view_sc.clone() // TODO: Add ash SC
         )
         .code(LENDING_POOL_PATH)
         .returns(ReturnsNewManagedAddress)
@@ -1326,7 +1356,7 @@ pub fn set_oracle_token_data(
         .typed(proxy_lending_pool::LendingPoolProxy)
         .set_token_oracle(
             XEGLD_TOKEN.to_token_identifier(),
-            18,
+            18usize,
             xegld_liquid_staking_sc,
             PricingMethod::None,
             OracleType::Derived,
@@ -1343,7 +1373,7 @@ pub fn set_oracle_token_data(
         .typed(proxy_lending_pool::LendingPoolProxy)
         .set_token_oracle(
             LXOXNO_TOKEN.to_token_identifier(),
-            18,
+            18usize,
             xoxno_liquid_staking_sc,
             PricingMethod::None,
             OracleType::Derived,
@@ -2002,6 +2032,8 @@ pub fn submit_price(
             decimals as u8,
         )
         .run();
+
+        // world.current_block().block_timestamp(1740184106);
     for oracle in oracles {
         world
             .tx()
@@ -2037,6 +2069,8 @@ pub fn setup_template_liquidity_pool(
             BigUint::from(R_BASE),
             BigUint::from(R_SLOPE1),
             BigUint::from(R_SLOPE2),
+            BigUint::from(R_SLOPE3),
+            BigUint::from(U_MID),
             BigUint::from(U_OPTIMAL),
             BigUint::from(RESERVE_FACTOR),
             USDC_DECIMALS,
@@ -2096,6 +2130,8 @@ pub fn setup_market(
             BigUint::from(R_BASE),
             BigUint::from(R_SLOPE1),
             BigUint::from(R_SLOPE2),
+            BigUint::from(R_SLOPE3),
+            BigUint::from(U_MID),
             BigUint::from(U_OPTIMAL),
             BigUint::from(RESERVE_FACTOR),
             config.config.ltv.into_raw_units(),

@@ -87,9 +87,9 @@ pub trait PositionLiquidationModule:
         );
         sc_print!("debt_payment_in_egld     {}", debt_payment_in_egld);
         sc_print!("max_debt_to_repay        {}", max_debt_to_repay);
-        sc_print!("borrowed_egld            {}", borrowed_egld);
-        sc_print!("liquidation_collateral   {}", liquidation_collateral);
-        sc_print!("bonus_rate               {}", bonus_rate);
+        // sc_print!("borrowed_egld            {}", borrowed_egld);
+        // sc_print!("liquidation_collateral   {}", liquidation_collateral);
+        // sc_print!("bonus_rate               {}", bonus_rate);
         // Calculate the excess amount paid over the required debt repayment.
         if debt_payment_in_egld > max_debt_to_repay {
             let mut excess_in_egld = debt_payment_in_egld - max_debt_to_repay.clone();
@@ -101,7 +101,7 @@ pub trait PositionLiquidationModule:
                 // Retrieve the token repayment details.
                 let (mut debt_payment, mut egld_asset_amount, price_feed) =
                     repaid_tokens.get(index).clone().into_tuple();
-                sc_print!("egld_asset_amount {}", egld_asset_amount);
+                // sc_print!("egld_asset_amount {}", egld_asset_amount);
                 // Check if this token can cover the remaining excess.
                 if egld_asset_amount >= excess_in_egld {
                     // Convert the excess EGLD amount to the token's native units.
@@ -109,10 +109,10 @@ pub trait PositionLiquidationModule:
                         self.compute_egld_in_tokens(&excess_in_egld, &price_feed);
                     // Adjust the repayment amount and asset value.
                     debt_payment.amount -= excess_in_original.into_raw_units();
-                    sc_print!("debt_payment.amount {}", debt_payment.amount);
+                    // sc_print!("debt_payment.amount {}", debt_payment.amount);
 
                     egld_asset_amount -= &excess_in_egld;
-                    sc_print!("egld_asset_amount {}", egld_asset_amount);
+                    // sc_print!("egld_asset_amount {}", egld_asset_amount);
 
                     // Record the refund for this token.
                     refunds.push(EgldOrEsdtTokenPayment::new(
@@ -149,6 +149,7 @@ pub trait PositionLiquidationModule:
             &bonus_rate,
             storage_cache,
         );
+
         (seized_collaterals, repaid_tokens)
     }
 
@@ -212,6 +213,7 @@ pub trait PositionLiquidationModule:
                 Some(protocol_fee),
                 &mut storage_cache,
                 &account,
+                false,
             );
         }
     }
@@ -279,7 +281,7 @@ pub trait PositionLiquidationModule:
         for asset in collaterals {
             // Retrieve the total amount of this asset supplied by the borrower.
             let total_amount = asset.get_total_amount();
-            sc_print!("total_amount {}", total_amount);
+            // sc_print!("total_amount {}", total_amount);
 
             // Get the asset's pricing data from the storage cache.
             let asset_data = self.get_token_price(&asset.token_id, storage_cache);
@@ -287,7 +289,7 @@ pub trait PositionLiquidationModule:
             // Convert the total amount of this asset into its equivalent EGLD value.
             let asset_egld_value =
                 self.get_token_amount_in_egld_raw(&total_amount, &asset_data.price.clone());
-            sc_print!("asset_egld_value {}", asset_egld_value);
+            // sc_print!("asset_egld_value {}", asset_egld_value);
             // Compute the asset's proportion of the total collateral value.
             // This is calculated as: (asset_egld_value / total_collateral_value) in WAD precision.
             let proportion = self.div_half_up(
@@ -295,7 +297,7 @@ pub trait PositionLiquidationModule:
                 total_collateral_value,
                 WAD_PRECISION,
             );
-            sc_print!("proportion {}", proportion);
+            // sc_print!("proportion {}", proportion);
             // Determine the amount of EGLD value to seize from this asset.
             // The seizure amount in EGLD is the asset's proportion times the total debt to be repaid.
             let seized_egld_numerator_ray =
@@ -308,12 +310,9 @@ pub trait PositionLiquidationModule:
 
             // Apply the liquidation bonus.
             // The bonus is given in basis points, so the seized amount is increased by (bps + bonus)/bps.
-            let seiz_bonus_ray = self.mul_half_up(
-                &(seized_units.clone() * (storage_cache.bps_dec.clone() + bonus.clone())),
-                &storage_cache.bps_dec,
-                RAY_PRECISION,
-            );
-            let seized_units_after_bonus = seiz_bonus_ray.rescale(asset_data.decimals as usize); // seized_units.clone() * (storage_cache.bps_dec.clone() + bonus.clone()) / storage_cache.bps_dec.clone();
+            let bonus_bps = storage_cache.bps_dec.clone() + bonus.clone();
+            let numerator = self.mul_half_up(&seized_units, &bonus_bps, RAY_PRECISION);
+            let seized_units_after_bonus = numerator.rescale(asset_data.decimals as usize); // seized_units.clone() * (storage_cache.bps_dec.clone() + bonus.clone()) / storage_cache.bps_dec.clone();
             sc_print!("seized_units_after_bonus {}", seized_units_after_bonus);
             // Calculate the protocol fee, which is charged on the bonus portion only.
             // The fee is computed on the difference between the bonus-adjusted units and the original seized units.

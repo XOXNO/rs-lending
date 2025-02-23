@@ -47,8 +47,10 @@ pub trait PositionRepayModule:
         mut borrow_position: AccountPosition<Self::Api>,
         debt_token_price_data: &PriceFeedShort<Self::Api>,
         attributes: &NftAccountAttributes,
+        storage_cache: &mut StorageCache<Self>,
+        
     ) {
-        let asset_address = self.get_pool_address(repay_token_id);
+        let asset_address = storage_cache.get_cached_pool_address(repay_token_id);
         borrow_position = self
             .tx()
             .to(asset_address)
@@ -73,16 +75,10 @@ pub trait PositionRepayModule:
             OptionalValue::Some(attributes),
         );
 
-        if borrow_position
-            .get_total_amount()
-            .gt(&ManagedDecimal::from_raw_units(
-                BigUint::zero(),
-                debt_token_price_data.decimals as usize,
-            ))
-        {
-            borrow_positions.insert(repay_token_id.clone(), borrow_position);
-        } else {
+        if borrow_position.can_remove() {
             borrow_positions.remove(repay_token_id);
+        } else {
+            borrow_positions.insert(repay_token_id.clone(), borrow_position);
         }
     }
 
@@ -181,6 +177,7 @@ pub trait PositionRepayModule:
             borrow_position,
             &debt_token_price_data,
             attributes,
+            storage_cache,
         );
     }
 

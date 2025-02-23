@@ -48,15 +48,14 @@ pub trait PositionWithdrawModule:
         liquidation_fee: Option<ManagedDecimal<Self::Api, NumDecimals>>,
         storage_cache: &mut StorageCache<Self>,
         attributes: &NftAccountAttributes,
+        is_swap: bool,
     ) -> AccountPosition<Self::Api> {
         // Unpack collateral details
         let (withdraw_token_id, _, requested_amount) = collateral.into_tuple();
         // Get price data for the collateral token
         let asset_data = self.get_token_price(&withdraw_token_id, storage_cache);
-        let request_amount_dec =
-            ManagedDecimal::from_raw_units(requested_amount, asset_data.decimals as usize);
 
-        let pool_address = self.get_pool_address(&withdraw_token_id);
+        let pool_address = storage_cache.get_cached_pool_address(&withdraw_token_id);
 
         // Retrieve deposit position for the given token
         let mut deposit_positions = self.deposit_positions(account_nonce);
@@ -68,6 +67,7 @@ pub trait PositionWithdrawModule:
         );
         let mut deposit_position = maybe_deposit_position.unwrap();
 
+        let request_amount_dec = deposit_position.make_amount_decimal(requested_amount);
         // Cap the withdrawal amount to the available balance
         let amount = if request_amount_dec > deposit_position.get_total_amount() {
             deposit_position.get_total_amount()
@@ -83,9 +83,10 @@ pub trait PositionWithdrawModule:
                 is_liquidation,
                 liquidation_fee,
                 caller,
-                pool_address.clone(),
+                pool_address,
                 &asset_data,
                 &mut deposit_position,
+                is_swap,
             )
         } else {
             self.tx()
@@ -112,16 +113,10 @@ pub trait PositionWithdrawModule:
             OptionalValue::Some(attributes),
         );
 
-        if updated_position
-            .get_total_amount()
-            .gt(&ManagedDecimal::from_raw_units(
-                BigUint::zero(),
-                asset_data.decimals as usize,
-            ))
-        {
-            deposit_positions.insert(withdraw_token_id.clone(), updated_position.clone());
-        } else {
+        if updated_position.can_remove() {
             deposit_positions.remove(&withdraw_token_id);
+        } else {
+            deposit_positions.insert(withdraw_token_id, updated_position.clone());
         }
 
         updated_position
@@ -152,6 +147,7 @@ pub trait PositionWithdrawModule:
         pool_address: ManagedAddress,
         asset_data: &PriceFeedShort<Self::Api>, // Adjust this type to your actual asset data type
         deposit_position: &mut AccountPosition<Self::Api>,
+        is_swap: bool,
     ) -> AccountPosition<Self::Api> {
         // Update the vault’s stored supplied amount by subtracting the withdrawn amount.
         let last_value = self.vault_supplied_amount(withdraw_token_id).update(|am| {
@@ -188,10 +184,12 @@ pub trait PositionWithdrawModule:
                 .sync_call();
         } else {
             // For a normal withdrawal, simply transfer the full amount to the caller.
-            self.tx()
-                .to(caller)
-                .egld_or_single_esdt(withdraw_token_id, 0, amount.into_raw_units())
-                .transfer();
+            if !is_swap {
+                self.tx()
+                    .to(caller)
+                    .egld_or_single_esdt(withdraw_token_id, 0, amount.into_raw_units())
+                    .transfer();
+            }
         }
 
         // Return the updated deposit position.
@@ -254,11 +252,11 @@ pub trait PositionWithdrawModule:
                 return;
             }
             let deposit_positions = self.deposit_positions(account_nonce);
-            let (liquidation_collateral, _, _) =
+            let (liq_collateral, _, _) =
                 self.sum_collaterals(&deposit_positions.values().collect(), storage_cache);
             let borrowed_egld =
                 self.sum_borrows(&borrow_positions.values().collect(), storage_cache);
-            let health_factor = self.compute_health_factor(&liquidation_collateral, &borrowed_egld);
+            let health_factor = self.compute_health_factor(&liq_collateral, &borrowed_egld);
 
             // Make sure the health factor is greater than 100% when is a normal withdraw
             let health_factor_with_safety_factor = if let Some(safety_factor_value) = safety_factor

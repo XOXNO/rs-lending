@@ -10,5 +10,8 @@ path = "src/model.rs"
 [dependencies.common-constants]
 path = "../constants"
 
+[dependencies.common-errors]
+path = "../errors"
+
 [dependencies.multiversx-sc]
 version = "0.56.0"

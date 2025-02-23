@@ -3,7 +3,7 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
-use common_events::{AssetConfig, BPS_PRECISION};
+use common_events::AssetConfig;
 
 use crate::{
     contexts::base::StorageCache, helpers, oracle, positions, proxy_accumulator, proxy_pool,
@@ -35,6 +35,8 @@ pub trait RouterModule:
         r_base: BigUint,
         r_slope1: BigUint,
         r_slope2: BigUint,
+        r_slope3: BigUint,
+        u_mid: BigUint,
         u_optimal: BigUint,
         reserve_factor: BigUint,
         ltv: BigUint,
@@ -65,6 +67,8 @@ pub trait RouterModule:
             &r_base,
             &r_slope1,
             &r_slope2,
+            &r_slope3,
+            &u_mid,
             &u_optimal,
             &reserve_factor,
         );
@@ -111,6 +115,8 @@ pub trait RouterModule:
             &r_base,
             &r_slope1,
             &r_slope2,
+            &r_slope3,
+            &u_mid,
             &u_optimal,
             &reserve_factor,
             &address,
@@ -128,6 +134,8 @@ pub trait RouterModule:
         r_base: BigUint,
         r_slope1: BigUint,
         r_slope2: BigUint,
+        r_slope3: BigUint,
+        u_mid: BigUint,
         u_optimal: BigUint,
         reserve_factor: BigUint,
     ) {
@@ -140,6 +148,8 @@ pub trait RouterModule:
             r_base,
             r_slope1,
             r_slope2,
+            r_slope3,
+            u_mid,
             u_optimal,
             reserve_factor,
         );

@@ -1,12 +1,13 @@
-use common_constants::{RAY, RAY_PRECISION, TOTAL_SUPPLY_AMOUNT_STORAGE_KEY};
+use common_constants::TOTAL_SUPPLY_AMOUNT_STORAGE_KEY;
 use common_events::{
     AccountPosition, AccountPositionType, AssetConfig, NftAccountAttributes, PriceFeedShort,
 };
 use multiversx_sc::storage::StorageKey;
 
 use crate::{
-    contexts::base::StorageCache, helpers, oracle, proxy_pool, storage, utils, validation,
-    ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS, ERROR_MIX_ISOLATED_COLLATERAL, ERROR_SUPPLY_CAP,
+    contexts::base::StorageCache, helpers, oracle, positions, proxy_pool, storage, utils,
+    validation, ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL, ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS,
+    ERROR_MIX_ISOLATED_COLLATERAL, ERROR_SUPPLY_CAP,
 };
 
 use super::account;
@@ -23,8 +24,61 @@ pub trait PositionDepositModule:
     + utils::LendingUtilsModule
     + helpers::math::MathsModule
     + account::PositionAccountModule
+    + positions::emode::EModeModule
     + common_math::SharedMathModule
 {
+    fn internal_supply(
+        &self,
+        caller: &ManagedAddress,
+        account_nonce: u64,
+        attributes: NftAccountAttributes,
+        collaterals: &ManagedVec<EgldOrEsdtTokenPayment>,
+        storage_cache: &mut StorageCache<Self>,
+    ) {
+        let e_mode = self.validate_e_mode_exists(attributes.get_emode_id());
+        self.validate_not_depracated_e_mode(&e_mode);
+
+        for collateral in collaterals {
+            self.validate_payment(&collateral);
+            let mut asset_info = storage_cache.get_cached_asset_info(&collateral.token_identifier);
+
+            let asset_emode_config = self
+                .validate_token_of_emode(attributes.get_emode_id(), &collateral.token_identifier);
+
+            self.validate_e_mode_not_isolated(&asset_info, attributes.get_emode_id());
+
+            self.update_asset_config_for_e_mode(&mut asset_info, &e_mode, asset_emode_config);
+
+            require!(
+                asset_info.can_supply(),
+                ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL
+            );
+
+            self.validate_isolated_collateral(
+                account_nonce,
+                &collateral.token_identifier,
+                &asset_info,
+                &attributes,
+            );
+
+            self.validate_supply_cap(
+                &asset_info,
+                &collateral,
+                attributes.is_vault(),
+                storage_cache,
+            );
+
+            self.update_supply_position(
+                account_nonce,
+                &collateral,
+                &asset_info,
+                &caller,
+                &attributes,
+                storage_cache,
+            );
+        }
+    }
+
     /// Retrieves existing deposit position or creates new one
     ///
     /// # Arguments
@@ -59,7 +113,7 @@ pub trait PositionDepositModule:
                 ManagedDecimal::from_raw_units(BigUint::zero(), data.decimals as usize),
                 account_nonce,
                 self.blockchain().get_block_timestamp(),
-                ManagedDecimal::from_raw_units(BigUint::from(RAY), RAY_PRECISION),
+                self.ray(),
                 asset_info.liquidation_threshold.clone(),
                 asset_info.liquidation_base_bonus.clone(),
                 asset_info.liquidation_max_fee.clone(),
@@ -89,7 +143,6 @@ pub trait PositionDepositModule:
         account_nonce: u64,
         collateral: &EgldOrEsdtTokenPayment<Self::Api>,
         asset_info: &AssetConfig<Self::Api>,
-        is_vault: bool,
         caller: &ManagedAddress,
         attributes: &NftAccountAttributes,
         storage_cache: &mut StorageCache<Self>,
@@ -99,7 +152,7 @@ pub trait PositionDepositModule:
             account_nonce,
             asset_info,
             &collateral.token_identifier,
-            is_vault,
+            attributes.is_vault(),
         );
 
         // Auto upgrade values when changed on demand
@@ -114,11 +167,11 @@ pub trait PositionDepositModule:
         if position.entry_liquidation_fees != asset_info.liquidation_max_fee {
             position.entry_liquidation_fees = asset_info.liquidation_max_fee.clone();
         }
-
-        if is_vault {
+        let amount_decimal = position.make_amount_decimal(collateral.amount.clone());
+        if attributes.is_vault() {
             self.increase_vault_position(
                 &mut position,
-                &ManagedDecimal::from_raw_units(collateral.amount.clone(), feed.decimals as usize),
+                &amount_decimal,
                 &collateral.token_identifier,
             );
         } else {
@@ -131,7 +184,7 @@ pub trait PositionDepositModule:
         }
 
         self.update_position_event(
-            &ManagedDecimal::from_raw_units(collateral.amount.clone(), feed.decimals as usize),
+            &amount_decimal,
             &position,
             OptionalValue::Some(feed.price.clone()),
             OptionalValue::Some(caller),
@@ -215,7 +268,7 @@ pub trait PositionDepositModule:
         payments: &ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
     ) -> (
         ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
-        Option<EgldOrEsdtTokenPayment<Self::Api>>,
+        Option<EsdtTokenPayment<Self::Api>>,
     ) {
         require!(payments.len() >= 1, ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS);
 
@@ -226,10 +279,11 @@ pub trait PositionDepositModule:
 
         if self.account_token().get_token_id() == account.token_identifier {
             require!(payments.len() >= 2, ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS);
+            self.require_active_account(account.token_nonce);
 
             (
                 payments.slice(1, payments.len()).unwrap(),
-                Some(account.clone()),
+                Some(account.clone().unwrap_esdt()),
             )
         } else {
             (payments.clone(), None)
@@ -292,10 +346,11 @@ pub trait PositionDepositModule:
         asset_info: &AssetConfig<Self::Api>,
         collateral: &EgldOrEsdtTokenPayment,
         is_vault: bool,
+        storage_cache: &mut StorageCache<Self>,
     ) {
         // Only check supply cap if
         if asset_info.supply_cap.is_some() {
-            let pool_address = self.get_pool_address(&collateral.token_identifier);
+            let pool_address = storage_cache.get_cached_pool_address(&collateral.token_identifier);
             let mut total_supplied = self.get_total_supply(pool_address).get();
 
             if is_vault {

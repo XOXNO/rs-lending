@@ -51,6 +51,8 @@ pub trait LiquidityPool:
         r_base: BigUint,
         r_slope1: BigUint,
         r_slope2: BigUint,
+        r_slope3: BigUint,
+        u_mid: BigUint,
         u_optimal: BigUint,
         reserve_factor: BigUint,
         decimals: usize,
@@ -61,6 +63,8 @@ pub trait LiquidityPool:
             r_base: self.to_decimal_ray(r_base),
             r_slope1: self.to_decimal_ray(r_slope1),
             r_slope2: self.to_decimal_ray(r_slope2),
+            r_slope3: self.to_decimal_ray(r_slope3),
+            u_mid: self.to_decimal_ray(u_mid),
             u_optimal: self.to_decimal_ray(u_optimal),
             reserve_factor: self.to_decimal_bps(reserve_factor),
             decimals,
@@ -107,6 +111,8 @@ pub trait LiquidityPool:
         r_base: BigUint,
         r_slope1: BigUint,
         r_slope2: BigUint,
+        r_slope3: BigUint,
+        u_mid: BigUint,
         u_optimal: BigUint,
         reserve_factor: BigUint,
     ) {
@@ -116,6 +122,8 @@ pub trait LiquidityPool:
             &r_base,
             &r_slope1,
             &r_slope2,
+            &r_slope3,
+            &u_mid,
             &u_optimal,
             &reserve_factor,
         );
@@ -125,6 +133,8 @@ pub trait LiquidityPool:
             pool_params.r_base = self.to_decimal_ray(r_base);
             pool_params.r_slope1 = self.to_decimal_ray(r_slope1);
             pool_params.r_slope2 = self.to_decimal_ray(r_slope2);
+            pool_params.r_slope3 = self.to_decimal_ray(r_slope3);
+            pool_params.u_mid = self.to_decimal_ray(u_mid);
             pool_params.u_optimal = self.to_decimal_ray(u_optimal);
             pool_params.reserve_factor = self.to_decimal_bps(reserve_factor);
         });

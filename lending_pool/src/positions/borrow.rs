@@ -57,8 +57,9 @@ pub trait PositionBorrowModule:
         account: &NftAccountAttributes,
         collaterals: &ManagedVec<AccountPosition<Self::Api>>,
         feed: &PriceFeedShort<Self::Api>,
+        storage_cache: &mut StorageCache<Self>,
     ) -> AccountPosition<Self::Api> {
-        let pool_address = self.get_pool_address(asset_to_borrow);
+        let pool_address = storage_cache.get_cached_pool_address(asset_to_borrow);
 
         // Get or create borrow position
         let mut borrow_position = self.get_or_create_borrow_position(
@@ -80,7 +81,7 @@ pub trait PositionBorrowModule:
         // Handle isolated mode debt ceiling
         if account.is_isolated {
             let collateral_token_id = &collaterals.get(0).token_id;
-            let collateral_config = self.asset_config(collateral_token_id).get();
+            let collateral_config = storage_cache.get_cached_asset_info(collateral_token_id);
 
             self.validate_isolated_debt_ceiling(
                 &collateral_config,
@@ -269,8 +270,8 @@ pub trait PositionBorrowModule:
 
         self.validate_borrow_collateral(ltv_collateral, &egld_total_borrowed, &egld_amount);
 
-        let amount_in_usd = self
-            .get_token_amount_in_dollars_raw(&egld_amount, &storage_cache.egld_price_feed);
+        let amount_in_usd =
+            self.get_token_amount_in_dollars_raw(&egld_amount, &storage_cache.egld_price_feed);
 
         (amount_in_usd, asset_data_feed, amount)
     }
@@ -294,6 +295,7 @@ pub trait PositionBorrowModule:
         asset_to_borrow: &EgldOrEsdtTokenIdentifier,
         nft_attributes: &NftAccountAttributes,
         borrow_positions: &ManagedVec<AccountPosition<Self::Api>>,
+        storage_cache: &mut StorageCache<Self>,
     ) {
         // Check if borrowing is allowed in isolation mode
         if nft_attributes.is_isolated {
@@ -314,7 +316,7 @@ pub trait PositionBorrowModule:
         // Check if trying to borrow a different asset when there's a siloed position
         if borrow_positions.len() == 1 {
             let first_position = borrow_positions.get(0);
-            let first_asset_config = self.asset_config(&first_position.token_id).get();
+            let first_asset_config = storage_cache.get_cached_asset_info(&first_position.token_id);
 
             // If either the existing position or new borrow is siloed, they must be the same asset
             if first_asset_config.is_siloed || asset_config.is_siloed {
