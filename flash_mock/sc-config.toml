@@ -5,5 +5,5 @@ main = "main"
 name = "flash_mock"
 
 [[proxy]]
-path = "../lending_pool/tests/proxys/proxy_flash_mock.rs"
+path = "../controller/tests/proxys/proxy_flash_mock.rs"
  

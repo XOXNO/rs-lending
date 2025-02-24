@@ -5,8 +5,8 @@ main = "main"
 name = "price_aggregator"
 
 [[proxy]]
-path = "../lending_pool/src/proxies/proxy_price_aggregator.rs"
+path = "../controller/src/proxies/proxy_price_aggregator.rs"
 
 [[proxy]]
-path = "../lending_pool/tests/proxys/proxy_aggregator.rs"
+path = "../controller/tests/proxys/proxy_aggregator.rs"
  

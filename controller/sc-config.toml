@@ -1,0 +1,11 @@
+[settings]
+main = "main"
+
+[contracts.main]
+name = "controller"
+
+[[proxy]]
+path = "../controller/tests/proxys/proxy_lending_pool.rs"
+
+[[proxy]]
+path = "../flash_mock/src/proxy_lending.rs"

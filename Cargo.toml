@@ -1,9 +1,9 @@
 [workspace]
 members = [
-    "liquidity_pool",
-    "liquidity_pool/meta",
-    "lending_pool",
-    "lending_pool/meta",
+    "liquidity_layer",
+    "liquidity_layer/meta",
+    "controller",
+    "controller/meta",
     "common/structs",
     "common/constants",
     "common/errors",

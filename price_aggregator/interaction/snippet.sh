@@ -1,6 +1,5 @@
 ADDRESS=erd1qqqqqqqqqqqqqpgq7a48t570jjudy0xjxhuzcdwndcq9gt2tah0s7tg84a #main
 # ADDRESS=erd1qqqqqqqqqqqqqpgqlee5g4zqwq93ar9nlx55ql0jxvlrruadah0sg2vc89 #CEX
-DEPLOY_TRANSACTION=$(mxpy data load --key=deployTransaction-devnet)
 
 PROXY=https://devnet-gateway.xoxno.com
 CHAIN_ID=D
@@ -12,12 +11,6 @@ deploy() {
     --ledger --ledger-account-index=0 --ledger-address-index=0 \
     --gas-limit=250000000 --outfile="deploy.json" --arguments 0x01 erd1e2r4m874a7whe5n2sftrxqy758kl3s6gvs8ekmac2yuhxlg70shs5lhc7t erd13r5dhrpx8wk6l4lvwr52y5thx7q56g4w9l7sznef3vlp8yqvqmfs5l2vq0 erd1l2u03tmtpphrwwq0xn3gfu23ufzjexu0p54zya8ufhlyrrx64vzsvyfgvg erd12yxd5phejzw83gn8qh6jfz6q9a0ekyyhkfd3c49r03mxw25l3a5swq3nf7 erd1nz0w0cnlpxsdqa2vm6mfmzc9qhptjae9x44kn3fkzsgns8dcz5pscja98t erd16yaq7n30gdka6hvnly365kecckqqsl48m2g8vrrmcr5w6h79pussyc4wu2 erd14xglrv7xt8pu90zgx0v9dd5u8cu4crl6yw7x0vfgse4r3dkkqnuse59u75 \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
-
-    TRANSACTION=$(mxpy data parse --file="deploy.json" --expression="data['emitted_tx']['hash']")
-    ADDRESS=$(mxpy data parse --file="deploy.json" --expression="data['emitted_tx']['address']")
-
-    mxpy data store --key=address-devnet --value=${ADDRESS}
-    mxpy data store --key=deployTransaction-devnet --value=${TRANSACTION}
 
     echo ""
     echo "Smart contract address: ${ADDRESS}"

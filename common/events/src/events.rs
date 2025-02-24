@@ -77,9 +77,9 @@ pub trait EventsModule {
     /// - `supply_index`: The current supply index.
     /// - `borrow_index`: The current borrow index.
     /// - `reserves`: The current pool reserves.
-    /// - `supplied_amount`: The total supplied amount.
-    /// - `borrowed_amount`: The total borrowed amount.
-    /// - `protocol_revenue`: The accrued protocol revenue.
+    /// - `supplied`: The total supplied amount.
+    /// - `borrowed`: The total borrowed amount.
+    /// - `revenue`: The accrued protocol revenue.
     /// - `base_asset`: The asset identifier for the market.
     /// - `asset_price`: The current asset price.
     ///
@@ -91,9 +91,9 @@ pub trait EventsModule {
         supply_index: &ManagedDecimal<Self::Api, NumDecimals>,
         borrow_index: &ManagedDecimal<Self::Api, NumDecimals>,
         reserves: &ManagedDecimal<Self::Api, NumDecimals>,
-        supplied_amount: &ManagedDecimal<Self::Api, NumDecimals>,
-        borrowed_amount: &ManagedDecimal<Self::Api, NumDecimals>,
-        protocol_revenue: &ManagedDecimal<Self::Api, NumDecimals>,
+        supplied: &ManagedDecimal<Self::Api, NumDecimals>,
+        borrowed: &ManagedDecimal<Self::Api, NumDecimals>,
+        revenue: &ManagedDecimal<Self::Api, NumDecimals>,
         base_asset: &EgldOrEsdtTokenIdentifier,
         asset_price: &ManagedDecimal<Self::Api, NumDecimals>,
     ) {
@@ -102,9 +102,9 @@ pub trait EventsModule {
             supply_index,
             borrow_index,
             reserves,
-            supplied_amount,
-            borrowed_amount,
-            protocol_revenue,
+            supplied,
+            borrowed,
+            revenue,
             base_asset,
             asset_price,
         );
@@ -117,9 +117,9 @@ pub trait EventsModule {
     /// - `supply_index`: The supply index as a raw BigUint.
     /// - `borrow_index`: The borrow index as a raw BigUint.
     /// - `reserves`: The current reserves as a raw BigUint.
-    /// - `supplied_amount`: The total supplied amount as a raw BigUint.
-    /// - `borrowed_amount`: The total borrowed amount as a raw BigUint.
-    /// - `protocol_revenue`: The protocol revenue as a raw BigUint.
+    /// - `supplied`: The total supplied amount as a raw BigUint.
+    /// - `borrowed`: The total borrowed amount as a raw BigUint.
+    /// - `revenue`: The protocol revenue as a raw BigUint.
     /// - `base_asset`: The asset identifier for the market.
     /// - `asset_price`: The current asset price.
     ///
@@ -132,9 +132,9 @@ pub trait EventsModule {
         #[indexed] supply_index: &ManagedDecimal<Self::Api, NumDecimals>,
         #[indexed] borrow_index: &ManagedDecimal<Self::Api, NumDecimals>,
         #[indexed] reserves: &ManagedDecimal<Self::Api, NumDecimals>,
-        #[indexed] supplied_amount: &ManagedDecimal<Self::Api, NumDecimals>,
-        #[indexed] borrowed_amount: &ManagedDecimal<Self::Api, NumDecimals>,
-        #[indexed] protocol_revenue: &ManagedDecimal<Self::Api, NumDecimals>,
+        #[indexed] supplied: &ManagedDecimal<Self::Api, NumDecimals>,
+        #[indexed] borrowed: &ManagedDecimal<Self::Api, NumDecimals>,
+        #[indexed] revenue: &ManagedDecimal<Self::Api, NumDecimals>,
         #[indexed] base_asset: &EgldOrEsdtTokenIdentifier,
         #[indexed] asset_price: &ManagedDecimal<Self::Api, NumDecimals>,
     );

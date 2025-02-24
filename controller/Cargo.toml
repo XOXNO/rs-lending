@@ -1,0 +1,51 @@
+[package]
+name    = "controller"
+version = "0.0.0"
+authors = ["you"]
+edition = "2018"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies.multiversx-sc-modules]
+version = "0.56.0"
+
+[dependencies.multiversx-sc]
+version = "0.56.0"
+
+[dependencies.multiversx-wegld-swap-sc]
+version = "0.56.0"
+
+[dependencies.liquidity-layer]
+path = "../liquidity_layer"
+
+[dependencies.common-structs]
+path = "../common/structs"
+
+[dependencies.common-math]
+path = "../common/math"
+
+[dependencies.common-events]
+path = "../common/events"
+
+[dependencies.common-constants]
+path = "../common/constants"
+
+[dependencies.common-errors]
+path = "../common/errors"
+
+[dependencies.price_aggregator]
+path = "../price_aggregator"
+
+[dependencies.flash-mock]
+path = "../flash_mock"
+
+[dev-dependencies]
+num-bigint             = "0.4.2"
+num-traits             = "0.2"
+hex                    = "0.4"
+multiversx-sc-scenario = "0.56.0"
+rs-liquid-xoxno        = { git = "https://github.com/XOXNO/rs-liquid-xoxno" }
+rs-liquid-staking-sc   = { git = "https://github.com/XOXNO/rs-liquid-staking-sc", package = "liquid-staking" }
+pair                   = { git = "https://github.com/mihaieremia/mx-exchange-sc", package = "pair" }

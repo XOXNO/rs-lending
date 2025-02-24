@@ -35,9 +35,9 @@ pub const BPS_PRECISION: usize= 4;
 /// Maximum bonus
 pub const MAX_BONUS: u128 = 3_000; // Represents 30% basis points
 
-pub static TOTAL_BORROWED_AMOUNT_STORAGE_KEY: &[u8] = b"borrowed_amount";
+pub static TOTAL_BORROWED_AMOUNT_STORAGE_KEY: &[u8] = b"borrowed";
 
-pub static TOTAL_SUPPLY_AMOUNT_STORAGE_KEY: &[u8] = b"supplied_amount";
+pub static TOTAL_SUPPLY_AMOUNT_STORAGE_KEY: &[u8] = b"supplied";
 
 pub static TOTAL_RESERVES_AMOUNT_STORAGE_KEY: &[u8] = b"reserves";
 

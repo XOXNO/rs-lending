@@ -1,0 +1,12 @@
+[package]
+name = "liquidity-layer-meta"
+version = "0.0.0"
+authors = ["you"]
+edition = "2018"
+publish = false
+
+[dependencies.liquidity-layer]
+path = ".."
+
+[dependencies.multiversx-sc-meta-lib]
+version = "0.56.0"
