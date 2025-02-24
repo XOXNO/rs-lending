@@ -51,7 +51,7 @@ pub trait Storage {
 
     /// Returns the pool parameters.
     ///
-    /// These include interest rate parameters and asset decimals.
+    /// These include interest rate parameters and asset asset_decimals.
     ///
     /// # Returns
     /// - `PoolParams<Self::Api>`: The pool configuration.

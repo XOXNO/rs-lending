@@ -327,8 +327,8 @@ format_percentage() {
 # Function to format token amount
 format_token_amount() {
     local value=$1
-    local decimals=$2
-    local result=$(echo "scale=4; $value/10^$decimals" | bc)
+    local asset_decimals=$2
+    local result=$(echo "scale=4; $value/10^$asset_decimals" | bc)
     # Remove trailing zeros after decimal point
     echo $result | sed 's/\.0\+$\|0\+$//'
 }
@@ -336,7 +336,7 @@ format_token_amount() {
 # Function to show market configuration
 show_market_config() {
     local market=$1
-    local decimals=$(get_config_value "$market" "oracle_decimals")
+    local asset_decimals=$(get_config_value "$market" "oracle_decimals")
     
     echo "${market} Market Configuration:"
     echo "Token ID: $(get_config_value "$market" "token_id")"
@@ -344,8 +344,8 @@ show_market_config() {
     echo "Liquidation Threshold: $(format_percentage $(get_config_value "$market" "liquidation_threshold"))%"
     echo "Liquidation Bonus: $(format_percentage $(get_config_value "$market" "liquidation_bonus"))%"
     echo "Liquidation Base Fee: $(format_percentage $(get_config_value "$market" "liquidation_base_fee"))%"
-    echo "Borrow Cap: $(format_token_amount $(get_config_value "$market" "borrow_cap") $decimals) ${market}"
-    echo "Supply Cap: $(format_token_amount $(get_config_value "$market" "supply_cap") $decimals) ${market}"
+    echo "Borrow Cap: $(format_token_amount $(get_config_value "$market" "borrow_cap") $asset_decimals) ${market}"
+    echo "Supply Cap: $(format_token_amount $(get_config_value "$market" "supply_cap") $asset_decimals) ${market}"
     echo "Base Rate: $(format_percentage $(get_config_value "$market" "base_rate"))%"
     echo "Max Rate: $(format_percentage $(get_config_value "$market" "max_rate"))%"
     echo "Slope1: $(format_percentage $(get_config_value "$market" "slope1"))%"
@@ -364,7 +364,7 @@ show_market_config() {
     echo "Oracle Method: $(get_config_value "$market" "oracle_method")"
     echo "Oracle Type: $(get_config_value "$market" "oracle_type")"
     echo "Oracle Source: $(get_config_value "$market" "oracle_source")"
-    echo "Oracle Decimals: $decimals"
+    echo "Oracle Decimals: $asset_decimals"
 }
 
 # Main CLI interface

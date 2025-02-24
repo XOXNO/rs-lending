@@ -9,7 +9,7 @@ multiversx_sc::derive_imports!();
 /// **Goal**: Facilitate calculations (e.g., interest rates, utilization) by providing a mutable in-memory view of the pool.
 ///
 /// **Fields**:
-/// - All monetary values (`supplied`, `reserves`, `borrowed`, `revenue`) are in `ManagedDecimal` with pool-specific decimals.
+/// - All monetary values (`supplied`, `reserves`, `borrowed`, `revenue`) are in `ManagedDecimal` with pool-specific asset_decimals.
 /// - Indices (`borrow_index`, `supply_index`) use RAY precision for interest accrual tracking.
 /// - Timestamps (`timestamp`, `last_timestamp`) are in seconds since the Unix epoch.
 pub struct Cache<'a, C>
@@ -35,7 +35,7 @@ where
     pub borrow_index: ManagedDecimal<C::Api, NumDecimals>,
     /// The supply index tracking accrued rewards for suppliers.
     pub supply_index: ManagedDecimal<C::Api, NumDecimals>,
-    /// Zero value with pool-specific decimals for comparisons.
+    /// Zero value with pool-specific asset_decimals for comparisons.
     pub zero: ManagedDecimal<C::Api, NumDecimals>,
     /// RAY value (10^27) for precision in rate calculations.
     pub ray: ManagedDecimal<C::Api, NumDecimals>,
@@ -63,7 +63,7 @@ where
     pub fn new(sc_ref: &'a C) -> Self {
         let pool_params = sc_ref.pool_params().get();
         Cache {
-            zero: ManagedDecimal::from_raw_units(BigUint::zero(), pool_params.decimals),
+            zero: ManagedDecimal::from_raw_units(BigUint::zero(), pool_params.asset_decimals),
             ray: sc_ref.ray(),
             supplied: sc_ref.supplied().get(),
             reserves: sc_ref.reserves().get(),
@@ -119,14 +119,14 @@ where
     /// - `value`: The raw `BigUint` value from storage or input.
     ///
     /// # Returns
-    /// - `ManagedDecimal<C::Api, NumDecimals>`: The value adjusted to pool decimals.
+    /// - `ManagedDecimal<C::Api, NumDecimals>`: The value adjusted to pool asset_decimals.
     ///
     /// **Security Tip**: No overflow checks; assumes `value` fits within `BigUint` constraints.
     pub fn get_decimal_value(
         &self,
         value: &BigUint<C::Api>,
     ) -> ManagedDecimal<C::Api, NumDecimals> {
-        ManagedDecimal::from_raw_units(value.clone(), self.pool_params.decimals)
+        ManagedDecimal::from_raw_units(value.clone(), self.pool_params.asset_decimals)
     }
 
     /// Computes the utilization ratio of the pool (borrowed / supplied).
@@ -167,7 +167,7 @@ where
     /// - `total_capital = reserves + borrowed`.
     ///
     /// # Returns
-    /// - `ManagedDecimal<C::Api, NumDecimals>`: Total capital in pool decimals.
+    /// - `ManagedDecimal<C::Api, NumDecimals>`: Total capital in pool asset_decimals.
     ///
     pub fn get_total_capital(&self) -> ManagedDecimal<C::Api, NumDecimals> {
         let reserve_amount = self.reserves.clone();
@@ -187,14 +187,14 @@ where
     /// - Otherwise: 0.
     ///
     /// # Returns
-    /// - `ManagedDecimal<C::Api, NumDecimals>`: Available reserves in pool decimals.
+    /// - `ManagedDecimal<C::Api, NumDecimals>`: Available reserves in pool asset_decimals.
     ///
     /// **Security Tip**: Prevents underflow by returning 0 if `revenue` exceeds `reserves`.
     pub fn get_reserves(&self) -> ManagedDecimal<C::Api, NumDecimals> {
         if self.reserves >= self.revenue {
             self.reserves.clone() - self.revenue.clone()
         } else {
-            ManagedDecimal::from_raw_units(BigUint::zero(), self.pool_params.decimals)
+            ManagedDecimal::from_raw_units(BigUint::zero(), self.pool_params.asset_decimals)
         }
     }
 
@@ -238,14 +238,14 @@ where
     /// - `available_revenue = min(revenue, reserves)`.
     ///
     /// # Returns
-    /// - `ManagedDecimal<C::Api, NumDecimals>`: Available revenue in pool decimals.
+    /// - `ManagedDecimal<C::Api, NumDecimals>`: Available revenue in pool asset_decimals.
     pub fn available_revenue(&self) -> ManagedDecimal<C::Api, NumDecimals> {
         ManagedDecimal::from_raw_units(
             BigUint::min(
                 self.revenue.into_raw_units().clone(),
                 self.reserves.into_raw_units().clone(),
             ),
-            self.pool_params.decimals,
+            self.pool_params.asset_decimals,
         )
     }
 

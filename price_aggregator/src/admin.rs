@@ -65,12 +65,12 @@ pub trait AdminModule:
 
     #[only_owner]
     #[endpoint(setPairDecimals)]
-    fn set_pair_decimals(&self, from: ManagedBuffer, to: ManagedBuffer, decimals: u8) {
+    fn set_pair_decimals(&self, from: ManagedBuffer, to: ManagedBuffer, asset_decimals: u8) {
         let pair_decimals_mapper = self.pair_decimals(&from, &to);
         if !pair_decimals_mapper.is_empty() {
             self.require_paused();
         }
-        pair_decimals_mapper.set(Some(decimals));
+        pair_decimals_mapper.set(Some(asset_decimals));
         let pair: TokenPair<<Self as ContractBase>::Api> = TokenPair { from, to };
         self.clear_submissions(&pair);
     }

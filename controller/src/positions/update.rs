@@ -1,4 +1,4 @@
-use common_events::AccountPosition;
+use common_structs::{AccountPosition, AccountPositionType};
 
 use crate::{contexts::base::StorageCache, helpers, oracle, storage, utils, validation};
 
@@ -18,117 +18,159 @@ pub trait PositionUpdateModule:
     + account::PositionAccountModule
     + common_math::SharedMathModule
 {
-    /// Updates all borrow positions for an account with accumulated interest
+    /// Syncs borrow positions with the liquidity layer.
+    /// Updates accrued interest for all borrow positions.
     ///
     /// # Arguments
-    /// * `account_position` - The NFT nonce representing the account position
-    /// * `fetch_price` - Whether to fetch current price data for each asset
+    /// - `account_nonce`: Position NFT nonce.
+    /// - `storage_cache`: Mutable storage cache.
+    /// - `should_fetch_price`: Flag to fetch prices.
+    /// - `should_return_map`: Flag to return index map.
     ///
     /// # Returns
-    /// * `ManagedVec<AccountPosition>` - Vector of updated borrow positions
-    ///
-    /// Updates each borrow position by calling the liquidity pool to calculate
-    /// accumulated interest. Stores the updated positions in storage and returns them.
-    fn update_debt(
+    /// - Tuple of (updated positions, optional index map).
+    fn sync_borrow_positions_interest(
         &self,
-        account_position: u64,
+        account_nonce: u64,
         storage_cache: &mut StorageCache<Self>,
-        fetch_price: bool,
-        return_map: bool,
+        should_fetch_price: bool,
+        should_return_map: bool,
     ) -> (
         ManagedVec<AccountPosition<Self::Api>>,
         ManagedMapEncoded<Self::Api, EgldOrEsdtTokenIdentifier, usize>,
     ) {
-        let borrow_positions = self.borrow_positions(account_position);
-        let mut positions: ManagedVec<Self::Api, AccountPosition<Self::Api>> = ManagedVec::new();
-        let mut index_position =
-            ManagedMapEncoded::<Self::Api, EgldOrEsdtTokenIdentifier, usize>::new();
+        let borrow_positions_map = self.borrow_positions(account_nonce);
+        let mut updated_positions = ManagedVec::new();
+        let mut position_index_map = ManagedMapEncoded::new();
 
-        for (index, token_id) in borrow_positions.keys().enumerate() {
-            let mut bp = borrow_positions.get(&token_id).unwrap();
-            let asset_address = storage_cache.get_cached_pool_address(&bp.token_id);
-            let price = if fetch_price {
-                let result = self.get_token_price(&bp.token_id, storage_cache);
-                OptionalValue::Some(result.price)
-            } else {
-                OptionalValue::None
-            };
+        for (index, token_id) in borrow_positions_map.keys().enumerate() {
+            let mut borrow_position = borrow_positions_map.get(&token_id).unwrap();
+            let pool_address = storage_cache.get_cached_pool_address(&borrow_position.asset_id);
+            let price = self.fetch_price_if_needed(
+                &borrow_position.asset_id,
+                storage_cache,
+                should_fetch_price,
+            );
 
-            self.update_position(&asset_address, &mut bp, price);
+            self.update_position(&pool_address, &mut borrow_position, price);
 
-            if fetch_price {
-                self.update_position_event(
-                    &ManagedDecimal::from_raw_units(BigUint::zero(), 0usize),
-                    &bp,
-                    OptionalValue::None,
-                    OptionalValue::None,
-                    OptionalValue::None,
-                );
+            if should_fetch_price {
+                self.emit_position_update_event(&borrow_position);
             }
 
-            if return_map {
-                // Required to make + 1 because 0 value will not be detected during .includes()
-                let safe_index = index + 1;
-                // We are sure the token can not be twice in the same account position
-                index_position.put(&bp.token_id, &safe_index);
+            if should_return_map {
+                let safe_index = index + 1; // Avoid zero index issues
+                position_index_map.put(&borrow_position.asset_id, &safe_index);
             }
 
-            self.borrow_positions(account_position)
-                .insert(bp.token_id.clone(), bp.clone());
-
-            positions.push(bp.clone());
+            self.store_updated_position(account_nonce, &borrow_position);
+            updated_positions.push(borrow_position.clone());
         }
-        (positions, index_position)
+
+        (updated_positions, position_index_map)
     }
 
-    /// Updates all collateral positions for an account with accumulated interest
+    /// Syncs deposit positions with the liquidity layer.
+    /// Updates accrued interest for non-vault deposits.
     ///
     /// # Arguments
-    /// * `account_position` - The NFT nonce representing the account position
-    /// * `fetch_price` - Whether to fetch current price data for each asset
+    /// - `account_nonce`: Position NFT nonce.
+    /// - `storage_cache`: Mutable storage cache.
+    /// - `should_fetch_price`: Flag to fetch prices.
     ///
     /// # Returns
-    /// * `ManagedVec<AccountPosition>` - Vector of updated collateral positions
-    ///
-    /// Updates each collateral position by calling the liquidity pool to calculate
-    /// accumulated interest. Skips vault positions as they don't accrue interest.
-    /// Stores the updated positions in storage and returns them.
-    fn update_interest(
+    /// - Vector of updated deposit positions.
+    fn sync_deposit_positions_interest(
         &self,
-        account_position: u64,
+        account_nonce: u64,
         storage_cache: &mut StorageCache<Self>,
-        fetch_price: bool,
+        should_fetch_price: bool,
     ) -> ManagedVec<AccountPosition<Self::Api>> {
-        let positions_map = self.deposit_positions(account_position);
-        let mut positions: ManagedVec<Self::Api, AccountPosition<Self::Api>> = ManagedVec::new();
-        for mut dp in positions_map.values() {
-            let asset_address = storage_cache.get_cached_pool_address(&dp.token_id);
-            if !dp.is_vault {
-                let price = if fetch_price {
-                    let result = self.get_token_price(&dp.token_id, storage_cache);
-                    OptionalValue::Some(result.price)
-                } else {
-                    OptionalValue::None
-                };
-                self.update_position(&asset_address, &mut dp, price);
+        let deposit_positions_map = self.deposit_positions(account_nonce);
+        let mut updated_positions = ManagedVec::new();
 
-                if fetch_price {
-                    self.update_position_event(
-                        &ManagedDecimal::from_raw_units(BigUint::zero(), 0usize),
-                        &dp,
-                        OptionalValue::None,
-                        OptionalValue::None,
-                        OptionalValue::None,
-                    );
+        for mut deposit_position in deposit_positions_map.values() {
+            if !deposit_position.is_vault_position {
+                let pool_address =
+                    storage_cache.get_cached_pool_address(&deposit_position.asset_id);
+                let price = self.fetch_price_if_needed(
+                    &deposit_position.asset_id,
+                    storage_cache,
+                    should_fetch_price,
+                );
+
+                self.update_position(&pool_address, &mut deposit_position, price);
+
+                if should_fetch_price {
+                    self.emit_position_update_event(&deposit_position);
                 }
-                self.deposit_positions(account_position)
-                    .insert(dp.token_id.clone(), dp.clone());
 
-                positions.push(dp);
-            } else {
-                positions.push(dp.clone());
+                self.store_updated_position(account_nonce, &deposit_position);
+            }
+            updated_positions.push(deposit_position.clone());
+        }
+
+        updated_positions
+    }
+
+    /// Fetches token price if requested.
+    /// Supports conditional price updates.
+    ///
+    /// # Arguments
+    /// - `token_id`: Token identifier.
+    /// - `storage_cache`: Mutable storage cache.
+    /// - `should_fetch`: Fetch price flag.
+    ///
+    /// # Returns
+    /// - Optional price value.
+    fn fetch_price_if_needed(
+        &self,
+        token_id: &EgldOrEsdtTokenIdentifier,
+        storage_cache: &mut StorageCache<Self>,
+        should_fetch: bool,
+    ) -> OptionalValue<ManagedDecimal<Self::Api, NumDecimals>> {
+        if should_fetch {
+            let result = self.get_token_price(token_id, storage_cache);
+            OptionalValue::Some(result.price)
+        } else {
+            OptionalValue::None
+        }
+    }
+
+    /// Stores an updated position in storage.
+    /// Handles deposit or borrow position types.
+    ///
+    /// # Arguments
+    /// - `account_nonce`: Position NFT nonce.
+    /// - `position`: Updated position.
+    fn store_updated_position(&self, account_nonce: u64, position: &AccountPosition<Self::Api>) {
+        match position.position_type {
+            common_events::AccountPositionType::Deposit => {
+                self.deposit_positions(account_nonce)
+                    .insert(position.asset_id.clone(), position.clone());
+            }
+            AccountPositionType::Borrow => {
+                self.borrow_positions(account_nonce)
+                    .insert(position.asset_id.clone(), position.clone());
+            }
+            AccountPositionType::None => {
+                panic!("Position type is None");
             }
         }
-        positions
+    }
+
+    /// Emits an event for a position update.
+    /// Logs interest accruals or changes.
+    ///
+    /// # Arguments
+    /// - `position`: Updated position.
+    fn emit_position_update_event(&self, position: &AccountPosition<Self::Api>) {
+        self.update_position_event(
+            &ManagedDecimal::from_raw_units(BigUint::zero(), 0usize),
+            position,
+            OptionalValue::None,
+            OptionalValue::None,
+            OptionalValue::None,
+        );
     }
 }

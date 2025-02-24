@@ -1,12 +1,12 @@
 multiversx_sc::imports!();
 
-pub use common_events::*;
-use common_errors::*;
 use crate::helpers;
 use crate::oracle;
 use crate::proxies::*;
 use crate::storage;
 use crate::utils;
+use common_errors::*;
+pub use common_events::*;
 
 #[multiversx_sc::module]
 pub trait ConfigModule:
@@ -17,6 +17,15 @@ pub trait ConfigModule:
     + helpers::math::MathsModule
     + common_math::SharedMathModule
 {
+    /// Registers a new NFT token for tracking account positions.
+    /// Issues an ESDT token with non-fungible properties.
+    ///
+    /// # Arguments
+    /// - `token_name`: Name of the NFT token.
+    /// - `ticker`: Ticker symbol for the NFT token.
+    ///
+    /// # Notes
+    /// - Requires EGLD payment for issuance.
     #[only_owner]
     #[payable("EGLD")]
     #[endpoint(registerAccountToken)]
@@ -32,6 +41,20 @@ pub trait ConfigModule:
         );
     }
 
+    /// Configures the oracle for a token’s price feed.
+    /// Sets up pricing method, source, and tolerances.
+    ///
+    /// # Arguments
+    /// - `market_token`: Token identifier (EGLD or ESDT).
+    /// - `decimals`: Decimal precision for the price.
+    /// - `contract_address`: Address of the oracle contract.
+    /// - `pricing_method`: Method for price determination (e.g., Safe, Aggregator).
+    /// - `token_type`: Oracle type (e.g., Normal, Derived).
+    /// - `source`: Exchange source (e.g., XExchange).
+    /// - `first_tolerance`, `last_tolerance`: Tolerance values for price fluctuations.
+    ///
+    /// # Errors
+    /// - `ERROR_ORACLE_TOKEN_NOT_FOUND`: If oracle already exists for the token.
     #[only_owner]
     #[endpoint(setTokenOracle)]
     fn set_token_oracle(
@@ -96,22 +119,31 @@ pub trait ConfigModule:
             }
         };
 
-        let tolerance = self.get_anchor_tolerances(&first_tolerance, &last_tolerance);
+        let tolerance = self.validate_and_calculate_tolerances(&first_tolerance, &last_tolerance);
 
         let oracle = OracleProvider {
-            decimals,
-            contract_address: contract_address.clone(),
+            base_token_id: first_token_id,
+            quote_token_id: second_token_id,
+            oracle_contract_address: contract_address.clone(),
+            oracle_type: token_type,
+            exchange_source: source,
+            price_decimals: decimals,
             pricing_method,
-            token_type,
-            source,
-            first_token_id,
-            second_token_id,
             tolerance,
         };
 
         mapper.set(&oracle);
     }
 
+    /// Updates the tolerance settings for a token’s oracle.
+    /// Adjusts acceptable price deviation ranges.
+    ///
+    /// # Arguments
+    /// - `market_token`: Token identifier (EGLD or ESDT).
+    /// - `first_tolerance`, `last_tolerance`: New tolerance values.
+    ///
+    /// # Errors
+    /// - `ERROR_ORACLE_TOKEN_NOT_FOUND`: If no oracle exists for the token.
     #[only_owner]
     #[endpoint(editTokenOracleTolerance)]
     fn edit_token_oracle_tolerance(
@@ -125,12 +157,20 @@ pub trait ConfigModule:
             ERROR_ORACLE_TOKEN_NOT_FOUND
         );
 
-        let tolerance = self.get_anchor_tolerances(&first_tolerance, &last_tolerance);
+        let tolerance = self.validate_and_calculate_tolerances(&first_tolerance, &last_tolerance);
         self.token_oracle(market_token).update(|oracle| {
             oracle.tolerance = tolerance;
         });
     }
 
+    /// Sets the price aggregator contract address.
+    /// Configures the source for aggregated price data.
+    ///
+    /// # Arguments
+    /// - `aggregator`: Address of the price aggregator contract.
+    ///
+    /// # Errors
+    /// - `ERROR_INVALID_AGGREGATOR`: If address is zero or not a smart contract.
     #[only_owner]
     #[endpoint(setAggregator)]
     fn set_aggregator(&self, aggregator: ManagedAddress) {
@@ -143,6 +183,14 @@ pub trait ConfigModule:
         self.price_aggregator_address().set(&aggregator);
     }
 
+    /// Sets the accumulator contract address.
+    /// Configures where protocol revenue is collected.
+    ///
+    /// # Arguments
+    /// - `accumulator`: Address of the accumulator contract.
+    ///
+    /// # Errors
+    /// - `ERROR_INVALID_AGGREGATOR`: If address is zero or not a smart contract.
     #[only_owner]
     #[endpoint(setAccumulator)]
     fn set_accumulator(&self, accumulator: ManagedAddress) {
@@ -155,6 +203,14 @@ pub trait ConfigModule:
         self.accumulator_address().set(&accumulator);
     }
 
+    /// Sets the safe price view contract address.
+    /// Configures the source for safe price data in liquidation checks.
+    ///
+    /// # Arguments
+    /// - `safe_view_address`: Address of the safe price view contract.
+    ///
+    /// # Errors
+    /// - `ERROR_INVALID_AGGREGATOR`: If address is zero or not a smart contract.
     #[only_owner]
     #[endpoint(setSafePriceView)]
     fn set_safe_price_view(&self, safe_view_address: ManagedAddress) {
@@ -167,6 +223,14 @@ pub trait ConfigModule:
         self.safe_price_view().set(&safe_view_address);
     }
 
+    /// Sets the template address for liquidity pools.
+    /// Used for deploying new pools with a standard template.
+    ///
+    /// # Arguments
+    /// - `address`: Address of the liquidity pool template contract.
+    ///
+    /// # Errors
+    /// - `ERROR_INVALID_LIQUIDITY_POOL_TEMPLATE`: If address is zero or not a smart contract.
     #[only_owner]
     #[endpoint(setLiquidityPoolTemplate)]
     fn set_liquidity_pool_template(&self, address: ManagedAddress) {
@@ -179,6 +243,16 @@ pub trait ConfigModule:
         self.liq_pool_template_address().set(&address);
     }
 
+    /// Adds a new e-mode category with risk parameters.
+    /// Creates an efficiency mode for optimized asset usage.
+    ///
+    /// # Arguments
+    /// - `ltv`: Loan-to-value ratio in BPS.
+    /// - `liquidation_threshold`: Liquidation threshold in BPS.
+    /// - `liquidation_bonus`: Liquidation bonus in BPS.
+    ///
+    /// # Notes
+    /// - Assigns a new category ID automatically.
     #[only_owner]
     #[endpoint(addEModeCategory)]
     fn add_e_mode_category(
@@ -191,32 +265,49 @@ pub trait ConfigModule:
 
         let last_id = map.get();
         let category = EModeCategory {
-            id: last_id + 1,
-            ltv: self.to_decimal_bps(ltv),
+            category_id: last_id + 1,
+            loan_to_value: self.to_decimal_bps(ltv),
             liquidation_threshold: self.to_decimal_bps(liquidation_threshold),
             liquidation_bonus: self.to_decimal_bps(liquidation_bonus),
             is_deprecated: false,
         };
 
-        map.set(category.id);
+        map.set(category.category_id);
 
         self.update_e_mode_category_event(&category);
-        self.e_mode_category().insert(category.id, category);
+        self.e_mode_category()
+            .insert(category.category_id, category);
     }
 
+    /// Edits an existing e-mode category’s parameters.
+    /// Updates risk settings for the category.
+    ///
+    /// # Arguments
+    /// - `category`: The updated `EModeCategory` struct.
+    ///
+    /// # Errors
+    /// - `ERROR_EMODE_CATEGORY_NOT_FOUND`: If the category ID does not exist.
     #[only_owner]
     #[endpoint(editEModeCategory)]
     fn edit_e_mode_category(&self, category: EModeCategory<Self::Api>) {
         let mut map = self.e_mode_category();
         require!(
-            map.contains_key(&category.id),
+            map.contains_key(&category.category_id),
             ERROR_EMODE_CATEGORY_NOT_FOUND
         );
 
         self.update_e_mode_category_event(&category);
-        map.insert(category.id, category);
+        map.insert(category.category_id, category);
     }
 
+    /// Removes an e-mode category by marking it as deprecated.
+    /// Disables the category for new positions.
+    ///
+    /// # Arguments
+    /// - `category_id`: ID of the e-mode category to remove.
+    ///
+    /// # Errors
+    /// - `ERROR_EMODE_CATEGORY_NOT_FOUND`: If the category ID does not exist.
     #[only_owner]
     #[endpoint(removeEModeCategory)]
     fn remove_e_mode_category(&self, category_id: u8) {
@@ -242,6 +333,19 @@ pub trait ConfigModule:
         map.insert(category_id, old_info);
     }
 
+    /// Adds an asset to an e-mode category with usage flags.
+    /// Configures collateral and borrowability in e-mode.
+    ///
+    /// # Arguments
+    /// - `asset`: Token identifier (EGLD or ESDT).
+    /// - `category_id`: E-mode category ID.
+    /// - `can_be_collateral`: Flag for collateral usability.
+    /// - `can_be_borrowed`: Flag for borrowability.
+    ///
+    /// # Errors
+    /// - `ERROR_EMODE_CATEGORY_NOT_FOUND`: If the category ID does not exist.
+    /// - `ERROR_ASSET_NOT_SUPPORTED`: If the asset has no pool.
+    /// - `ERROR_ASSET_ALREADY_SUPPORTED_IN_EMODE`: If the asset is already in the category.
     #[only_owner]
     #[endpoint(addAssetToEModeCategory)]
     fn add_asset_to_e_mode_category(
@@ -276,21 +380,32 @@ pub trait ConfigModule:
 
         let mut asset_data = asset_map.get();
 
-        if !asset_data.is_e_mode_enabled {
-            asset_data.is_e_mode_enabled = true;
+        if !asset_data.has_emode() {
+            asset_data.e_mode_enabled = true;
 
             self.update_asset_config_event(&asset, &asset_data);
             asset_map.set(asset_data);
         }
         let e_mode_asset_config = EModeAssetConfig {
-            can_be_collateral,
-            can_be_borrowed,
+            is_collateralizable: can_be_collateral,
+            is_borrowable: can_be_borrowed,
         };
         self.update_e_mode_asset_event(&asset, &e_mode_asset_config, category_id);
         asset_e_modes.insert(category_id);
         e_mode_assets.insert(asset, e_mode_asset_config);
     }
 
+    /// Edits an asset’s configuration within an e-mode category.
+    /// Updates usage flags for collateral or borrowing.
+    ///
+    /// # Arguments
+    /// - `asset`: Token identifier (EGLD or ESDT).
+    /// - `category_id`: E-mode category ID.
+    /// - `config`: New `EModeAssetConfig` settings.
+    ///
+    /// # Errors
+    /// - `ERROR_EMODE_CATEGORY_NOT_FOUND`: If the category ID does not exist.
+    /// - `ERROR_ASSET_NOT_SUPPORTED_IN_EMODE`: If the asset is not in the category.
     #[only_owner]
     #[endpoint(editAssetInEModeCategory)]
     fn edit_asset_in_e_mode_category(
@@ -307,6 +422,17 @@ pub trait ConfigModule:
         map.insert(asset, config);
     }
 
+    /// Removes an asset from an e-mode category.
+    /// Disables the asset’s e-mode capabilities for the category.
+    ///
+    /// # Arguments
+    /// - `asset`: Token identifier (EGLD or ESDT).
+    /// - `category_id`: E-mode category ID.
+    ///
+    /// # Errors
+    /// - `ERROR_EMODE_CATEGORY_NOT_FOUND`: If the category ID does not exist.
+    /// - `ERROR_ASSET_NOT_SUPPORTED`: If the asset has no pool.
+    /// - `ERROR_ASSET_NOT_SUPPORTED_IN_EMODE`: If the asset is not in the category.
     #[only_owner]
     #[endpoint(removeAssetFromEModeCategory)]
     fn remove_asset_from_e_mode_category(&self, asset: EgldOrEsdtTokenIdentifier, category_id: u8) {
@@ -328,30 +454,53 @@ pub trait ConfigModule:
         self.update_e_mode_asset_event(&asset, &config.unwrap(), category_id);
         if asset_e_modes.is_empty() {
             let mut asset_data = self.asset_config(&asset).get();
-            asset_data.is_e_mode_enabled = false;
+            asset_data.e_mode_enabled = false;
 
             self.update_asset_config_event(&asset, &asset_data);
             self.asset_config(&asset).set(asset_data);
         }
     }
 
+    /// Edits an asset’s configuration in the protocol.
+    /// Updates risk parameters, usage flags, and caps.
+    ///
+    /// # Arguments
+    /// - `asset`: Token identifier (EGLD or ESDT).
+    /// - `loan_to_value`: New LTV in BPS.
+    /// - `liquidation_threshold`: New liquidation threshold in BPS.
+    /// - `liquidation_bonus`: New liquidation bonus in BPS.
+    /// - `liquidation_fees`: New liquidation fees in BPS.
+    /// - `is_isolated_asset`: Flag for isolated asset status.
+    /// - `isolation_debt_ceiling_usd`: Debt ceiling for isolated assets in USD.
+    /// - `is_siloed_borrowing`: Flag for siloed borrowing.
+    /// - `is_flashloanable`: Flag for flash loan support.
+    /// - `flashloan_fee`: Flash loan fee in BPS.
+    /// - `is_collateralizable`: Flag for collateral usability.
+    /// - `is_borrowable`: Flag for borrowability.
+    /// - `isolation_borrow_enabled`: Flag for borrowing in isolation mode.
+    /// - `borrow_cap`: New borrow cap (zero for no cap).
+    /// - `supply_cap`: New supply cap (zero for no cap).
+    ///
+    /// # Errors
+    /// - `ERROR_ASSET_NOT_SUPPORTED`: If the asset has no pool or config.
+    /// - `ERROR_INVALID_LIQUIDATION_THRESHOLD`: If threshold is not greater than LTV.
     #[only_owner]
     #[endpoint(editAssetConfig)]
     fn edit_asset_config(
         &self,
         asset: EgldOrEsdtTokenIdentifier,
-        ltv: BigUint,
+        loan_to_value: BigUint,
         liquidation_threshold: BigUint,
-        liquidation_base_bonus: BigUint,
-        liquidation_max_fee: BigUint,
-        is_isolated: bool,
-        debt_ceiling_usd: BigUint,
-        is_siloed: bool,
-        flashloan_enabled: bool,
-        flash_loan_fee: BigUint,
-        can_be_collateral: bool,
-        can_be_borrowed: bool,
-        can_borrow_in_isolation: bool,
+        liquidation_bonus: BigUint,
+        liquidation_fees: BigUint,
+        is_isolated_asset: bool,
+        isolation_debt_ceiling_usd: BigUint,
+        is_siloed_borrowing: bool,
+        is_flashloanable: bool,
+        flashloan_fee: BigUint,
+        is_collateralizable: bool,
+        is_borrowable: bool,
+        isolation_borrow_enabled: bool,
         borrow_cap: BigUint,
         supply_cap: BigUint,
     ) {
@@ -364,26 +513,26 @@ pub trait ConfigModule:
         require!(!map.is_empty(), ERROR_ASSET_NOT_SUPPORTED);
 
         require!(
-            liquidation_threshold > ltv,
+            liquidation_threshold > loan_to_value,
             ERROR_INVALID_LIQUIDATION_THRESHOLD
         );
 
         let old_config = map.get();
 
         let new_config = &AssetConfig {
-            ltv: self.to_decimal_bps(ltv),
+            loan_to_value: self.to_decimal_bps(loan_to_value),
             liquidation_threshold: self.to_decimal_bps(liquidation_threshold),
-            liquidation_base_bonus: self.to_decimal_bps(liquidation_base_bonus),
-            liquidation_max_fee: self.to_decimal_bps(liquidation_max_fee),
-            is_e_mode_enabled: old_config.is_e_mode_enabled,
-            is_isolated,
-            debt_ceiling_usd: self.to_decimal_bps(debt_ceiling_usd),
-            is_siloed,
-            flashloan_enabled,
-            flash_loan_fee: self.to_decimal_bps(flash_loan_fee),
-            can_be_collateral,
-            can_be_borrowed,
-            can_borrow_in_isolation,
+            liquidation_bonus: self.to_decimal_bps(liquidation_bonus),
+            liquidation_fees: self.to_decimal_bps(liquidation_fees),
+            e_mode_enabled: old_config.e_mode_enabled,
+            is_isolated_asset,
+            isolation_debt_ceiling_usd: self.to_decimal_bps(isolation_debt_ceiling_usd),
+            is_siloed_borrowing,
+            is_flashloanable,
+            flashloan_fee: self.to_decimal_bps(flashloan_fee),
+            is_collateralizable,
+            is_borrowable,
+            isolation_borrow_enabled,
             borrow_cap: if borrow_cap == BigUint::zero() {
                 None
             } else {

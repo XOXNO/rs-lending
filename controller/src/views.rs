@@ -13,52 +13,58 @@ pub trait ViewsModule:
     + helpers::math::MathsModule
     + common_math::SharedMathModule
 {
+    /// Retrieves extended configuration views for multiple assets.
+    /// Includes market addresses and current prices in EGLD and USD.
+    ///
+    /// # Arguments
+    /// - `assets`: List of token identifiers (EGLD or ESDT) to query.
+    ///
+    /// # Returns
+    /// - Vector of `AssetExtendedConfigView` structs for each asset.
     #[view(getAllMarkets)]
     fn get_all_markets(
         &self,
-        tokens: MultiValueEncoded<EgldOrEsdtTokenIdentifier>,
+        assets: MultiValueEncoded<EgldOrEsdtTokenIdentifier>,
     ) -> ManagedVec<AssetExtendedConfigView<Self::Api>> {
         let mut storage_cache = StorageCache::new(self);
         let mut markets = ManagedVec::new();
-        for token in tokens {
-            let pool_address = self.pools_map(&token).get();
-            let feed = self.get_token_price(&token, &mut storage_cache);
-            let usd =
-                self.get_token_amount_in_dollars_raw(&feed.price, &storage_cache.egld_price_feed);
+        for asset in assets {
+            let pool_address = self.pools_map(&asset).get();
+            let feed = self.get_token_price(&asset, &mut storage_cache);
+            let usd = self.get_token_usd_value(&feed.price, &storage_cache.egld_price_feed);
 
             markets.push(AssetExtendedConfigView {
-                token,
-                market_address: pool_address,
-                egld_price: feed.price,
-                usd_price: usd,
+                asset_id: asset,
+                market_contract_address: pool_address,
+                price_in_egld: feed.price,
+                price_in_usd: usd,
             });
         }
         markets
     }
 
-    /// Checks if an account position can be liquidated
+    /// Determines if an account position is eligible for liquidation.
+    /// Checks if the health factor is below 1 (100% in WAD precision).
     ///
     /// # Arguments
-    /// * `account_position` - NFT nonce of the account position
+    /// - `account_position`: NFT nonce of the account position.
     ///
     /// # Returns
-    /// * `bool` - True if position can be liquidated (health factor < 100%)
-    ///
-    /// ```
+    /// - `bool`: `true` if the position can be liquidated.
     #[view(canBeLiquidated)]
     fn can_be_liquidated(&self, account_position: u64) -> bool {
         let health_factor = self.get_health_factor(account_position);
         health_factor < self.wad()
     }
 
-    /// Gets the current health factor for an account position
+    /// Computes the current health factor for an account position.
+    /// Indicates position safety; lower values increase liquidation risk.
     ///
     /// # Arguments
-    /// * `account_position` - NFT nonce of the account position
+    /// - `account_position`: NFT nonce of the account position.
     ///
     /// # Returns
-    /// * `BigUint` - Health factor in basis points (10000 = 100%)
-    /// ```
+    /// - Health factor as a `ManagedDecimal` in WAD precision.
     #[view(getHealthFactor)]
     fn get_health_factor(&self, account_position: u64) -> ManagedDecimal<Self::Api, NumDecimals> {
         let collateral_in_egld = self.get_liquidation_collateral_available(account_position);
@@ -66,16 +72,18 @@ pub trait ViewsModule:
         self.compute_health_factor(&collateral_in_egld, &borrowed_egld)
     }
 
-    /// Gets the collateral amount for a specific token
+    /// Retrieves the collateral amount for a specific token in an account position.
+    /// Fails if the token is not part of the position’s collateral.
     ///
     /// # Arguments
-    /// * `account_position` - NFT nonce of the account position
-    /// * `token_id` - Token identifier to check
+    /// - `account_position`: NFT nonce of the account position.
+    /// - `token_id`: Token identifier (EGLD or ESDT) to query.
     ///
     /// # Returns
-    /// * `BigUint` - Amount of token supplied as collateral
+    /// - Collateral amount as a `ManagedDecimal`.
     ///
-    /// ```
+    /// # Panics
+    /// - If the token is not in the account’s collateral.
     #[view(getCollateralAmountForToken)]
     fn get_collateral_amount_for_token(
         &self,
@@ -88,16 +96,18 @@ pub trait ViewsModule:
         }
     }
 
-    /// Gets the borrowed amount for a specific token
+    /// Retrieves the borrowed amount for a specific token in an account position.
+    /// Fails if the token is not part of the position’s borrows.
     ///
     /// # Arguments
-    /// * `account_position` - NFT nonce of the account position
-    /// * `token_id` - Token identifier to check
+    /// - `account_position`: NFT nonce of the account position.
+    /// - `token_id`: Token identifier (EGLD or ESDT) to query.
     ///
     /// # Returns
-    /// * `BigUint` - Amount of token borrowed
+    /// - Borrowed amount as a `ManagedDecimal`.
     ///
-    /// ```
+    /// # Panics
+    /// - If the token is not in the account’s borrows.
     #[view(getBorrowAmountForToken)]
     fn get_borrow_amount_for_token(
         &self,
@@ -110,22 +120,14 @@ pub trait ViewsModule:
         }
     }
 
-    /// Gets total value of borrowed assets in USD
+    /// Computes the total borrow value in EGLD for an account position.
+    /// Sums the EGLD value of all borrowed assets.
     ///
     /// # Arguments
-    /// * `account_position` - NFT nonce of the account position
+    /// - `account_position`: NFT nonce of the account position.
     ///
     /// # Returns
-    /// * `BigUint` - Total USD value of all borrowed assets
-    ///
-    /// # Example
-    /// ```
-    /// // Position has:
-    /// // - 50 EGLD borrowed @ $100 each = $5,000
-    /// // - 500 USDC borrowed @ $1 each = $500
-    ///
-    /// get_total_borrow_in_egld(1) = 5_500_000_000 // $5,500
-    /// ```
+    /// - Total borrow value in EGLD as a `ManagedDecimal`.
     #[view(getTotalBorrowInEgld)]
     fn get_total_borrow_in_egld(
         &self,
@@ -134,25 +136,20 @@ pub trait ViewsModule:
         let mut storage_cache = StorageCache::new(self);
         let borrow_positions = self.borrow_positions(account_position);
 
-        self.sum_borrows(&borrow_positions.values().collect(), &mut storage_cache)
+        self.calculate_total_borrow_in_egld(
+            &borrow_positions.values().collect(),
+            &mut storage_cache,
+        )
     }
 
-    /// Gets total value of collateral assets in USD
+    /// Computes the total collateral value in EGLD for an account position.
+    /// Sums the EGLD value of all collateral assets (unweighted).
     ///
     /// # Arguments
-    /// * `account_position` - NFT nonce of the account position
+    /// - `account_position`: NFT nonce of the account position.
     ///
     /// # Returns
-    /// * `BigUint` - Total USD value of all collateral assets (unweighted)
-    ///
-    /// # Example
-    /// ```
-    /// // Position has:
-    /// // - 100 EGLD supplied @ $100 each = $10,000
-    /// // - 1000 USDC supplied @ $1 each = $1,000
-    ///
-    /// get_total_collateral_in_dollars(1) = 11_000_000_000 // $11,000
-    /// ```
+    /// - Total collateral value in EGLD as a `ManagedDecimal`.
     #[view(getTotalCollateralInEgld)]
     fn get_total_collateral_in_egld(
         &self,
@@ -166,7 +163,7 @@ pub trait ViewsModule:
 
         for dp in deposit_positions.values() {
             deposited_amount_in_egld += self.get_token_amount_in_egld(
-                &dp.token_id,
+                &dp.asset_id,
                 &dp.get_total_amount(),
                 &mut storage_cache,
             );
@@ -175,22 +172,14 @@ pub trait ViewsModule:
         deposited_amount_in_egld
     }
 
-    /// Gets total value of collateral available for liquidation in USD
+    /// Computes the liquidation collateral available in EGLD.
+    /// Represents collateral value weighted by liquidation thresholds.
     ///
     /// # Arguments
-    /// * `account_nonce` - NFT nonce of the account position
+    /// - `account_nonce`: NFT nonce of the account position.
     ///
     /// # Returns
-    /// * `BigUint` - Total USD value of collateral weighted by liquidation thresholds
-    ///
-    /// # Example
-    /// ```
-    /// // Position has:
-    /// // - 100 EGLD @ $100 each = $10,000, threshold 80% = $8,000
-    /// // - 1000 USDC @ $1 each = $1,000, threshold 85% = $850
-    ///
-    /// get_liquidation_collateral_available(1) = 8_850_000_000 // $8,850
-    /// ```
+    /// - Liquidation collateral in EGLD as a `ManagedDecimal`.
     #[view(getLiquidationCollateralAvailable)]
     fn get_liquidation_collateral_available(
         &self,
@@ -200,28 +189,20 @@ pub trait ViewsModule:
 
         let mut storage_cache = StorageCache::new(self);
 
-        let (weighted_collateral, _, _) =
-            self.sum_collaterals(&deposit_positions.values().collect(), &mut storage_cache);
+        let (weighted_collateral, _, _) = self
+            .calculate_collateral_values(&deposit_positions.values().collect(), &mut storage_cache);
 
         weighted_collateral
     }
 
-    /// Gets total value of collateral weighted by LTV ratios in USD
+    /// Computes the LTV-weighted collateral value in EGLD.
+    /// Represents collateral value weighted by loan-to-value ratios.
     ///
     /// # Arguments
-    /// * `account_position` - NFT nonce of the account position
+    /// - `account_position`: NFT nonce of the account position.
     ///
     /// # Returns
-    /// * `BigUint` - Total USD value of collateral weighted by LTV ratios
-    ///
-    /// # Example
-    /// ```
-    /// // Position has:
-    /// // - 100 EGLD @ $100 each = $10,000, LTV 75% = $7,500
-    /// // - 1000 USDC @ $1 each = $1,000, LTV 80% = $800
-    ///
-    /// get_ltv_collateral_in_dollars(1) = 8_300_000_000 // $8,300
-    /// ```
+    /// - LTV-weighted collateral in EGLD as a `ManagedDecimal`.
     #[view(getLtvCollateralInEgld)]
     fn get_ltv_collateral_in_egld(
         &self,
@@ -231,12 +212,20 @@ pub trait ViewsModule:
 
         let mut storage_cache = StorageCache::new(self);
 
-        let (_, _, ltv_collateral) =
-            self.sum_collaterals(&deposit_positions.values().collect(), &mut storage_cache);
+        let (_, _, ltv_collateral) = self
+            .calculate_collateral_values(&deposit_positions.values().collect(), &mut storage_cache);
 
         ltv_collateral
     }
 
+    /// Retrieves the USD price of a token using oracle data.
+    /// Converts the token’s EGLD price to USD for standardization.
+    ///
+    /// # Arguments
+    /// - `token_id`: Token identifier (EGLD or ESDT) to query.
+    ///
+    /// # Returns
+    /// - USD price of the token as a `ManagedDecimal`.
     #[view(getTokenPriceUSD)]
     fn get_usd_price(
         &self,
@@ -245,9 +234,17 @@ pub trait ViewsModule:
         let mut storage_cache = StorageCache::new(self);
         let data = self.get_token_price(token_id, &mut storage_cache);
 
-        self.get_token_amount_in_dollars_raw(&data.price, &storage_cache.egld_price_feed)
+        self.get_token_usd_value(&data.price, &storage_cache.egld_price_feed)
     }
 
+    /// Retrieves the EGLD price of a token using oracle data.
+    /// Accesses the token’s price feed directly.
+    ///
+    /// # Arguments
+    /// - `token_id`: Token identifier (EGLD or ESDT) to query.
+    ///
+    /// # Returns
+    /// - EGLD price of the token as a `ManagedDecimal`.
     #[view(getTokenPriceEGLD)]
     fn get_egld_price(
         &self,

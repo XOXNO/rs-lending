@@ -72,28 +72,28 @@ The protocol uses a **piecewise linear interest rate model** to dynamically adju
 
 - **Parameters**:
 
-  - `u_mid`: Midpoint utilization threshold.
-  - `u_optimal`: Optimal utilization threshold.
-  - `r_base`: Base borrow rate.
-  - `r_slope1`, `r_slope2`, `r_slope3`: Slopes for different utilization ranges.
-  - `r_max`: Maximum borrow rate.
+  - `mid_utilization`: Midpoint utilization threshold.
+  - `optimal_utilization`: Optimal utilization threshold.
+  - `base_borrow_rate`: Base borrow rate.
+  - `slope1`, `slope2`, `slope3`: Slopes for different utilization ranges.
+  - `max_borrow_rate`: Maximum borrow rate.
   - `reserve_factor`: Fraction of interest retained by the protocol.
 
 - **Borrow Rate Calculation**:
 
-  - If `u < u_mid`
+  - If `u < mid_utilization`
     $$
     \text{Borrow Rate} = r_{\text{base}} + \left( u \cdot \frac{r_{\text{slope1}}}{u_{\text{mid}}} \right)
     $$
-  - If `mid < u < u_optimal`
+  - If `mid < u < optimal_utilization`
     $$
     \text{Borrow Rate} = r_{\text{base}} + r_{\text{slope1}} + \left( (u - u_{\text{mid}}) \cdot \frac{r_{\text{slope2}}}{u_{\text{optimal}} - u_{\text{mid}}} \right)
     $$
-  - If  `u >= u_optimal`  
+  - If  `u >= optimal_utilization`  
     $$
     \text{Borrow Rate} = r_{\text{base}} + r_{\text{slope1}} + r_{\text{slope2}} + \left( (u - u_{\text{optimal}}) \cdot \frac{r_{\text{slope3}}}{1 - u_{\text{optimal}}} \right)
     $$
-  - The rate is capped at `r_max` and converted to a per-second rate for precise interest accrual.
+  - The rate is capped at `max_borrow_rate` and converted to a per-second rate for precise interest accrual.
 
 - **Deposit Rate Calculation**:  
   $$

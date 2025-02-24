@@ -281,14 +281,14 @@ where
         self,
         from: Arg0,
         to: Arg1,
-        decimals: Arg2,
+        asset_decimals: Arg2,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("setPairDecimals")
             .argument(&from)
             .argument(&to)
-            .argument(&decimals)
+            .argument(&asset_decimals)
             .original_result()
     }
 }
@@ -301,7 +301,7 @@ where
 {
     pub price: BigUint<Api>,
     pub timestamp: u64,
-    pub decimals: u8,
+    pub asset_decimals: u8,
     pub block: u64,
     pub epoch: u64,
 }
@@ -335,5 +335,5 @@ where
     pub to: ManagedBuffer<Api>,
     pub timestamp: u64,
     pub price: BigUint<Api>,
-    pub decimals: u8,
+    pub asset_decimals: u8,
 }

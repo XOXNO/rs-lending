@@ -52,7 +52,7 @@ pub trait UtilsModule:
                 &cache.pool_params.reserve_factor,
                 RAY_PRECISION,
             )
-            .rescale(cache.pool_params.decimals);
+            .rescale(cache.pool_params.asset_decimals);
         // 3. Update reserves
         cache.revenue += &protocol_fee;
 
@@ -103,7 +103,7 @@ pub trait UtilsModule:
     ///
     /// **Formula**:
     /// - `interest = amount * (current_index / account_position_index - 1)`
-    /// - Result is rescaled to match `amount`’s decimals.
+    /// - Result is rescaled to match `amount`’s asset_decimals.
     ///
     /// # Arguments
     /// - `amount`: Principal amount (`ManagedDecimal<Self::Api, NumDecimals>`).
@@ -146,7 +146,7 @@ pub trait UtilsModule:
     ///
     /// **Security Tip**: Handles zero amounts safely by resetting state, protected by caller ensuring valid position type.
     fn position_sync(&self, position: &mut AccountPosition<Self::Api>, cache: &mut Cache<Self>) {
-        let is_supply = position.deposit_type == AccountPositionType::Deposit;
+        let is_supply = position.position_type == AccountPositionType::Deposit;
         let index = if is_supply {
             cache.supply_index.clone()
         } else {
@@ -154,17 +154,17 @@ pub trait UtilsModule:
         };
 
         if position.get_total_amount().eq(&cache.zero) {
-            position.timestamp = cache.timestamp;
-            position.index = index.clone();
+            position.last_update_timestamp = cache.timestamp;
+            position.market_index = index.clone();
             return;
         }
         let accumulated_interest =
-            self.calc_interest(&position.get_total_amount(), &index, &position.index);
+            self.calc_interest(&position.get_total_amount(), &index, &position.market_index);
 
         if accumulated_interest.gt(&cache.zero) {
-            position.accumulated_interest += &accumulated_interest;
-            position.timestamp = cache.timestamp;
-            position.index = index.clone();
+            position.interest_accrued += &accumulated_interest;
+            position.last_update_timestamp = cache.timestamp;
+            position.market_index = index.clone();
         }
     }
 
@@ -205,20 +205,20 @@ pub trait UtilsModule:
             let over_repaid = repayment.clone() - position.get_total_amount();
             // The entire outstanding debt is cleared.
             (
-                position.amount.clone(),
-                position.accumulated_interest.clone(),
+                position.principal_amount.clone(),
+                position.interest_accrued.clone(),
                 over_repaid,
             )
         } else {
             // Partial repayment: first cover interest, then principal.
-            let interest_repaid = if repayment > &position.accumulated_interest {
-                position.accumulated_interest.clone()
+            let interest_repaid = if repayment > &position.interest_accrued {
+                position.interest_accrued.clone()
             } else {
                 repayment.clone()
             };
             let remaining = repayment.clone() - interest_repaid.clone();
-            let principal_repaid = if remaining > position.amount.clone() {
-                position.amount.clone()
+            let principal_repaid = if remaining > position.principal_amount.clone() {
+                position.principal_amount.clone()
             } else {
                 remaining
             };
@@ -364,7 +364,7 @@ pub trait UtilsModule:
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
-        let extra = self.calc_interest(amount, &cache.supply_index, &position.index);
+        let extra = self.calc_interest(amount, &cache.supply_index, &position.market_index);
         let (principal, interest, _) = self.split_repay(amount, position, cache);
         let mut to_withdraw = amount.clone() + extra;
         if is_liquidation && protocol_fee_opt.is_some() {

@@ -21,7 +21,7 @@ pub trait ViewsModule:
             to: token_pair.to,
             timestamp: last_price.timestamp,
             price: last_price.price,
-            decimals: last_price.decimals,
+            asset_decimals: last_price.asset_decimals,
         }
     }
 

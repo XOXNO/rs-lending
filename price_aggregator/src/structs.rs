@@ -16,7 +16,7 @@ pub struct PriceFeed<M: ManagedTypeApi> {
     pub to: ManagedBuffer<M>,
     pub timestamp: u64,
     pub price: BigUint<M>,
-    pub decimals: u8,
+    pub asset_decimals: u8,
 }
 
 #[type_abi]
@@ -24,7 +24,7 @@ pub struct PriceFeed<M: ManagedTypeApi> {
 pub struct TimestampedPrice<M: ManagedTypeApi> {
     pub price: BigUint<M>,
     pub timestamp: u64,
-    pub decimals: u8,
+    pub asset_decimals: u8,
     pub round: u32,
 }
 
@@ -40,7 +40,7 @@ pub struct OracleStatus {
 pub struct NewRoundEvent<M: ManagedTypeApi> {
     pub price: BigUint<M>,
     pub timestamp: u64,
-    pub decimals: u8,
+    pub asset_decimals: u8,
     pub block: u64,
     pub epoch: u64,
 }

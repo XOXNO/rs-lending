@@ -18,6 +18,14 @@ pub trait ValidationModule:
     + positions::account::PositionAccountModule
     + common_math::SharedMathModule
 {
+    /// Retrieves the total reserves for a liquidity pool.
+    /// Provides liquidity data for reserve factor checks or availability.
+    ///
+    /// # Arguments
+    /// - `pair_address`: Address of the liquidity pool.
+    ///
+    /// # Returns
+    /// - `SingleValueMapper`: Total reserves in `ManagedDecimal` format, tied to the pool address.
     fn get_total_reserves(
         &self,
         pair_address: ManagedAddress,
@@ -28,32 +36,30 @@ pub trait ValidationModule:
         )
     }
 
-    /// Validates repay payment parameters
+    /// Validates a payment for operations like repayments or deposits.
+    /// Ensures the asset is supported and the amount is valid.
     ///
     /// # Arguments
-    /// * `repay_token_id` - Token being repaid
-    /// * `repay_amount` - Amount being repaid
-    /// * `account_nonce` - NFT nonce of the account position
+    /// - `payment`: The payment to validate (token identifier and amount).
     ///
-    /// Validates:
-    /// - Account exists in market
-    /// - Asset is supported
-    /// - Amount is greater than zero
+    /// # Errors
+    /// - `ERROR_ASSET_NOT_SUPPORTED`: If the asset has no liquidity pool.
+    /// - `ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO`: If the amount is zero or negative.
     fn validate_payment(&self, payment: &EgldOrEsdtTokenPayment<Self::Api>) {
         self.require_asset_supported(&payment.token_identifier);
         self.require_amount_greater_than_zero(&payment.amount);
     }
 
-    /// Validates liquidation payment parameters
+    /// Validates payments for liquidation operations.
+    /// Ensures debt repayments are valid and the caller is authorized.
     ///
     /// # Arguments
-    /// * `debt_payment` - Payment to cover debt
-    /// * `initial_caller` - Address initiating liquidation
+    /// - `debt_repayments`: Vector of debt repayment payments.
+    /// - `initial_caller`: Address initiating the liquidation.
     ///
-    /// Validates:
-    /// - Both assets are supported
-    /// - Payment amount is greater than zero
-    /// - Caller address is valid
+    /// # Errors
+    /// - Inherits errors from `validate_payment`.
+    /// - `ERROR_ADDRESS_IS_ZERO`: If the caller address is zero.
     fn validate_liquidation_payments(
         &self,
         debt_repayments: &ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
@@ -65,37 +71,45 @@ pub trait ValidationModule:
         self.require_non_zero_address(initial_caller);
     }
 
-    /// Validates that an asset is supported by the protocol
+    /// Ensures an asset is supported by verifying its liquidity pool exists.
     ///
     /// # Arguments
-    /// * `asset` - Token identifier to check
+    /// - `asset`: Token identifier (EGLD or ESDT) to check.
+    ///
+    /// # Returns
+    /// - `ManagedAddress`: Pool address if the asset is supported.
     ///
     /// # Errors
-    /// * `ERROR_ASSET_NOT_SUPPORTED` - If asset has no liquidity pool
+    /// - `ERROR_ASSET_NOT_SUPPORTED`: If no pool exists for the asset.
     fn require_asset_supported(&self, asset: &EgldOrEsdtTokenIdentifier) -> ManagedAddress {
         let map = self.pools_map(asset);
         require!(!map.is_empty(), ERROR_ASSET_NOT_SUPPORTED);
         map.get()
     }
 
-    /// Validates that an amount is greater than zero
+    /// Ensures an amount is greater than zero.
+    /// Prevents zero-value operations like deposits or borrows.
     ///
     /// # Arguments
-    /// * `amount` - Amount to validate
+    /// - `amount`: The amount to validate as a `BigUint`.
     ///
     /// # Errors
-    /// * `ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO` - If amount is not greater than zero
+    /// - `ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO`: If the amount is zero or negative.
     fn require_amount_greater_than_zero(&self, amount: &BigUint) {
-        require!(amount > &BigUint::zero(), ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO);
+        require!(
+            amount > &BigUint::zero(),
+            ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO
+        );
     }
 
-    /// Validates that an address is not zero
+    /// Ensures an address is not the zero address.
+    /// Validates caller or contract addresses to avoid invalid operations.
     ///
     /// # Arguments
-    /// * `address` - Address to validate
+    /// - `address`: The address to validate as a `ManagedAddress`.
     ///
     /// # Errors
-    /// * `ERROR_ADDRESS_IS_ZERO` - If address is zero
+    /// - `ERROR_ADDRESS_IS_ZERO`: If the address is zero.
     fn require_non_zero_address(&self, address: &ManagedAddress) {
         require!(!address.is_zero(), ERROR_ADDRESS_IS_ZERO);
     }

@@ -25,19 +25,52 @@ pub trait RouterModule:
     + positions::account::PositionAccountModule
     + common_math::SharedMathModule
 {
+    /// Creates a new liquidity pool for an asset with specified parameters.
+    /// Initializes the pool and configures lending/borrowing settings.
+    ///
+    /// # Arguments
+    /// - `base_asset`: Token identifier (EGLD or ESDT) of the asset.
+    /// - `max_borrow_rate`: Maximum borrow rate.
+    /// - `base_borrow_rate`: Base borrow rate.
+    /// - `slope1`, `slope2`, `slope3`: Interest rate slopes for utilization levels.
+    /// - `mid_utilization`, `optimal_utilization`: Utilization thresholds for rate calculations.
+    /// - `reserve_factor`: Fraction of interest reserved for the protocol.
+    /// - `ltv`: Loan-to-value ratio in BPS.
+    /// - `liquidation_threshold`: Liquidation threshold in BPS.
+    /// - `liquidation_base_bonus`: Base liquidation bonus in BPS.
+    /// - `liquidation_max_fee`: Maximum liquidation fee in BPS.
+    /// - `can_be_collateral`: Flag for collateral usability.
+    /// - `can_be_borrowed`: Flag for borrowability.
+    /// - `is_isolated`: Flag for isolated asset status.
+    /// - `debt_ceiling_usd`: Debt ceiling in USD for isolated assets.
+    /// - `flash_loan_fee`: Flash loan fee in BPS.
+    /// - `is_siloed`: Flag for siloed borrowing.
+    /// - `flashloan_enabled`: Flag for flash loan support.
+    /// - `can_borrow_in_isolation`: Flag for borrowing in isolation mode.
+    /// - `asset_decimals`: Number of decimals for the asset.
+    /// - `borrow_cap`: Optional borrow cap (`None` if unspecified).
+    /// - `supply_cap`: Optional supply cap (`None` if unspecified).
+    ///
+    /// # Returns
+    /// - `ManagedAddress`: Address of the newly created liquidity pool.
+    ///
+    /// # Errors
+    /// - `ERROR_ASSET_ALREADY_SUPPORTED`: If the asset already has a pool.
+    /// - `ERROR_INVALID_TICKER`: If the asset identifier is invalid.
+    /// - `ERROR_INVALID_LIQUIDATION_THRESHOLD`: If threshold is invalid.
     #[allow_multiple_var_args]
     #[only_owner]
     #[endpoint(createLiquidityPool)]
     fn create_liquidity_pool(
         &self,
         base_asset: EgldOrEsdtTokenIdentifier,
-        r_max: BigUint,
-        r_base: BigUint,
-        r_slope1: BigUint,
-        r_slope2: BigUint,
-        r_slope3: BigUint,
-        u_mid: BigUint,
-        u_optimal: BigUint,
+        max_borrow_rate: BigUint,
+        base_borrow_rate: BigUint,
+        slope1: BigUint,
+        slope2: BigUint,
+        slope3: BigUint,
+        mid_utilization: BigUint,
+        optimal_utilization: BigUint,
         reserve_factor: BigUint,
         ltv: BigUint,
         liquidation_threshold: BigUint,
@@ -51,7 +84,7 @@ pub trait RouterModule:
         is_siloed: bool,
         flashloan_enabled: bool,
         can_borrow_in_isolation: bool,
-        decimals: usize,
+        asset_decimals: usize,
         borrow_cap: OptionalValue<BigUint>,
         supply_cap: OptionalValue<BigUint>,
     ) -> ManagedAddress {
@@ -63,13 +96,13 @@ pub trait RouterModule:
 
         let address = self.create_pool(
             &base_asset,
-            &r_max,
-            &r_base,
-            &r_slope1,
-            &r_slope2,
-            &r_slope3,
-            &u_mid,
-            &u_optimal,
+            &max_borrow_rate,
+            &base_borrow_rate,
+            &slope1,
+            &slope2,
+            &slope3,
+            &mid_utilization,
+            &optimal_utilization,
             &reserve_factor,
         );
 
@@ -80,9 +113,15 @@ pub trait RouterModule:
 
         // Init ManagedDecimal for future usage and avoiding storage decode errors for checks
         self.vault_supplied_amount(&base_asset)
-            .set(ManagedDecimal::from_raw_units(BigUint::zero(), decimals));
+            .set(ManagedDecimal::from_raw_units(
+                BigUint::zero(),
+                asset_decimals,
+            ));
         self.isolated_asset_debt_usd(&base_asset)
-            .set(ManagedDecimal::from_raw_units(BigUint::zero(), decimals));
+            .set(ManagedDecimal::from_raw_units(
+                BigUint::zero(),
+                asset_decimals,
+            ));
 
         require!(
             &liquidation_threshold > &ltv,
@@ -90,34 +129,34 @@ pub trait RouterModule:
         );
 
         let asset_config = &AssetConfig {
-            ltv: self.to_decimal_bps(ltv),
+            loan_to_value: self.to_decimal_bps(ltv),
             liquidation_threshold: self.to_decimal_bps(liquidation_threshold),
-            liquidation_base_bonus: self.to_decimal_bps(liquidation_base_bonus),
-            liquidation_max_fee: self.to_decimal_bps(liquidation_max_fee),
+            liquidation_bonus: self.to_decimal_bps(liquidation_base_bonus),
+            liquidation_fees: self.to_decimal_bps(liquidation_max_fee),
             borrow_cap: borrow_cap.into_option(),
             supply_cap: supply_cap.into_option(),
-            can_be_collateral,
-            can_be_borrowed,
-            is_e_mode_enabled: false,
-            is_isolated,
-            debt_ceiling_usd: self.to_decimal_wad(debt_ceiling_usd),
-            flash_loan_fee: self.to_decimal_bps(flash_loan_fee),
-            is_siloed,
-            flashloan_enabled,
-            can_borrow_in_isolation,
+            is_collateralizable: can_be_collateral,
+            is_borrowable: can_be_borrowed,
+            e_mode_enabled: false,
+            is_isolated_asset: is_isolated,
+            isolation_debt_ceiling_usd: self.to_decimal_wad(debt_ceiling_usd),
+            is_siloed_borrowing: is_siloed,
+            is_flashloanable: flashloan_enabled,
+            flashloan_fee: self.to_decimal_bps(flash_loan_fee),
+            isolation_borrow_enabled: can_borrow_in_isolation,
         };
 
         self.asset_config(&base_asset).set(asset_config);
 
         self.create_market_params_event(
             &base_asset,
-            &r_max,
-            &r_base,
-            &r_slope1,
-            &r_slope2,
-            &r_slope3,
-            &u_mid,
-            &u_optimal,
+            &max_borrow_rate,
+            &base_borrow_rate,
+            &slope1,
+            &slope2,
+            &slope3,
+            &mid_utilization,
+            &optimal_utilization,
             &reserve_factor,
             &address,
             asset_config,
@@ -125,18 +164,31 @@ pub trait RouterModule:
         address
     }
 
+    /// Upgrades an existing liquidity pool with new parameters.
+    /// Adjusts interest rate model and reserve settings.
+    ///
+    /// # Arguments
+    /// - `base_asset`: Token identifier (EGLD or ESDT) of the asset.
+    /// - `max_borrow_rate`: New maximum borrow rate.
+    /// - `base_borrow_rate`: New base borrow rate.
+    /// - `slope1`, `slope2`, `slope3`: New interest rate slopes.
+    /// - `mid_utilization`, `optimal_utilization`: New utilization thresholds.
+    /// - `reserve_factor`: New reserve factor.
+    ///
+    /// # Errors
+    /// - `ERROR_NO_POOL_FOUND`: If no pool exists for the asset.
     #[only_owner]
     #[endpoint(upgradeLiquidityPool)]
     fn upgrade_liquidity_pool(
         &self,
         base_asset: &EgldOrEsdtTokenIdentifier,
-        r_max: BigUint,
-        r_base: BigUint,
-        r_slope1: BigUint,
-        r_slope2: BigUint,
-        r_slope3: BigUint,
-        u_mid: BigUint,
-        u_optimal: BigUint,
+        max_borrow_rate: BigUint,
+        base_borrow_rate: BigUint,
+        slope1: BigUint,
+        slope2: BigUint,
+        slope3: BigUint,
+        mid_utilization: BigUint,
+        optimal_utilization: BigUint,
         reserve_factor: BigUint,
     ) {
         require!(!self.pools_map(base_asset).is_empty(), ERROR_NO_POOL_FOUND);
@@ -144,22 +196,25 @@ pub trait RouterModule:
         let pool_address = self.get_pool_address(base_asset);
         self.upgrade_pool(
             pool_address,
-            r_max,
-            r_base,
-            r_slope1,
-            r_slope2,
-            r_slope3,
-            u_mid,
-            u_optimal,
+            max_borrow_rate,
+            base_borrow_rate,
+            slope1,
+            slope2,
+            slope3,
+            mid_utilization,
+            optimal_utilization,
             reserve_factor,
         );
     }
 
-    /// Claim revenue from the accumulator
+    /// Claims revenue from multiple liquidity pools and deposits it into the accumulator.
+    /// Collects protocol revenue from interest and fees.
     ///
-    /// This function is used to claim the revenue from the liquidity pools
-    /// It iterates over the markets and claims the revenue
-    /// The revenue is deposited into the accumulator
+    /// # Arguments
+    /// - `assets`: List of token identifiers (EGLD or ESDT) to claim revenue from.
+    ///
+    /// # Errors
+    /// - `ERROR_NO_ACCUMULATOR_FOUND`: If no accumulator address is set.
     #[only_owner]
     #[endpoint(claimRevenue)]
     fn claim_revenue(&self, assets: MultiValueEncoded<EgldOrEsdtTokenIdentifier>) {

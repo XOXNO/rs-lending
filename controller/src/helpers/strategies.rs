@@ -168,11 +168,11 @@ pub trait StrategiesModule:
         limits: Option<ManagedVec<TokenAmount<Self::Api>>>,
     ) -> EgldOrEsdtTokenPayment {
         match (
-            from_provider.token_type.clone(),
-            to_provider.token_type.clone(),
+            from_provider.oracle_type.clone(),
+            to_provider.oracle_type.clone(),
         ) {
             (OracleType::Normal, OracleType::Derived) => {
-                if from_token == &to_provider.first_token_id {
+                if from_token == &to_provider.base_token_id {
                     self.convert_to_lsd(from_token, &from_amount, to_provider)
                 } else {
                     self.swap_tokens(to_token, from_token, from_amount, steps, limits)
@@ -377,11 +377,11 @@ pub trait StrategiesModule:
         amount: &BigUint,
         oracle_collateral: &OracleProvider<Self::Api>,
     ) -> EgldOrEsdtTokenPayment {
-        if oracle_collateral.source == ExchangeSource::XEGLD {
-            self.get_xegld(amount, &oracle_collateral.contract_address)
+        if oracle_collateral.exchange_source == ExchangeSource::XEGLD {
+            self.get_xegld(amount, &oracle_collateral.oracle_contract_address)
                 .into()
-        } else if oracle_collateral.source == ExchangeSource::LXOXNO {
-            self.get_lxoxno(amount, token, &oracle_collateral.contract_address)
+        } else if oracle_collateral.exchange_source == ExchangeSource::LXOXNO {
+            self.get_lxoxno(amount, token, &oracle_collateral.oracle_contract_address)
                 .into()
         } else {
             sc_panic!("Strategy is not possible due to LSD conversion not existing!");
@@ -389,16 +389,16 @@ pub trait StrategiesModule:
     }
 
     fn get_lsd_ratio(&self, oracle_collateral: &OracleProvider<Self::Api>) -> BigUint {
-        if oracle_collateral.source == ExchangeSource::XEGLD {
+        if oracle_collateral.exchange_source == ExchangeSource::XEGLD {
             self.tx()
-                .to(&oracle_collateral.contract_address)
+                .to(&oracle_collateral.oracle_contract_address)
                 .typed(xegld_proxy::LiquidStakingProxy)
                 .get_exchange_rate()
                 .returns(ReturnsResult)
                 .sync_call_readonly()
-        } else if oracle_collateral.source == ExchangeSource::LXOXNO {
+        } else if oracle_collateral.exchange_source == ExchangeSource::LXOXNO {
             self.tx()
-                .to(&oracle_collateral.contract_address)
+                .to(&oracle_collateral.oracle_contract_address)
                 .typed(lxoxno_proxy::RsLiquidXoxnoProxy)
                 .get_exchange_rate()
                 .returns(ReturnsResult)
@@ -410,10 +410,10 @@ pub trait StrategiesModule:
 
     fn calculate_fix_lp_proportions(
         &self,
-        payment_amount: &BigUint, // Amount of EGLD to be split (18 decimals)
-        lsd_ratio: &BigUint,      // 1 xEGLD = lsd_ratio EGLD (18 decimals)
-        first_token_reserve: &BigUint, // EGLD reserve (18 decimals)
-        second_token_reserve: &BigUint, // xEGLD reserve (18 decimals)
+        payment_amount: &BigUint, // Amount of EGLD to be split (18 asset_decimals)
+        lsd_ratio: &BigUint,      // 1 xEGLD = lsd_ratio EGLD (18 asset_decimals)
+        first_token_reserve: &BigUint, // EGLD reserve (18 asset_decimals)
+        second_token_reserve: &BigUint, // xEGLD reserve (18 asset_decimals)
     ) -> (BigUint, BigUint) {
         // p is the xEGLD reserve expressed in EGLD value:
         // TODO: Verify if / WAD make sense for other token LPs

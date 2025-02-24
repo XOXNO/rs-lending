@@ -437,9 +437,9 @@ fn test_complete_market_exit() {
             2,
             BigUint::from(1u64),
             NftAccountAttributes {
-                is_isolated: false,
-                e_mode_category: 0,
-                is_vault: false,
+                is_isolated_position: false,
+                e_mode_category_id: 0,
+                is_vault_position: false,
             },
         );
     let borrow_amount_in_dollars = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
@@ -474,9 +474,9 @@ fn test_complete_market_exit() {
             2,
             BigUint::zero(),
             NftAccountAttributes {
-                is_isolated: false,
-                e_mode_category: 0,
-                is_vault: false,
+                is_isolated_position: false,
+                e_mode_category_id: 0,
+                is_vault_position: false,
             },
         );
 

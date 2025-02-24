@@ -30,14 +30,15 @@ pub trait PositionDepositModule:
     + positions::emode::EModeModule
     + common_math::SharedMathModule
 {
-    /// Processes a deposit operation for a user's account position.
+    /// Processes a deposit operation for a user's position.
+    /// Handles validations, e-mode, and updates for deposits.
     ///
     /// # Arguments
-    /// * `caller` - The address of the user supplying assets.
-    /// * `account_nonce` - The nonce of the account position NFT.
-    /// * `position_attributes` - The attributes of the position (e.g., isolated, vault).
-    /// * `deposit_payments` - A vector of payments representing the assets being deposited.
-    /// * `storage_cache` - A mutable reference to the storage cache for efficiency.
+    /// - `caller`: Depositor's address.
+    /// - `account_nonce`: Position NFT nonce.
+    /// - `position_attributes`: NFT attributes.
+    /// - `deposit_payments`: Vector of deposit payments.
+    /// - `storage_cache`: Mutable storage cache.
     fn process_deposit(
         &self,
         caller: &ManagedAddress,
@@ -46,22 +47,25 @@ pub trait PositionDepositModule:
         deposit_payments: &ManagedVec<EgldOrEsdtTokenPayment>,
         storage_cache: &mut StorageCache<Self>,
     ) {
-        let e_mode = self.validate_e_mode_exists(position_attributes.get_emode_id());
-        self.validate_not_deprecated_e_mode(&e_mode);
+        let e_mode = self.get_e_mode_category(position_attributes.get_emode_id());
+        self.ensure_e_mode_not_deprecated(&e_mode);
 
         for deposit_payment in deposit_payments {
             self.validate_payment(&deposit_payment);
             let mut asset_info =
                 storage_cache.get_cached_asset_info(&deposit_payment.token_identifier);
 
-            let asset_emode_config = self.validate_token_of_emode(
+            let asset_emode_config = self.get_token_e_mode_config(
                 position_attributes.get_emode_id(),
                 &deposit_payment.token_identifier,
             );
 
-            self.validate_e_mode_not_isolated(&asset_info, position_attributes.get_emode_id());
+            self.ensure_e_mode_compatible_with_asset(
+                &asset_info,
+                position_attributes.get_emode_id(),
+            );
 
-            self.update_asset_config_with_e_mode(&mut asset_info, &e_mode, asset_emode_config);
+            self.apply_e_mode_to_asset_config(&mut asset_info, &e_mode, asset_emode_config);
 
             require!(
                 asset_info.can_supply(),
@@ -93,19 +97,17 @@ pub trait PositionDepositModule:
         }
     }
 
-    /// Retrieves existing deposit position or creates new one
+    /// Retrieves or creates a deposit position for a token.
+    /// Initializes new positions if none exist.
     ///
     /// # Arguments
-    /// * `account_nonce` - NFT nonce of the account position
-    /// * `asset_info` - Configuration of the asset being deposited
-    /// * `token_id` - Token identifier of the deposit
-    /// * `is_vault` - Whether this is a vault position
+    /// - `account_nonce`: Position NFT nonce.
+    /// - `asset_info`: Deposited asset configuration.
+    /// - `token_id`: Token identifier.
+    /// - `is_vault`: Vault status flag.
     ///
     /// # Returns
-    /// * `AccountPosition` - The existing or new deposit position
-    ///
-    /// If a position exists for the token, returns it.
-    /// Otherwise creates a new position with zero balance and default parameters.
+    /// - Deposit position.
     fn get_or_create_deposit_position(
         &self,
         account_nonce: u64,
@@ -113,45 +115,40 @@ pub trait PositionDepositModule:
         token_id: &EgldOrEsdtTokenIdentifier,
         is_vault: bool,
     ) -> AccountPosition<Self::Api> {
-        let mut positions = self.deposit_positions(account_nonce);
+        let positions = self.deposit_positions(account_nonce);
 
-        if let Some(position) = positions.get(token_id) {
-            positions.remove(token_id);
-            position
-        } else {
+        positions.get(token_id).unwrap_or_else(|| {
             let data = self.token_oracle(token_id).get();
             AccountPosition::new(
                 AccountPositionType::Deposit,
                 token_id.clone(),
-                ManagedDecimal::from_raw_units(BigUint::zero(), data.decimals as usize),
-                ManagedDecimal::from_raw_units(BigUint::zero(), data.decimals as usize),
+                ManagedDecimal::from_raw_units(BigUint::zero(), data.price_decimals),
+                ManagedDecimal::from_raw_units(BigUint::zero(), data.price_decimals),
                 account_nonce,
                 self.blockchain().get_block_timestamp(),
                 self.ray(),
                 asset_info.liquidation_threshold.clone(),
-                asset_info.liquidation_base_bonus.clone(),
-                asset_info.liquidation_max_fee.clone(),
-                asset_info.ltv.clone(),
+                asset_info.liquidation_bonus.clone(),
+                asset_info.liquidation_fees.clone(),
+                asset_info.loan_to_value.clone(),
                 is_vault,
             )
-        }
+        })
     }
 
-    /// Updates supply position with new deposit
+    /// Updates a deposit position with a new deposit amount.
+    /// Handles vault or market logic accordingly.
     ///
     /// # Arguments
-    /// * `account_nonce` - NFT nonce of the account position
-    /// * `token_id` - Token identifier of the deposit
-    /// * `amount` - Amount being deposited
-    /// * `asset_info` - Configuration of the asset
-    /// * `is_vault` - Whether this is a vault position
+    /// - `account_nonce`: Position NFT nonce.
+    /// - `collateral`: Deposit payment details.
+    /// - `asset_info`: Asset configuration.
+    /// - `caller`: Depositor's address.
+    /// - `attributes`: NFT attributes.
+    /// - `storage_cache`: Mutable storage cache.
     ///
     /// # Returns
-    /// * `AccountPosition` - The updated position after deposit
-    ///
-    /// For vault positions, directly updates storage.
-    /// For market positions, calls liquidity pool to handle deposit.
-    /// Updates position storage and returns updated position.
+    /// - Updated deposit position.
     fn update_deposit_position(
         &self,
         account_nonce: u64,
@@ -170,16 +167,16 @@ pub trait PositionDepositModule:
         );
 
         // Auto upgrade values when changed on demand
-        if position.entry_ltv != asset_info.ltv {
-            position.entry_ltv = asset_info.ltv.clone();
+        if position.loan_to_value != asset_info.loan_to_value {
+            position.loan_to_value = asset_info.loan_to_value.clone();
         }
 
-        if position.entry_liquidation_bonus != asset_info.liquidation_base_bonus {
-            position.entry_liquidation_bonus = asset_info.liquidation_base_bonus.clone();
+        if position.liquidation_bonus != asset_info.liquidation_bonus {
+            position.liquidation_bonus = asset_info.liquidation_bonus.clone();
         }
 
-        if position.entry_liquidation_fees != asset_info.liquidation_max_fee {
-            position.entry_liquidation_fees = asset_info.liquidation_max_fee.clone();
+        if position.liquidation_fees != asset_info.liquidation_fees {
+            position.liquidation_fees = asset_info.liquidation_fees.clone();
         }
         let amount_decimal = position.make_amount_decimal(collateral.amount.clone());
         if attributes.is_vault() {
@@ -212,13 +209,14 @@ pub trait PositionDepositModule:
         position
     }
 
-    /// Updates the market position through the liquidity pool.
+    /// Updates a market position via the liquidity pool.
+    /// Handles non-vault deposit updates.
     ///
     /// # Arguments
-    /// * `position` - The current position to update.
-    /// * `amount` - The amount being deposited.
-    /// * `token_id` - The token identifier.
-    /// * `feed` - The price feed for the token.
+    /// - `position`: Current deposit position.
+    /// - `amount`: Deposit amount.
+    /// - `token_id`: Token identifier.
+    /// - `feed`: Price feed for the token.
     fn update_market_position(
         &self,
         position: &mut AccountPosition<Self::Api>,
@@ -238,12 +236,13 @@ pub trait PositionDepositModule:
             .sync_call();
     }
 
-    /// Increases the vault position directly in storage.
+    /// Increases a vault position directly in storage.
+    /// Updates vault-specific deposit logic.
     ///
     /// # Arguments
-    /// * `position` - The current position to update.
-    /// * `amount` - The amount being deposited.
-    /// * `token_id` - The token identifier.
+    /// - `position`: Current deposit position.
+    /// - `amount`: Deposit amount.
+    /// - `token_id`: Token identifier.
     fn increase_vault_position(
         &self,
         position: &mut AccountPosition<Self::Api>,
@@ -256,18 +255,18 @@ pub trait PositionDepositModule:
         });
 
         self.update_vault_supplied_amount_event(token_id, last_value.clone());
-        position.amount += amount;
+        position.principal_amount += amount;
     }
 
-    /// Validates the supply payment and handles NFT return if necessary.
+    /// Validates deposit payments and handles NFT return.
+    /// Separates collateral from NFT payments if present.
     ///
     /// # Arguments
-    /// * `caller` - The address of the user supplying assets.
-    /// * `payments` - A vector of payments (may include NFT and collateral).
+    /// - `caller`: Depositor's address.
+    /// - `payments`: Vector of payments (NFT and/or collateral).
     ///
     /// # Returns
-    /// * `(ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>, Option<EsdtTokenPayment<Self::Api>>)` -
-    ///   A tuple containing the collateral payments and an optional account NFT payment.
+    /// - Tuple of (collateral payments, optional NFT payment).
     fn validate_supply_payment(
         &self,
         caller: &ManagedAddress,
@@ -294,13 +293,15 @@ pub trait PositionDepositModule:
             (payments.clone(), None)
         }
     }
-    /// Validates isolated collateral constraints.
+
+    /// Ensures isolated collateral constraints are met.
+    /// Prevents mixing of isolated collaterals.
     ///
     /// # Arguments
-    /// * `account_nonce` - The nonce of the account position NFT.
-    /// * `token_id` - The token identifier being supplied.
-    /// * `asset_info` - The asset configuration.
-    /// * `position_attributes` - The position's attributes.
+    /// - `account_nonce`: Position NFT nonce.
+    /// - `token_id`: Deposited token identifier.
+    /// - `asset_info`: Asset configuration.
+    /// - `position_attributes`: NFT attributes.
     fn validate_isolated_collateral(
         &self,
         account_nonce: u64,
@@ -308,7 +309,7 @@ pub trait PositionDepositModule:
         asset_info: &AssetConfig<Self::Api>,
         position_attributes: &NftAccountAttributes,
     ) {
-        if !asset_info.is_isolated && !position_attributes.is_isolated {
+        if !asset_info.is_isolated() && !position_attributes.is_isolated() {
             return;
         }
 
@@ -319,13 +320,13 @@ pub trait PositionDepositModule:
         }
     }
 
-    /// Retrieves the total supply for a given pool address.
+    /// Retrieves total supply amount from the liquidity pool.
     ///
     /// # Arguments
-    /// * `pool_address` - The address of the liquidity pool.
+    /// - `pool_address`: Pool address.
     ///
     /// # Returns
-    /// * `SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>, ManagedAddress>` - The total supply.
+    /// - `SingleValueMapper` with total supply amount.
     fn get_total_supply(
         &self,
         pool_address: ManagedAddress,
@@ -336,13 +337,13 @@ pub trait PositionDepositModule:
         )
     }
 
-    /// Validates the supply cap constraints for an asset.
+    /// Ensures a deposit respects the asset's supply cap.
     ///
     /// # Arguments
-    /// * `asset_info` - The asset configuration.
-    /// * `deposit_payment` - The payment representing the deposit.
-    /// * `is_vault` - Whether this is a vault operation.
-    /// * `storage_cache` - A mutable reference to the storage cache.
+    /// - `asset_info`: Asset configuration.
+    /// - `deposit_payment`: Deposit payment details.
+    /// - `is_vault`: Vault status flag.
+    /// - `storage_cache`: Mutable storage cache.
     fn validate_supply_cap(
         &self,
         asset_info: &AssetConfig<Self::Api>,

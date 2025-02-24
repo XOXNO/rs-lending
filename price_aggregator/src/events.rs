@@ -20,7 +20,7 @@ pub trait EventsModule {
             &NewRoundEvent {
                 price: price_feed.price.clone(),
                 timestamp: price_feed.timestamp,
-                decimals: price_feed.decimals,
+                asset_decimals: price_feed.asset_decimals,
                 block: self.blockchain().get_block_nonce(),
                 epoch,
             },

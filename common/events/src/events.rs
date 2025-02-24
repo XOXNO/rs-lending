@@ -13,11 +13,11 @@ pub trait EventsModule {
     ///
     /// # Parameters
     /// - `base_asset`: The asset identifier for the market.
-    /// - `r_max`: The maximum borrow rate.
-    /// - `r_base`: The base borrow rate.
-    /// - `r_slope1`: The slope of the rate before reaching optimal utilization.
-    /// - `r_slope2`: The slope of the rate after optimal utilization.
-    /// - `u_optimal`: The optimal utilization ratio.
+    /// - `max_borrow_rate`: The maximum borrow rate.
+    /// - `base_borrow_rate`: The base borrow rate.
+    /// - `slope1`: The slope of the rate before reaching optimal utilization.
+    /// - `slope2`: The slope of the rate after optimal utilization.
+    /// - `optimal_utilization`: The optimal utilization ratio.
     /// - `reserve_factor`: The fraction of accrued interest reserved as protocol fee.
     /// - `market_address`: The address of the deployed market contract.
     /// - `config`: The asset configuration details.
@@ -28,13 +28,13 @@ pub trait EventsModule {
     fn create_market_params_event(
         &self,
         #[indexed] base_asset: &EgldOrEsdtTokenIdentifier,
-        #[indexed] r_max: &BigUint,
-        #[indexed] r_base: &BigUint,
-        #[indexed] r_slope1: &BigUint,
-        #[indexed] r_slope2: &BigUint,
-        #[indexed] r_slope3: &BigUint,
-        #[indexed] u_mid: &BigUint,
-        #[indexed] u_optimal: &BigUint,
+        #[indexed] max_borrow_rate: &BigUint,
+        #[indexed] base_borrow_rate: &BigUint,
+        #[indexed] slope1: &BigUint,
+        #[indexed] slope2: &BigUint,
+        #[indexed] slope3: &BigUint,
+        #[indexed] mid_utilization: &BigUint,
+        #[indexed] optimal_utilization: &BigUint,
         #[indexed] reserve_factor: &BigUint,
         #[indexed] market_address: &ManagedAddress,
         #[indexed] config: &AssetConfig<Self::Api>,
@@ -44,11 +44,11 @@ pub trait EventsModule {
     ///
     /// # Parameters
     /// - `base_asset`: The asset identifier for the market.
-    /// - `r_max`: The updated maximum borrow rate.
-    /// - `r_base`: The updated base rate.
-    /// - `r_slope1`: The updated slope before optimal utilization.
-    /// - `r_slope2`: The updated slope after optimal utilization.
-    /// - `u_optimal`: The updated optimal utilization ratio.
+    /// - `max_borrow_rate`: The updated maximum borrow rate.
+    /// - `base_borrow_rate`: The updated base rate.
+    /// - `slope1`: The updated slope before optimal utilization.
+    /// - `slope2`: The updated slope after optimal utilization.
+    /// - `optimal_utilization`: The updated optimal utilization ratio.
     /// - `reserve_factor`: The updated reserve factor.
     ///
     /// # Returns
@@ -57,13 +57,13 @@ pub trait EventsModule {
     fn market_params_event(
         &self,
         #[indexed] base_asset: &EgldOrEsdtTokenIdentifier,
-        #[indexed] r_max: &BigUint,
-        #[indexed] r_base: &BigUint,
-        #[indexed] r_slope1: &BigUint,
-        #[indexed] r_slope2: &BigUint,
-        #[indexed] r_slope3: &BigUint,
-        #[indexed] u_mid: &BigUint,
-        #[indexed] u_optimal: &BigUint,
+        #[indexed] max_borrow_rate: &BigUint,
+        #[indexed] base_borrow_rate: &BigUint,
+        #[indexed] slope1: &BigUint,
+        #[indexed] slope2: &BigUint,
+        #[indexed] slope3: &BigUint,
+        #[indexed] mid_utilization: &BigUint,
+        #[indexed] optimal_utilization: &BigUint,
         #[indexed] reserve_factor: &BigUint,
     );
 

@@ -62,6 +62,14 @@ where
         }
     }
 
+    /// Retrieves or caches asset configuration data.
+    /// Reduces gas costs by caching frequently accessed asset info.
+    ///
+    /// # Arguments
+    /// - `token_id`: Token identifier.
+    ///
+    /// # Returns
+    /// - `AssetConfig` for the specified token.
     pub fn get_cached_asset_info(
         &mut self,
         token_id: &EgldOrEsdtTokenIdentifier<C::Api>,
@@ -75,6 +83,14 @@ where
         new
     }
 
+    /// Retrieves or caches the liquidity pool address for a token.
+    /// Optimizes repeated pool address lookups.
+    ///
+    /// # Arguments
+    /// - `token_id`: Token identifier.
+    ///
+    /// # Returns
+    /// - Pool address for the token.
     pub fn get_cached_pool_address(
         &mut self,
         token_id: &EgldOrEsdtTokenIdentifier<C::Api>,

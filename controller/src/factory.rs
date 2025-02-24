@@ -15,13 +15,13 @@ pub trait FactoryModule:
     fn create_pool(
         &self,
         base_asset: &EgldOrEsdtTokenIdentifier,
-        r_max: &BigUint,
-        r_base: &BigUint,
-        r_slope1: &BigUint,
-        r_slope2: &BigUint,
-        r_slope3: &BigUint,
-        u_mid: &BigUint,
-        u_optimal: &BigUint,
+        max_borrow_rate: &BigUint,
+        base_borrow_rate: &BigUint,
+        slope1: &BigUint,
+        slope2: &BigUint,
+        slope3: &BigUint,
+        mid_utilization: &BigUint,
+        optimal_utilization: &BigUint,
         reserve_factor: &BigUint,
     ) -> ManagedAddress {
         require!(
@@ -29,22 +29,22 @@ pub trait FactoryModule:
             ERROR_TEMPLATE_EMPTY
         );
 
-        let decimals = self.token_oracle(base_asset).get().decimals;
+        let decimals = self.token_oracle(base_asset).get().price_decimals;
 
         let new_address = self
             .tx()
             .typed(proxy_pool::LiquidityPoolProxy)
             .init(
                 base_asset,
-                r_max,
-                r_base,
-                r_slope1,
-                r_slope2,
-                r_slope3,
-                u_mid,
-                u_optimal,
+                max_borrow_rate,
+                base_borrow_rate,
+                slope1,
+                slope2,
+                slope3,
+                mid_utilization,
+                optimal_utilization,
                 reserve_factor,
-                decimals as usize,
+                decimals,
             )
             .from_source(self.liq_pool_template_address().get())
             .code_metadata(CodeMetadata::UPGRADEABLE | CodeMetadata::READABLE)
@@ -57,13 +57,13 @@ pub trait FactoryModule:
     fn upgrade_pool(
         &self,
         lp_address: ManagedAddress,
-        r_max: BigUint,
-        r_base: BigUint,
-        r_slope1: BigUint,
-        r_slope2: BigUint,
-        r_slope3: BigUint,
-        u_mid: BigUint,
-        u_optimal: BigUint,
+        max_borrow_rate: BigUint,
+        base_borrow_rate: BigUint,
+        slope1: BigUint,
+        slope2: BigUint,
+        slope3: BigUint,
+        mid_utilization: BigUint,
+        optimal_utilization: BigUint,
         reserve_factor: BigUint,
     ) {
         require!(
@@ -74,13 +74,13 @@ pub trait FactoryModule:
             .to(lp_address)
             .typed(proxy_pool::LiquidityPoolProxy)
             .upgrade(
-                r_max,
-                r_base,
-                r_slope1,
-                r_slope2,
-                r_slope3,
-                u_mid,
-                u_optimal,
+                max_borrow_rate,
+                base_borrow_rate,
+                slope1,
+                slope2,
+                slope3,
+                mid_utilization,
+                optimal_utilization,
                 reserve_factor,
             )
             .from_source(self.liq_pool_template_address().get())

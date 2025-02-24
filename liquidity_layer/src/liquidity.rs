@@ -111,7 +111,7 @@ pub trait LiquidityModule:
 
         self.position_sync(&mut position, &mut cache);
 
-        position.amount += &amount;
+        position.principal_amount += &amount;
 
         cache.reserves += &amount;
         cache.supplied += amount;
@@ -157,7 +157,7 @@ pub trait LiquidityModule:
         self.global_sync(&mut cache);
         self.position_sync(&mut position, &mut cache);
 
-        position.amount += amount;
+        position.principal_amount += amount;
 
         require!(cache.has_reserves(amount), ERROR_INSUFFICIENT_LIQUIDITY);
 
@@ -229,8 +229,8 @@ pub trait LiquidityModule:
 
         cache.reserves -= &to_withdraw;
         cache.supplied -= &principal;
-        position.amount -= &principal;
-        position.accumulated_interest -= &interest;
+        position.principal_amount -= &principal;
+        position.interest_accrued -= &interest;
 
         self.send_asset(&cache, &to_withdraw, initial_caller);
 
@@ -279,8 +279,8 @@ pub trait LiquidityModule:
         // Update the position:
         // - Reduce principal by the repaid principal.
         // - Reduce accumulated interest by the repaid interest.
-        position.amount -= &principal;
-        position.accumulated_interest -= &interest;
+        position.principal_amount -= &principal;
+        position.interest_accrued -= &interest;
 
         // Update protocol bookkeeping:
         // - The net borrowed amount decreases only by the principal repaid.
@@ -341,7 +341,7 @@ pub trait LiquidityModule:
         // Calculate flash loan min repayment amount
         let required_repayment = self
             .mul_half_up(amount, &(self.bps() + fees.clone()), RAY_PRECISION)
-            .rescale(cache.pool_params.decimals);
+            .rescale(cache.pool_params.asset_decimals);
 
         let asset = cache.pool_asset.clone();
         // Prevent re entry attacks with loop flash loans

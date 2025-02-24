@@ -13,35 +13,37 @@ pub trait LendingUtilsModule:
     + common_math::SharedMathModule
     + helpers::math::MathsModule
 {
-    /// Gets the liquidity pool address for a given asset
+    /// Retrieves the liquidity pool address for a given asset.
+    /// Ensures the asset has an associated pool; errors if not found.
     ///
     /// # Arguments
-    /// * `asset` - Token identifier of the asset
+    /// - `asset`: The token identifier (EGLD or ESDT) of the asset.
     ///
     /// # Returns
-    /// * `ManagedAddress` - Address of the liquidity pool
+    /// - `ManagedAddress`: The address of the liquidity pool.
     ///
     /// # Errors
-    /// * `ERROR_NO_POOL_FOUND` - If no pool exists for the asset
+    /// - `ERROR_NO_POOL_FOUND`: If no pool exists for the asset.
     #[view(getPoolAddress)]
     fn get_pool_address(&self, asset: &EgldOrEsdtTokenIdentifier) -> ManagedAddress {
         let pool_address = self.pools_map(asset).get();
-
         require!(!pool_address.is_zero(), ERROR_NO_POOL_FOUND);
-
         pool_address
     }
 
-    /// Calculates total weighted collateral value in EGLD for liquidation
+    /// Calculates the total weighted collateral, total collateral, and LTV-weighted collateral in EGLD.
+    /// Used for assessing position health and borrow capacity.
     ///
     /// # Arguments
-    /// * `positions` - Vector of account positions
+    /// - `positions`: Vector of account positions.
+    /// - `storage_cache`: Mutable reference to the storage cache for efficiency.
     ///
     /// # Returns
-    /// * `BigUint` - Total EGLD value weighted by liquidation thresholds
-    ///
-    /// ```
-    fn sum_collaterals(
+    /// - Tuple of:
+    ///   - Weighted collateral in EGLD (based on liquidation thresholds).
+    ///   - Total collateral in EGLD (unweighted).
+    ///   - LTV-weighted collateral in EGLD (based on loan-to-value ratios).
+    fn calculate_collateral_values(
         &self,
         positions: &ManagedVec<AccountPosition<Self::Api>>,
         storage_cache: &mut StorageCache<Self>,
@@ -50,181 +52,68 @@ pub trait LendingUtilsModule:
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
-        let mut weighted_collateral_in_egld = self.to_decimal_wad(BigUint::zero());
-        let mut total_collateral_in_egld = self.to_decimal_wad(BigUint::zero());
-        let mut total_ltv_collateral_in_egld = self.to_decimal_wad(BigUint::zero());
+        let mut weighted_collateral = self.to_decimal_wad(BigUint::zero());
+        let mut total_collateral = self.to_decimal_wad(BigUint::zero());
+        let mut ltv_collateral = self.to_decimal_wad(BigUint::zero());
 
-        for dp in positions {
-            let collateral_in_egld =
-                self.get_token_amount_in_egld(&dp.token_id, &dp.get_total_amount(), storage_cache);
-
-            total_collateral_in_egld += &collateral_in_egld;
-            weighted_collateral_in_egld += self.mul_half_up(
+        for position in positions {
+            let collateral_in_egld = self.get_asset_egld_value(
+                &position.asset_id,
+                &position.get_total_amount(),
+                storage_cache,
+            );
+            total_collateral += &collateral_in_egld;
+            weighted_collateral += self.mul_half_up(
                 &collateral_in_egld,
-                &dp.entry_liquidation_threshold,
+                &position.liquidation_threshold,
                 WAD_PRECISION,
             );
-            total_ltv_collateral_in_egld +=
-                self.mul_half_up(&collateral_in_egld, &dp.entry_ltv, WAD_PRECISION);
+            ltv_collateral +=
+                self.mul_half_up(&collateral_in_egld, &position.loan_to_value, WAD_PRECISION);
         }
 
-        (
-            weighted_collateral_in_egld,
-            total_collateral_in_egld,
-            total_ltv_collateral_in_egld,
-        )
+        (weighted_collateral, total_collateral, ltv_collateral)
     }
 
-    fn proportion_of_weighted_seized(
-        &self,
-        total_collateral_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
-        positions: &ManagedVec<AccountPosition<Self::Api>>,
-        storage_cache: &mut StorageCache<Self>,
-    ) -> (
-        ManagedDecimal<Self::Api, NumDecimals>,
-        ManagedDecimal<Self::Api, NumDecimals>,
-    ) {
-        let mut proportion_of_weighted_seized = self.to_decimal_bps(BigUint::zero());
-        let mut weighted_bonus = self.to_decimal_bps(BigUint::zero());
-
-        for dp in positions {
-            let collateral_in_egld =
-                self.get_token_amount_in_egld(&dp.token_id, &dp.get_total_amount(), storage_cache);
-            let fraction = self
-                .div_half_up(&collateral_in_egld, total_collateral_in_egld, RAY_PRECISION)
-                .rescale(BPS_PRECISION);
-            proportion_of_weighted_seized += self
-                .mul_half_up(&fraction, &dp.entry_liquidation_threshold, RAY_PRECISION)
-                .rescale(BPS_PRECISION);
-            weighted_bonus += self
-                .mul_half_up(&fraction, &dp.entry_liquidation_bonus, RAY_PRECISION)
-                .rescale(BPS_PRECISION);
-        }
-
-        (proportion_of_weighted_seized, weighted_bonus)
-    }
-
-    /// Calculates total borrow value in USD
+    /// Calculates the total borrow value in EGLD for a set of positions.
+    /// Sums the EGLD value of all borrowed assets.
     ///
     /// # Arguments
-    /// * `positions` - Vector of account positions
+    /// - `positions`: Vector of account positions.
+    /// - `storage_cache`: Mutable reference to the storage cache.
     ///
     /// # Returns
-    /// * `BigUint` - Total USD value of borrowed assets
-    ///
-    /// ```
-    fn sum_borrows(
+    /// - Total borrow value in EGLD as a `ManagedDecimal`.
+    fn calculate_total_borrow_in_egld(
         &self,
         positions: &ManagedVec<AccountPosition<Self::Api>>,
         storage_cache: &mut StorageCache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let mut total_borrow_in_egld = self.to_decimal_wad(BigUint::zero());
-
-        for bp in positions {
-            total_borrow_in_egld +=
-                self.get_token_amount_in_egld(&bp.token_id, &bp.get_total_amount(), storage_cache);
+        let mut total_borrow = self.to_decimal_wad(BigUint::zero());
+        for position in positions {
+            total_borrow += self.get_asset_egld_value(
+                &position.asset_id,
+                &position.get_total_amount(),
+                storage_cache,
+            );
         }
-
-        total_borrow_in_egld
+        total_borrow
     }
 
-    fn get_position_by_index(
-        &self,
-        key_token: &EgldOrEsdtTokenIdentifier,
-        borrows: &ManagedVec<AccountPosition<Self::Api>>,
-        borrows_index_map: &ManagedMapEncoded<Self::Api, EgldOrEsdtTokenIdentifier, usize>,
-    ) -> AccountPosition<Self::Api> {
-        require!(
-            borrows_index_map.contains(key_token),
-            "Token {} is not part of the mapper",
-            key_token
-        );
-        let safe_index = borrows_index_map.get(key_token);
-        // -1 is required to by pass the issue of index = 0 which will throw at the above .contains
-        let index = safe_index - 1;
-        let position = borrows.get(index).clone();
-
-        position
-    }
-
-    fn sum_repayments(
-        &self,
-        repayments: &ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
-        borrows: &ManagedVec<AccountPosition<Self::Api>>,
-        refunds: &mut ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
-        borrows_index_map: ManagedMapEncoded<Self::Api, EgldOrEsdtTokenIdentifier, usize>,
-        storage_cache: &mut StorageCache<Self>,
-    ) -> (
-        ManagedDecimal<Self::Api, NumDecimals>,
-        ManagedVec<
-            MultiValue3<
-                EgldOrEsdtTokenPayment,
-                ManagedDecimal<Self::Api, NumDecimals>,
-                PriceFeedShort<Self::Api>,
-            >,
-        >,
-    ) {
-        let mut total_repaid = self.to_decimal_wad(BigUint::zero());
-        let mut repaid_tokens = ManagedVec::new();
-        for payment_ref in repayments {
-            let token_feed = self.get_token_price(&payment_ref.token_identifier, storage_cache);
-            let original_borrow = self.get_position_by_index(
-                &payment_ref.token_identifier,
-                borrows,
-                &borrows_index_map,
-            );
-            let amount_dec = ManagedDecimal::from_raw_units(
-                payment_ref.amount.clone(),
-                token_feed.decimals as usize,
-            );
-
-            let token_egld_amount =
-                self.get_token_amount_in_egld_raw(&amount_dec, &token_feed.price);
-
-            let borrowed_egld_amount = self.get_token_amount_in_egld_raw(
-                &original_borrow.get_total_amount(),
-                &token_feed.price,
-            );
-            let mut payment = payment_ref.clone();
-            if token_egld_amount > borrowed_egld_amount {
-                let egld_excess = token_egld_amount - borrowed_egld_amount.clone();
-                let original_excess_paid = self.compute_egld_in_tokens(&egld_excess, &token_feed);
-                let token_excess_amount = original_excess_paid.into_raw_units().clone();
-
-                payment.amount -= &token_excess_amount;
-
-                refunds.push(EgldOrEsdtTokenPayment::new(
-                    payment_ref.token_identifier.clone(),
-                    payment_ref.token_nonce.clone(),
-                    token_excess_amount,
-                ));
-
-                total_repaid += &borrowed_egld_amount;
-                repaid_tokens.push((payment, borrowed_egld_amount, token_feed).into());
-            } else {
-                total_repaid += &token_egld_amount;
-                repaid_tokens.push((payment, token_egld_amount, token_feed).into());
-            }
-        }
-
-        (total_repaid, repaid_tokens)
-    }
-
-    /// Updates isolated asset debt tracking
+    /// Adjusts the isolated debt tracking for an asset in USD.
+    /// Updates the debt ceiling based on borrowing or repayment.
     ///
     /// # Arguments
-    /// * `token_id` - Token identifier
-    /// * `amount_in_usd` - USD value to add/subtract
-    /// * `is_increase` - Whether to increase or decrease debt
+    /// - `asset_id`: Token identifier (EGLD or ESDT) of the asset.
+    /// - `amount_in_usd`: USD value to adjust the debt by.
+    /// - `is_increase`: Flag to indicate increase (`true`) or decrease (`false`).
     ///
-    /// # Flow
-    /// 1. Skips if amount is zero
-    /// 2. Updates debt tracking storage
-    /// 3. Emits debt ceiling event
-    /// ```
-    fn update_isolated_debt_usd(
+    /// # Notes
+    /// - Skips adjustment if the amount is zero.
+    /// - Emits a debt ceiling update event.
+    fn adjust_isolated_debt_usd(
         &self,
-        token_id: &EgldOrEsdtTokenIdentifier,
+        asset_id: &EgldOrEsdtTokenIdentifier,
         amount_in_usd: ManagedDecimal<Self::Api, NumDecimals>,
         is_increase: bool,
     ) {
@@ -232,12 +121,11 @@ pub trait LendingUtilsModule:
             return;
         }
 
-        let map = self.isolated_asset_debt_usd(token_id);
-
+        let debt_mapper = self.isolated_asset_debt_usd(asset_id);
         if is_increase {
-            map.update(|debt| *debt += amount_in_usd);
+            debt_mapper.update(|debt| *debt += amount_in_usd);
         } else {
-            map.update(|debt| {
+            debt_mapper.update(|debt| {
                 *debt -= if debt.into_raw_units() > amount_in_usd.into_raw_units() {
                     amount_in_usd
                 } else {
@@ -245,23 +133,19 @@ pub trait LendingUtilsModule:
                 }
             });
         }
-
-        self.update_debt_ceiling_event(token_id, map.get());
+        self.update_debt_ceiling_event(asset_id, debt_mapper.get());
     }
 
-    /// Updates account position with interest
-    /// - Updates position's interest amount
-    /// - Updates position's last interest update timestamp
-    /// - Updates position's total amount
+    /// Updates an account position with the latest interest data from the liquidity pool.
+    /// Syncs interest accruals for accurate position tracking.
     ///
     /// # Arguments
-    /// * `asset_address` - Address of the asset
-    /// * `position` - Account position to update
-    /// * `price` - Current price of the asset
+    /// - `asset_address`: Address of the asset’s liquidity pool.
+    /// - `position`: Mutable reference to the account position to update.
+    /// - `price`: Optional current price of the asset for calculations.
     ///
-    /// # Returns
-    /// * `AccountPosition` - Edits the position in place
-    ///
+    /// # Notes
+    /// - Performs a synchronous call to the liquidity pool proxy.
     fn update_position(
         &self,
         asset_address: &ManagedAddress,
@@ -277,56 +161,22 @@ pub trait LendingUtilsModule:
             .sync_call();
     }
 
-    /// Calculates the maximum amount of a specific collateral asset that can be liquidated
+    /// Calculates the EGLD value of a specified asset amount.
+    /// Converts token amounts to EGLD for standardized valuation.
     ///
     /// # Arguments
-    /// * `total_debt_in_egld` - Total EGLD value of user's debt
-    /// * `total_collateral_in_egld` - Total EGLD value of all collateral
-    /// * `token_to_liquidate` - Token identifier of collateral to liquidate
-    /// * `token_price_data` - Price feed data for the collateral token
-    /// * `liquidatee_account_nonce` - NFT nonce of the account being liquidated
-    /// * `debt_payment_in_egld` - Optional EGLD value of debt being repaid
-    /// * `base_liquidation_bonus` - Base liquidation bonus in basis points (10^21 = 100%)
-    /// * `health_factor` - Current health factor in basis points (10^21 = 100%)
+    /// - `asset_id`: Token identifier (EGLD or ESDT) of the asset.
+    /// - `amount`: Amount of the asset as a `ManagedDecimal`.
+    /// - `storage_cache`: Mutable reference to the storage cache.
     ///
     /// # Returns
-    /// * `(BigUint, BigUint)` - Maximum EGLD value of the specific collateral that can be liquidated and the bonus
-    fn calculate_max_debt_repayment(
+    /// - EGLD value of the asset amount as a `ManagedDecimal`.
+    fn get_asset_egld_value(
         &self,
-        total_debt_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
-        total_collateral_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
-        weighted_collateral_in_egld: ManagedDecimal<Self::Api, NumDecimals>,
-        proportion_of_weighted_seized: &ManagedDecimal<Self::Api, NumDecimals>,
-        base_liquidation_bonus: &ManagedDecimal<Self::Api, NumDecimals>,
-        health_factor: &ManagedDecimal<Self::Api, NumDecimals>,
-        debt_payment: OptionalValue<ManagedDecimal<Self::Api, NumDecimals>>,
-    ) -> (
-        ManagedDecimal<Self::Api, NumDecimals>,
-        ManagedDecimal<Self::Api, NumDecimals>,
-    ) {
-        let (max_repayable_debt, bonus) = self.estimate_liquidation_amount(
-            weighted_collateral_in_egld.into_raw_units(),
-            proportion_of_weighted_seized.into_raw_units(),
-            total_collateral_in_egld.into_raw_units(),
-            total_debt_in_egld.into_raw_units(),
-            base_liquidation_bonus.into_raw_units(),
-            health_factor.into_raw_units(),
-        );
-
-        if debt_payment.is_some() {
-            // Take the minimum between what we need and what's available and what the liquidator is paying
-            (
-                self.to_decimal_wad(BigUint::min(
-                    debt_payment.into_option().unwrap().into_raw_units().clone(),
-                    max_repayable_debt,
-                )),
-                self.to_decimal_bps(bonus),
-            )
-        } else {
-            (
-                self.to_decimal_wad(max_repayable_debt),
-                self.to_decimal_bps(bonus),
-            )
-        }
+        asset_id: &EgldOrEsdtTokenIdentifier,
+        amount: &ManagedDecimal<Self::Api, NumDecimals>,
+        storage_cache: &mut StorageCache<Self>,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        self.get_token_amount_in_egld(asset_id, amount, storage_cache)
     }
 }

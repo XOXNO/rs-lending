@@ -2,8 +2,8 @@ use common_structs::{AccountPosition, NftAccountAttributes, PriceFeedShort};
 
 use crate::{
     contexts::base::StorageCache, helpers, oracle, proxy_pool, storage, utils, validation,
+    ERROR_HEALTH_FACTOR_WITHDRAW,
 };
-use common_errors::ERROR_HEALTH_FACTOR_WITHDRAW;
 
 use super::account;
 
@@ -21,201 +21,175 @@ pub trait PositionWithdrawModule:
     + account::PositionAccountModule
     + common_math::SharedMathModule
 {
-    /// Processes withdrawal from a position
+    /// Processes a withdrawal from a deposit position.
+    /// Handles vault or market withdrawals with validations.
     ///
     /// # Arguments
-    /// * `account_nonce` - NFT nonce of the account position
-    /// * `withdraw_token_id` - Token to withdraw
-    /// * `amount` - Amount to withdraw
-    /// * `caller` - Address initiating withdrawal
-    /// * `is_liquidation` - Whether this is a liquidation withdrawal
-    /// * `liquidation_fee` - Protocol fee for liquidation
-    /// * `attributes` - Optional NFT attributes
+    /// - `account_nonce`: Position NFT nonce.
+    /// - `withdraw_payment`: Withdrawal payment details.
+    /// - `caller`: Withdrawer's address.
+    /// - `is_liquidation`: Liquidation flag.
+    /// - `liquidation_fee`: Optional fee for liquidation.
+    /// - `storage_cache`: Mutable storage cache.
+    /// - `position_attributes`: NFT attributes.
+    /// - `is_swap`: Swap operation flag.
     ///
     /// # Returns
-    /// * `AccountPosition` - Updated position after withdrawal
-    ///
-    /// Handles both normal withdrawals and liquidations.
-    /// For vault positions, updates storage directly.
-    /// For market positions, processes through liquidity pool.
-    /// Handles protocol fees for liquidations.
-    fn internal_withdraw(
+    /// - Updated deposit position.
+    fn process_withdrawal(
         &self,
         account_nonce: u64,
-        collateral: EgldOrEsdtTokenPayment,
+        withdraw_payment: EgldOrEsdtTokenPayment,
         caller: &ManagedAddress,
         is_liquidation: bool,
         liquidation_fee: Option<ManagedDecimal<Self::Api, NumDecimals>>,
         storage_cache: &mut StorageCache<Self>,
-        attributes: &NftAccountAttributes,
+        position_attributes: &NftAccountAttributes,
         is_swap: bool,
     ) -> AccountPosition<Self::Api> {
-        // Unpack collateral details
-        let (withdraw_token_id, _, requested_amount) = collateral.into_tuple();
-        // Get price data for the collateral token
-        let asset_data = self.get_token_price(&withdraw_token_id, storage_cache);
+        let (token_id, _, requested_amount) = withdraw_payment.into_tuple();
+        let price_feed = self.get_token_price(&token_id, storage_cache);
+        let pool_address = storage_cache.get_cached_pool_address(&token_id);
 
-        let pool_address = storage_cache.get_cached_pool_address(&withdraw_token_id);
+        let mut deposit_position = self.get_deposit_position(account_nonce, &token_id);
+        let withdraw_amount = self.calculate_withdraw_amount(&deposit_position, requested_amount);
 
-        // Retrieve deposit position for the given token
-        let mut deposit_positions = self.deposit_positions(account_nonce);
-        let maybe_deposit_position = deposit_positions.get(&withdraw_token_id);
-        require!(
-            maybe_deposit_position.is_some(),
-            "Token {} is not available for this account",
-            withdraw_token_id
-        );
-        let mut deposit_position = maybe_deposit_position.unwrap();
-
-        let request_amount_dec = deposit_position.make_amount_decimal(requested_amount);
-        // Cap the withdrawal amount to the available balance
-        let amount = if request_amount_dec > deposit_position.get_total_amount() {
-            deposit_position.get_total_amount()
-        } else {
-            request_amount_dec
-        };
-
-        // Process withdrawal differently based on deposit type
-        let updated_position = if deposit_position.is_vault {
+        let updated_position = if deposit_position.is_vault_position {
             self.process_vault_withdrawal(
-                &withdraw_token_id,
-                &amount,
+                &token_id,
+                &withdraw_amount,
                 is_liquidation,
                 liquidation_fee,
                 caller,
                 pool_address,
-                &asset_data,
+                &price_feed,
                 &mut deposit_position,
                 is_swap,
             )
         } else {
-            self.tx()
-                .to(pool_address)
-                .typed(proxy_pool::LiquidityPoolProxy)
-                .withdraw(
-                    caller,
-                    amount.clone(),
-                    deposit_position,
-                    is_liquidation,
-                    liquidation_fee,
-                    asset_data.price.clone(),
-                )
-                .returns(ReturnsResult)
-                .sync_call()
+            self.process_market_withdrawal(
+                pool_address,
+                caller,
+                &withdraw_amount,
+                &mut deposit_position,
+                is_liquidation,
+                liquidation_fee,
+                &price_feed,
+            )
         };
 
-        // Emit event and update deposit positions storage
-        self.update_position_event(
-            &amount,
+        self.emit_withdrawal_event(
+            &withdraw_amount,
             &updated_position,
-            OptionalValue::Some(asset_data.price),
-            OptionalValue::Some(caller),
-            OptionalValue::Some(attributes),
+            &price_feed,
+            caller,
+            position_attributes,
         );
-
-        if updated_position.can_remove() {
-            deposit_positions.remove(&withdraw_token_id);
-        } else {
-            deposit_positions.insert(withdraw_token_id, updated_position.clone());
-        }
+        self.update_deposit_position_storage(account_nonce, &token_id, &updated_position);
 
         updated_position
     }
 
-    /// Processes a withdrawal from a vault-type deposit position.
-    ///
-    /// This function updates the vault’s internal supplied amount, decreases the deposit position,
-    /// sends a payment to the caller (subtracting liquidation fees if this is a liquidation) and, in the
-    /// liquidation case, also transfers the liquidation fee to the pool as protocol revenue.
+    /// Processes a vault withdrawal.
+    /// Updates storage and transfers assets for vault positions.
     ///
     /// # Arguments
-    /// * `withdraw_token_id` - The token identifier being withdrawn.
-    /// * `amount` - The amount to withdraw.
-    /// * `is_liquidation` - True if this withdrawal is triggered by liquidation.
-    /// * `liquidation_fee` - The fee to be deducted in a liquidation.
-    /// * `caller` - The address receiving the withdrawn funds.
-    /// * `pool_address` - The address of the liquidity pool for this token.
-    /// * `asset_data` - Price feed data for the token.
-    /// * `deposit_position` - The mutable deposit position for this token.
+    /// - `token_id`: Token identifier.
+    /// - `amount`: Withdrawal amount.
+    /// - `is_liquidation`: Liquidation flag.
+    /// - `liquidation_fee_opt`: Optional liquidation fee.
+    /// - `caller`: Receiver's address.
+    /// - `pool_address`: Pool address.
+    /// - `price_feed`: Price data for the token.
+    /// - `deposit_position`: Mutable deposit position.
+    /// - `is_swap`: Swap operation flag.
+    ///
+    /// # Returns
+    /// - Updated deposit position.
     fn process_vault_withdrawal(
         &self,
-        withdraw_token_id: &EgldOrEsdtTokenIdentifier,
+        token_id: &EgldOrEsdtTokenIdentifier,
         amount: &ManagedDecimal<Self::Api, NumDecimals>,
         is_liquidation: bool,
         liquidation_fee_opt: Option<ManagedDecimal<Self::Api, NumDecimals>>,
         caller: &ManagedAddress,
         pool_address: ManagedAddress,
-        asset_data: &PriceFeedShort<Self::Api>, // Adjust this type to your actual asset data type
+        price_feed: &PriceFeedShort<Self::Api>,
         deposit_position: &mut AccountPosition<Self::Api>,
         is_swap: bool,
     ) -> AccountPosition<Self::Api> {
-        // Update the vault’s stored supplied amount by subtracting the withdrawn amount.
-        let last_value = self.vault_supplied_amount(withdraw_token_id).update(|am| {
-            *am -= amount;
-            am.clone()
-        });
-
-        // Emit an event for the updated vault supplied amount.
-        self.update_vault_supplied_amount_event(withdraw_token_id, last_value);
-
-        // Decrease the deposit position by the withdrawn amount.
-        deposit_position.amount -= amount;
+        self.update_vault_supplied_amount(token_id, amount, false);
+        deposit_position.principal_amount -= amount;
 
         if is_liquidation && liquidation_fee_opt.is_some() {
-            // In a liquidation, deduct the liquidation fee from the withdrawn amount.
             let liquidation_fee = liquidation_fee_opt.unwrap();
-            let liquidated_amount_after_fees = amount.clone() - liquidation_fee.clone();
-            // Transfer the net amount to the caller.
-            self.tx()
-                .to(caller)
-                .egld_or_single_esdt(
-                    withdraw_token_id,
-                    0,
-                    liquidated_amount_after_fees.into_raw_units(),
-                )
-                .transfer();
-            // Send the liquidation fee to the pool as protocol revenue.
-            self.tx()
-                .to(pool_address)
-                .typed(proxy_pool::LiquidityPoolProxy)
-                .add_protocol_revenue(asset_data.price.clone())
-                .egld_or_single_esdt(withdraw_token_id, 0, liquidation_fee.into_raw_units())
-                .returns(ReturnsResult)
-                .sync_call();
+            let amount_after_fee = amount.clone() - liquidation_fee.clone();
+            self.transfer_withdrawn_assets(caller, token_id, &amount_after_fee, is_swap);
+            self.transfer_liquidation_fee(pool_address, token_id, &liquidation_fee, price_feed);
         } else {
-            // For a normal withdrawal, simply transfer the full amount to the caller.
-            if !is_swap {
-                self.tx()
-                    .to(caller)
-                    .egld_or_single_esdt(withdraw_token_id, 0, amount.into_raw_units())
-                    .transfer();
-            }
+            self.transfer_withdrawn_assets(caller, token_id, amount, is_swap);
         }
 
-        // Return the updated deposit position.
         deposit_position.clone()
     }
 
-    /// Handles NFT after withdrawal operation
+    /// Executes a market withdrawal via the liquidity pool.
     ///
     /// # Arguments
-    /// * `account_token` - NFT token payment
-    /// * `caller` - Address initiating withdrawal
+    /// - `pool_address`: Pool address.
+    /// - `caller`: Withdrawer's address.
+    /// - `amount`: Withdrawal amount.
+    /// - `deposit_position`: Mutable deposit position.
+    /// - `is_liquidation`: Liquidation flag.
+    /// - `liquidation_fee`: Optional fee.
+    /// - `price_feed`: Price data for the token.
     ///
-    /// If no positions remain (no deposits or borrows),
-    /// burns the NFT and removes from storage.
-    /// Otherwise returns NFT to caller.
-    fn handle_nft_after_withdraw(
+    /// # Returns
+    /// - Updated deposit position.
+    fn process_market_withdrawal(
+        &self,
+        pool_address: ManagedAddress,
+        caller: &ManagedAddress,
+        amount: &ManagedDecimal<Self::Api, NumDecimals>,
+        deposit_position: &mut AccountPosition<Self::Api>,
+        is_liquidation: bool,
+        liquidation_fee: Option<ManagedDecimal<Self::Api, NumDecimals>>,
+        price_feed: &PriceFeedShort<Self::Api>,
+    ) -> AccountPosition<Self::Api> {
+        self.tx()
+            .to(pool_address)
+            .typed(proxy_pool::LiquidityPoolProxy)
+            .withdraw(
+                caller,
+                amount.clone(),
+                deposit_position.clone(),
+                is_liquidation,
+                liquidation_fee,
+                price_feed.price.clone(),
+            )
+            .returns(ReturnsResult)
+            .sync_call()
+    }
+
+    /// Manages the position NFT after withdrawal.
+    /// Burns NFT if position is fully closed, otherwise transfers it.
+    ///
+    /// # Arguments
+    /// - `amount`: NFT token amount.
+    /// - `token_nonce`: NFT nonce.
+    /// - `token_identifier`: NFT identifier.
+    /// - `caller`: Withdrawer's address.
+    fn manage_nft_after_withdrawal(
         &self,
         amount: &BigUint,
         token_nonce: u64,
         token_identifier: &TokenIdentifier,
         caller: &ManagedAddress,
     ) {
-        let dep_pos_map = self.deposit_positions(token_nonce).len();
-        let borrow_pos_map = self.borrow_positions(token_nonce).len();
+        let deposit_positions_count = self.deposit_positions(token_nonce).len();
+        let borrow_positions_count = self.borrow_positions(token_nonce).len();
 
-        if dep_pos_map == 0 && borrow_pos_map == 0 {
+        if deposit_positions_count == 0 && borrow_positions_count == 0 {
             self.account_token().nft_burn(token_nonce, amount);
             self.account_positions().swap_remove(&token_nonce);
             self.account_attributes(token_nonce).clear();
@@ -227,48 +201,209 @@ pub trait PositionWithdrawModule:
         }
     }
 
-    /// Validates health factor after withdrawal
+    /// Validates health factor post-withdrawal.
+    /// Ensures position remains safe after withdrawal.
     ///
     /// # Arguments
-    /// * `account_nonce` - NFT nonce of the account position
-    /// * `is_liquidation` - Whether this is a liquidation withdrawal
-    /// * `egld_price_feed` - Price feed for EGLD
-    ///
-    /// For normal withdrawals:
-    /// - Calculates new health factor
-    /// - Ensures it stays above 100%
-    /// Skips check for liquidation withdrawals
-    fn validate_withdraw_health_factor(
+    /// - `account_nonce`: Position NFT nonce.
+    /// - `is_liquidation`: Liquidation flag.
+    /// - `storage_cache`: Mutable storage cache.
+    /// - `safety_factor`: Optional safety factor.
+    fn validate_health_factor_after_withdrawal(
         &self,
         account_nonce: u64,
         is_liquidation: bool,
         storage_cache: &mut StorageCache<Self>,
         safety_factor: Option<ManagedDecimal<Self::Api, NumDecimals>>,
     ) {
-        if !is_liquidation {
-            let borrow_positions = self.borrow_positions(account_nonce);
-            let len = borrow_positions.len();
-            if len == 0 {
-                return;
-            }
-            let deposit_positions = self.deposit_positions(account_nonce);
-            let (liq_collateral, _, _) =
-                self.sum_collaterals(&deposit_positions.values().collect(), storage_cache);
-            let borrowed_egld =
-                self.sum_borrows(&borrow_positions.values().collect(), storage_cache);
-            let health_factor = self.compute_health_factor(&liq_collateral, &borrowed_egld);
+        if is_liquidation {
+            return;
+        }
 
-            // Make sure the health factor is greater than 100% when is a normal withdraw
-            let health_factor_with_safety_factor = if let Some(safety_factor_value) = safety_factor
-            {
-                self.wad() + (self.wad() / safety_factor_value)
+        let borrow_positions = self.borrow_positions(account_nonce);
+        if borrow_positions.is_empty() {
+            return;
+        }
+
+        let deposit_positions = self.deposit_positions(account_nonce);
+        let (collateral, _, _) =
+            self.calculate_collateral_values(&deposit_positions.values().collect(), storage_cache);
+        let borrowed = self
+            .calculate_total_borrow_in_egld(&borrow_positions.values().collect(), storage_cache);
+        let health_factor = self.compute_health_factor(&collateral, &borrowed);
+
+        let min_health_factor = if let Some(safety_factor_value) = safety_factor {
+            self.wad() + (self.wad() / safety_factor_value)
+        } else {
+            self.wad()
+        };
+
+        require!(
+            health_factor >= min_health_factor,
+            ERROR_HEALTH_FACTOR_WITHDRAW
+        );
+    }
+
+    /// Retrieves a deposit position for a token.
+    ///
+    /// # Arguments
+    /// - `account_nonce`: Position NFT nonce.
+    /// - `token_id`: Token identifier.
+    ///
+    /// # Returns
+    /// - Deposit position.
+    fn get_deposit_position(
+        &self,
+        account_nonce: u64,
+        token_id: &EgldOrEsdtTokenIdentifier,
+    ) -> AccountPosition<Self::Api> {
+        let maybe_deposit_position = self.deposit_positions(account_nonce).get(&token_id);
+        require!(
+            maybe_deposit_position.is_some(),
+            "Token {} is not available for this account",
+            token_id
+        );
+        maybe_deposit_position.unwrap()
+    }
+
+    /// Calculates the actual withdrawal amount.
+    /// Caps withdrawal at available balance.
+    ///
+    /// # Arguments
+    /// - `deposit_position`: Current deposit position.
+    /// - `requested_amount`: Requested withdrawal amount.
+    ///
+    /// # Returns
+    /// - Actual withdrawal amount in decimal format.
+    fn calculate_withdraw_amount(
+        &self,
+        deposit_position: &AccountPosition<Self::Api>,
+        requested_amount: BigUint,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        let requested_amount_dec = deposit_position.make_amount_decimal(requested_amount);
+        let total_amount = deposit_position.get_total_amount();
+        if requested_amount_dec > total_amount {
+            total_amount
+        } else {
+            requested_amount_dec
+        }
+    }
+
+    /// Transfers withdrawn assets to the caller.
+    /// Skips transfer if part of a swap operation.
+    ///
+    /// # Arguments
+    /// - `caller`: Receiver's address.
+    /// - `token_id`: Token identifier.
+    /// - `amount`: Transfer amount.
+    /// - `is_swap`: Swap operation flag.
+    fn transfer_withdrawn_assets(
+        &self,
+        caller: &ManagedAddress,
+        token_id: &EgldOrEsdtTokenIdentifier,
+        amount: &ManagedDecimal<Self::Api, NumDecimals>,
+        is_swap: bool,
+    ) {
+        if !is_swap {
+            self.tx()
+                .to(caller)
+                .egld_or_single_esdt(token_id, 0, amount.into_raw_units())
+                .transfer();
+        }
+    }
+
+    /// Transfers liquidation fee to the liquidity pool.
+    /// Adds fee as protocol revenue.
+    ///
+    /// # Arguments
+    /// - `pool_address`: Pool address.
+    /// - `token_id`: Token identifier.
+    /// - `fee`: Fee amount.
+    /// - `price_feed`: Price data for the token.
+    fn transfer_liquidation_fee(
+        &self,
+        pool_address: ManagedAddress,
+        token_id: &EgldOrEsdtTokenIdentifier,
+        fee: &ManagedDecimal<Self::Api, NumDecimals>,
+        price_feed: &PriceFeedShort<Self::Api>,
+    ) {
+        self.tx()
+            .to(pool_address)
+            .typed(proxy_pool::LiquidityPoolProxy)
+            .add_protocol_revenue(price_feed.price.clone())
+            .egld_or_single_esdt(token_id, 0, fee.into_raw_units())
+            .returns(ReturnsResult)
+            .sync_call();
+    }
+
+    /// Updates the vault's supplied amount in storage.
+    /// Adjusts for deposits or withdrawals.
+    ///
+    /// # Arguments
+    /// - `token_id`: Token identifier.
+    /// - `amount`: Adjustment amount.
+    /// - `is_increase`: Increase (true) or decrease (false) flag.
+    fn update_vault_supplied_amount(
+        &self,
+        token_id: &EgldOrEsdtTokenIdentifier,
+        amount: &ManagedDecimal<Self::Api, NumDecimals>,
+        is_increase: bool,
+    ) {
+        let last_value = self.vault_supplied_amount(token_id).update(|am| {
+            if is_increase {
+                *am += amount;
             } else {
-                self.wad()
-            };
-            require!(
-                health_factor >= health_factor_with_safety_factor,
-                ERROR_HEALTH_FACTOR_WITHDRAW
-            );
+                *am -= amount;
+            }
+            am.clone()
+        });
+        self.update_vault_supplied_amount_event(token_id, last_value);
+    }
+
+    /// Emits an event for a withdrawal operation.
+    /// Logs withdrawal details for transparency.
+    ///
+    /// # Arguments
+    /// - `amount`: Withdrawn amount.
+    /// - `position`: Updated position.
+    /// - `price_feed`: Price data for the token.
+    /// - `caller`: Withdrawer's address.
+    /// - `position_attributes`: NFT attributes.
+    fn emit_withdrawal_event(
+        &self,
+        amount: &ManagedDecimal<Self::Api, NumDecimals>,
+        position: &AccountPosition<Self::Api>,
+        price_feed: &PriceFeedShort<Self::Api>,
+        caller: &ManagedAddress,
+        position_attributes: &NftAccountAttributes,
+    ) {
+        self.update_position_event(
+            amount,
+            position,
+            OptionalValue::Some(price_feed.price.clone()),
+            OptionalValue::Some(caller),
+            OptionalValue::Some(position_attributes),
+        );
+    }
+
+    /// Updates or removes a deposit position in storage.
+    /// Reflects withdrawal changes in storage.
+    ///
+    /// # Arguments
+    /// - `account_nonce`: Position NFT nonce.
+    /// - `token_id`: Token identifier.
+    /// - `position`: Updated deposit position.
+    fn update_deposit_position_storage(
+        &self,
+        account_nonce: u64,
+        token_id: &EgldOrEsdtTokenIdentifier,
+        position: &AccountPosition<Self::Api>,
+    ) {
+        let mut deposit_positions = self.deposit_positions(account_nonce);
+        if position.can_remove() {
+            deposit_positions.remove(token_id);
+        } else {
+            deposit_positions.insert(token_id.clone(), position.clone());
         }
     }
 }

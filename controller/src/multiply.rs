@@ -44,8 +44,8 @@ pub trait MultiplyModule:
         // let wad = self.wad();
         let payment = self.call_value().egld_or_single_esdt();
         let caller = self.blockchain().get_caller();
-        let e_mode = self.validate_e_mode_exists(e_mode_category);
-        self.validate_not_deprecated_e_mode(&e_mode);
+        let e_mode = self.get_e_mode_category(e_mode_category);
+        self.ensure_e_mode_not_deprecated(&e_mode);
         let leverage = self.to_decimal_wad(leverage_raw);
         let mut storage_cache = StorageCache::new(self);
 
@@ -83,28 +83,24 @@ pub trait MultiplyModule:
         let (account, nft_attributes) =
             self.create_position_nft(&caller, false, false, OptionalValue::Some(e_mode_category));
 
-        let e_mode_id = nft_attributes.e_mode_category;
+        let e_mode_id = nft_attributes.get_emode_id();
         // 4. Validate e-mode constraints first
-        let collateral_emode_config = self.validate_token_of_emode(e_mode_id, &collateral_token);
-        let debt_emode_config = self.validate_token_of_emode(e_mode_id, &debt_token);
+        let collateral_emode_config = self.get_token_e_mode_config(e_mode_id, &collateral_token);
+        let debt_emode_config = self.get_token_e_mode_config(e_mode_id, &debt_token);
 
-        self.validate_e_mode_not_isolated(&collateral_config, e_mode_id);
-        self.validate_e_mode_not_isolated(&debt_config, e_mode_id);
+        self.ensure_e_mode_compatible_with_asset(&collateral_config, e_mode_id);
+        self.ensure_e_mode_compatible_with_asset(&debt_config, e_mode_id);
 
         // 5. Update asset config if NFT has active e-mode
-        self.update_asset_config_with_e_mode(
-            &mut collateral_config,
-            &e_mode,
-            collateral_emode_config,
-        );
-        self.update_asset_config_with_e_mode(&mut debt_config, &e_mode, debt_emode_config);
+        self.apply_e_mode_to_asset_config(&mut collateral_config, &e_mode, collateral_emode_config);
+        self.apply_e_mode_to_asset_config(&mut debt_config, &e_mode, debt_emode_config);
 
         require!(
-            collateral_config.can_be_collateral,
+            collateral_config.can_supply(),
             ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL
         );
 
-        require!(debt_config.can_be_borrowed, ERROR_ASSET_NOT_BORROWABLE);
+        require!(debt_config.can_borrow(), ERROR_ASSET_NOT_BORROWABLE);
 
         let initial_collateral = self.process_payment_to_collateral(
             &payment,
@@ -117,21 +113,19 @@ pub trait MultiplyModule:
 
         let initial_collateral_amount_dec = ManagedDecimal::from_raw_units(
             initial_collateral.amount.clone(),
-            collateral_price_feed.decimals as usize,
+            collateral_price_feed.asset_decimals as usize,
         );
 
-        let initial_egld_collateral = self.get_token_amount_in_egld_raw(
-            &initial_collateral_amount_dec,
-            &collateral_price_feed.price,
-        );
+        let initial_egld_collateral =
+            self.get_token_egld_value(&initial_collateral_amount_dec, &collateral_price_feed.price);
         let final_strategy_collateral =
             initial_egld_collateral.clone() * leverage / storage_cache.wad_dec.clone();
         let required_collateral = final_strategy_collateral - initial_egld_collateral;
 
         let debt_amount_to_flash_loan =
-            self.compute_egld_in_tokens(&required_collateral, &debt_price_feed);
+            self.convert_egld_to_tokens(&required_collateral, &debt_price_feed);
 
-        let flash_fee = debt_amount_to_flash_loan.clone() * debt_config.flash_loan_fee.clone()
+        let flash_fee = debt_amount_to_flash_loan.clone() * debt_config.flashloan_fee.clone()
             / storage_cache.bps_dec.clone();
 
         let total_borrowed = debt_amount_to_flash_loan.clone() + flash_fee.clone();
@@ -158,10 +152,10 @@ pub trait MultiplyModule:
             false,
         );
 
-        borrow_position.amount += &debt_amount_to_flash_loan;
-        borrow_position.accumulated_interest += &flash_fee;
-        borrow_position.index = borrow_index;
-        borrow_position.timestamp = timestamp;
+        borrow_position.principal_amount += &debt_amount_to_flash_loan;
+        borrow_position.interest_accrued += &flash_fee;
+        borrow_position.market_index = borrow_index;
+        borrow_position.last_update_timestamp = timestamp;
 
         let mut borrow_positions = self.borrow_positions(account.token_nonce);
 
@@ -204,7 +198,12 @@ pub trait MultiplyModule:
         );
 
         // 4. Validate health factor after looping was created to verify integrity of healthy
-        self.validate_withdraw_health_factor(account.token_nonce, false, &mut storage_cache, None);
+        self.validate_health_factor_after_withdrawal(
+            account.token_nonce,
+            false,
+            &mut storage_cache,
+            None,
+        );
     }
 
     #[payable]
@@ -242,7 +241,10 @@ pub trait MultiplyModule:
 
         let asset_info = storage_cache.get_cached_asset_info(to_token);
 
-        require!(!asset_info.is_isolated, ERROR_SWAP_COLLATERAL_NOT_SUPPORTED);
+        require!(
+            !asset_info.is_isolated(),
+            ERROR_SWAP_COLLATERAL_NOT_SUPPORTED
+        );
 
         // Retrieve deposit position for the given token
         let deposit_positions = self.deposit_positions(account.token_nonce);
@@ -256,7 +258,7 @@ pub trait MultiplyModule:
 
         // Required to be in sync with the global index for accurate swaps to avoid extra interest during withdraw
         self.update_position(
-            &self.get_pool_address(&deposit_position.token_id),
+            &self.get_pool_address(&deposit_position.asset_id),
             &mut deposit_position,
             OptionalValue::Some(self.get_token_price(&from_token, &mut storage_cache).price),
         );
@@ -270,7 +272,7 @@ pub trait MultiplyModule:
             amount_to_swap
         };
 
-        self.internal_withdraw(
+        self.process_withdrawal(
             account.token_nonce,
             EgldOrEsdtTokenPayment::new(
                 from_token.clone(),
@@ -304,7 +306,12 @@ pub trait MultiplyModule:
         );
 
         // Make sure that after the swap the position is not becoming eligible for liquidation due to slippage
-        self.validate_withdraw_health_factor(account.token_nonce, false, &mut storage_cache, None);
+        self.validate_health_factor_after_withdrawal(
+            account.token_nonce,
+            false,
+            &mut storage_cache,
+            None,
+        );
     }
 
     #[payable]
@@ -349,7 +356,7 @@ pub trait MultiplyModule:
 
         // Required to be in sync with the global index for accurate swaps to avoid extra interest during withdraw
         self.update_position(
-            &storage_cache.get_cached_pool_address(&deposit_position.token_id),
+            &storage_cache.get_cached_pool_address(&deposit_position.asset_id),
             &mut deposit_position,
             OptionalValue::Some(self.get_token_price(&from_token, &mut storage_cache).price),
         );
@@ -363,7 +370,7 @@ pub trait MultiplyModule:
             amount_to_swap
         };
 
-        self.internal_withdraw(
+        self.process_withdrawal(
             account.token_nonce,
             EgldOrEsdtTokenPayment::new(
                 from_token.clone(),
@@ -391,15 +398,17 @@ pub trait MultiplyModule:
         for payment in payments.iter() {
             self.validate_payment(&payment);
             let feed = self.get_token_price(&payment.token_identifier, &mut storage_cache);
-            let payment_dec =
-                ManagedDecimal::from_raw_units(payment.amount.clone(), feed.decimals as usize);
+            let payment_dec = ManagedDecimal::from_raw_units(
+                payment.amount.clone(),
+                feed.asset_decimals as usize,
+            );
             // 3. Process repay
-            self.internal_repay(
+            self.process_repayment(
                 account.token_nonce,
                 &payment.token_identifier,
                 &payment_dec,
                 &caller,
-                self.get_token_amount_in_egld_raw(&payment_dec, &feed.price),
+                self.get_token_egld_value(&payment_dec, &feed.price),
                 &feed,
                 &mut storage_cache,
                 &attributes,
@@ -407,6 +416,11 @@ pub trait MultiplyModule:
         }
 
         // Make sure that after the swap the position is not becoming eligible for liquidation due to slippage
-        self.validate_withdraw_health_factor(account.token_nonce, false, &mut storage_cache, None);
+        self.validate_health_factor_after_withdrawal(
+            account.token_nonce,
+            false,
+            &mut storage_cache,
+            None,
+        );
     }
 }

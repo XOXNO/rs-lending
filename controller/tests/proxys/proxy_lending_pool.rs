@@ -421,13 +421,13 @@ where
     >(
         self,
         base_asset: Arg0,
-        r_max: Arg1,
-        r_base: Arg2,
-        r_slope1: Arg3,
-        r_slope2: Arg4,
-        r_slope3: Arg5,
-        u_mid: Arg6,
-        u_optimal: Arg7,
+        max_borrow_rate: Arg1,
+        base_borrow_rate: Arg2,
+        slope1: Arg3,
+        slope2: Arg4,
+        slope3: Arg5,
+        mid_utilization: Arg6,
+        optimal_utilization: Arg7,
         reserve_factor: Arg8,
         ltv: Arg9,
         liquidation_threshold: Arg10,
@@ -441,7 +441,7 @@ where
         is_siloed: Arg18,
         flashloan_enabled: Arg19,
         can_borrow_in_isolation: Arg20,
-        decimals: Arg21,
+        asset_decimals: Arg21,
         borrow_cap: Arg22,
         supply_cap: Arg23,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
@@ -449,13 +449,13 @@ where
             .payment(NotPayable)
             .raw_call("createLiquidityPool")
             .argument(&base_asset)
-            .argument(&r_max)
-            .argument(&r_base)
-            .argument(&r_slope1)
-            .argument(&r_slope2)
-            .argument(&r_slope3)
-            .argument(&u_mid)
-            .argument(&u_optimal)
+            .argument(&max_borrow_rate)
+            .argument(&base_borrow_rate)
+            .argument(&slope1)
+            .argument(&slope2)
+            .argument(&slope3)
+            .argument(&mid_utilization)
+            .argument(&optimal_utilization)
             .argument(&reserve_factor)
             .argument(&ltv)
             .argument(&liquidation_threshold)
@@ -469,7 +469,7 @@ where
             .argument(&is_siloed)
             .argument(&flashloan_enabled)
             .argument(&can_borrow_in_isolation)
-            .argument(&decimals)
+            .argument(&asset_decimals)
             .argument(&borrow_cap)
             .argument(&supply_cap)
             .original_result()
@@ -488,26 +488,26 @@ where
     >(
         self,
         base_asset: Arg0,
-        r_max: Arg1,
-        r_base: Arg2,
-        r_slope1: Arg3,
-        r_slope2: Arg4,
-        r_slope3: Arg5,
-        u_mid: Arg6,
-        u_optimal: Arg7,
+        max_borrow_rate: Arg1,
+        base_borrow_rate: Arg2,
+        slope1: Arg3,
+        slope2: Arg4,
+        slope3: Arg5,
+        mid_utilization: Arg6,
+        optimal_utilization: Arg7,
         reserve_factor: Arg8,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("upgradeLiquidityPool")
             .argument(&base_asset)
-            .argument(&r_max)
-            .argument(&r_base)
-            .argument(&r_slope1)
-            .argument(&r_slope2)
-            .argument(&r_slope3)
-            .argument(&u_mid)
-            .argument(&u_optimal)
+            .argument(&max_borrow_rate)
+            .argument(&base_borrow_rate)
+            .argument(&slope1)
+            .argument(&slope2)
+            .argument(&slope3)
+            .argument(&mid_utilization)
+            .argument(&optimal_utilization)
             .argument(&reserve_factor)
             .original_result()
     }
@@ -557,7 +557,7 @@ where
     >(
         self,
         market_token: Arg0,
-        decimals: Arg1,
+        asset_decimals: Arg1,
         contract_address: Arg2,
         pricing_method: Arg3,
         token_type: Arg4,
@@ -569,7 +569,7 @@ where
             .payment(NotPayable)
             .raw_call("setTokenOracle")
             .argument(&market_token)
-            .argument(&decimals)
+            .argument(&asset_decimals)
             .argument(&contract_address)
             .argument(&pricing_method)
             .argument(&token_type)

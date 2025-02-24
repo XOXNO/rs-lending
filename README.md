@@ -20,7 +20,7 @@ Our protocol is a modular, state‑of‑the‑art solution that lets you:
 - **Multi‑Slope Interest Rate Model:**  
   Our rates adjust in real time based on market utilization. Whether you're borrowing or supplying, you always get fair, dynamic pricing with smooth transitions—no more one-size-fits-all rates!
 - **High Precision with 21‑Decimal Basis Points:**  
-  Our calculations use 21 decimals for basis points (BP) to ensure every fraction of interest is accurately tracked, minimizing rounding errors and maximizing fairness. 📊
+  Our calculations use 21 asset_decimals for basis points (BP) to ensure every fraction of interest is accurately tracked, minimizing rounding errors and maximizing fairness. 📊
 
 ### E‑Mode: Supercharged Borrowing Power
 - **What is E‑Mode?**  

@@ -50,7 +50,7 @@ where
     ///  
     /// **Process**: 
     /// 1. Stores the pool's asset identifier. 
-    /// 2. Configures interest rate parameters (`r_max`, `r_base`, `r_slope1`, `r_slope2`, `r_slope3`, `u_mid`, `u_optimal`, `reserve_factor`) 
+    /// 2. Configures interest rate parameters (`max_borrow_rate`, `base_borrow_rate`, `slope1`, `slope2`, `slope3`, `mid_utilization`, `optimal_utilization`, `reserve_factor`) 
     ///    by converting `BigUint` inputs to `ManagedDecimal` with appropriate scaling (RAY for rates, BPS for reserve factor). 
     /// 3. Initializes the borrow and supply indexes to `RAY` (representing 1.0 in the system's precision). 
     /// 4. Sets initial values for supplied, reserves, borrowed, and revenue to zero, using the asset's decimal precision. 
@@ -58,15 +58,15 @@ where
     ///  
     /// ### Parameters 
     /// - `asset`: The asset identifier (`EgldOrEsdtTokenIdentifier`) for the pool. 
-    /// - `r_max`: Maximum borrow rate (`BigUint`), scaled to RAY precision. 
-    /// - `r_base`: Base borrow rate (`BigUint`), scaled to RAY precision. 
-    /// - `r_slope1`: Slope before optimal utilization (`BigUint`), scaled to RAY precision. 
-    /// - `r_slope2`: Slope after optimal utilization (`BigUint`), scaled to RAY precision. 
-    /// - `r_slope3`: Slope for high utilization (`BigUint`), scaled to RAY precision. 
-    /// - `u_mid`: Midpoint utilization ratio (`BigUint`), scaled to RAY precision. 
-    /// - `u_optimal`: Optimal utilization ratio (`BigUint`), scaled to RAY precision. 
+    /// - `max_borrow_rate`: Maximum borrow rate (`BigUint`), scaled to RAY precision. 
+    /// - `base_borrow_rate`: Base borrow rate (`BigUint`), scaled to RAY precision. 
+    /// - `slope1`: Slope before optimal utilization (`BigUint`), scaled to RAY precision. 
+    /// - `slope2`: Slope after optimal utilization (`BigUint`), scaled to RAY precision. 
+    /// - `slope3`: Slope for high utilization (`BigUint`), scaled to RAY precision. 
+    /// - `mid_utilization`: Midpoint utilization ratio (`BigUint`), scaled to RAY precision. 
+    /// - `optimal_utilization`: Optimal utilization ratio (`BigUint`), scaled to RAY precision. 
     /// - `reserve_factor`: Fraction of interest reserved as protocol fee (`BigUint`), scaled to BPS precision. 
-    /// - `decimals`: Number of decimals for the asset (`usize`). 
+    /// - `asset_decimals`: Number of asset_decimals for the asset (`usize`). 
     ///  
     /// ### Returns 
     /// - Nothing (void function). 
@@ -88,29 +88,29 @@ where
     >(
         self,
         asset: Arg0,
-        r_max: Arg1,
-        r_base: Arg2,
-        r_slope1: Arg3,
-        r_slope2: Arg4,
-        r_slope3: Arg5,
-        u_mid: Arg6,
-        u_optimal: Arg7,
+        max_borrow_rate: Arg1,
+        base_borrow_rate: Arg2,
+        slope1: Arg3,
+        slope2: Arg4,
+        slope3: Arg5,
+        mid_utilization: Arg6,
+        optimal_utilization: Arg7,
         reserve_factor: Arg8,
-        decimals: Arg9,
+        asset_decimals: Arg9,
     ) -> TxTypedDeploy<Env, From, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_deploy()
             .argument(&asset)
-            .argument(&r_max)
-            .argument(&r_base)
-            .argument(&r_slope1)
-            .argument(&r_slope2)
-            .argument(&r_slope3)
-            .argument(&u_mid)
-            .argument(&u_optimal)
+            .argument(&max_borrow_rate)
+            .argument(&base_borrow_rate)
+            .argument(&slope1)
+            .argument(&slope2)
+            .argument(&slope3)
+            .argument(&mid_utilization)
+            .argument(&optimal_utilization)
             .argument(&reserve_factor)
-            .argument(&decimals)
+            .argument(&asset_decimals)
             .original_result()
     }
 }
@@ -134,13 +134,13 @@ where
     /// 2. Updates the existing pool parameters by converting `BigUint` inputs to `ManagedDecimal` with appropriate scaling. 
     ///  
     /// ### Parameters 
-    /// - `r_max`: New maximum borrow rate (`BigUint`), scaled to RAY precision. 
-    /// - `r_base`: New base borrow rate (`BigUint`), scaled to RAY precision. 
-    /// - `r_slope1`: New slope before optimal utilization (`BigUint`), scaled to RAY precision. 
-    /// - `r_slope2`: New slope after optimal utilization (`BigUint`), scaled to RAY precision. 
-    /// - `r_slope3`: New slope for high utilization (`BigUint`), scaled to RAY precision. 
-    /// - `u_mid`: New midpoint utilization ratio (`BigUint`), scaled to RAY precision. 
-    /// - `u_optimal`: New optimal utilization ratio (`BigUint`), scaled to RAY precision. 
+    /// - `max_borrow_rate`: New maximum borrow rate (`BigUint`), scaled to RAY precision. 
+    /// - `base_borrow_rate`: New base borrow rate (`BigUint`), scaled to RAY precision. 
+    /// - `slope1`: New slope before optimal utilization (`BigUint`), scaled to RAY precision. 
+    /// - `slope2`: New slope after optimal utilization (`BigUint`), scaled to RAY precision. 
+    /// - `slope3`: New slope for high utilization (`BigUint`), scaled to RAY precision. 
+    /// - `mid_utilization`: New midpoint utilization ratio (`BigUint`), scaled to RAY precision. 
+    /// - `optimal_utilization`: New optimal utilization ratio (`BigUint`), scaled to RAY precision. 
     /// - `reserve_factor`: New fraction of interest reserved as protocol fee (`BigUint`), scaled to BPS precision. 
     ///  
     /// ### Returns 
@@ -161,25 +161,25 @@ where
         Arg7: ProxyArg<BigUint<Env::Api>>,
     >(
         self,
-        r_max: Arg0,
-        r_base: Arg1,
-        r_slope1: Arg2,
-        r_slope2: Arg3,
-        r_slope3: Arg4,
-        u_mid: Arg5,
-        u_optimal: Arg6,
+        max_borrow_rate: Arg0,
+        base_borrow_rate: Arg1,
+        slope1: Arg2,
+        slope2: Arg3,
+        slope3: Arg4,
+        mid_utilization: Arg5,
+        optimal_utilization: Arg6,
         reserve_factor: Arg7,
     ) -> TxTypedUpgrade<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_upgrade()
-            .argument(&r_max)
-            .argument(&r_base)
-            .argument(&r_slope1)
-            .argument(&r_slope2)
-            .argument(&r_slope3)
-            .argument(&u_mid)
-            .argument(&u_optimal)
+            .argument(&max_borrow_rate)
+            .argument(&base_borrow_rate)
+            .argument(&slope1)
+            .argument(&slope2)
+            .argument(&slope3)
+            .argument(&mid_utilization)
+            .argument(&optimal_utilization)
             .argument(&reserve_factor)
             .original_result()
     }
@@ -263,7 +263,7 @@ where
 
     /// Returns the pool parameters. 
     ///  
-    /// These include interest rate parameters and asset decimals. 
+    /// These include interest rate parameters and asset asset_decimals. 
     ///  
     /// # Returns 
     /// - `PoolParams<Self::Api>`: The pool configuration. 

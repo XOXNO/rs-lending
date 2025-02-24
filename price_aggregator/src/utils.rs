@@ -127,7 +127,7 @@ pub trait UtilsModule:
         token_pair: TokenPair<Self::Api>,
         round_id: u32,
         mut submissions: MapMapper<ManagedAddress, BigUint>,
-        decimals: u8,
+        asset_decimals: u8,
     ) {
         let submissions_len = submissions.len();
         if submissions_len >= self.submission_count().get() {
@@ -147,7 +147,7 @@ pub trait UtilsModule:
             let price_feed = TimestampedPrice {
                 price,
                 timestamp: self.blockchain().get_block_timestamp(),
-                decimals,
+                asset_decimals,
                 round: round_id,
             };
 
@@ -169,10 +169,10 @@ pub trait UtilsModule:
         self.last_submission_timestamp(token_pair).clear();
     }
 
-    fn check_decimals(&self, from: &ManagedBuffer, to: &ManagedBuffer, decimals: u8) {
+    fn check_decimals(&self, from: &ManagedBuffer, to: &ManagedBuffer, asset_decimals: u8) {
         let configured_decimals = self.get_pair_decimals(from, to);
         require!(
-            decimals == configured_decimals,
+            asset_decimals == configured_decimals,
             WRONG_NUMBER_OF_DECIMALS_ERROR
         )
     }

@@ -28,6 +28,23 @@ pub trait PositionBorrowModule:
     + account::PositionAccountModule
     + common_math::SharedMathModule
 {
+    /// Manages a borrow operation, updating positions and handling isolated debt.
+    /// Orchestrates borrowing logic with validations and storage updates.
+    ///
+    /// # Arguments
+    /// - `account_nonce`: Position NFT nonce.
+    /// - `borrow_token_id`: Token to borrow.
+    /// - `amount`: Borrow amount.
+    /// - `amount_in_usd`: USD value of the borrow.
+    /// - `caller`: Borrower's address.
+    /// - `asset_config`: Borrowed asset configuration.
+    /// - `account`: NFT attributes.
+    /// - `collaterals`: User's collateral positions.
+    /// - `feed`: Price feed for the asset.
+    /// - `storage_cache`: Mutable storage cache.
+    ///
+    /// # Returns
+    /// - Updated borrow position.
     fn handle_borrow_position(
         &self,
         account_nonce: u64,
@@ -46,7 +63,7 @@ pub trait PositionBorrowModule:
             account_nonce,
             asset_config,
             borrow_token_id,
-            account.is_vault,
+            account.is_vault(),
         );
 
         borrow_position = self.execute_borrow(
@@ -57,7 +74,7 @@ pub trait PositionBorrowModule:
             feed.price.clone(),
         );
 
-        if account.is_isolated {
+        if account.is_isolated() {
             self.handle_isolated_debt(collaterals, storage_cache, amount_in_usd.clone());
         }
 
@@ -65,6 +82,18 @@ pub trait PositionBorrowModule:
         borrow_position
     }
 
+    /// Executes a borrow operation via the liquidity pool.
+    /// Handles cross-contract interaction for borrowing.
+    ///
+    /// # Arguments
+    /// - `pool_address`: Liquidity pool address.
+    /// - `caller`: Borrower's address.
+    /// - `amount`: Borrow amount.
+    /// - `position`: Current borrow position.
+    /// - `price`: Asset price.
+    ///
+    /// # Returns
+    /// - Updated borrow position.
     fn execute_borrow(
         &self,
         pool_address: ManagedAddress,
@@ -81,6 +110,12 @@ pub trait PositionBorrowModule:
             .sync_call()
     }
 
+    /// Stores an updated borrow position in account storage.
+    ///
+    /// # Arguments
+    /// - `account_nonce`: Position NFT nonce.
+    /// - `borrow_token_id`: Borrowed token identifier.
+    /// - `position`: Updated borrow position.
     fn store_borrow_position(
         &self,
         account_nonce: u64,
@@ -91,22 +126,40 @@ pub trait PositionBorrowModule:
             .insert(borrow_token_id.clone(), position.clone());
     }
 
+    /// Manages debt tracking for isolated positions.
+    /// Validates and updates debt ceiling for isolated collateral.
+    ///
+    /// # Arguments
+    /// - `collaterals`: User's collateral positions.
+    /// - `storage_cache`: Mutable storage cache.
+    /// - `amount_in_usd`: USD value of the borrow.
     fn handle_isolated_debt(
         &self,
         collaterals: &ManagedVec<AccountPosition<Self::Api>>,
         storage_cache: &mut StorageCache<Self>,
         amount_in_usd: ManagedDecimal<Self::Api, NumDecimals>,
     ) {
-        let collateral_token_id = &collaterals.get(0).token_id;
+        let collateral_token_id = &collaterals.get(0).asset_id;
         let collateral_config = storage_cache.get_cached_asset_info(collateral_token_id);
         self.validate_isolated_debt_ceiling(
             &collateral_config,
             collateral_token_id,
             amount_in_usd.clone(),
         );
-        self.update_isolated_debt_usd(collateral_token_id, amount_in_usd, true);
+        self.adjust_isolated_debt_usd(collateral_token_id, amount_in_usd, true);
     }
 
+    /// Retrieves or creates a borrow position for a token.
+    /// Initializes new positions if none exist.
+    ///
+    /// # Arguments
+    /// - `account_nonce`: Position NFT nonce.
+    /// - `borrow_asset_config`: Borrowed asset configuration.
+    /// - `token_id`: Token identifier.
+    /// - `is_vault`: Vault status flag.
+    ///
+    /// # Returns
+    /// - Borrow position.
     fn get_or_create_borrow_position(
         &self,
         account_nonce: u64,
@@ -120,33 +173,26 @@ pub trait PositionBorrowModule:
             AccountPosition::new(
                 AccountPositionType::Borrow,
                 token_id.clone(),
-                ManagedDecimal::from_raw_units(BigUint::zero(), price_data.decimals),
-                ManagedDecimal::from_raw_units(BigUint::zero(), price_data.decimals),
+                ManagedDecimal::from_raw_units(BigUint::zero(), price_data.price_decimals),
+                ManagedDecimal::from_raw_units(BigUint::zero(), price_data.price_decimals),
                 account_nonce,
                 self.blockchain().get_block_timestamp(),
                 self.ray(),
                 borrow_asset_config.liquidation_threshold.clone(),
-                borrow_asset_config.liquidation_base_bonus.clone(),
-                borrow_asset_config.liquidation_max_fee.clone(),
-                borrow_asset_config.ltv.clone(),
+                borrow_asset_config.liquidation_bonus.clone(),
+                borrow_asset_config.liquidation_fees.clone(),
+                borrow_asset_config.loan_to_value.clone(),
                 is_vault,
             )
         })
     }
-    /// Validates borrow payment parameters
+
+    /// Validates borrow operation parameters.
+    /// Ensures account, asset, and caller are valid.
     ///
     /// # Arguments
-    /// * `nft_token` - NFT token payment
-    /// * `asset_to_borrow` - Token to borrow
-    /// * `amount` - Amount to borrow
-    /// * `initial_caller` - Address initiating borrow
-    ///
-    /// Validates:
-    /// - Asset is supported
-    /// - Account exists in market
-    /// - NFT token is valid
-    /// - Amount is greater than zero
-    /// - Caller address is valid
+    /// - `position_nft_payment`: NFT payment.
+    /// - `initial_caller`: Borrower's address.
     fn validate_borrow_account(
         &self,
         position_nft_payment: &EsdtTokenPayment<Self::Api>,
@@ -158,17 +204,12 @@ pub trait PositionBorrowModule:
         self.require_non_zero_address(&initial_caller);
     }
 
-    /// Validates that a new borrow doesn't exceed asset borrow cap
+    /// Ensures a new borrow stays within the asset's borrow cap.
     ///
     /// # Arguments
-    /// * `asset_config` - Asset configuration
-    /// * `amount` - Amount to borrow
-    /// * `asset` - Token identifier
-    ///
-    /// # Errors
-    /// * `ERROR_BORROW_CAP` - If new borrow would exceed cap
-    ///
-    /// ```
+    /// - `asset_config`: Borrowed asset configuration.
+    /// - `amount`: Borrow amount.
+    /// - `asset`: Token identifier.
     fn validate_borrow_cap(
         &self,
         asset_config: &AssetConfig<Self::Api>,
@@ -187,6 +228,13 @@ pub trait PositionBorrowModule:
         }
     }
 
+    /// Retrieves total borrow amount from the liquidity pool.
+    ///
+    /// # Arguments
+    /// - `pool_address`: Pool address.
+    ///
+    /// # Returns
+    /// - `SingleValueMapper` with total borrow amount.
     fn get_total_borrow(
         &self,
         pool_address: ManagedAddress,
@@ -197,15 +245,12 @@ pub trait PositionBorrowModule:
         )
     }
 
-    /// Validates collateral sufficiency for borrow
+    /// Validates sufficient collateral for a borrow operation.
     ///
     /// # Arguments
-    /// * `ltv_collateral_in_egld` - EGLD value of collateral weighted by LTV
-    /// * `borrowed_amount_in_egld` - Current EGLD value of borrows
-    /// * `amount_to_borrow_in_egld` - EGLD value of new borrow
-    ///
-    /// Ensures sufficient collateral value (weighted by LTV)
-    /// to cover existing and new borrows
+    /// - `ltv_base_amount`: LTV-weighted collateral in EGLD.
+    /// - `borrowed_amount`: Current borrowed amount in EGLD.
+    /// - `amount_to_borrow`: New borrow amount in EGLD.
     fn validate_borrow_collateral(
         &self,
         ltv_base_amount: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -218,20 +263,18 @@ pub trait PositionBorrowModule:
         );
     }
 
-    /// Validates and calculates borrow amounts
+    /// Validates borrow constraints and computes amounts in USD and EGLD.
+    /// Ensures borrowing adheres to protocol rules.
     ///
     /// # Arguments
-    /// * `asset_to_borrow` - Token to borrow
-    /// * `amount` - Amount to borrow
-    /// * `collateral_positions` - Current collateral positions
-    /// * `borrow_positions` - Current borrow positions
+    /// - `ltv_base_amount`: LTV-weighted collateral in EGLD.
+    /// - `borrow_token_id`: Token to borrow.
+    /// - `amount_raw`: Raw borrow amount.
+    /// - `borrow_positions`: Current borrow positions.
+    /// - `storage_cache`: Mutable storage cache.
     ///
     /// # Returns
-    /// * `(BigUint, PriceFeedShort)` - Tuple containing:
-    ///   - USD value of borrow amount
-    ///   - Price feed data for borrowed asset
-    ///
-    /// Calculates EGLD values and validates collateral sufficiency
+    /// - Tuple of (USD value, price feed, decimal amount).
     fn validate_and_get_borrow_amounts(
         &self,
         ltv_base_amount: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -245,34 +288,31 @@ pub trait PositionBorrowModule:
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
         let asset_data_feed = self.get_token_price(borrow_token_id, storage_cache);
-        let amount =
-            ManagedDecimal::from_raw_units(amount_raw.clone(), asset_data_feed.decimals as usize);
+        let amount = ManagedDecimal::from_raw_units(
+            amount_raw.clone(),
+            asset_data_feed.asset_decimals as usize,
+        );
 
-        let egld_amount = self.get_token_amount_in_egld_raw(&amount, &asset_data_feed.price);
+        let egld_amount = self.get_token_egld_value(&amount, &asset_data_feed.price);
 
-        let egld_total_borrowed = self.sum_borrows(borrow_positions, storage_cache);
+        let egld_total_borrowed =
+            self.calculate_total_borrow_in_egld(borrow_positions, storage_cache);
 
         self.validate_borrow_collateral(ltv_base_amount, &egld_total_borrowed, &egld_amount);
 
-        let amount_in_usd =
-            self.get_token_amount_in_dollars_raw(&egld_amount, &storage_cache.egld_price_feed);
+        let amount_in_usd = self.get_token_usd_value(&egld_amount, &storage_cache.egld_price_feed);
 
         (amount_in_usd, asset_data_feed, amount)
     }
 
-    /// Validates borrowing constraints for an asset
+    /// Validates an asset's borrowability under position constraints.
     ///
     /// # Arguments
-    /// * `asset_config` - Asset configuration
-    /// * `asset_to_borrow` - Token to borrow
-    /// * `nft_attributes` - Position NFT attributes
-    /// * `borrow_positions` - Current borrow positions
-    ///
-    /// Validates:
-    /// - Asset can be borrowed in isolation mode
-    /// - Asset supports e-mode category if active
-    /// - Siloed borrowing constraints
-    /// - Multiple asset borrowing constraints
+    /// - `asset_config`: Borrowed asset configuration.
+    /// - `borrow_token_id`: Token to borrow.
+    /// - `nft_attributes`: NFT attributes.
+    /// - `borrow_positions`: Current borrow positions.
+    /// - `storage_cache`: Mutable storage cache.
     fn validate_borrow_asset(
         &self,
         asset_config: &AssetConfig<Self::Api>,
@@ -282,15 +322,15 @@ pub trait PositionBorrowModule:
         storage_cache: &mut StorageCache<Self>,
     ) {
         // Check if borrowing is allowed in isolation mode
-        if nft_attributes.is_isolated {
+        if nft_attributes.is_isolated() {
             require!(
-                asset_config.can_borrow_in_isolation,
+                asset_config.can_borrow_in_isolation(),
                 ERROR_ASSET_NOT_BORROWABLE_IN_ISOLATION
             );
         }
 
         // Validate siloed borrowing constraints
-        if asset_config.is_siloed {
+        if asset_config.is_siloed_borrowing() {
             require!(
                 borrow_positions.len() <= 1,
                 ERROR_ASSET_NOT_BORROWABLE_IN_SILOED
@@ -300,28 +340,26 @@ pub trait PositionBorrowModule:
         // Check if trying to borrow a different asset when there's a siloed position
         if borrow_positions.len() == 1 {
             let first_position = borrow_positions.get(0);
-            let first_asset_config = storage_cache.get_cached_asset_info(&first_position.token_id);
+            let first_asset_config = storage_cache.get_cached_asset_info(&first_position.asset_id);
 
             // If either the existing position or new borrow is siloed, they must be the same asset
-            if first_asset_config.is_siloed || asset_config.is_siloed {
+            if first_asset_config.is_siloed_borrowing() || asset_config.is_siloed_borrowing() {
                 require!(
-                    borrow_token_id == &first_position.token_id,
+                    borrow_token_id == &first_position.asset_id,
                     ERROR_ASSET_NOT_BORROWABLE_IN_SILOED
                 );
             }
         }
     }
 
-    /// Validates borrow position exists
+    /// Ensures a borrow position exists for a token.
     ///
     /// # Arguments
-    /// * `account_nonce` - NFT nonce of the account position
-    /// * `borrowed_token_id` - Token being repaid
+    /// - `account_nonce`: Position NFT nonce.
+    /// - `borrow_token_id`: Borrowed token identifier.
     ///
     /// # Returns
-    /// * `AccountPosition` - The validated borrow position
-    ///
-    /// Ensures borrow position exists for the token and returns it
+    /// - Validated borrow position.
     fn validate_borrow_position(
         &self,
         account_nonce: u64,
@@ -339,17 +377,12 @@ pub trait PositionBorrowModule:
         bp_opt.unwrap()
     }
 
-    /// Validates that a new borrow doesn't exceed isolated asset debt ceiling
+    /// Ensures a new borrow respects the isolated asset debt ceiling.
     ///
     /// # Arguments
-    /// * `asset_config` - Asset configuration
-    /// * `token_id` - Token identifier
-    /// * `amount_to_borrow_in_dollars` - USD value of new borrow
-    ///
-    /// # Errors
-    /// * `ERROR_DEBT_CEILING_REACHED` - If new borrow would exceed debt ceiling
-    ///
-    /// ```
+    /// - `asset_config`: Collateral asset configuration.
+    /// - `token_id`: Collateral token identifier.
+    /// - `amount_to_borrow_in_dollars`: USD value of the borrow.
     fn validate_isolated_debt_ceiling(
         &self,
         asset_config: &AssetConfig<Self::Api>,
@@ -360,7 +393,7 @@ pub trait PositionBorrowModule:
         let total_debt = current_debt + amount_to_borrow_in_dollars;
 
         require!(
-            total_debt <= asset_config.debt_ceiling_usd,
+            total_debt <= asset_config.isolation_debt_ceiling_usd,
             ERROR_DEBT_CEILING_REACHED
         );
     }

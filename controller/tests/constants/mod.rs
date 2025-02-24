@@ -10,13 +10,13 @@ pub const SECONDS_PER_DAY: u64 = 86_400; // 24 * 60 * 60
 
 pub const DOLLAR_TICKER: &[u8] = b"USD";
 
-pub const R_BASE: u128 =   10000000000000000000000000; // 1e25, 1%
-pub const R_MAX: u128 =    690000000000000000000000000; // 69%
+pub const R_BASE: u128 = 10000000000000000000000000; // 1e25, 1%
+pub const R_MAX: u128 = 690000000000000000000000000; // 69%
 pub const R_SLOPE1: u128 = 50000000000000000000000000; // 1e26, 5%
 pub const R_SLOPE2: u128 = 150000000000000000000000000; // 1e26, 10%
 pub const R_SLOPE3: u128 = 500000000000000000000000000; // 2e26, 20%
-pub const U_MID: u128 =    650000000000000000000000000; // 65%
-pub const U_OPTIMAL: u128 =900000000000000000000000000; // 90%
+pub const U_MID: u128 = 650000000000000000000000000; // 65%
+pub const U_OPTIMAL: u128 = 900000000000000000000000000; // 90%
 
 pub const RESERVE_FACTOR: u128 = 2_500; // 25%
 
@@ -129,53 +129,56 @@ pub static SFT_ROLES: &[EsdtLocalRole] = &[
 pub struct SetupConfig {
     // Basic parameters
     pub config: AssetConfig<StaticApi>,
-    pub r_max: u128,
-    pub r_base: u128,
-    pub r_slope1: u128,
-    pub r_slope2: u128,
-    pub u_optimal: u128,
+    pub max_borrow_rate: u128,
+    pub base_borrow_rate: u128,
+    pub slope1: u128,
+    pub slope2: u128,
+    pub optimal_utilization: u128,
     pub reserve_factor: u128,
-    pub decimals: usize,
+    pub asset_decimals: usize,
 }
 
 pub fn get_usdc_config() -> SetupConfig {
     SetupConfig {
         config: AssetConfig {
-            ltv: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
+            loan_to_value: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
             liquidation_threshold: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_THRESOLD),
                 BPS_PRECISION,
             ),
-            liquidation_base_bonus: ManagedDecimal::from_raw_units(
+            liquidation_bonus: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_BONUS),
                 BPS_PRECISION,
             ),
-            liquidation_max_fee: ManagedDecimal::from_raw_units(
+            liquidation_fees: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_BASE_FEE),
                 BPS_PRECISION,
             ),
             borrow_cap: Option::None,
             supply_cap: Option::None,
-            can_be_collateral: true,
-            can_be_borrowed: true,
-            is_e_mode_enabled: false,
-            is_isolated: false,
-            debt_ceiling_usd: ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION),
-            is_siloed: false,
-            flashloan_enabled: true,
-            flash_loan_fee: ManagedDecimal::from_raw_units(
+            is_collateralizable: true,
+            is_borrowable: true,
+            e_mode_enabled: false,
+            is_isolated_asset: false,
+            isolation_debt_ceiling_usd: ManagedDecimal::from_raw_units(
+                BigUint::zero(),
+                WAD_PRECISION,
+            ),
+            is_siloed_borrowing: false,
+            is_flashloanable: true,
+            flashloan_fee: ManagedDecimal::from_raw_units(
                 BigUint::from(FLASH_LOAN_FEE),
                 BPS_PRECISION,
             ),
-            can_borrow_in_isolation: true,
+            isolation_borrow_enabled: true,
         },
-        r_max: R_MAX,
-        r_base: R_BASE,
-        r_slope1: R_SLOPE1,
-        r_slope2: R_SLOPE2,
-        u_optimal: U_OPTIMAL,
+        max_borrow_rate: R_MAX,
+        base_borrow_rate: R_BASE,
+        slope1: R_SLOPE1,
+        slope2: R_SLOPE2,
+        optimal_utilization: U_OPTIMAL,
         reserve_factor: RESERVE_FACTOR,
-        decimals: USDC_DECIMALS,
+        asset_decimals: USDC_DECIMALS,
     }
 }
 
@@ -184,41 +187,44 @@ pub fn get_egld_config() -> SetupConfig {
     pub const LTV: u128 = 7_500; // 75%
     SetupConfig {
         config: AssetConfig {
-            ltv: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
+            loan_to_value: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
             liquidation_threshold: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_THRESOLD),
                 BPS_PRECISION,
             ),
-            liquidation_base_bonus: ManagedDecimal::from_raw_units(
+            liquidation_bonus: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_BONUS),
                 BPS_PRECISION,
             ),
-            liquidation_max_fee: ManagedDecimal::from_raw_units(
+            liquidation_fees: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_BASE_FEE),
                 BPS_PRECISION,
             ),
             borrow_cap: None,
             supply_cap: None,
-            can_be_collateral: true,
-            can_be_borrowed: true,
-            is_e_mode_enabled: false,
-            is_isolated: false,
-            debt_ceiling_usd: ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION),
-            is_siloed: false,
-            flashloan_enabled: true,
-            flash_loan_fee: ManagedDecimal::from_raw_units(
+            is_collateralizable: true,
+            is_borrowable: true,
+            e_mode_enabled: false,
+            is_isolated_asset: false,
+            isolation_debt_ceiling_usd: ManagedDecimal::from_raw_units(
+                BigUint::zero(),
+                WAD_PRECISION,
+            ),
+            is_siloed_borrowing: false,
+            is_flashloanable: true,
+            flashloan_fee: ManagedDecimal::from_raw_units(
                 BigUint::from(FLASH_LOAN_FEE),
                 BPS_PRECISION,
             ),
-            can_borrow_in_isolation: false,
+            isolation_borrow_enabled: false,
         },
-        r_max: R_MAX,
-        r_base: R_BASE,
-        r_slope1: R_SLOPE1,
-        r_slope2: R_SLOPE2,
-        u_optimal: U_OPTIMAL,
+        max_borrow_rate: R_MAX,
+        base_borrow_rate: R_BASE,
+        slope1: R_SLOPE1,
+        slope2: R_SLOPE2,
+        optimal_utilization: U_OPTIMAL,
         reserve_factor: RESERVE_FACTOR,
-        decimals: EGLD_DECIMALS,
+        asset_decimals: EGLD_DECIMALS,
     }
 }
 
@@ -227,41 +233,44 @@ pub fn get_xegld_config() -> SetupConfig {
     pub const LTV: u128 = 7_000; // 75%
     SetupConfig {
         config: AssetConfig {
-            ltv: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
+            loan_to_value: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
             liquidation_threshold: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_THRESOLD),
                 BPS_PRECISION,
             ),
-            liquidation_base_bonus: ManagedDecimal::from_raw_units(
+            liquidation_bonus: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_BONUS),
                 BPS_PRECISION,
             ),
-            liquidation_max_fee: ManagedDecimal::from_raw_units(
+            liquidation_fees: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_BASE_FEE),
                 BPS_PRECISION,
             ),
             borrow_cap: None,
             supply_cap: None,
-            can_be_collateral: true,
-            can_be_borrowed: true,
-            is_e_mode_enabled: false,
-            is_isolated: false,
-            debt_ceiling_usd: ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION),
-            is_siloed: false,
-            flashloan_enabled: true,
-            flash_loan_fee: ManagedDecimal::from_raw_units(
+            is_collateralizable: true,
+            is_borrowable: true,
+            e_mode_enabled: false,
+            is_isolated_asset: false,
+            isolation_debt_ceiling_usd: ManagedDecimal::from_raw_units(
+                BigUint::zero(),
+                WAD_PRECISION,
+            ),
+            is_siloed_borrowing: false,
+            is_flashloanable: true,
+            flashloan_fee: ManagedDecimal::from_raw_units(
                 BigUint::from(FLASH_LOAN_FEE),
                 BPS_PRECISION,
             ),
-            can_borrow_in_isolation: false,
+            isolation_borrow_enabled: false,
         },
-        r_max: R_MAX,
-        r_base: R_BASE,
-        r_slope1: R_SLOPE1,
-        r_slope2: R_SLOPE2,
-        u_optimal: U_OPTIMAL,
+        max_borrow_rate: R_MAX,
+        base_borrow_rate: R_BASE,
+        slope1: R_SLOPE1,
+        slope2: R_SLOPE2,
+        optimal_utilization: U_OPTIMAL,
         reserve_factor: RESERVE_FACTOR,
-        decimals: XEGLD_DECIMALS,
+        asset_decimals: XEGLD_DECIMALS,
     }
 }
 
@@ -270,224 +279,233 @@ pub fn get_segld_config() -> SetupConfig {
     pub const LTV: u128 = 5_000; // 50%
     SetupConfig {
         config: AssetConfig {
-            ltv: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
+            loan_to_value: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
             liquidation_threshold: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_THRESOLD),
                 BPS_PRECISION,
             ),
-            liquidation_base_bonus: ManagedDecimal::from_raw_units(
+            liquidation_bonus: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_BONUS),
                 BPS_PRECISION,
             ),
-            liquidation_max_fee: ManagedDecimal::from_raw_units(
+            liquidation_fees: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_BASE_FEE),
                 BPS_PRECISION,
             ),
             borrow_cap: None,
             supply_cap: None,
-            can_be_collateral: true,
-            can_be_borrowed: true,
-            is_e_mode_enabled: false,
-            is_isolated: false,
-            debt_ceiling_usd: ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION),
-            is_siloed: false,
-            flashloan_enabled: true,
-            flash_loan_fee: ManagedDecimal::from_raw_units(
+            is_collateralizable: true,
+            is_borrowable: true,
+            e_mode_enabled: false,
+            is_isolated_asset: false,
+            isolation_debt_ceiling_usd: ManagedDecimal::from_raw_units(
+                BigUint::zero(),
+                WAD_PRECISION,
+            ),
+            is_siloed_borrowing: false,
+            is_flashloanable: true,
+            flashloan_fee: ManagedDecimal::from_raw_units(
                 BigUint::from(FLASH_LOAN_FEE),
                 BPS_PRECISION,
             ),
-            can_borrow_in_isolation: false,
+            isolation_borrow_enabled: false,
         },
-        r_max: R_MAX,
-        r_base: R_BASE,
-        r_slope1: R_SLOPE1,
-        r_slope2: R_SLOPE2,
-        u_optimal: U_OPTIMAL,
+        max_borrow_rate: R_MAX,
+        base_borrow_rate: R_BASE,
+        slope1: R_SLOPE1,
+        slope2: R_SLOPE2,
+        optimal_utilization: U_OPTIMAL,
         reserve_factor: RESERVE_FACTOR,
-        decimals: SEGLD_DECIMALS,
+        asset_decimals: SEGLD_DECIMALS,
     }
 }
 
 pub fn get_legld_config() -> SetupConfig {
     SetupConfig {
         config: AssetConfig {
-            ltv: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
+            loan_to_value   : ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
             liquidation_threshold: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_THRESOLD),
                 BPS_PRECISION,
             ),
-            liquidation_base_bonus: ManagedDecimal::from_raw_units(
+            liquidation_bonus: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_BONUS),
                 BPS_PRECISION,
             ),
-            liquidation_max_fee: ManagedDecimal::from_raw_units(
+            liquidation_fees: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_BASE_FEE),
                 BPS_PRECISION,
             ),
             borrow_cap: None,
             supply_cap: None,
-            can_be_collateral: true,
-            can_be_borrowed: true,
-            is_e_mode_enabled: false,
-            is_isolated: false,
-            debt_ceiling_usd: ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION),
-            is_siloed: false,
-            flashloan_enabled: true,
-            flash_loan_fee: ManagedDecimal::from_raw_units(
+            is_collateralizable: true,
+            is_borrowable: true,
+            e_mode_enabled: false,
+            is_isolated_asset: false,
+            isolation_debt_ceiling_usd: ManagedDecimal::from_raw_units(
+                BigUint::zero(),
+                WAD_PRECISION,
+            ),
+            is_siloed_borrowing: false,
+            is_flashloanable: true,
+            flashloan_fee: ManagedDecimal::from_raw_units(
                 BigUint::from(FLASH_LOAN_FEE),
                 BPS_PRECISION,
             ),
-            can_borrow_in_isolation: false,
+            isolation_borrow_enabled: false,
         },
-        r_max: R_MAX,
-        r_base: R_BASE,
-        r_slope1: R_SLOPE1,
-        r_slope2: R_SLOPE2,
-        u_optimal: U_OPTIMAL,
+        max_borrow_rate: R_MAX,
+        base_borrow_rate: R_BASE,
+        slope1: R_SLOPE1,
+        slope2: R_SLOPE2,
+        optimal_utilization: U_OPTIMAL,
         reserve_factor: RESERVE_FACTOR,
-        decimals: LEGLD_DECIMALS,
+        asset_decimals: LEGLD_DECIMALS,
     }
 }
 
 pub fn get_xoxno_config() -> SetupConfig {
     SetupConfig {
         config: AssetConfig {
-            ltv: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
+            loan_to_value: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
             liquidation_threshold: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_THRESOLD),
                 BPS_PRECISION,
             ),
-            liquidation_base_bonus: ManagedDecimal::from_raw_units(
+            liquidation_bonus: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_BONUS),
                 BPS_PRECISION,
             ),
-            liquidation_max_fee: ManagedDecimal::from_raw_units(
+            liquidation_fees: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_BASE_FEE),
                 BPS_PRECISION,
             ),
             borrow_cap: None,
             supply_cap: None,
-            can_be_collateral: true,
-            can_be_borrowed: true,
-            is_e_mode_enabled: false,
-            is_isolated: false,
-            debt_ceiling_usd: ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION),
-            is_siloed: false,
-            flashloan_enabled: true,
-            flash_loan_fee: ManagedDecimal::from_raw_units(
+            is_collateralizable: true,
+            is_borrowable: true,
+            e_mode_enabled: false,
+            is_isolated_asset: false,
+            isolation_debt_ceiling_usd: ManagedDecimal::from_raw_units(
+                BigUint::zero(),
+                WAD_PRECISION,
+            ),
+            is_siloed_borrowing: false,
+            is_flashloanable: true,
+            flashloan_fee: ManagedDecimal::from_raw_units(
                 BigUint::from(FLASH_LOAN_FEE),
                 BPS_PRECISION,
             ),
-            can_borrow_in_isolation: false,
+            isolation_borrow_enabled: false,
         },
-        r_max: R_MAX,
-        r_base: R_BASE,
-        r_slope1: R_SLOPE1,
-        r_slope2: R_SLOPE2,
-        u_optimal: U_OPTIMAL,
+        max_borrow_rate: R_MAX,
+        base_borrow_rate: R_BASE,
+        slope1: R_SLOPE1,
+        slope2: R_SLOPE2,
+        optimal_utilization: U_OPTIMAL,
         reserve_factor: RESERVE_FACTOR,
-        decimals: XOXNO_DECIMALS,
+        asset_decimals: XOXNO_DECIMALS,
     }
 }
 
 pub fn get_isolated_config() -> SetupConfig {
     SetupConfig {
         config: AssetConfig {
-            ltv: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
+            loan_to_value: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
             liquidation_threshold: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_THRESOLD),
                 BPS_PRECISION,
             ),
-            liquidation_base_bonus: ManagedDecimal::from_raw_units(
+            liquidation_bonus: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_BONUS),
                 BPS_PRECISION,
             ),
-            liquidation_max_fee: ManagedDecimal::from_raw_units(
+            liquidation_fees: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_BASE_FEE),
                 BPS_PRECISION,
             ),
             borrow_cap: None,
             supply_cap: None,
-            can_be_collateral: true,
-            can_be_borrowed: true,
-            is_e_mode_enabled: false,
-            is_isolated: true,
-            debt_ceiling_usd: ManagedDecimal::from_raw_units(
+            is_collateralizable: true,
+            is_borrowable: true,
+            e_mode_enabled: false,
+            is_isolated_asset: true,
+            isolation_debt_ceiling_usd: ManagedDecimal::from_raw_units(
                 BigUint::from(1000u64) * BigUint::from(WAD),
                 WAD_PRECISION,
             ), // 1000 USD value from price aggregator math
-            is_siloed: false,
-            flashloan_enabled: true,
-            flash_loan_fee: ManagedDecimal::from_raw_units(
+            is_siloed_borrowing: false,
+            is_flashloanable: true,
+            flashloan_fee: ManagedDecimal::from_raw_units(
                 BigUint::from(FLASH_LOAN_FEE),
                 BPS_PRECISION,
             ),
-            can_borrow_in_isolation: false,
+            isolation_borrow_enabled: false,
         },
-        r_max: R_MAX,
-        r_base: R_BASE,
-        r_slope1: R_SLOPE1,
-        r_slope2: R_SLOPE2,
-        u_optimal: U_OPTIMAL,
+        max_borrow_rate: R_MAX,
+        base_borrow_rate: R_BASE,
+        slope1: R_SLOPE1,
+        slope2: R_SLOPE2,
+        optimal_utilization: U_OPTIMAL,
         reserve_factor: RESERVE_FACTOR,
-        decimals: ISOLATED_DECIMALS,
+        asset_decimals: ISOLATED_DECIMALS,
     }
 }
 
 pub fn get_siloed_config() -> SetupConfig {
     SetupConfig {
         config: AssetConfig {
-            ltv: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
+            loan_to_value: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
             liquidation_threshold: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_THRESOLD),
                 BPS_PRECISION,
             ),
-            liquidation_base_bonus: ManagedDecimal::from_raw_units(
+            liquidation_bonus: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_BONUS),
                 BPS_PRECISION,
             ),
-            liquidation_max_fee: ManagedDecimal::from_raw_units(
+            liquidation_fees: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_BASE_FEE),
                 BPS_PRECISION,
             ),
             borrow_cap: None,
             supply_cap: None,
-            can_be_collateral: true,
-            can_be_borrowed: true,
-            is_e_mode_enabled: false,
-            is_isolated: false,
-            debt_ceiling_usd: ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION),
-            is_siloed: true,
-            flashloan_enabled: true,
-            flash_loan_fee: ManagedDecimal::from_raw_units(
+            is_collateralizable: true,
+            is_borrowable: true,
+            e_mode_enabled: false,
+            is_isolated_asset: false,
+            isolation_debt_ceiling_usd: ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION),
+            is_siloed_borrowing: true,
+            is_flashloanable: true,
+            flashloan_fee: ManagedDecimal::from_raw_units(
                 BigUint::from(FLASH_LOAN_FEE),
                 BPS_PRECISION,
             ),
-            can_borrow_in_isolation: false,
+            isolation_borrow_enabled: false,
         },
-        r_max: R_MAX,
-        r_base: R_BASE,
-        r_slope1: R_SLOPE1,
-        r_slope2: R_SLOPE2,
-        u_optimal: U_OPTIMAL,
+        max_borrow_rate: R_MAX,
+        base_borrow_rate: R_BASE,
+        slope1: R_SLOPE1,
+        slope2: R_SLOPE2,
+        optimal_utilization: U_OPTIMAL,
         reserve_factor: RESERVE_FACTOR,
-        decimals: SILOED_DECIMALS,
+        asset_decimals: SILOED_DECIMALS,
     }
 }
 
 pub fn get_capped_config() -> SetupConfig {
     SetupConfig {
         config: AssetConfig {
-            ltv: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
+            loan_to_value: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
             liquidation_threshold: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_THRESOLD),
                 BPS_PRECISION,
             ),
-            liquidation_base_bonus: ManagedDecimal::from_raw_units(
+            liquidation_bonus: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_BONUS),
                 BPS_PRECISION,
             ),
-            liquidation_max_fee: ManagedDecimal::from_raw_units(
+            liquidation_fees: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_BASE_FEE),
                 BPS_PRECISION,
             ),
@@ -497,25 +515,25 @@ pub fn get_capped_config() -> SetupConfig {
             supply_cap: Some(
                 BigUint::from(150u64) * BigUint::from(10u32).pow(CAPPED_DECIMALS as u32),
             ),
-            can_be_collateral: true,
-            can_be_borrowed: true,
-            is_e_mode_enabled: false,
-            is_isolated: false,
-            debt_ceiling_usd: ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION),
-            is_siloed: false,
-            flashloan_enabled: true,
-            flash_loan_fee: ManagedDecimal::from_raw_units(
+            is_collateralizable: true,
+            is_borrowable: true,
+            e_mode_enabled: false,
+            is_isolated_asset: false,
+            isolation_debt_ceiling_usd: ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION),
+            is_siloed_borrowing: false,
+            is_flashloanable: true,
+            flashloan_fee: ManagedDecimal::from_raw_units(
                 BigUint::from(FLASH_LOAN_FEE),
                 BPS_PRECISION,
             ),
-            can_borrow_in_isolation: false,
+            isolation_borrow_enabled: false,
         },
-        r_max: R_MAX,
-        r_base: R_BASE,
-        r_slope1: R_SLOPE1,
-        r_slope2: R_SLOPE2,
-        u_optimal: U_OPTIMAL,
+        max_borrow_rate: R_MAX,
+        base_borrow_rate: R_BASE,
+        slope1: R_SLOPE1,
+        slope2: R_SLOPE2,
+        optimal_utilization: U_OPTIMAL,
         reserve_factor: RESERVE_FACTOR,
-        decimals: CAPPED_DECIMALS,
+        asset_decimals: CAPPED_DECIMALS,
     }
 }

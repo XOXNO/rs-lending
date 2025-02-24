@@ -19,10 +19,10 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
     /// **Goal**: Provide a dynamic rate that adjusts with demand, using a piecewise linear model.
     ///
     /// **Formula**:
-    /// - If `utilization <= u_mid`: `r_base + (utilization * r_slope1 / u_mid)`.
-    /// - If `u_mid < utilization < u_optimal`: `r_base + r_slope1 + ((utilization - u_mid) * r_slope2 / (u_optimal - u_mid))`.
-    /// - If `utilization >= u_optimal`: `r_base + r_slope1 + r_slope2 + ((utilization - u_optimal) * r_slope3 / (1 - u_optimal))`.
-    /// - Capped at `r_max` and converted to a per-second rate.
+    /// - If `utilization <= mid_utilization`: `base_borrow_rate + (utilization * slope1 / mid_utilization)`.
+    /// - If `mid_utilization < utilization < optimal_utilization`: `base_borrow_rate + slope1 + ((utilization - mid_utilization) * slope2 / (optimal_utilization - mid_utilization))`.
+    /// - If `utilization >= optimal_utilization`: `base_borrow_rate + slope1 + slope2 + ((utilization - optimal_utilization) * slope3 / (1 - optimal_utilization))`.
+    /// - Capped at `max_borrow_rate` and converted to a per-second rate.
     ///
     /// # Arguments
     /// - `cache`: Reference to the pool state (`Cache<Self>`), providing utilization and parameters.
@@ -36,36 +36,36 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
         let pool_params = cache.pool_params.clone();
         let sec_per_year = ManagedDecimal::from_raw_units(BigUint::from(SECONDS_PER_YEAR), 0);
 
-        let annual_rate = if utilization < pool_params.u_mid {
-            // Region 1: utilization < u_mid
-            let utilization_ratio = utilization.mul(pool_params.r_slope1).div(pool_params.u_mid);
-            pool_params.r_base.add(utilization_ratio)
-        } else if utilization < pool_params.u_optimal {
-            // Region 2: u_mid <= utilization < u_optimal
-            let excess_utilization = utilization.sub(pool_params.u_mid.clone());
+        let annual_rate = if utilization < pool_params.mid_utilization {
+            // Region 1: utilization < mid_utilization
+            let utilization_ratio = utilization.mul(pool_params.slope1).div(pool_params.mid_utilization);
+            pool_params.base_borrow_rate.add(utilization_ratio)
+        } else if utilization < pool_params.optimal_utilization {
+            // Region 2: mid_utilization <= utilization < optimal_utilization
+            let excess_utilization = utilization.sub(pool_params.mid_utilization.clone());
             let slope_contribution = excess_utilization
-                .mul(pool_params.r_slope2)
-                .div(pool_params.u_optimal.sub(pool_params.u_mid));
+                .mul(pool_params.slope2)
+                .div(pool_params.optimal_utilization.sub(pool_params.mid_utilization));
             pool_params
-                .r_base
-                .add(pool_params.r_slope1)
+                .base_borrow_rate
+                .add(pool_params.slope1)
                 .add(slope_contribution)
         } else {
-            // Region 3: utilization >= u_optimal, linear growth
+            // Region 3: utilization >= optimal_utilization, linear growth
             let base_rate = pool_params
-                .r_base
-                .add(pool_params.r_slope1)
-                .add(pool_params.r_slope2);
-            let excess_utilization = utilization.sub(pool_params.u_optimal.clone());
+                .base_borrow_rate
+                .add(pool_params.slope1)
+                .add(pool_params.slope2);
+            let excess_utilization = utilization.sub(pool_params.optimal_utilization.clone());
             let slope_contribution = excess_utilization
-                .mul(pool_params.r_slope3)
-                .div(self.ray().sub(pool_params.u_optimal));
+                .mul(pool_params.slope3)
+                .div(self.ray().sub(pool_params.optimal_utilization));
             base_rate.add(slope_contribution)
         };
 
-        // Cap the rate at r_max
-        let capped_rate = if annual_rate > pool_params.r_max {
-            pool_params.r_max
+        // Cap the rate at max_borrow_rate
+        let capped_rate = if annual_rate > pool_params.max_borrow_rate {
+            pool_params.max_borrow_rate
         } else {
             annual_rate
         };
