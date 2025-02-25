@@ -2,7 +2,7 @@
 name    = "common-math"
 version = "0.0.0"
 authors = ["Mihai Eremin <mihai@xoxno.com>"]
-edition = "2018"
+edition = "2021"
 
 [lib]
 path = "src/math.rs"

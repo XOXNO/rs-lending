@@ -1,8 +1,8 @@
 [package]
 name = "liquidity-layer"
 version = "0.0.1"
-authors = ["you"]
-edition = "2018"
+authors = ["Mihai Eremia <mihai@xoxno.com>"]
+edition = "2021"
 publish = false
 
 [lib]
