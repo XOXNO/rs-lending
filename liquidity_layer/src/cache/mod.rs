@@ -1,4 +1,4 @@
-use common_structs::PoolParams;
+use common_structs::MarketParams;
 
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
@@ -30,7 +30,7 @@ where
     /// The asset identifier of the pool (EGLD or ESDT token).
     pub pool_asset: EgldOrEsdtTokenIdentifier<C::Api>,
     /// The configuration parameters of the pool (e.g., interest rate slopes).
-    pub pool_params: PoolParams<C::Api>,
+    pub params: MarketParams<C::Api>,
     /// The borrow index tracking compounded interest for borrowers.
     pub borrow_index: ManagedDecimal<C::Api, NumDecimals>,
     /// The supply index tracking accrued rewards for suppliers.
@@ -61,9 +61,9 @@ where
     ///
     /// **Security Tip**: Assumes storage getters (`supplied()`, etc.) return valid data; no additional validation here.
     pub fn new(sc_ref: &'a C) -> Self {
-        let pool_params = sc_ref.pool_params().get();
+        let params = sc_ref.params().get();
         Cache {
-            zero: ManagedDecimal::from_raw_units(BigUint::zero(), pool_params.asset_decimals),
+            zero: ManagedDecimal::from_raw_units(BigUint::zero(), params.asset_decimals),
             ray: sc_ref.ray(),
             supplied: sc_ref.supplied().get(),
             reserves: sc_ref.reserves().get(),
@@ -71,7 +71,7 @@ where
             revenue: sc_ref.revenue().get(),
             timestamp: sc_ref.blockchain().get_block_timestamp(),
             pool_asset: sc_ref.pool_asset().get(),
-            pool_params: pool_params,
+            params: params,
             borrow_index: sc_ref.borrow_index().get(),
             supply_index: sc_ref.supply_index().get(),
             last_timestamp: sc_ref.last_timestamp().get(),
@@ -126,7 +126,7 @@ where
         &self,
         value: &BigUint<C::Api>,
     ) -> ManagedDecimal<C::Api, NumDecimals> {
-        ManagedDecimal::from_raw_units(value.clone(), self.pool_params.asset_decimals)
+        ManagedDecimal::from_raw_units(value.clone(), self.params.asset_decimals)
     }
 
     /// Computes the utilization ratio of the pool (borrowed / supplied).
@@ -194,7 +194,7 @@ where
         if self.reserves >= self.revenue {
             self.reserves.clone() - self.revenue.clone()
         } else {
-            ManagedDecimal::from_raw_units(BigUint::zero(), self.pool_params.asset_decimals)
+            ManagedDecimal::from_raw_units(BigUint::zero(), self.params.asset_decimals)
         }
     }
 
@@ -245,7 +245,7 @@ where
                 self.revenue.into_raw_units().clone(),
                 self.reserves.into_raw_units().clone(),
             ),
-            self.pool_params.asset_decimals,
+            self.params.asset_decimals,
         )
     }
 

@@ -5,7 +5,7 @@ multiversx_sc::derive_imports!();
 
 pub mod rates;
 pub use rates::*;
-pub mod contexts;
+pub mod cache;
 pub mod liquidity;
 pub mod view;
 pub use common_events::*;
@@ -69,7 +69,7 @@ pub trait LiquidityPool:
         asset_decimals: usize,
     ) {
         self.pool_asset().set(asset);
-        self.pool_params().set(&PoolParams {
+        self.params().set(&MarketParams {
             max_borrow_rate: self.to_decimal_ray(max_borrow_rate),
             base_borrow_rate: self.to_decimal_ray(base_borrow_rate),
             slope1: self.to_decimal_ray(slope1),
@@ -150,15 +150,15 @@ pub trait LiquidityPool:
             &reserve_factor,
         );
 
-        self.pool_params().update(|pool_params| {
-            pool_params.max_borrow_rate = self.to_decimal_ray(max_borrow_rate);
-            pool_params.base_borrow_rate = self.to_decimal_ray(base_borrow_rate);
-            pool_params.slope1 = self.to_decimal_ray(slope1);
-            pool_params.slope2 = self.to_decimal_ray(slope2);
-            pool_params.slope3 = self.to_decimal_ray(slope3);
-            pool_params.mid_utilization = self.to_decimal_ray(mid_utilization);
-            pool_params.optimal_utilization = self.to_decimal_ray(optimal_utilization);
-            pool_params.reserve_factor = self.to_decimal_bps(reserve_factor);
+        self.params().update(|params| {
+            params.max_borrow_rate = self.to_decimal_ray(max_borrow_rate);
+            params.base_borrow_rate = self.to_decimal_ray(base_borrow_rate);
+            params.slope1 = self.to_decimal_ray(slope1);
+            params.slope2 = self.to_decimal_ray(slope2);
+            params.slope3 = self.to_decimal_ray(slope3);
+            params.mid_utilization = self.to_decimal_ray(mid_utilization);
+            params.optimal_utilization = self.to_decimal_ray(optimal_utilization);
+            params.reserve_factor = self.to_decimal_bps(reserve_factor);
         });
     }
 }

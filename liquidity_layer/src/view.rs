@@ -1,7 +1,7 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
-use crate::{contexts::base::Cache, rates, storage};
+use crate::{cache::Cache, rates, storage};
 
 /// The ViewModule provides read-only endpoints for retrieving key market metrics.
 #[multiversx_sc::module]
@@ -92,7 +92,7 @@ pub trait ViewModule:
         self.calc_deposit_rate(
             cache.get_utilization(),
             borrow_rate,
-            cache.pool_params.reserve_factor.clone(),
+            cache.params.reserve_factor.clone(),
         )
     }
 

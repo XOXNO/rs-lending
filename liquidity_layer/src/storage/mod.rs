@@ -1,7 +1,7 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
-use common_structs::PoolParams;
+use common_structs::MarketParams;
 
 /// The Storage trait provides on-chain storage mappers and view functions
 /// for accessing the core state variables of the liquidity pool.
@@ -49,15 +49,15 @@ pub trait Storage {
     #[storage_mapper("borrowed")]
     fn borrowed(&self) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
 
-    /// Returns the pool parameters.
+    /// Returns the market parameters.
     ///
     /// These include interest rate parameters and asset asset_decimals.
     ///
     /// # Returns
-    /// - `PoolParams<Self::Api>`: The pool configuration.
-    #[view(getPoolParams)]
-    #[storage_mapper("pool_params")]
-    fn pool_params(&self) -> SingleValueMapper<PoolParams<Self::Api>>;
+    /// - `MarketParams<Self::Api>`: The market configuration.
+    #[view(getParams)]
+    #[storage_mapper("params")]
+    fn params(&self) -> SingleValueMapper<MarketParams<Self::Api>>;
 
     /// Retrieves the current borrow index.
     ///

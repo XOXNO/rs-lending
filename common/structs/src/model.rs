@@ -5,7 +5,7 @@ multiversx_sc::derive_imports!();
 
 pub use common_constants::{BPS_PRECISION, RAY_PRECISION, WAD_PRECISION};
 
-/// PoolParams defines the core parameters for a liquidity pool, including
+/// MarketParams defines the core parameters for a liquidity pool, including
 /// the interest rate model settings and the asset’s decimal precision.
 ///
 /// - `max_borrow_rate`: The maximum borrow rate.
@@ -17,7 +17,7 @@ pub use common_constants::{BPS_PRECISION, RAY_PRECISION, WAD_PRECISION};
 /// - `asset_decimals`: The number of asset_decimals for the underlying asset.
 #[type_abi]
 #[derive(TopEncode, TopDecode, Clone)]
-pub struct PoolParams<M: ManagedTypeApi> {
+pub struct MarketParams<M: ManagedTypeApi> {
     pub max_borrow_rate: ManagedDecimal<M, NumDecimals>,
     pub base_borrow_rate: ManagedDecimal<M, NumDecimals>,
     pub slope1: ManagedDecimal<M, NumDecimals>,

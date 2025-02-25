@@ -266,10 +266,10 @@ where
     /// These include interest rate parameters and asset asset_decimals. 
     ///  
     /// # Returns 
-    /// - `PoolParams<Self::Api>`: The pool configuration. 
-    pub fn pool_params(
+    /// - `MarketParams<Self::Api>`: The pool configuration. 
+    pub fn params(
         self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::PoolParams<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::MarketParams<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getPoolParams")

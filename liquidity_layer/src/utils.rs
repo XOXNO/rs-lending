@@ -1,7 +1,7 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
-use crate::{contexts::base::Cache, rates, storage, view};
+use crate::{cache::Cache, rates, storage, view};
 
 use common_constants::RAY_PRECISION;
 use common_errors::{ERROR_INVALID_ASSET, ERROR_INVALID_FLASHLOAN_REPAYMENT};
@@ -49,10 +49,10 @@ pub trait UtilsModule:
         let protocol_fee = self
             .mul_half_up(
                 &accrued_interest,
-                &cache.pool_params.reserve_factor,
+                &cache.params.reserve_factor,
                 RAY_PRECISION,
             )
-            .rescale(cache.pool_params.asset_decimals);
+            .rescale(cache.params.asset_decimals);
         // 3. Update reserves
         cache.revenue += &protocol_fee;
 
@@ -368,10 +368,10 @@ pub trait UtilsModule:
         let (principal, interest, _) = self.split_repay(amount, position, cache);
         let mut to_withdraw = amount.clone() + extra;
         if is_liquidation && protocol_fee_opt.is_some() {
-            let fee = protocol_fee_opt.unwrap();
-            cache.revenue += &fee;
-            cache.reserves += &fee;
-            to_withdraw -= &fee;
+            let protocol_fees = protocol_fee_opt.unwrap();
+            cache.revenue += &protocol_fees;
+            cache.reserves += &protocol_fees;
+            to_withdraw -= &protocol_fees;
         }
         (principal, interest, to_withdraw)
     }

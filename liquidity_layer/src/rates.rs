@@ -1,6 +1,6 @@
 use common_constants::{RAY_PRECISION, SECONDS_PER_YEAR};
 
-use crate::{contexts::base::Cache, storage};
+use crate::{cache::Cache, storage};
 
 multiversx_sc::imports!();
 
@@ -33,39 +33,39 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
     /// **Security Tip**: Relies on `cache.get_utilization()`; no direct input validation.
     fn calc_borrow_rate(&self, cache: &Cache<Self>) -> ManagedDecimal<Self::Api, NumDecimals> {
         let utilization = cache.get_utilization();
-        let pool_params = cache.pool_params.clone();
+        let params = cache.params.clone();
         let sec_per_year = ManagedDecimal::from_raw_units(BigUint::from(SECONDS_PER_YEAR), 0);
 
-        let annual_rate = if utilization < pool_params.mid_utilization {
+        let annual_rate = if utilization < params.mid_utilization {
             // Region 1: utilization < mid_utilization
-            let utilization_ratio = utilization.mul(pool_params.slope1).div(pool_params.mid_utilization);
-            pool_params.base_borrow_rate.add(utilization_ratio)
-        } else if utilization < pool_params.optimal_utilization {
+            let utilization_ratio = utilization.mul(params.slope1).div(params.mid_utilization);
+            params.base_borrow_rate.add(utilization_ratio)
+        } else if utilization < params.optimal_utilization {
             // Region 2: mid_utilization <= utilization < optimal_utilization
-            let excess_utilization = utilization.sub(pool_params.mid_utilization.clone());
+            let excess_utilization = utilization.sub(params.mid_utilization.clone());
             let slope_contribution = excess_utilization
-                .mul(pool_params.slope2)
-                .div(pool_params.optimal_utilization.sub(pool_params.mid_utilization));
-            pool_params
+                .mul(params.slope2)
+                .div(params.optimal_utilization.sub(params.mid_utilization));
+            params
                 .base_borrow_rate
-                .add(pool_params.slope1)
+                .add(params.slope1)
                 .add(slope_contribution)
         } else {
             // Region 3: utilization >= optimal_utilization, linear growth
-            let base_rate = pool_params
+            let base_rate = params
                 .base_borrow_rate
-                .add(pool_params.slope1)
-                .add(pool_params.slope2);
-            let excess_utilization = utilization.sub(pool_params.optimal_utilization.clone());
+                .add(params.slope1)
+                .add(params.slope2);
+            let excess_utilization = utilization.sub(params.optimal_utilization.clone());
             let slope_contribution = excess_utilization
-                .mul(pool_params.slope3)
-                .div(self.ray().sub(pool_params.optimal_utilization));
+                .mul(params.slope3)
+                .div(self.ray().sub(params.optimal_utilization));
             base_rate.add(slope_contribution)
         };
 
         // Cap the rate at max_borrow_rate
-        let capped_rate = if annual_rate > pool_params.max_borrow_rate {
-            pool_params.max_borrow_rate
+        let capped_rate = if annual_rate > params.max_borrow_rate {
+            params.max_borrow_rate
         } else {
             annual_rate
         };

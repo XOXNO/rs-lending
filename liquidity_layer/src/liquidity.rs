@@ -6,7 +6,7 @@ use common_errors::{
 };
 use common_structs::*;
 
-use super::{contexts::base::Cache, rates, storage, utils, view};
+use super::{cache::Cache, rates, storage, utils, view};
 
 #[multiversx_sc::module]
 pub trait LiquidityModule:
@@ -341,7 +341,7 @@ pub trait LiquidityModule:
         // Calculate flash loan min repayment amount
         let required_repayment = self
             .mul_half_up(amount, &(self.bps() + fees.clone()), RAY_PRECISION)
-            .rescale(cache.pool_params.asset_decimals);
+            .rescale(cache.params.asset_decimals);
 
         let asset = cache.pool_asset.clone();
         // Prevent re entry attacks with loop flash loans
