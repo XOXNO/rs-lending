@@ -1,4 +1,4 @@
-use common_events::NftAccountAttributes;
+use common_events::AccountAttributes;
 
 use crate::storage;
 use common_errors::{ERROR_ACCOUNT_NOT_IN_THE_MARKET, ERROR_POSITION_SHOULD_BE_VAULT};
@@ -21,14 +21,14 @@ pub trait PositionAccountModule:
     ///
     /// # Returns
     /// - Tuple of (NFT payment, attributes).
-    fn create_position_nft(
+    fn create_account_nft(
         &self,
         caller: &ManagedAddress,
         is_isolated: bool,
         is_vault: bool,
         e_mode_category: OptionalValue<u8>,
-    ) -> (EsdtTokenPayment, NftAccountAttributes) {
-        let attributes = NftAccountAttributes {
+    ) -> (EsdtTokenPayment, AccountAttributes) {
+        let attributes = AccountAttributes {
             is_isolated_position: is_isolated,
             e_mode_category_id: if is_isolated {
                 0
@@ -39,7 +39,7 @@ pub trait PositionAccountModule:
         };
         let nft_token_payment = self
             .account_token()
-            .nft_create_and_send::<NftAccountAttributes>(caller, BigUint::from(1u64), &attributes);
+            .nft_create_and_send::<AccountAttributes>(caller, BigUint::from(1u64), &attributes);
 
         self.account_positions()
             .insert(nft_token_payment.token_nonce);
@@ -54,7 +54,7 @@ pub trait PositionAccountModule:
     ///
     /// # Arguments
     /// - `account`: NFT payment to check.
-    fn validate_existing_position(&self, account: &EsdtTokenPayment<Self::Api>) {
+    fn validate_existing_account(&self, account: &EsdtTokenPayment<Self::Api>) {
         self.require_active_account(account.token_nonce);
         self.account_token()
             .require_same_token(&account.token_identifier);
@@ -72,30 +72,23 @@ pub trait PositionAccountModule:
     ///
     /// # Returns
     /// - Tuple of (NFT nonce, attributes).
-    fn get_or_create_position(
+    fn get_or_create_account(
         &self,
         caller: &ManagedAddress,
         is_isolated: bool,
         is_vault: bool,
         e_mode_category: OptionalValue<u8>,
-        existing_position: Option<EsdtTokenPayment<Self::Api>>,
-    ) -> (u64, NftAccountAttributes) {
-        if let Some(position) = existing_position {
-            self.validate_existing_position(&position);
-            let attributes = self.nft_attributes(position.token_nonce, &position.token_identifier);
-            self.tx()
-                .to(caller)
-                .single_esdt(
-                    &position.token_identifier,
-                    position.token_nonce,
-                    &BigUint::from(1u64),
-                )
-                .transfer();
-            (position.token_nonce, attributes)
+        existing_account: Option<EsdtTokenPayment<Self::Api>>,
+    ) -> (u64, AccountAttributes) {
+        if let Some(account) = existing_account {
+            self.validate_existing_account(&account);
+            let account_attributes = self.nft_attributes(&account);
+            self.tx().to(caller).payment(&account).transfer();
+            (account.token_nonce, account_attributes)
         } else {
-            let (payment, attributes) =
-                self.create_position_nft(caller, is_isolated, is_vault, e_mode_category);
-            (payment.token_nonce, attributes)
+            let (payment, account_attributes) =
+                self.create_account_nft(caller, is_isolated, is_vault, e_mode_category);
+            (payment.token_nonce, account_attributes)
         }
     }
 
@@ -107,19 +100,15 @@ pub trait PositionAccountModule:
     /// - `token_id`: NFT identifier.
     ///
     /// # Returns
-    /// - `NftAccountAttributes` containing position details.
-    fn nft_attributes(
-        &self,
-        account_nonce: u64,
-        token_id: &TokenIdentifier<Self::Api>,
-    ) -> NftAccountAttributes {
+    /// - `AccountAttributes` containing position details.
+    fn nft_attributes(&self, account_payment: &EsdtTokenPayment<Self::Api>) -> AccountAttributes {
         let data = self.blockchain().get_esdt_token_data(
             &self.blockchain().get_sc_address(),
-            token_id,
-            account_nonce,
+            &account_payment.token_identifier,
+            account_payment.token_nonce,
         );
 
-        data.decode_attributes::<NftAccountAttributes>()
+        data.decode_attributes::<AccountAttributes>()
     }
 
     /// Ensures an account nonce is active in the market.
@@ -138,12 +127,12 @@ pub trait PositionAccountModule:
     /// Ensures correct interest accrual behavior.
     ///
     /// # Arguments
-    /// - `nft_attributes`: NFT attributes.
+    /// - `account_attributes`: Account attributes.
     /// - `is_vault`: Operation vault flag.
-    fn validate_vault_consistency(&self, nft_attributes: &NftAccountAttributes, is_vault: bool) {
-        if nft_attributes.is_vault() || is_vault {
+    fn validate_vault_consistency(&self, account_attributes: &AccountAttributes, is_vault: bool) {
+        if account_attributes.is_vault() || is_vault {
             require!(
-                nft_attributes.is_vault() == is_vault,
+                account_attributes.is_vault() == is_vault,
                 ERROR_POSITION_SHOULD_BE_VAULT
             );
         }

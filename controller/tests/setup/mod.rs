@@ -232,7 +232,7 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::LendingPoolProxy)
-            .enable_vault()
+            .toggle_vault(true)
             .single_esdt(
                 &ACCOUNT_TOKEN.to_token_identifier(),
                 account_nonce,
@@ -252,7 +252,7 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::LendingPoolProxy)
-            .enable_vault()
+            .toggle_vault(true)
             .single_esdt(
                 &ACCOUNT_TOKEN.to_token_identifier(),
                 account_nonce,
@@ -268,7 +268,7 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::LendingPoolProxy)
-            .disable_vault()
+            .toggle_vault(false)
             .single_esdt(
                 &ACCOUNT_TOKEN.to_token_identifier(),
                 account_nonce,
@@ -288,7 +288,7 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::LendingPoolProxy)
-            .disable_vault()
+            .toggle_vault(false)
             .single_esdt(
                 &ACCOUNT_TOKEN.to_token_identifier(),
                 account_nonce,
@@ -971,7 +971,12 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .whitebox(controller::contract_obj, |sc| {
                 let mut storage_cache = StorageCache::new(&sc);
-                sc.sync_borrow_positions_interest(account_position, &mut storage_cache, true, false);
+                sc.sync_borrow_positions_interest(
+                    account_position,
+                    &mut storage_cache,
+                    true,
+                    false,
+                );
             });
     }
 
@@ -1230,7 +1235,7 @@ pub fn setup_lending_pool(
             safe_view_sc.clone(),
             safe_view_sc.clone(), // TODO: Add real accumulator
             safe_view_sc.clone(), // TODO Add wrap SC for WEGLD
-            safe_view_sc.clone() // TODO: Add ash SC
+            safe_view_sc.clone(), // TODO: Add ash SC
         )
         .code(LENDING_POOL_PATH)
         .returns(ReturnsNewManagedAddress)
@@ -2033,7 +2038,7 @@ pub fn submit_price(
         )
         .run();
 
-        // world.current_block().block_timestamp(1740184106);
+    // world.current_block().block_timestamp(1740184106);
     for oracle in oracles {
         world
             .tx()

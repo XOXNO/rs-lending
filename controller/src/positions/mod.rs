@@ -6,3 +6,4 @@ pub mod repay;
 pub mod liquidation;
 pub mod update;
 pub mod emode;
+pub mod vault;

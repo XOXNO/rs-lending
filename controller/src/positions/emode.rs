@@ -37,7 +37,7 @@ pub trait EModeModule: storage::LendingStorageModule {
     ///
     /// # Arguments
     /// - `category`: Optional e-mode category to check.
-    fn ensure_e_mode_not_deprecated(&self, category: &Option<EModeCategory<Self::Api>>) {
+    fn  ensure_e_mode_not_deprecated(&self, category: &Option<EModeCategory<Self::Api>>) {
         if let Some(cat) = category {
             require!(!cat.is_deprecated(), ERROR_EMODE_CATEGORY_DEPRECATED);
         }

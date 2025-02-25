@@ -5,7 +5,7 @@ use common_structs::{AccountPosition, PriceFeedShort};
 use crate::{contexts::base::StorageCache, helpers, oracle, storage, utils, validation};
 use common_errors::ERROR_HEALTH_FACTOR;
 
-use super::{account, borrow, repay, update, withdraw};
+use super::{account, borrow, repay, update, withdraw, vault, emode};
 
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
@@ -24,6 +24,8 @@ pub trait PositionLiquidationModule:
     + update::PositionUpdateModule
     + borrow::PositionBorrowModule
     + common_math::SharedMathModule
+    + emode::EModeModule
+    + vault::PositionVaultModule
 {
     /// Executes core liquidation logic for an account.
     /// Manages debt repayment and collateral seizure.

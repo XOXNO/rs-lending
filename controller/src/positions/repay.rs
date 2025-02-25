@@ -1,4 +1,4 @@
-use common_structs::{AccountPosition, NftAccountAttributes, PriceFeedShort};
+use common_structs::{AccountPosition, AccountAttributes, PriceFeedShort};
 
 use crate::{
     contexts::base::StorageCache, helpers, oracle, proxy_pool, storage, utils, validation,
@@ -21,6 +21,7 @@ pub trait PositionRepayModule:
     + account::PositionAccountModule
     + borrow::PositionBorrowModule
     + common_math::SharedMathModule
+    + super::emode::EModeModule
 {
     /// Processes a repayment via the liquidity pool.
     /// Updates the borrow position accordingly.
@@ -42,7 +43,7 @@ pub trait PositionRepayModule:
         caller: &ManagedAddress,
         mut borrow_position: AccountPosition<Self::Api>,
         price_feed: &PriceFeedShort<Self::Api>,
-        position_attributes: &NftAccountAttributes,
+        position_attributes: &AccountAttributes,
         storage_cache: &mut StorageCache<Self>,
     ) {
         let pool_address = storage_cache.get_cached_pool_address(repay_token_id);
@@ -83,7 +84,7 @@ pub trait PositionRepayModule:
         price_feed: &PriceFeedShort<Self::Api>,
         repay_amount: &ManagedDecimal<Self::Api, NumDecimals>,
         storage_cache: &mut StorageCache<Self>,
-        position_attributes: &NftAccountAttributes,
+        position_attributes: &AccountAttributes,
     ) {
         if position_attributes.is_isolated() {
             let collaterals_map = self.deposit_positions(account_nonce);
@@ -123,7 +124,7 @@ pub trait PositionRepayModule:
         repay_amount_in_egld: ManagedDecimal<Self::Api, NumDecimals>,
         price_feed: &PriceFeedShort<Self::Api>,
         storage_cache: &mut StorageCache<Self>,
-        position_attributes: &NftAccountAttributes,
+        position_attributes: &AccountAttributes,
     ) {
         let mut borrow_position =
             self.validate_borrow_position_existence(account_nonce, repay_token_id);

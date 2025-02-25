@@ -1,3 +1,4 @@
+use common_events::AccountAttributes;
 use common_structs::{AccountPosition, AccountPositionType};
 
 use crate::{contexts::base::StorageCache, helpers, oracle, storage, utils, validation};
@@ -89,10 +90,14 @@ pub trait PositionUpdateModule:
         let deposit_positions_map = self.deposit_positions(account_nonce);
         let mut updated_positions = ManagedVec::new();
 
+        let account_attributes: AccountAttributes =
+            self.account_token().get_token_attributes(account_nonce);
+
         for mut deposit_position in deposit_positions_map.values() {
-            if !deposit_position.is_vault_position {
+            if !account_attributes.is_vault() {
                 let pool_address =
                     storage_cache.get_cached_pool_address(&deposit_position.asset_id);
+
                 let price = self.fetch_price_if_needed(
                     &deposit_position.asset_id,
                     storage_cache,
@@ -107,6 +112,7 @@ pub trait PositionUpdateModule:
 
                 self.store_updated_position(account_nonce, &deposit_position);
             }
+
             updated_positions.push(deposit_position.clone());
         }
 
@@ -166,7 +172,7 @@ pub trait PositionUpdateModule:
     /// - `position`: Updated position.
     fn emit_position_update_event(&self, position: &AccountPosition<Self::Api>) {
         self.update_position_event(
-            &ManagedDecimal::from_raw_units(BigUint::zero(), 0usize),
+            &position.zero_decimal(),
             position,
             OptionalValue::None,
             OptionalValue::None,

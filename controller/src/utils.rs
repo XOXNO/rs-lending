@@ -3,6 +3,7 @@ multiversx_sc::derive_imports!();
 
 use crate::contexts::base::StorageCache;
 use crate::{helpers, oracle, proxy_pool, storage, ERROR_NO_POOL_FOUND, WAD_PRECISION};
+use common_errors::*;
 use common_structs::*;
 
 #[multiversx_sc::module]
@@ -178,5 +179,100 @@ pub trait LendingUtilsModule:
         storage_cache: &mut StorageCache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         self.get_token_amount_in_egld(asset_id, amount, storage_cache)
+    }
+
+    /// Validates the endpoint for flash loans.
+    fn validate_flash_loan_endpoint(&self, endpoint: &ManagedBuffer<Self::Api>) {
+        require!(
+            !self.blockchain().is_builtin_function(endpoint) && !endpoint.is_empty(),
+            ERROR_INVALID_ENDPOINT
+        );
+    }
+
+    /// Updates bulk borrow positions in the borrow list.
+    fn update_bulk_borrow_positions(
+        &self,
+        borrows: &mut ManagedVec<AccountPosition<Self::Api>>,
+        borrow_index_mapper: &mut ManagedMapEncoded<Self::Api, EgldOrEsdtTokenIdentifier, usize>,
+        updated_position: AccountPosition<Self::Api>,
+        is_bulk_borrow: bool,
+    ) {
+        if !is_bulk_borrow {
+            return;
+        }
+
+        let existing_borrow = borrow_index_mapper.contains(&updated_position.asset_id);
+        if existing_borrow {
+            let safe_index = borrow_index_mapper.get(&updated_position.asset_id);
+            let index = safe_index - 1;
+            let token_id = &borrows.get(index).asset_id.clone();
+            require!(
+                token_id == &updated_position.asset_id,
+                ERROR_INVALID_BULK_BORROW_TICKER
+            );
+            let _ = borrows.set(index, updated_position);
+        } else {
+            let safe_index = borrows.len() + 1;
+            borrow_index_mapper.put(&updated_position.asset_id, &safe_index);
+            borrows.push(updated_position);
+        }
+    }
+
+    /// Updates the interest index for a specific asset.
+    fn update_asset_index(
+        &self,
+        asset_id: &EgldOrEsdtTokenIdentifier<Self::Api>,
+        storage_cache: &mut StorageCache<Self>,
+    ) {
+        let pool_address = self.get_pool_address(asset_id);
+        let asset_price = self.get_token_price(asset_id, storage_cache);
+        self.tx()
+            .to(pool_address)
+            .typed(proxy_pool::LiquidityPoolProxy)
+            .update_indexes(asset_price.price.clone())
+            .sync_call();
+    }
+
+    /// Validates health factor post-withdrawal.
+    /// Ensures position remains safe after withdrawal.
+    ///
+    /// # Arguments
+    /// - `account_nonce`: Position NFT nonce.
+    /// - `is_liquidation`: Liquidation flag.
+    /// - `storage_cache`: Mutable storage cache.
+    /// - `safety_factor`: Optional safety factor.
+    fn validate_health_factor_after_withdrawal(
+        &self,
+        account_nonce: u64,
+        is_liquidation: bool,
+        storage_cache: &mut StorageCache<Self>,
+        safety_factor: Option<ManagedDecimal<Self::Api, NumDecimals>>,
+    ) {
+        if is_liquidation {
+            return;
+        }
+
+        let borrow_positions = self.borrow_positions(account_nonce);
+        if borrow_positions.is_empty() {
+            return;
+        }
+
+        let deposit_positions = self.deposit_positions(account_nonce);
+        let (collateral, _, _) =
+            self.calculate_collateral_values(&deposit_positions.values().collect(), storage_cache);
+        let borrowed = self
+            .calculate_total_borrow_in_egld(&borrow_positions.values().collect(), storage_cache);
+        let health_factor = self.compute_health_factor(&collateral, &borrowed);
+
+        let min_health_factor = if let Some(safety_factor_value) = safety_factor {
+            self.wad() + (self.wad() / safety_factor_value)
+        } else {
+            self.wad()
+        };
+
+        require!(
+            health_factor >= min_health_factor,
+            ERROR_HEALTH_FACTOR_WITHDRAW
+        );
     }
 }

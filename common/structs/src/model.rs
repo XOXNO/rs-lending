@@ -57,7 +57,6 @@ pub struct AccountPosition<M: ManagedTypeApi> {
     pub account_nonce: u64,
     pub last_update_timestamp: u64,
     pub market_index: ManagedDecimal<M, NumDecimals>,
-    pub is_vault_position: bool,
     pub liquidation_threshold: ManagedDecimal<M, NumDecimals>,
     pub liquidation_bonus: ManagedDecimal<M, NumDecimals>,
     pub liquidation_fees: ManagedDecimal<M, NumDecimals>,
@@ -95,7 +94,6 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
         liquidation_bonus: ManagedDecimal<M, NumDecimals>,
         liquidation_fees: ManagedDecimal<M, NumDecimals>,
         loan_to_value: ManagedDecimal<M, NumDecimals>,
-        is_vault_position: bool,
     ) -> Self {
         AccountPosition {
             position_type,
@@ -105,7 +103,6 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
             account_nonce,
             last_update_timestamp,
             market_index,
-            is_vault_position,
             liquidation_threshold,
             liquidation_bonus,
             liquidation_fees,
@@ -241,18 +238,18 @@ impl EModeAssetConfig {
     }
 }
 
-/// NftAccountAttributes encapsulates attributes related to an account’s NFT,
+/// AccountAttributes encapsulates attributes related to an account’s NFT,
 /// which represents a user's position in the protocol. These attributes include whether the position is isolated,
 /// the e-mode category, and whether it is a vault.
 #[type_abi]
 #[derive(NestedEncode, NestedDecode, TopEncode, TopDecode, Clone)]
-pub struct NftAccountAttributes {
+pub struct AccountAttributes {
     pub is_isolated_position: bool,
     pub e_mode_category_id: u8,
     pub is_vault_position: bool,
 }
 
-impl NftAccountAttributes {
+impl AccountAttributes {
     pub fn is_vault(&self) -> bool {
         self.is_vault_position
     }

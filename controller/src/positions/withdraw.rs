@@ -1,11 +1,10 @@
-use common_structs::{AccountPosition, NftAccountAttributes, PriceFeedShort};
+use common_structs::{AccountAttributes, AccountPosition, PriceFeedShort};
 
 use crate::{
     contexts::base::StorageCache, helpers, oracle, proxy_pool, storage, utils, validation,
-    ERROR_HEALTH_FACTOR_WITHDRAW,
 };
 
-use super::account;
+use super::{account, vault};
 
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
@@ -20,6 +19,7 @@ pub trait PositionWithdrawModule:
     + helpers::math::MathsModule
     + account::PositionAccountModule
     + common_math::SharedMathModule
+    + vault::PositionVaultModule
 {
     /// Processes a withdrawal from a deposit position.
     /// Handles vault or market withdrawals with validations.
@@ -44,7 +44,7 @@ pub trait PositionWithdrawModule:
         is_liquidation: bool,
         liquidation_fee: Option<ManagedDecimal<Self::Api, NumDecimals>>,
         storage_cache: &mut StorageCache<Self>,
-        position_attributes: &NftAccountAttributes,
+        position_attributes: &AccountAttributes,
         is_swap: bool,
     ) -> AccountPosition<Self::Api> {
         let (token_id, _, requested_amount) = withdraw_payment.into_tuple();
@@ -54,7 +54,7 @@ pub trait PositionWithdrawModule:
         let mut deposit_position = self.get_deposit_position(account_nonce, &token_id);
         let withdraw_amount = self.calculate_withdraw_amount(&deposit_position, requested_amount);
 
-        let updated_position = if deposit_position.is_vault_position {
+        let updated_position = if position_attributes.is_vault() {
             self.process_vault_withdrawal(
                 &token_id,
                 &withdraw_amount,
@@ -179,69 +179,24 @@ pub trait PositionWithdrawModule:
     /// - `token_nonce`: NFT nonce.
     /// - `token_identifier`: NFT identifier.
     /// - `caller`: Withdrawer's address.
-    fn manage_nft_after_withdrawal(
+    fn manage_account_after_withdrawal(
         &self,
-        amount: &BigUint,
-        token_nonce: u64,
-        token_identifier: &TokenIdentifier,
+        account_payment: &EsdtTokenPayment<Self::Api>,
         caller: &ManagedAddress,
     ) {
-        let deposit_positions_count = self.deposit_positions(token_nonce).len();
-        let borrow_positions_count = self.borrow_positions(token_nonce).len();
+        let deposit_positions_count = self.deposit_positions(account_payment.token_nonce).len();
+        let borrow_positions_count = self.borrow_positions(account_payment.token_nonce).len();
 
+        // Burn NFT if position is fully closed
         if deposit_positions_count == 0 && borrow_positions_count == 0 {
-            self.account_token().nft_burn(token_nonce, amount);
-            self.account_positions().swap_remove(&token_nonce);
-            self.account_attributes(token_nonce).clear();
+            self.account_token()
+                .nft_burn(account_payment.token_nonce, &BigUint::from(1u64));
+            self.account_positions()
+                .swap_remove(&account_payment.token_nonce);
+            self.account_attributes(account_payment.token_nonce).clear();
         } else {
-            self.tx()
-                .to(caller)
-                .single_esdt(token_identifier, token_nonce, amount)
-                .transfer();
+            self.tx().to(caller).payment(account_payment).transfer();
         }
-    }
-
-    /// Validates health factor post-withdrawal.
-    /// Ensures position remains safe after withdrawal.
-    ///
-    /// # Arguments
-    /// - `account_nonce`: Position NFT nonce.
-    /// - `is_liquidation`: Liquidation flag.
-    /// - `storage_cache`: Mutable storage cache.
-    /// - `safety_factor`: Optional safety factor.
-    fn validate_health_factor_after_withdrawal(
-        &self,
-        account_nonce: u64,
-        is_liquidation: bool,
-        storage_cache: &mut StorageCache<Self>,
-        safety_factor: Option<ManagedDecimal<Self::Api, NumDecimals>>,
-    ) {
-        if is_liquidation {
-            return;
-        }
-
-        let borrow_positions = self.borrow_positions(account_nonce);
-        if borrow_positions.is_empty() {
-            return;
-        }
-
-        let deposit_positions = self.deposit_positions(account_nonce);
-        let (collateral, _, _) =
-            self.calculate_collateral_values(&deposit_positions.values().collect(), storage_cache);
-        let borrowed = self
-            .calculate_total_borrow_in_egld(&borrow_positions.values().collect(), storage_cache);
-        let health_factor = self.compute_health_factor(&collateral, &borrowed);
-
-        let min_health_factor = if let Some(safety_factor_value) = safety_factor {
-            self.wad() + (self.wad() / safety_factor_value)
-        } else {
-            self.wad()
-        };
-
-        require!(
-            health_factor >= min_health_factor,
-            ERROR_HEALTH_FACTOR_WITHDRAW
-        );
     }
 
     /// Retrieves a deposit position for a token.
@@ -336,30 +291,6 @@ pub trait PositionWithdrawModule:
             .sync_call();
     }
 
-    /// Updates the vault's supplied amount in storage.
-    /// Adjusts for deposits or withdrawals.
-    ///
-    /// # Arguments
-    /// - `token_id`: Token identifier.
-    /// - `amount`: Adjustment amount.
-    /// - `is_increase`: Increase (true) or decrease (false) flag.
-    fn update_vault_supplied_amount(
-        &self,
-        token_id: &EgldOrEsdtTokenIdentifier,
-        amount: &ManagedDecimal<Self::Api, NumDecimals>,
-        is_increase: bool,
-    ) {
-        let last_value = self.vault_supplied_amount(token_id).update(|am| {
-            if is_increase {
-                *am += amount;
-            } else {
-                *am -= amount;
-            }
-            am.clone()
-        });
-        self.update_vault_supplied_amount_event(token_id, last_value);
-    }
-
     /// Emits an event for a withdrawal operation.
     /// Logs withdrawal details for transparency.
     ///
@@ -375,7 +306,7 @@ pub trait PositionWithdrawModule:
         position: &AccountPosition<Self::Api>,
         price_feed: &PriceFeedShort<Self::Api>,
         caller: &ManagedAddress,
-        position_attributes: &NftAccountAttributes,
+        position_attributes: &AccountAttributes,
     ) {
         self.update_position_event(
             amount,

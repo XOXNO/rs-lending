@@ -1,7 +1,7 @@
 use common_constants::RAY_PRECISION;
 use common_errors::*;
 
-use controller::{NftAccountAttributes, WAD_PRECISION};
+use controller::{AccountAttributes, WAD_PRECISION};
 use multiversx_sc::types::{
     ConstDecimals, EgldOrEsdtTokenIdentifier, ManagedArgBuffer, ManagedBuffer, ManagedDecimal,
     MultiValueEncoded,
@@ -436,7 +436,7 @@ fn test_complete_market_exit() {
             ACCOUNT_TOKEN,
             2,
             BigUint::from(1u64),
-            NftAccountAttributes {
+            AccountAttributes {
                 is_isolated_position: false,
                 e_mode_category_id: 0,
                 is_vault_position: false,
@@ -473,7 +473,7 @@ fn test_complete_market_exit() {
             ACCOUNT_TOKEN,
             2,
             BigUint::zero(),
-            NftAccountAttributes {
+            AccountAttributes {
                 is_isolated_position: false,
                 e_mode_category_id: 0,
                 is_vault_position: false,

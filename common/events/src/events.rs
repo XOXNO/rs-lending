@@ -160,7 +160,7 @@ pub trait EventsModule {
         #[indexed] position: &AccountPosition<Self::Api>,
         #[indexed] asset_price: OptionalValue<ManagedDecimal<Self::Api, NumDecimals>>,
         #[indexed] caller: OptionalValue<&ManagedAddress>, // When is none, then the position is updated by the protocol and the amount is the interest, either for borrow or supply
-        #[indexed] account_attributes: OptionalValue<&NftAccountAttributes>,
+        #[indexed] account_attributes: OptionalValue<&AccountAttributes>,
     );
 
     /// Emits an event to update the debt ceiling for an asset.

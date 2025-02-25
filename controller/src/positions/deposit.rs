@@ -1,6 +1,6 @@
 use common_constants::TOTAL_SUPPLY_AMOUNT_STORAGE_KEY;
 use common_events::{
-    AccountPosition, AccountPositionType, AssetConfig, NftAccountAttributes, PriceFeedShort,
+    AccountAttributes, AccountPosition, AccountPositionType, AssetConfig, PriceFeedShort,
 };
 use multiversx_sc::storage::StorageKey;
 
@@ -10,7 +10,7 @@ use crate::{
 };
 use common_errors::{
     ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL, ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS,
-    ERROR_MIX_ISOLATED_COLLATERAL, ERROR_SUPPLY_CAP,
+    ERROR_MIX_ISOLATED_COLLATERAL, ERROR_POSITION_NOT_FOUND, ERROR_SUPPLY_CAP,
 };
 
 use super::account;
@@ -29,6 +29,7 @@ pub trait PositionDepositModule:
     + account::PositionAccountModule
     + positions::emode::EModeModule
     + common_math::SharedMathModule
+    + positions::vault::PositionVaultModule
 {
     /// Processes a deposit operation for a user's position.
     /// Handles validations, e-mode, and updates for deposits.
@@ -43,7 +44,7 @@ pub trait PositionDepositModule:
         &self,
         caller: &ManagedAddress,
         account_nonce: u64,
-        position_attributes: NftAccountAttributes,
+        position_attributes: AccountAttributes,
         deposit_payments: &ManagedVec<EgldOrEsdtTokenPayment>,
         storage_cache: &mut StorageCache<Self>,
     ) {
@@ -79,12 +80,7 @@ pub trait PositionDepositModule:
                 &position_attributes,
             );
 
-            self.validate_supply_cap(
-                &asset_info,
-                &deposit_payment,
-                position_attributes.is_vault(),
-                storage_cache,
-            );
+            self.validate_supply_cap(&asset_info, &deposit_payment, storage_cache);
 
             self.update_deposit_position(
                 account_nonce,
@@ -113,7 +109,6 @@ pub trait PositionDepositModule:
         account_nonce: u64,
         asset_info: &AssetConfig<Self::Api>,
         token_id: &EgldOrEsdtTokenIdentifier,
-        is_vault: bool,
     ) -> AccountPosition<Self::Api> {
         let positions = self.deposit_positions(account_nonce);
 
@@ -131,7 +126,6 @@ pub trait PositionDepositModule:
                 asset_info.liquidation_bonus.clone(),
                 asset_info.liquidation_fees.clone(),
                 asset_info.loan_to_value.clone(),
-                is_vault,
             )
         })
     }
@@ -155,7 +149,7 @@ pub trait PositionDepositModule:
         collateral: &EgldOrEsdtTokenPayment<Self::Api>,
         asset_info: &AssetConfig<Self::Api>,
         caller: &ManagedAddress,
-        attributes: &NftAccountAttributes,
+        attributes: &AccountAttributes,
         storage_cache: &mut StorageCache<Self>,
     ) -> AccountPosition<Self::Api> {
         let feed = self.get_token_price(&collateral.token_identifier, storage_cache);
@@ -163,10 +157,9 @@ pub trait PositionDepositModule:
             account_nonce,
             asset_info,
             &collateral.token_identifier,
-            attributes.is_vault(),
         );
 
-        // Auto upgrade values when changed on demand
+        // Auto upgrade safe values when changed on demand
         if position.loan_to_value != asset_info.loan_to_value {
             position.loan_to_value = asset_info.loan_to_value.clone();
         }
@@ -178,13 +171,11 @@ pub trait PositionDepositModule:
         if position.liquidation_fees != asset_info.liquidation_fees {
             position.liquidation_fees = asset_info.liquidation_fees.clone();
         }
+
         let amount_decimal = position.make_amount_decimal(collateral.amount.clone());
         if attributes.is_vault() {
-            self.increase_vault_position(
-                &mut position,
-                &amount_decimal,
-                &collateral.token_identifier,
-            );
+            self.update_vault_supplied_amount(&collateral.token_identifier, &amount_decimal, true);
+            position.principal_amount += &amount_decimal;
         } else {
             self.update_market_position(
                 &mut position,
@@ -236,28 +227,6 @@ pub trait PositionDepositModule:
             .sync_call();
     }
 
-    /// Increases a vault position directly in storage.
-    /// Updates vault-specific deposit logic.
-    ///
-    /// # Arguments
-    /// - `position`: Current deposit position.
-    /// - `amount`: Deposit amount.
-    /// - `token_id`: Token identifier.
-    fn increase_vault_position(
-        &self,
-        position: &mut AccountPosition<Self::Api>,
-        amount: &ManagedDecimal<Self::Api, NumDecimals>,
-        token_id: &EgldOrEsdtTokenIdentifier,
-    ) {
-        let last_value = self.vault_supplied_amount(token_id).update(|am| {
-            *am += amount;
-            am.clone()
-        });
-
-        self.update_vault_supplied_amount_event(token_id, last_value.clone());
-        position.principal_amount += amount;
-    }
-
     /// Validates deposit payments and handles NFT return.
     /// Separates collateral from NFT payments if present.
     ///
@@ -307,7 +276,7 @@ pub trait PositionDepositModule:
         account_nonce: u64,
         token_id: &EgldOrEsdtTokenIdentifier,
         asset_info: &AssetConfig<Self::Api>,
-        position_attributes: &NftAccountAttributes,
+        position_attributes: &AccountAttributes,
     ) {
         if !asset_info.is_isolated() && !position_attributes.is_isolated() {
             return;
@@ -348,7 +317,6 @@ pub trait PositionDepositModule:
         &self,
         asset_info: &AssetConfig<Self::Api>,
         deposit_payment: &EgldOrEsdtTokenPayment,
-        is_vault: bool,
         storage_cache: &mut StorageCache<Self>,
     ) {
         if let Some(supply_cap) = &asset_info.supply_cap {
@@ -356,17 +324,75 @@ pub trait PositionDepositModule:
                 storage_cache.get_cached_pool_address(&deposit_payment.token_identifier);
             let mut total_supplied = self.get_total_supply(pool_address).get();
 
-            if is_vault {
-                let vault_supplied_amount = self
-                    .vault_supplied_amount(&deposit_payment.token_identifier)
-                    .get();
-                total_supplied += vault_supplied_amount;
-            }
+            let vault_supplied_amount = self
+                .vault_supplied_amount(&deposit_payment.token_identifier)
+                .get();
+            total_supplied += vault_supplied_amount;
 
             require!(
                 total_supplied.into_raw_units() + &deposit_payment.amount <= *supply_cap,
                 ERROR_SUPPLY_CAP
             );
         }
+    }
+
+    /// Updates position threshold (LTV or liquidation) for an account.
+    fn update_position_threshold(
+        &self,
+        account_nonce: u64,
+        asset_id: &EgldOrEsdtTokenIdentifier<Self::Api>,
+        has_risks: bool,
+        asset_config: &mut AssetConfig<Self::Api>,
+        storage_cache: &mut StorageCache<Self>,
+    ) {
+        self.require_active_account(account_nonce);
+        let mut deposit_positions = self.deposit_positions(account_nonce);
+        let dp_option = deposit_positions.get(asset_id);
+        require!(dp_option.is_some(), ERROR_POSITION_NOT_FOUND);
+
+        let account_attributes = self.account_attributes(account_nonce).get();
+        let e_mode_category = self.get_e_mode_category(account_attributes.get_emode_id());
+        let asset_emode_config =
+            self.get_token_e_mode_config(account_attributes.get_emode_id(), &asset_id);
+        self.apply_e_mode_to_asset_config(asset_config, &e_mode_category, asset_emode_config);
+
+        let mut dp = dp_option.unwrap();
+
+        if has_risks {
+            if dp.liquidation_threshold != asset_config.liquidation_threshold {
+                dp.liquidation_threshold = asset_config.liquidation_threshold.clone();
+            }
+        } else {
+            if dp.loan_to_value != asset_config.loan_to_value {
+                dp.loan_to_value = asset_config.loan_to_value.clone();
+            }
+
+            if dp.liquidation_bonus != asset_config.liquidation_bonus {
+                dp.liquidation_bonus = asset_config.liquidation_bonus.clone();
+            }
+
+            if dp.liquidation_fees != asset_config.liquidation_fees {
+                dp.liquidation_fees = asset_config.liquidation_fees.clone();
+            }
+        }
+
+        deposit_positions.insert(dp.asset_id.clone(), dp.clone());
+
+        if has_risks {
+            self.validate_health_factor_after_withdrawal(
+                account_nonce,
+                false,
+                storage_cache,
+                Some(ManagedDecimal::from_raw_units(BigUint::from(20u64), 0usize)),
+            );
+        }
+
+        self.update_position_event(
+            &dp.zero_decimal(),
+            &dp,
+            OptionalValue::None,
+            OptionalValue::None,
+            OptionalValue::None,
+        );
     }
 }

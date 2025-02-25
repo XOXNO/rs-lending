@@ -1,11 +1,12 @@
 multiversx_sc::imports!();
 
 use common_constants::TOTAL_RESERVES_AMOUNT_STORAGE_KEY;
+use common_errors::ERROR_INVALID_SHARD;
 use multiversx_sc::storage::StorageKey;
 
 use crate::{
-    helpers, oracle, positions, storage, utils, ERROR_ADDRESS_IS_ZERO,
-    ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO, ERROR_ASSET_NOT_SUPPORTED,
+    helpers, oracle, storage, utils, ERROR_ADDRESS_IS_ZERO, ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO,
+    ERROR_ASSET_NOT_SUPPORTED,
 };
 
 #[multiversx_sc::module]
@@ -15,7 +16,6 @@ pub trait ValidationModule:
     + common_events::EventsModule
     + oracle::OracleModule
     + helpers::math::MathsModule
-    + positions::account::PositionAccountModule
     + common_math::SharedMathModule
 {
     /// Retrieves the total reserves for a liquidity pool.
@@ -112,5 +112,20 @@ pub trait ValidationModule:
     /// - `ERROR_ADDRESS_IS_ZERO`: If the address is zero.
     fn require_non_zero_address(&self, address: &ManagedAddress) {
         require!(!address.is_zero(), ERROR_ADDRESS_IS_ZERO);
+    }
+
+    // --- Helper Functions ---
+
+    /// Validates shard compatibility for flash loans.
+    fn validate_flash_loan_shard(&self, contract_address: &ManagedAddress) {
+        let destination_shard_id = self.blockchain().get_shard_of_address(contract_address);
+        let current_shard_id = self
+            .blockchain()
+            .get_shard_of_address(&self.blockchain().get_sc_address());
+
+        require!(
+            destination_shard_id == current_shard_id,
+            ERROR_INVALID_SHARD
+        );
     }
 }

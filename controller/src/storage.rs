@@ -1,5 +1,5 @@
 use common_events::{AssetConfig, EModeAssetConfig, EModeCategory, OracleProvider};
-use common_structs::{AccountPosition, NftAccountAttributes};
+use common_structs::{AccountPosition, AccountAttributes};
 
 multiversx_sc::imports!();
 
@@ -27,7 +27,7 @@ pub trait LendingStorageModule {
     /// This storage mapper maps each minted NFT to account attributes, useful for retrieving attributes without having the NFT in hand.
     #[view(getAccountAttributes)]
     #[storage_mapper("account_attributes")]
-    fn account_attributes(&self, nonce: u64) -> SingleValueMapper<NftAccountAttributes>;
+    fn account_attributes(&self, nonce: u64) -> SingleValueMapper<AccountAttributes>;
 
     /// Get the deposit positions
     /// This storage mapper maps each deposit position to an account nonce, holding a list of assets and their corresponding structs.
@@ -63,7 +63,7 @@ pub trait LendingStorageModule {
     /// This storage mapper holds a map of pools, used to get the address of a pool given a token ID.
     #[view(getPoolsMap)]
     #[storage_mapper("pools_map")]
-    fn pools_map(&self, token_id: &EgldOrEsdtTokenIdentifier) -> SingleValueMapper<ManagedAddress>;
+    fn pools_map(&self, asset: &EgldOrEsdtTokenIdentifier) -> SingleValueMapper<ManagedAddress>;
 
     /// Get the price aggregator address
     /// This storage mapper holds the address of the price aggregator, used to get the price of a token in USD.
@@ -125,7 +125,7 @@ pub trait LendingStorageModule {
     #[storage_mapper("isolated_asset_debt_usd")]
     fn isolated_asset_debt_usd(
         &self,
-        token_id: &EgldOrEsdtTokenIdentifier,
+        asset: &EgldOrEsdtTokenIdentifier,
     ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
 
     /// Get the vault supplied amount per token
@@ -134,7 +134,7 @@ pub trait LendingStorageModule {
     #[storage_mapper("vault_supplied_amount")]
     fn vault_supplied_amount(
         &self,
-        token_id: &EgldOrEsdtTokenIdentifier,
+        asset: &EgldOrEsdtTokenIdentifier,
     ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
 
     /// Get the token oracle
@@ -143,6 +143,6 @@ pub trait LendingStorageModule {
     #[storage_mapper("token_oracle")]
     fn token_oracle(
         &self,
-        token_id: &EgldOrEsdtTokenIdentifier,
+        asset: &EgldOrEsdtTokenIdentifier,
     ) -> SingleValueMapper<OracleProvider<Self::Api>>;
 }

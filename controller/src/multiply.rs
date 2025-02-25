@@ -22,6 +22,7 @@ pub trait MultiplyModule:
     + positions::borrow::PositionBorrowModule
     + positions::withdraw::PositionWithdrawModule
     + positions::repay::PositionRepayModule
+    + positions::vault::PositionVaultModule
     + positions::emode::EModeModule
     + common_math::SharedMathModule
 {
@@ -81,7 +82,7 @@ pub trait MultiplyModule:
         // );
 
         let (account, nft_attributes) =
-            self.create_position_nft(&caller, false, false, OptionalValue::Some(e_mode_category));
+            self.create_account_nft(&caller, false, false, OptionalValue::Some(e_mode_category));
 
         let e_mode_id = nft_attributes.get_emode_id();
         // 4. Validate e-mode constraints first
@@ -149,7 +150,7 @@ pub trait MultiplyModule:
             account.token_nonce,
             &debt_config,
             debt_token,
-            false,
+            // false,
         );
 
         borrow_position.principal_amount += &debt_amount_to_flash_loan;
@@ -180,13 +181,6 @@ pub trait MultiplyModule:
             steps.into_option(),
             limits.into_option(),
         );
-
-        // sc_panic!(
-        //     "Final collateral {}, Initial {}, Borrowed: {}",
-        //     final_collateral.amount,
-        //     initial_collateral.amount,
-        //     flash_borrow.amount
-        // );
 
         self.update_deposit_position(
             account.token_nonce,
@@ -230,12 +224,12 @@ pub trait MultiplyModule:
 
         let account = maybe_account.unwrap();
 
-        let attributes = self.nft_attributes(account.token_nonce, &account.token_identifier);
+        let account_attributes = self.nft_attributes(&account);
         // Refund NFT
-        self.tx().to(&caller).esdt(account.clone()).transfer();
+        self.tx().to(&caller).payment(&account).transfer();
 
         require!(
-            !attributes.is_isolated(),
+            !account_attributes.is_isolated(),
             ERROR_SWAP_COLLATERAL_NOT_SUPPORTED
         );
 
@@ -283,7 +277,7 @@ pub trait MultiplyModule:
             false,
             None,
             &mut storage_cache,
-            &attributes,
+            &account_attributes,
             true,
         );
 
@@ -300,7 +294,7 @@ pub trait MultiplyModule:
         self.process_deposit(
             &caller,
             account.token_nonce,
-            attributes,
+            account_attributes,
             &payments,
             &mut storage_cache,
         );
@@ -338,9 +332,9 @@ pub trait MultiplyModule:
 
         let account = maybe_account.unwrap();
 
-        let attributes = self.nft_attributes(account.token_nonce, &account.token_identifier);
+        let account_attributes = self.nft_attributes(&account);
         // Refund NFT
-        self.tx().to(&caller).esdt(account.clone()).transfer();
+        self.tx().to(&caller).payment(&account).transfer();
 
         // Retrieve deposit position for the given token
         let deposit_positions = self.deposit_positions(account.token_nonce);
@@ -381,7 +375,7 @@ pub trait MultiplyModule:
             false,
             None,
             &mut storage_cache,
-            &attributes,
+            &account_attributes,
             true,
         );
 
@@ -411,7 +405,7 @@ pub trait MultiplyModule:
                 self.get_token_egld_value(&payment_dec, &feed.price),
                 &feed,
                 &mut storage_cache,
-                &attributes,
+                &account_attributes,
             );
         }
 
