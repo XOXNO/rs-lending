@@ -4,7 +4,7 @@ use common_constants::{
     SECONDS_PER_HOUR, SECONDS_PER_MINUTE, STATE_PAIR_STORAGE_KEY, USD_TICKER, WAD_PRECISION,
     WEGLD_TICKER,
 };
-use common_events::{ExchangeSource, OracleProvider, OracleType, PriceFeedShort, PricingMethod};
+use common_structs::{ExchangeSource, OracleProvider, OracleType, PriceFeedShort, PricingMethod};
 use multiversx_sc::storage::StorageKey;
 
 use price_aggregator::{
@@ -62,18 +62,22 @@ pub trait OracleModule:
 
         let oracle_data = self.token_oracle(token_id);
         require!(!oracle_data.is_empty(), ERROR_ORACLE_TOKEN_NOT_FOUND);
+
         let data = oracle_data.get();
-        let price = self.find_price_feed(&data, token_id, storage_cache);
+
+        let price = self._find_price_feed(&data, token_id, storage_cache);
         let feed = PriceFeedShort {
             asset_decimals: data.price_decimals,
             price,
         };
+
         storage_cache.prices_cache.put(token_id, &feed);
+
         feed
     }
 
     /// Find price feed based on token type (derived, LP, normal).
-    fn find_price_feed(
+    fn _find_price_feed(
         &self,
         configs: &OracleProvider<Self::Api>,
         original_market_token: &EgldOrEsdtTokenIdentifier,
@@ -95,8 +99,8 @@ pub trait OracleModule:
         configs: &OracleProvider<Self::Api>,
         storage_cache: &mut StorageCache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let short_interval = self.get_lp_price(configs, SECONDS_PER_MINUTE * 10, storage_cache);
-        let long_interval = self.get_lp_price(configs, SECONDS_PER_HOUR, storage_cache);
+        let short_interval = self._get_lp_price(configs, SECONDS_PER_MINUTE * 10, storage_cache);
+        let long_interval = self._get_lp_price(configs, SECONDS_PER_HOUR, storage_cache);
         let tolerances = &configs.tolerance;
         let avg_price = (short_interval.clone() + long_interval.clone()) / 2;
 
@@ -277,7 +281,6 @@ pub trait OracleModule:
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         match (aggregator_price_opt, safe_price_opt) {
             (OptionalValue::Some(aggregator_price), OptionalValue::Some(safe_price)) => {
-                let avg_price = (aggregator_price.clone() + safe_price.clone()) / 2;
                 let tolerances = &configs.tolerance;
                 if self.is_within_anchor(
                     &aggregator_price,
@@ -285,14 +288,14 @@ pub trait OracleModule:
                     &tolerances.first_upper_ratio,
                     &tolerances.first_lower_ratio,
                 ) {
-                    aggregator_price
+                    safe_price
                 } else if self.is_within_anchor(
                     &aggregator_price,
                     &safe_price,
                     &tolerances.last_upper_ratio,
                     &tolerances.last_lower_ratio,
                 ) {
-                    avg_price
+                    safe_price
                 } else {
                     require!(
                         storage_cache.allow_unsafe_price,
@@ -345,7 +348,7 @@ pub trait OracleModule:
     }
 
     /// Calculate LP price based on underlying assets.
-    fn get_lp_price(
+    fn _get_lp_price(
         &self,
         configs: &OracleProvider<Self::Api>,
         time_offset: u64,
@@ -373,14 +376,11 @@ pub trait OracleModule:
         let second_token_data = self.get_token_price(&second, storage_cache);
 
         let first_token_egld_price = self.get_token_egld_value(
-            &ManagedDecimal::from_raw_units(first_token.amount, first_token_data.asset_decimals as usize),
+            &ManagedDecimal::from_raw_units(first_token.amount, first_token_data.asset_decimals),
             &first_token_data.price,
         );
         let second_token_egld_price = self.get_token_egld_value(
-            &ManagedDecimal::from_raw_units(
-                second_token.amount,
-                second_token_data.asset_decimals as usize,
-            ),
+            &ManagedDecimal::from_raw_units(second_token.amount, second_token_data.asset_decimals),
             &second_token_data.price,
         );
 

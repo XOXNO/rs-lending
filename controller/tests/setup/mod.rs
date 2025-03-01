@@ -987,7 +987,13 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .whitebox(controller::contract_obj, |sc| {
                 let mut storage_cache = StorageCache::new(&sc);
-                sc.sync_deposit_positions_interest(account_position, &mut storage_cache, true);
+                let account_attributes = sc.account_attributes(account_position).get();
+                sc.sync_deposit_positions_interest(
+                    account_position,
+                    &mut storage_cache,
+                    true,
+                    &account_attributes,
+                );
             });
     }
 

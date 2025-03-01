@@ -7,7 +7,7 @@ pub mod config;
 pub mod contexts;
 pub mod factory;
 pub mod helpers;
-pub mod multiply;
+pub mod strategy;
 pub mod oracle;
 pub mod positions;
 pub mod proxies;
@@ -42,7 +42,7 @@ pub trait LendingPool:
     + validation::ValidationModule
     + utils::LendingUtilsModule
     + views::ViewsModule
-    + multiply::MultiplyModule
+    + strategy::SnapModule
     + helpers::math::MathsModule
     + common_math::SharedMathModule
     + helpers::strategies::StrategiesModule
@@ -96,6 +96,8 @@ pub trait LendingPool:
 
         // Validate and extract payment details
         let (collaterals, account_token) = self.validate_supply_payment(&caller, &payments);
+        require!(collaterals.len() >= 1, ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS);
+
         // At this point we know we have at least one collateral
         let first_collateral = collaterals.get(0);
         self.validate_payment(&first_collateral);
@@ -198,6 +200,7 @@ pub trait LendingPool:
             account_payment.token_nonce,
             &mut storage_cache,
             false,
+            &account_attributes,
         );
 
         let (_, _, ltv_collateral) =
@@ -249,10 +252,8 @@ pub trait LendingPool:
         for payment in payments.iter() {
             self.validate_payment(&payment);
             let price_feed = self.get_token_price(&payment.token_identifier, &mut storage_cache);
-            let payment_decimal = ManagedDecimal::from_raw_units(
-                payment.amount.clone(),
-                price_feed.asset_decimals as usize,
-            );
+            let payment_decimal =
+                ManagedDecimal::from_raw_units(payment.amount.clone(), price_feed.asset_decimals);
             self.process_repayment(
                 account_nonce,
                 &payment.token_identifier,
@@ -313,7 +314,7 @@ pub trait LendingPool:
             .typed(proxy_pool::LiquidityPoolProxy)
             .flash_loan(
                 borrowed_asset_id,
-                ManagedDecimal::from_raw_units(amount, price_feed.asset_decimals as usize),
+                ManagedDecimal::from_raw_units(amount, price_feed.asset_decimals),
                 contract_address,
                 endpoint,
                 arguments,
@@ -339,8 +340,14 @@ pub trait LendingPool:
     {
         self.require_active_account(account_nonce);
         let mut storage_cache = StorageCache::new(self);
-        let deposits =
-            self.sync_deposit_positions_interest(account_nonce, &mut storage_cache, true);
+        let account_attributes = self.account_attributes(account_nonce).get();
+        let deposits = self.sync_deposit_positions_interest(
+            account_nonce,
+            &mut storage_cache,
+            true,
+            &account_attributes,
+        );
+
         let (borrows, _) =
             self.sync_borrow_positions_interest(account_nonce, &mut storage_cache, true, false);
         (deposits, borrows).into()

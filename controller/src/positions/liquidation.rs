@@ -1,11 +1,10 @@
-use common_constants::{RAY_PRECISION, WAD_PRECISION};
-use common_events::BPS_PRECISION;
-use common_structs::{AccountPosition, PriceFeedShort};
+use common_constants::{BPS_PRECISION, RAY_PRECISION, WAD_PRECISION};
+use common_structs::{AccountAttributes, AccountPosition, PriceFeedShort};
 
 use crate::{contexts::base::StorageCache, helpers, oracle, storage, utils, validation};
 use common_errors::ERROR_HEALTH_FACTOR;
 
-use super::{account, borrow, repay, update, withdraw, vault, emode};
+use super::{account, borrow, emode, repay, update, vault, withdraw};
 
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
@@ -44,6 +43,7 @@ pub trait PositionLiquidationModule:
         debt_payments: &ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
         caller: &ManagedAddress,
         storage_cache: &mut StorageCache<Self>,
+        account_attributes: &AccountAttributes,
     ) -> (
         ManagedVec<MultiValue2<EgldOrEsdtTokenPayment, ManagedDecimal<Self::Api, NumDecimals>>>,
         ManagedVec<
@@ -55,8 +55,12 @@ pub trait PositionLiquidationModule:
         >,
     ) {
         let mut refunds = ManagedVec::new();
-        let deposit_positions =
-            self.sync_deposit_positions_interest(account_nonce, storage_cache, false);
+        let deposit_positions = self.sync_deposit_positions_interest(
+            account_nonce,
+            storage_cache,
+            false,
+            &account_attributes,
+        );
         let (borrow_positions, map_debt_indexes) =
             self.sync_borrow_positions_interest(account_nonce, storage_cache, false, true);
 
@@ -131,10 +135,15 @@ pub trait PositionLiquidationModule:
     ) {
         let mut storage_cache = StorageCache::new(self);
         storage_cache.allow_unsafe_price = false;
-        let account = self.account_attributes(account_nonce).get();
+        let account_attributes = self.account_attributes(account_nonce).get();
 
-        let (seized_collaterals, repaid_tokens) =
-            self.execute_liquidation(account_nonce, debt_payments, caller, &mut storage_cache);
+        let (seized_collaterals, repaid_tokens) = self.execute_liquidation(
+            account_nonce,
+            debt_payments,
+            caller,
+            &mut storage_cache,
+            &account_attributes,
+        );
 
         for debt_payment_data in repaid_tokens {
             let (debt_payment, debt_egld_value, debt_price_feed) = debt_payment_data.into_tuple();
@@ -149,7 +158,7 @@ pub trait PositionLiquidationModule:
                 debt_egld_value,
                 &debt_price_feed,
                 &mut storage_cache,
-                &account,
+                &account_attributes,
             );
         }
 
@@ -162,7 +171,7 @@ pub trait PositionLiquidationModule:
                 true,
                 Some(protocol_fee),
                 &mut storage_cache,
-                &account,
+                &account_attributes,
                 false,
             );
         }
@@ -233,7 +242,7 @@ pub trait PositionLiquidationModule:
             // Apply bonus: seized_units_after_bonus = seized_units * (bps + bonus_rate) / bps
             let bonus_bps = storage_cache.bps_dec.clone() + bonus_rate.clone();
             let numerator = self.mul_half_up(&seized_units, &bonus_bps, RAY_PRECISION);
-            let seized_units_after_bonus = numerator.rescale(asset_data.asset_decimals as usize);
+            let seized_units_after_bonus = numerator.rescale(asset_data.asset_decimals);
 
             // Protocol fee = (bonus portion) * liquidation_fees / bps
             let protocol_fee = (seized_units_after_bonus.clone() - seized_units.clone())
@@ -294,7 +303,7 @@ pub trait PositionLiquidationModule:
             );
             let amount_dec = ManagedDecimal::from_raw_units(
                 payment_ref.amount.clone(),
-                token_feed.asset_decimals as usize,
+                token_feed.asset_decimals,
             );
 
             let token_egld_amount = self.get_token_egld_value(&amount_dec, &token_feed.price);

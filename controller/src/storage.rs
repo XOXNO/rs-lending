@@ -1,5 +1,7 @@
-use common_events::{AssetConfig, EModeAssetConfig, EModeCategory, OracleProvider};
-use common_structs::{AccountPosition, AccountAttributes};
+use common_structs::{
+    AccountAttributes, AccountPosition, AssetConfig, EModeAssetConfig, EModeCategory,
+    OracleProvider,
+};
 
 multiversx_sc::imports!();
 

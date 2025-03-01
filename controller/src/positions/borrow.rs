@@ -1,5 +1,5 @@
 use common_constants::TOTAL_BORROWED_AMOUNT_STORAGE_KEY;
-use common_events::{
+use common_structs::{
     AccountAttributes, AccountPosition, AccountPositionType, AssetConfig, EModeCategory,
     PriceFeedShort,
 };
@@ -314,10 +314,8 @@ pub trait PositionBorrowModule:
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
         let asset_data_feed = self.get_token_price(borrow_token_id, storage_cache);
-        let amount = ManagedDecimal::from_raw_units(
-            amount_raw.clone(),
-            asset_data_feed.asset_decimals as usize,
-        );
+        let amount =
+            ManagedDecimal::from_raw_units(amount_raw.clone(), asset_data_feed.asset_decimals);
 
         let egld_amount = self.get_token_egld_value(&amount, &asset_data_feed.price);
 
@@ -462,6 +460,7 @@ pub trait PositionBorrowModule:
         // Get and validate asset configuration
         let mut asset_config =
             storage_cache.get_cached_asset_info(&borrowed_token.token_identifier);
+
         self.validate_borrow_asset(
             &asset_config,
             &borrowed_token.token_identifier,

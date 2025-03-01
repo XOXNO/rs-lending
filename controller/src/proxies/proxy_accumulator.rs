@@ -317,37 +317,6 @@ where
             .raw_call("getAggregatorSC")
             .original_result()
     }
-
-    pub fn get_creator_royalties<
-        Arg0: ProxyArg<ManagedAddress<Env::Api>>,
-    >(
-        self,
-        creator: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValueEncoded<Env::Api, EgldOrEsdtTokenPayment<Env::Api>>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("queryCreatorRoyalties")
-            .argument(&creator)
-            .original_result()
-    }
-
-    pub fn get_all_creator_royalties(
-        self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValueEncoded<Env::Api, CreatorRoyalties<Env::Api>>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("queryAllCreatorRoyalties")
-            .original_result()
-    }
-
-    pub fn get_real_yield_pending(
-        self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValueEncoded<Env::Api, EgldOrEsdtTokenPayment<Env::Api>>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("queryRealYieldPending")
-            .original_result()
-    }
 }
 
 #[type_abi]

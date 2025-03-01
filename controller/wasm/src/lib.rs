@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           63
+// Endpoints:                           64
 // Async Callback:                       1
-// Total number of exported functions:  66
+// Total number of exported functions:  67
 
 #![no_std]
 
@@ -82,6 +82,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         getTokenPriceEGLD => get_egld_price
         multiply => multiply
         swapCollateral => swap_collateral
+        swapDebt => swap_debt
         repayDebtWithCollateral => repay_debt_with_collateral
     )
 }

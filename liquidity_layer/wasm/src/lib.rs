@@ -36,7 +36,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         withdraw => withdraw
         repay => repay
         flashLoan => flash_loan
-        createStrategy => create_flash_strategy
+        createStrategy => create_strategy
         addProtocolRevenue => add_protocol_revenue
         claimRevenue => claim_revenue
         getCapitalUtilisation => get_capital_utilisation

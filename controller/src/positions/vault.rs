@@ -5,7 +5,7 @@ use crate::{
     contexts::base::StorageCache, helpers, oracle, proxy_pool, storage, utils, validation,
 };
 use common_errors::*;
-use common_events::{AccountAttributes, AccountPosition, PriceFeedShort};
+use common_structs::{AccountAttributes, AccountPosition, PriceFeedShort};
 
 use super::account;
 

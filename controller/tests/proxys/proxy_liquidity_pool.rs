@@ -261,18 +261,18 @@ where
             .original_result()
     }
 
-    /// Returns the pool parameters. 
+    /// Returns the market parameters. 
     ///  
     /// These include interest rate parameters and asset asset_decimals. 
     ///  
     /// # Returns 
-    /// - `MarketParams<Self::Api>`: The pool configuration. 
+    /// - `MarketParams<Self::Api>`: The market configuration. 
     pub fn params(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::MarketParams<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getPoolParams")
+            .raw_call("getParams")
             .original_result()
     }
 
@@ -623,22 +623,22 @@ where
     ///  
     /// **Security Considerations**: Ensures asset validity and sufficient reserves with `require!` checks. 
     /// Can only be called by the owner (via controller contract) 
-    pub fn create_flash_strategy<
-        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+    pub fn create_strategy<
+        Arg0: ProxyArg<common_structs::AccountPosition<Env::Api>>,
         Arg1: ProxyArg<ManagedDecimal<Env::Api, usize>>,
         Arg2: ProxyArg<ManagedDecimal<Env::Api, usize>>,
         Arg3: ProxyArg<ManagedDecimal<Env::Api, usize>>,
     >(
         self,
-        token: Arg0,
+        position: Arg0,
         strategy_amount: Arg1,
         strategy_fee: Arg2,
         price: Arg3,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, (ManagedDecimal<Env::Api, usize>, u64)> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::AccountPosition<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("createStrategy")
-            .argument(&token)
+            .argument(&position)
             .argument(&strategy_amount)
             .argument(&strategy_fee)
             .argument(&price)

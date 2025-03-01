@@ -101,6 +101,8 @@
     "liquidation_threshold": "7800",
     "liquidation_bonus": "550",
     "liquidation_base_fee": "500",
+    "borrow_cap": "20000000000000000000000",
+    "supply_cap": "20000000000000000000000",
     "base_rate": "10000000000000000000000000",
     "max_rate": "450000000000000000000000000",
     "slope1": "50000000000000000000000000",
@@ -447,7 +449,7 @@
   "XOXNOWEGLD": {
     "token_id": "XOXNOWEGLD-232308",
     "ltv": "7000",
-    "liquidation_threshold": "7000",
+    "liquidation_threshold": "7500",
     "liquidation_bonus": "550",
     "liquidation_base_fee": "500",
     "borrow_cap": "2000000000000000000000000",

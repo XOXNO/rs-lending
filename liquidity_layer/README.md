@@ -1,6 +1,6 @@
 # Liquidity Layer Smart Contract Documentation
 
-This document provides a detailed overview of the **Liquidity Layer** smart contract, a critical component of the lending and borrowing protocol on the MultiversX L1 network. The Liquidity Layer manages asset pools, interest rates, and user positions, enabling users to supply assets, borrow against collateral, and manage repayments efficiently. It is designed to be modular, secure, and efficient, leveraging the MultiversX blockchain's capabilities for fast and low-cost transactions.
+This document provides a detailed overview of the **Liquidity Layer** smart contract—a core component of the lending and borrowing protocol on the MultiversX L1 network. The Liquidity Layer manages asset pools, interest rates, and user positions, enabling users to supply assets, borrow against collateral, and efficiently manage repayments. It is designed to be modular, secure, and efficient, leveraging MultiversX’s capabilities for fast, low-cost transactions.
 
 ---
 
@@ -28,26 +28,26 @@ This document provides a detailed overview of the **Liquidity Layer** smart cont
 
 The **Liquidity Layer** is a decentralized lending pool smart contract that enables users to:
 
-- Supply assets to earn interest.
-- Borrow assets against their collateral.
-- Withdraw supplied assets or repay borrowed amounts.
-- Utilize flash loans for arbitrage or liquidation opportunities.
+- **Supply assets** to earn interest.
+- **Borrow assets** against their collateral.
+- **Withdraw supplied assets** or repay borrowed amounts.
+- **Utilize flash loans** for arbitrage or liquidation opportunities.
 
-The contract manages the core mechanics of the lending protocol, including dynamic interest rates, index-based interest accrual, and flash loan execution. It interacts with a **Controller** smart contract to manage user positions and ensure consistent updates across contracts. The contract is optimized for gas efficiency using a caching mechanism and leverages MultiversX's architecture for scalability and low transaction costs.
+The contract manages the core mechanics of the lending protocol, including dynamic interest rates, index-based interest accrual, and flash loan execution. It interacts with a **Controller** smart contract to manage user positions and ensure consistent state updates. Gas efficiency is optimized via a caching mechanism that minimizes on-chain reads and writes.
 
 ---
 
 ## Architecture
 
-The Liquidity Layer is built using a modular architecture to separate concerns and enhance maintainability:
+The Liquidity Layer is built with a modular architecture that separates concerns and enhances maintainability:
 
-- **Storage Module**: Manages on-chain storage of pool parameters, asset details, and state variables (e.g., total reserves, borrowed amounts).
+- **Storage Module**: Manages on-chain storage for pool parameters, asset details, and state variables (e.g., total reserves, borrowed amounts).
 - **InterestRates Module**: Computes dynamic borrow and deposit rates based on pool utilization.
 - **UtilsModule**: Provides helper functions for interest calculations, index updates, and position synchronization.
 - **LiquidityModule**: Handles core operations such as supplying assets, borrowing, withdrawing, repaying, and executing flash loans.
-- **ViewModule**: Offers read-only endpoints for retrieving key metrics (e.g., pool utilization, interest rates).
+- **ViewModule**: Offers read-only endpoints for retrieving key market metrics (e.g., pool utilization, interest rates).
 
-The contract uses a **Cache** mechanism to snapshot the pool's state, reducing gas costs by minimizing on-chain reads and writes during operations.
+A **Cache** mechanism is used to snapshot the pool's state in memory, thereby reducing gas costs by minimizing storage operations.
 
 ---
 
@@ -55,67 +55,61 @@ The contract uses a **Cache** mechanism to snapshot the pool's state, reducing g
 
 ### Cache Mechanism
 
-The **Cache** struct is a critical optimization feature that enhances gas efficiency and ensures state consistency:
+The **Cache** struct is an optimization feature that snapshots the pool’s state (e.g., reserves, indexes, timestamps) into memory.
 
-- **Purpose**: The cache snapshots the pool's state (e.g., reserves, indexes, timestamps) from on-chain storage into memory.
+- **Purpose**: Reduces gas costs by avoiding repetitive on-chain reads/writes during operations.
 - **Operation**:
-  - Operations modify the cache in memory instead of directly updating storage.
-  - Changes are committed back to storage only when the cache is dropped, reducing the number of storage reads and writes.
+  - State is read once into the cache.
+  - All updates are made in memory.
+  - Changes are committed atomically back to storage when the cache is dropped.
 - **Benefits**:
-  - Lowers transaction costs by minimizing gas-intensive storage operations.
-  - Ensures atomic updates to maintain state consistency.
-- **Security**: The cache is carefully managed to prevent state inconsistencies, with updates committed atomically to storage.
+  - Lower transaction costs.
+  - Atomic updates help maintain state consistency.
+- **Security**: Proper cache management prevents state inconsistencies and potential reentrancy issues.
 
 ### Interest Rate Model
 
-The protocol uses a **piecewise linear interest rate model** to dynamically adjust borrow rates based on pool utilization (`u`), which is the ratio of borrowed to supplied assets. The model ensures that rates incentivize optimal pool utilization.
+The protocol employs a **piecewise linear interest rate model** that dynamically adjusts borrow rates based on pool utilization (`u`, the ratio of borrowed to supplied assets). This model incentivizes optimal utilization.
 
 - **Parameters**:
-
-  - `mid_utilization`: Midpoint utilization threshold.
-  - `optimal_utilization`: Optimal utilization threshold.
-  - `base_borrow_rate`: Base borrow rate.
-  - `slope1`, `slope2`, `slope3`: Slopes for different utilization ranges.
-  - `max_borrow_rate`: Maximum borrow rate.
-  - `reserve_factor`: Fraction of interest retained by the protocol.
-
+  - `base_borrow_rate`: The base interest rate.
+  - `slope1`, `slope2`, `slope3`: Interest rate slopes for different utilization ranges.
+  - `mid_utilization`: The utilization threshold where the first rate slope applies.
+  - `optimal_utilization`: The target utilization threshold (must be less than 1.0).
+  - `max_borrow_rate`: The upper limit on the borrow rate.
+  - `reserve_factor`: The fraction of interest retained as protocol revenue.
 - **Borrow Rate Calculation**:
-
-  - If `u < mid_utilization`
+  - For `u < mid_utilization`:
     $$
     \text{Borrow Rate} = r_{\text{base}} + \left( u \cdot \frac{r_{\text{slope1}}}{u_{\text{mid}}} \right)
     $$
-  - If `mid < u < optimal_utilization`
+  - For `mid_utilization ≤ u < optimal_utilization`:
     $$
     \text{Borrow Rate} = r_{\text{base}} + r_{\text{slope1}} + \left( (u - u_{\text{mid}}) \cdot \frac{r_{\text{slope2}}}{u_{\text{optimal}} - u_{\text{mid}}} \right)
     $$
-  - If  `u >= optimal_utilization`  
+  - For `u ≥ optimal_utilization`:
     $$
     \text{Borrow Rate} = r_{\text{base}} + r_{\text{slope1}} + r_{\text{slope2}} + \left( (u - u_{\text{optimal}}) \cdot \frac{r_{\text{slope3}}}{1 - u_{\text{optimal}}} \right)
     $$
-  - The rate is capped at `max_borrow_rate` and converted to a per-second rate for precise interest accrual.
-
-- **Deposit Rate Calculation**:  
+  - The rate is capped at `max_borrow_rate` and converted to a per-second rate.
+- **Deposit Rate Calculation**:
   $$
   \text{Deposit Rate} = u \cdot \text{Borrow Rate} \cdot (1 - \text{Reserve Factor})
   $$
-  This ensures suppliers earn a portion of the interest paid by borrowers, adjusted for protocol fees.
 
 ### Index Updates
 
-The protocol uses **indexes** to track compounded interest over time:
+Indexes are used to track compounded interest:
 
-- **Borrow Index**: Tracks the compounded interest borrowers owe, increasing with each update.
-- **Supply Index**: Tracks rewards earned by suppliers, derived from interest paid by borrowers minus protocol fees.
-
-- **Index Update Formula**:  
-  Indexes are updated using a **Taylor series approximation** for interest accrual over time (`t`), where `r` is the per-second borrow rate:  
+- **Borrow Index**: Reflects the compounded interest owed by borrowers.
+- **Supply Index**: Reflects rewards accrued by suppliers.
+- **Update Formula**:  
+  Indexes are updated using a Taylor series approximation for interest accrual over a small time interval `t`:
   $$
   \text{factor} = 1 + (r \cdot t) + \frac{(r \cdot t)^2}{2} + \frac{(r \cdot t)^3}{6}
   $$
-  The new index is calculated by multiplying the previous index by this factor.
-
-- **Security**: Indexes are initialized to `RAY` (1.0) to prevent division-by-zero errors in interest calculations.
+  The new index is the product of the old index and this factor.
+- **Initialization**: Both indexes are initialized to `RAY` (representing 1.0) to avoid division-by-zero errors.
 
 ---
 
@@ -123,117 +117,97 @@ The protocol uses **indexes** to track compounded interest over time:
 
 ### Supply
 
-- **Purpose**: Allows users to deposit assets into the pool to earn interest.
+- **Purpose**: Deposit assets into the pool to earn interest.
 - **Process**:
-  1. Validates the supplied asset against the pool's accepted asset.
-  2. Updates global supply and borrow indexes.
-  3. Updates the supplier's position with accrued interest.
-  4. Increases pool reserves and total supplied amount.
-  5. Transfers assets from the user to the contract.
-  6. Emits a market state event.
-- **Formula**: The supplier's position amount is increased by the supplied amount.
+  1. Validate the supplied asset.
+  2. Update global indexes.
+  3. Update the supplier’s position with accrued interest.
+  4. Increase pool reserves and total supplied.
+  5. Emit a market state event.
 
 ### Borrow
 
-- **Purpose**: Enables users to borrow assets against their collateral.
+- **Purpose**: Borrow assets against collateral.
 - **Process**:
-  1. Updates global supply and borrow indexes.
-  2. Updates the borrower's position with accrued interest.
-  3. Checks for sufficient pool reserves using `require!`.
-  4. Increases the borrower's debt and total borrowed amount.
-  5. Deducts the borrowed amount from reserves.
-  6. Transfers the borrowed assets to the user.
-  7. Emits a market state event.
-- **Security**: Ensures sufficient liquidity and validates collateral requirements via the Controller.
+  1. Update global indexes.
+  2. Update the borrower’s position with accrued interest.
+  3. Check pool liquidity.
+  4. Increase borrower’s debt and total borrowed.
+  5. Deduct the borrowed amount from reserves.
+  6. Transfer assets to the borrower.
+  7. Emit a market state event.
 
 ### Withdraw
 
-- **Purpose**: Allows suppliers to retrieve their assets, handling both normal withdrawals and liquidations.
+- **Purpose**: Withdraw supplied assets or execute liquidations.
 - **Process**:
-  1. Caps the withdrawal amount to the supplier's total position.
-  2. Calculates principal, interest, and total withdrawal amount.
-  3. Adjusts for liquidation fees if applicable.
-  4. Updates global indexes and the supplier's position.
-  5. Deducts the withdrawal amount from reserves and total supplied.
-  6. Transfers assets to the user.
-  7. Emits a market state event.
-- **Security**: Caps withdrawal amounts and checks liquidity using `require!`.
+  1. Cap withdrawal amount to the user’s available balance.
+  2. Calculate principal, interest, and total withdrawal (adjusting for fees if necessary).
+  3. Update global indexes and the user’s position.
+  4. Deduct the withdrawal amount from reserves and total supplied.
+  5. Transfer assets to the user.
+  6. Emit a market state event.
 
 ### Repay
 
-- **Purpose**: Processes repayments, reducing borrower debt and handling overpayments.
+- **Purpose**: Repay borrow positions and handle overpayments.
 - **Process**:
-  1. Validates the repayment amount and asset.
-  2. Updates global supply and borrow indexes.
-  3. Updates the borrower's position with accrued interest.
-  4. Splits repayment into principal, interest, and overpayment using `split_repay`.
-  5. Updates pool reserves and total borrowed amount.
-  6. Refunds overpayments to the user.
-  7. Emits a market state event.
-- **Security**: Ensures asset validity and handles overpayments to prevent fund loss.
+  1. Validate repayment amount and asset.
+  2. Update global indexes.
+  3. Update the borrower’s position with accrued interest.
+  4. Split repayment into principal, interest, and overpayment.
+  5. Update pool reserves and total borrowed.
+  6. Refund any overpayment.
+  7. Emit a market state event.
 
 ### Flash Loans
 
-- **Purpose**: Provides temporary borrowing without collateral, requiring repayment with fees in the same transaction.
+- **Purpose**: Provide short-term, collateral-free borrowing with mandatory same-transaction repayment.
 - **Process**:
-  1. Validates the borrowed token and reserve availability.
-  2. Deducts the loan amount from reserves.
-  3. Computes the required repayment with fees.
-  4. Drops the cache to prevent reentrancy, executes an external call, and validates repayment.
-  5. Updates reserves and protocol revenue with the repayment and fee.
-  6. Emits a market state event.
+  1. Validate the requested asset and ensure sufficient reserves.
+  2. Deduct the loan amount from reserves.
+  3. Calculate the required repayment (principal plus fee).
+  4. Drop the cache before the external call to prevent reentrancy.
+  5. Execute the external call.
+  6. Validate that repayment meets requirements.
+  7. Update reserves and protocol revenue.
+  8. Emit a market state event.
 - **Security**:
-  - Drops the cache before external calls to prevent reentrancy attacks.
-  - Enforces repayment checks using `require!`.
+  - The cache is dropped to avoid reentrancy.
+  - Repayment is strictly enforced to include fees.
 
 ---
 
 ## Interaction with the Controller
 
-The **Controller** smart contract interacts with the Liquidity Layer to manage user positions and ensure consistent state updates:
+The **Controller** smart contract manages user positions and interacts with the Liquidity Layer for:
 
-- **Position Updates**:
-  - The Controller passes user positions to functions like `sync_position_interest`, which updates positions with accrued interest based on the latest indexes.
-  - Updated positions are returned to the Controller, ensuring synchronized state across contracts.
-
-- **Operation Validation**:
-  - The Controller ensures users meet collateral requirements before borrowing or withdrawing.
-  - It validates operations by checking user positions and passing them to the Liquidity Layer for updates.
-
-- **State Consistency**:
-  - The cache mechanism ensures that position updates are consistent with the pool's state.
-  - Changes to positions and pool state are committed atomically, maintaining integrity.
-
-- **Key Interaction**:
-  - The Controller calls Liquidity Layer functions (e.g., `supply`, `borrow`, `withdraw`, `repay`) with user positions.
-  - The Liquidity Layer updates and returns the positions, ensuring synchronized state across contracts.
+- **Position Updates**:  
+  It passes user positions to functions (e.g., `sync_position_interest`) that update positions with the latest interest accrual.
+- **Operation Validation**:  
+  It checks collateral and other requirements before calling functions like `borrow` or `withdraw`.
+- **State Synchronization**:  
+  The cache mechanism and atomic updates ensure that both the Controller and Liquidity Layer have a consistent view of the pool’s state.
 
 ---
 
 ## Security Considerations
 
-The Liquidity Layer incorporates several security measures to ensure robustness:
+Key security features include:
 
-- **Owner-Only Access**:
-  - Critical functions (e.g., `update_indexes`, `claim_revenue`) are restricted to the contract owner.
-
-- **Reentrancy Prevention**:
-  - The cache is dropped before external calls in `flash_loan` to prevent reentrancy attacks.
-
-- **Liquidity Checks**:
-  - `require!` statements ensure operations like borrowing and withdrawing do not exceed available reserves.
-
-- **Asset Validation**:
-  - Ensures only the pool's accepted asset is used in operations like supplying or repaying.
-
-- **Index Initialization**:
-  - Indexes are initialized to `RAY` (1.0) to prevent division-by-zero errors in interest calculations.
-
-- **Cache Management**:
-  - The cache is carefully managed to prevent state inconsistencies, with updates committed atomically to storage.
+- **Owner-Only Access**:  
+  Critical functions are restricted to the contract owner.
+- **Reentrancy Prevention**:  
+  The flash loan function drops its cache before external calls to mitigate reentrancy risks.
+- **Liquidity and Asset Checks**:  
+  Extensive use of `require!` ensures operations do not exceed available reserves and that only the correct asset is used.
+- **Index Initialization**:  
+  Indexes start at `RAY` (1.0) to prevent division-by-zero.
+- **Cache Management**:  
+  Updates are made in memory and committed atomically to storage.
 
 ---
 
 ## Conclusion
 
-The **Liquidity Layer** is a robust and efficient smart contract that forms the backbone of the lending and borrowing protocol on the MultiversX L1 network. By leveraging dynamic interest rates, precise index-based interest tracking, and a cache mechanism for gas optimization, it provides a secure and scalable solution for decentralized finance. This documentation offers a comprehensive guide to its architecture, algorithms, and operations, ensuring clarity for developers, auditors, and users.
+The **Liquidity Layer** smart contract forms the backbone of the lending and borrowing protocol on MultiversX. With its dynamic interest rate model, precise index-based interest accrual, and efficient cache mechanism, it offers a secure, scalable, and cost-effective solution for decentralized finance. This documentation provides a comprehensive guide to its architecture, functionality, and security features, ensuring clarity for developers, auditors, and users.

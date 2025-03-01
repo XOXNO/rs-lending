@@ -1,4 +1,4 @@
-use common_events::AssetExtendedConfigView;
+use common_structs::AssetExtendedConfigView;
 
 use crate::{contexts::base::StorageCache, helpers, oracle, storage, utils};
 

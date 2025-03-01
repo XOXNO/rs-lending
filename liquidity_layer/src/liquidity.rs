@@ -95,8 +95,8 @@ pub trait LiquidityModule:
     ///
     /// **Security Considerations**: Validates the asset type via `get_payment_amount` to ensure only the pool's asset is supplied.
     /// Can only be called by the owner (via controller contract).
+    #[payable]
     #[only_owner]
-    #[payable("*")]
     #[endpoint(supply)]
     fn supply(
         &self,
@@ -106,6 +106,7 @@ pub trait LiquidityModule:
         let mut cache = Cache::new(self);
 
         let amount = self.get_payment_amount(&cache);
+        require!(cache.is_same_asset(&position.asset_id), ERROR_INVALID_ASSET);
 
         self.global_sync(&mut cache);
 
@@ -156,6 +157,8 @@ pub trait LiquidityModule:
 
         self.global_sync(&mut cache);
         self.position_sync(&mut position, &mut cache);
+
+        require!(cache.is_same_asset(&position.asset_id), ERROR_INVALID_ASSET);
 
         position.principal_amount += amount;
 
@@ -212,6 +215,8 @@ pub trait LiquidityModule:
         self.global_sync(&mut cache);
 
         self.cap_withdrawal_amount(&mut amount, &position);
+        require!(cache.is_same_asset(&position.asset_id), ERROR_INVALID_ASSET);
+
         // Calculate the withdrawal amount as well the principal and interest to be subtracted from the position and the reserves
         let (principal, interest, to_withdraw) = self.calc_withdrawal_amounts(
             &amount,
@@ -259,8 +264,8 @@ pub trait LiquidityModule:
     ///
     /// **Security Considerations**: Ensures asset validity via `get_payment_amount` and handles overpayments to prevent fund loss.
     /// Can only be called by the owner (via controller contract).
+    #[payable]
     #[only_owner]
-    #[payable("*")]
     #[endpoint(repay)]
     fn repay(
         &self,
@@ -273,6 +278,8 @@ pub trait LiquidityModule:
 
         self.global_sync(&mut cache);
         self.position_sync(&mut position, &mut cache);
+
+        require!(cache.is_same_asset(&position.asset_id), ERROR_INVALID_ASSET);
 
         let (principal, interest, over) = self.split_repay(&amount, &position, &mut cache);
 
@@ -355,22 +362,22 @@ pub trait LiquidityModule:
             .returns(ReturnsBackTransfers)
             .sync_call();
 
-        let mut storage_cache_second = Cache::new(self);
+        let mut post_flash_loan_cache = Cache::new(self);
 
         let repayment = self.validate_flash_repayment(
-            &storage_cache_second,
+            &post_flash_loan_cache,
             &back_transfers,
             amount,
             &required_repayment,
         );
 
-        storage_cache_second.reserves += amount;
+        post_flash_loan_cache.reserves += amount;
         let protocol_fee = repayment - amount.clone();
 
-        storage_cache_second.revenue += &protocol_fee;
-        storage_cache_second.reserves += &protocol_fee;
+        post_flash_loan_cache.revenue += &protocol_fee;
+        post_flash_loan_cache.reserves += &protocol_fee;
 
-        self.emit_market_update(&storage_cache_second, price);
+        self.emit_market_update(&post_flash_loan_cache, price);
     }
 
     /// Simulates a flash loan strategy by borrowing assets without immediate repayment.
@@ -396,23 +403,28 @@ pub trait LiquidityModule:
     /// Can only be called by the owner (via controller contract)
     #[only_owner]
     #[endpoint(createStrategy)]
-    fn create_flash_strategy(
+    fn create_strategy(
         &self,
-        token: &EgldOrEsdtTokenIdentifier,
+        mut position: AccountPosition<Self::Api>,
         strategy_amount: &ManagedDecimal<Self::Api, NumDecimals>,
         strategy_fee: &ManagedDecimal<Self::Api, NumDecimals>,
         price: &ManagedDecimal<Self::Api, NumDecimals>,
-    ) -> (ManagedDecimal<Self::Api, NumDecimals>, u64) {
+    ) -> AccountPosition<Self::Api> {
         let mut cache = Cache::new(self);
 
         self.global_sync(&mut cache);
 
-        require!(cache.is_same_asset(token), ERROR_INVALID_ASSET);
+        self.position_sync(&mut position, &mut cache);
+
+        require!(cache.is_same_asset(&position.asset_id), ERROR_INVALID_ASSET);
 
         require!(
             cache.has_reserves(strategy_amount),
             ERROR_INSUFFICIENT_LIQUIDITY
         );
+
+        position.principal_amount += strategy_amount;
+        position.interest_accrued += strategy_fee;
 
         cache.reserves -= strategy_amount;
 
@@ -424,8 +436,7 @@ pub trait LiquidityModule:
 
         self.send_asset(&cache, &strategy_amount, &self.blockchain().get_caller());
 
-        // Return latest market index and timestamp to be updated in place in the new position, that at this point is not created due to the need of flash borrow the tokens
-        (cache.borrow_index.clone(), cache.timestamp)
+        position
     }
 
     /// Adds external revenue to the pool, such as from vault liquidations.
@@ -482,7 +493,7 @@ pub trait LiquidityModule:
 
         self.global_sync(&mut cache);
 
-        let revenue_biguint = if cache.borrowed == cache.zero && cache.supplied == cache.zero {
+        let revenue = if cache.borrowed == cache.zero && cache.supplied == cache.zero {
             let amount = self.blockchain().get_sc_balance(&cache.pool_asset, 0);
 
             cache.revenue = cache.zero.clone();
@@ -497,11 +508,8 @@ pub trait LiquidityModule:
             revenue
         };
 
-        let payment = self.send_asset(
-            &cache,
-            &revenue_biguint,
-            &self.blockchain().get_owner_address(),
-        );
+        let controller = self.blockchain().get_caller();
+        let payment = self.send_asset(&cache, &revenue, &controller);
 
         self.emit_market_update(&cache, price);
 

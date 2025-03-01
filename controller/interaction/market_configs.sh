@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Environment variables
-ADDRESS=${ADDRESS:-"erd1qqqqqqqqqqqqqpgq73pdhsetx0y6049zp93j9vwj5txrar9qah0syluwpa"}
-LP_TEMPLATE_ADDRESS=${LP_TEMPLATE_ADDRESS:-"erd1qqqqqqqqqqqqqpgq2vwlr0q3ny3epc799yh5ta0jn4lqqf70ah0syns049"}
+ADDRESS=${ADDRESS:-"erd1qqqqqqqqqqqqqpgqhwy4zwanu52u5f39sg7arf3mmdspecumah0sha3wfd"}
+LP_TEMPLATE_ADDRESS=${LP_TEMPLATE_ADDRESS:-"erd1qqqqqqqqqqqqqpgqqgds0xmng8r7389jkkze7cleypnt93xqah0snz5qln"}
 AGGREGATOR_ADDRESS=${AGGREGATOR_ADDRESS:-"erd1qqqqqqqqqqqqqpgq7a48t570jjudy0xjxhuzcdwndcq9gt2tah0s7tg84a"}
 CEX_AGGREGATOR_ADDRESS=${CEX_AGGREGATOR_ADDRESS:-"erd1qqqqqqqqqqqqqpgqlee5g4zqwq93ar9nlx55ql0jxvlrruadah0sg2vc89"}
 ASH_ADDRESS=${ASH_ADDRESS:-"erd1qqqqqqqqqqqqqpgqh96hhj42huhe47j3jerlec7ndhw75gy72gesy7w2d6"}
@@ -203,7 +203,7 @@ set_aggregator_decimals() {
 deploy_controller() {
     mxpy contract deploy --bytecode=${PROJECT_CONTROLLER} --recall-nonce \
     --ledger --ledger-account-index=0 --ledger-address-index=0 \
-    --gas-limit=450000000 --outfile="deploy.json" --arguments ${LP_TEMPLATE_ADDRESS} ${AGGREGATOR_ADDRESS} ${SAFE_PRICE_VIEW_ADDRESS} ${AGGREGATOR_ADDRESS} ${WEGLD_ADDRESS} ${ASH_ADDRESS} \
+    --gas-limit=450000000 --outfile="deploy.json" --arguments ${LP_TEMPLATE_ADDRESS} ${AGGREGATOR_ADDRESS} ${SAFE_PRICE_VIEW_ADDRESS} ${ACCUMULATOR_ADDRESS} ${WEGLD_ADDRESS} ${ASH_ADDRESS} \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 
     echo ""

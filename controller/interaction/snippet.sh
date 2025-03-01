@@ -1,11 +1,11 @@
-ADDRESS=erd1qqqqqqqqqqqqqpgqg532f5mdsqganmfd5vwktt7a7rdnc2lgah0s9q46jx
+ADDRESS=erd1qqqqqqqqqqqqqpgqhwy4zwanu52u5f39sg7arf3mmdspecumah0sha3wfd
 
 PROXY=https://devnet-gateway.xoxno.com
 CHAIN_ID=D
 
 PROJECT="./output/controller.wasm"
 
-LP_TEMPLATE_ADDRESS=erd1qqqqqqqqqqqqqpgqlpf2f23jx29s6k7ftfccprn5wv7uccyuah0s5zvhn0
+LP_TEMPLATE_ADDRESS=erd1qqqqqqqqqqqqqpgqqgds0xmng8r7389jkkze7cleypnt93xqah0snz5qln
 AGGREGATOR_ADDR=erd1qqqqqqqqqqqqqpgq7a48t570jjudy0xjxhuzcdwndcq9gt2tah0s7tg84a
 SAFE_PRICE_VIEW_ADDRESS=erd1qqqqqqqqqqqqqpgqcmnum66jxyfpcnvqk5eahj5n3ny4vkfn0n4szjjskv
 ACCUMULATOR_ADDRESS=erd1qqqqqqqqqqqqqpgqyxfc4r5fmw2ljcgwxj2nuzv72y9ryvyhah0sgn5vv2
@@ -22,7 +22,9 @@ XOXNO_TOKEN="str:XOXNO-589e09"
 MEX_TOKEN="str:MEX-a659d0"
 WETH_TOKEN="str:WETH-bbe4ab"
 USDC_TOKEN="str:USDC-350c4e"
+USDT_TOKEN="str:USDT-58d5d0"
 HTM_TOKEN="str:HTM-23a1da"
+WBTC_TOKEN="str:WBTC-05fd5b"
 XEGLD_TOKEN="str:XEGLD-23b511"
 LP_XOXNO_TOKEN="str:XOXNOWEGLD-232308"
 LEGLD_TOKEN="str:LEGLD-e8378b"
@@ -35,11 +37,11 @@ R_SLOPE2=800000000000000000000 # 80%
 U_OPTIMAL=800000000000000000000 # 92%
 RESERVE_FACTOR=300000000000000000000 # 10%
 LTV=750000000000000000000 # 80%
-LTV_EMODE=950000000000000000000 # 95%
+LTV_EMODE=9500 # 95%
 LIQ_THRESOLD=780000000000000000000 # 78%
-LIQ_THRESOLD_EMODE=970000000000000000000 # 97%
+LIQ_THRESOLD_EMODE=9700 # 97%
 LIQ_BONUS=100000000000000000000 # 7.5%
-LIQ_BONUS_EMODE=20000000000000000000 # 2%
+LIQ_BONUS_EMODE=150 # 1.5%
 LIQ_BASE_FEE=100000000000000000000 # 10%
 BORROW_CAP=50000000000000000000000  #  100M EGLD
 SUPPLY_CAP=50000000000000000000000 #  100M EGLD
@@ -146,10 +148,17 @@ addEModeCategory() {
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 
+removeEModeCategory() {
+  mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=20000000 \
+    --ledger --ledger-account-index=0 --ledger-address-index=0 \
+    --function="removeEModeCategory" --arguments 0x05 \
+    --proxy=${PROXY} --chain=${CHAIN_ID} --send
+}
+
 addAssetToEModeCategory() {
     mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=20000000 \
     --ledger --ledger-account-index=0 --ledger-address-index=0 \
-    --function="addAssetToEModeCategory" --arguments ${LXOXNO_TOKEN} 0x02 0x01 0x01 \
+    --function="addAssetToEModeCategory" --arguments ${EGLD_TOKEN} 0x02 0x01 0x01 \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 
@@ -197,7 +206,7 @@ repay() {
 claimRevenue() {
     mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=600000000 \
     --ledger --ledger-account-index=0 --ledger-address-index=0 \
-    --function="claimRevenue" --arguments ${XEGLD_TOKEN} ${LXOXNO_TOKEN} ${XOXNO_TOKEN} ${MEX_TOKEN} ${WETH_TOKEN} ${USDC_TOKEN} ${HTM_TOKEN} ${LP_XOXNO_TOKEN} ${LEGLD_TOKEN} \
+    --function="claimRevenue" --arguments ${EGLD_TOKEN} ${LEGLD_TOKEN} ${XEGLD_TOKEN} ${XOXNO_TOKEN} ${LXOXNO_TOKEN} ${MEX_TOKEN} ${WETH_TOKEN} ${WBTC_TOKEN} ${USDC_TOKEN} ${USDT_TOKEN} ${HTM_TOKEN} ${LP_XOXNO_TOKEN} ${LP_XEGLD_TOKEN} \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 

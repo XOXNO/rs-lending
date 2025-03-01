@@ -123,7 +123,8 @@ pub static ERROR_VAULT_ALREADY_ENABLED: &[u8] = b"Vault already enabled.";
 
 pub static ERROR_DEBT_CAN_NOT_BE_NEGATIVE: &[u8] = b"Debt repaid can not be negative!";
 
-pub static ERROR_SWAP_COLLATERAL_NOT_SUPPORTED: &[u8] = b"Swap collateral not supported with isolated assets.";
+pub static ERROR_SWAP_COLLATERAL_NOT_SUPPORTED: &[u8] =
+    b"Swap collateral not supported with isolated assets.";
 
 pub static ERROR_INSUFFICIENT_LIQUIDITY: &[u8] = b"Insufficient liquidity.";
 
@@ -133,4 +134,16 @@ pub static ERROR_FLASHLOAN_RESERVE_ASSET: &[u8] = b"Flashloan reserve asset is i
 
 pub static ERROR_INVALID_FLASHLOAN_REPAYMENT: &[u8] = b"Invalid flashloan re-payment.";
 
-pub static ERROR_BULK_SUPPLY_NOT_SUPPORTED: &[u8] = b"Bulk supply not supported with isolated assets.";
+pub static ERROR_BULK_SUPPLY_NOT_SUPPORTED: &[u8] =
+    b"Bulk supply not supported with isolated assets.";
+
+pub static ERROR_SWAP_DEBT_NOT_SUPPORTED: &[u8] = b"Swap debt not supported.";
+
+pub static ERROR_INVALID_BORROW_RATE_PARAMS: &[u8] =
+    b"Borrow rate parameters invalid: max_borrow_rate must be greater than base_borrow_rate.";
+pub static ERROR_INVALID_UTILIZATION_RANGE: &[u8] =
+    b"Utilization range invalid: optimal_utilization must be greater than mid_utilization.";
+pub static ERROR_OPTIMAL_UTILIZATION_TOO_HIGH: &[u8] =
+    b"Optimal utilization invalid: must be less than 1.0.";
+pub static ERROR_INVALID_RESERVE_FACTOR: &[u8] =
+    b"Reserve factor invalid: must be less than 10000.";

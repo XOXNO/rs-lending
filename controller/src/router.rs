@@ -3,7 +3,7 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
-use common_events::AssetConfig;
+use common_structs::AssetConfig;
 
 use crate::{
     contexts::base::StorageCache, helpers, oracle, positions, proxy_accumulator, proxy_pool,

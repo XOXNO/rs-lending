@@ -274,7 +274,7 @@ where
     /// - `asset_id`: Token identifier to update. 
     /// - `is_ltv`: True to update LTV, false for liquidation threshold. 
     /// - `account_nonces`: List of account nonces to update. 
-    pub fn update_position_threshold<
+    pub fn update_account_threshold<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg1: ProxyArg<bool>,
         Arg2: ProxyArg<MultiValueEncoded<Env::Api, u64>>,
@@ -286,7 +286,7 @@ where
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("updatePositionThreshold")
+            .raw_call("updateAccountThreshold")
             .argument(&asset_id)
             .argument(&has_risks)
             .argument(&account_nonces)
@@ -1459,26 +1459,26 @@ where
     }
 
     pub fn multiply<
-        Arg0: ProxyArg<BigUint<Env::Api>>,
-        Arg1: ProxyArg<u8>,
-        Arg2: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+        Arg0: ProxyArg<u8>,
+        Arg1: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+        Arg2: ProxyArg<BigUint<Env::Api>>,
         Arg3: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg4: ProxyArg<OptionalValue<ManagedVec<Env::Api, AggregatorStep<Env::Api>>>>,
         Arg5: ProxyArg<OptionalValue<ManagedVec<Env::Api, TokenAmount<Env::Api>>>>,
     >(
         self,
-        leverage_raw: Arg0,
-        e_mode_category: Arg1,
-        collateral_token: Arg2,
+        e_mode_category: Arg0,
+        collateral_token: Arg1,
+        final_collateral_amount: Arg2,
         debt_token: Arg3,
         steps: Arg4,
         limits: Arg5,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("multiply")
-            .argument(&leverage_raw)
             .argument(&e_mode_category)
             .argument(&collateral_token)
+            .argument(&final_collateral_amount)
             .argument(&debt_token)
             .argument(&steps)
             .argument(&limits)
@@ -1501,6 +1501,30 @@ where
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("swapCollateral")
+            .argument(&from_token)
+            .argument(&from_amount)
+            .argument(&to_token)
+            .argument(&steps)
+            .argument(&limits)
+            .original_result()
+    }
+
+    pub fn swap_debt<
+        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+        Arg1: ProxyArg<BigUint<Env::Api>>,
+        Arg2: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+        Arg3: ProxyArg<OptionalValue<ManagedVec<Env::Api, AggregatorStep<Env::Api>>>>,
+        Arg4: ProxyArg<OptionalValue<ManagedVec<Env::Api, TokenAmount<Env::Api>>>>,
+    >(
+        self,
+        from_token: Arg0,
+        from_amount: Arg1,
+        to_token: Arg2,
+        steps: Arg3,
+        limits: Arg4,
+    ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
+        self.wrapped_tx
+            .raw_call("swapDebt")
             .argument(&from_token)
             .argument(&from_amount)
             .argument(&to_token)

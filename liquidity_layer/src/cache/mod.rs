@@ -37,8 +37,6 @@ where
     pub supply_index: ManagedDecimal<C::Api, NumDecimals>,
     /// Zero value with pool-specific asset_decimals for comparisons.
     pub zero: ManagedDecimal<C::Api, NumDecimals>,
-    /// RAY value (10^27) for precision in rate calculations.
-    pub ray: ManagedDecimal<C::Api, NumDecimals>,
     /// The timestamp of the last state update (seconds since Unix epoch).
     pub last_timestamp: u64,
 }
@@ -64,7 +62,6 @@ where
         let params = sc_ref.params().get();
         Cache {
             zero: ManagedDecimal::from_raw_units(BigUint::zero(), params.asset_decimals),
-            ray: sc_ref.ray(),
             supplied: sc_ref.supplied().get(),
             reserves: sc_ref.reserves().get(),
             borrowed: sc_ref.borrowed().get(),

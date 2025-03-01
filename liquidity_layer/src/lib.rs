@@ -4,6 +4,10 @@ multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
 pub mod rates;
+use common_errors::{
+    ERROR_INVALID_BORROW_RATE_PARAMS, ERROR_INVALID_RESERVE_FACTOR,
+    ERROR_INVALID_UTILIZATION_RANGE, ERROR_OPTIMAL_UTILIZATION_TOO_HIGH,
+};
 pub use rates::*;
 pub mod cache;
 pub mod liquidity;
@@ -69,7 +73,7 @@ pub trait LiquidityPool:
         asset_decimals: usize,
     ) {
         self.pool_asset().set(asset);
-        self.params().set(&MarketParams {
+        let params = &MarketParams {
             max_borrow_rate: self.to_decimal_ray(max_borrow_rate),
             base_borrow_rate: self.to_decimal_ray(base_borrow_rate),
             slope1: self.to_decimal_ray(slope1),
@@ -79,22 +83,48 @@ pub trait LiquidityPool:
             optimal_utilization: self.to_decimal_ray(optimal_utilization),
             reserve_factor: self.to_decimal_bps(reserve_factor),
             asset_decimals,
-        });
-        self.borrow_index().set(self.ray());
+        };
 
+        require!(
+            params.max_borrow_rate > params.base_borrow_rate,
+            ERROR_INVALID_BORROW_RATE_PARAMS
+        );
+        require!(
+            params.optimal_utilization > params.mid_utilization,
+            ERROR_INVALID_UTILIZATION_RANGE
+        );
+        require!(
+            params.optimal_utilization < self.ray(),
+            ERROR_OPTIMAL_UTILIZATION_TOO_HIGH
+        );
+        require!(
+            params.reserve_factor < self.bps(),
+            ERROR_INVALID_RESERVE_FACTOR
+        );
+
+        self.params().set(params);
+        self.borrow_index().set(self.ray());
         self.supply_index().set(self.ray());
 
-        self.supplied()
-            .set(ManagedDecimal::from_raw_units(BigUint::zero(), asset_decimals));
+        self.supplied().set(ManagedDecimal::from_raw_units(
+            BigUint::zero(),
+            asset_decimals,
+        ));
 
-        self.reserves()
-            .set(ManagedDecimal::from_raw_units(BigUint::zero(), asset_decimals));
+        self.reserves().set(ManagedDecimal::from_raw_units(
+            BigUint::zero(),
+            asset_decimals,
+        ));
 
-        self.borrowed()
-            .set(ManagedDecimal::from_raw_units(BigUint::zero(), asset_decimals));
+        self.borrowed().set(ManagedDecimal::from_raw_units(
+            BigUint::zero(),
+            asset_decimals,
+        ));
 
-        self.revenue()
-            .set(ManagedDecimal::from_raw_units(BigUint::zero(), asset_decimals));
+        self.revenue().set(ManagedDecimal::from_raw_units(
+            BigUint::zero(),
+            asset_decimals,
+        ));
 
         let timestamp = self.blockchain().get_block_timestamp();
         self.last_timestamp().set(timestamp);
@@ -159,6 +189,22 @@ pub trait LiquidityPool:
             params.mid_utilization = self.to_decimal_ray(mid_utilization);
             params.optimal_utilization = self.to_decimal_ray(optimal_utilization);
             params.reserve_factor = self.to_decimal_bps(reserve_factor);
+            require!(
+                params.max_borrow_rate > params.base_borrow_rate,
+                ERROR_INVALID_BORROW_RATE_PARAMS
+            );
+            require!(
+                params.optimal_utilization > params.mid_utilization,
+                ERROR_INVALID_UTILIZATION_RANGE
+            );
+            require!(
+                params.optimal_utilization < self.ray(),
+                ERROR_OPTIMAL_UTILIZATION_TOO_HIGH
+            );
+            require!(
+                params.reserve_factor < self.bps(),
+                ERROR_INVALID_RESERVE_FACTOR
+            );
         });
     }
 }

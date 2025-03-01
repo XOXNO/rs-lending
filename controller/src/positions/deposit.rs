@@ -1,5 +1,5 @@
 use common_constants::TOTAL_SUPPLY_AMOUNT_STORAGE_KEY;
-use common_events::{
+use common_structs::{
     AccountAttributes, AccountPosition, AccountPositionType, AssetConfig, PriceFeedShort,
 };
 use multiversx_sc::storage::StorageKey;
@@ -251,11 +251,12 @@ pub trait PositionDepositModule:
         let first_payment = payments.get(0);
 
         if self.account_token().get_token_id() == first_payment.token_identifier {
-            require!(payments.len() >= 2, ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS);
             self.require_active_account(first_payment.token_nonce);
 
             (
-                payments.slice(1, payments.len()).unwrap(),
+                payments
+                    .slice(1, payments.len())
+                    .unwrap_or(ManagedVec::new()),
                 Some(first_payment.clone().unwrap_esdt()),
             )
         } else {

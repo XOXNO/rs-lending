@@ -1,4 +1,4 @@
-use common_events::AccountAttributes;
+use common_structs::AccountAttributes;
 
 use crate::storage;
 use common_errors::{ERROR_ACCOUNT_NOT_IN_THE_MARKET, ERROR_POSITION_SHOULD_BE_VAULT};

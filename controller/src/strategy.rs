@@ -1,5 +1,7 @@
 multiversx_sc::imports!();
 
+use common_errors::ERROR_SWAP_DEBT_NOT_SUPPORTED;
+
 use crate::{
     aggregator::{AggregatorStep, TokenAmount},
     contexts::base::StorageCache,
@@ -9,7 +11,7 @@ use crate::{
 };
 
 #[multiversx_sc::module]
-pub trait MultiplyModule:
+pub trait SnapModule:
     storage::LendingStorageModule
     + oracle::OracleModule
     + validation::ValidationModule
@@ -26,34 +28,24 @@ pub trait MultiplyModule:
     + positions::emode::EModeModule
     + common_math::SharedMathModule
 {
-    // e-mode 1
-    // EGLD, xEGLD, xEGLD/EGLD LP
-    // Send EGLD -> Stake for xEGLD -> Supply xEGLD (COLLATERAL) -> Borrow EGLD -> loop again
-    // Send xEGLD -> Supply xEGLD (COLLATERAL) -> Borrow EGLD -> loop again
     #[payable]
     #[endpoint]
     #[allow_multiple_var_args]
     fn multiply(
         &self,
-        leverage_raw: BigUint,
         e_mode_category: u8,
         collateral_token: &EgldOrEsdtTokenIdentifier,
+        final_collateral_amount: BigUint,
         debt_token: &EgldOrEsdtTokenIdentifier,
         steps: OptionalValue<ManagedVec<AggregatorStep<Self::Api>>>,
         limits: OptionalValue<ManagedVec<TokenAmount<Self::Api>>>,
     ) {
-        // let wad = self.wad();
         let payment = self.call_value().egld_or_single_esdt();
         let caller = self.blockchain().get_caller();
         let e_mode = self.get_e_mode_category(e_mode_category);
         self.ensure_e_mode_not_deprecated(&e_mode);
-        let leverage = self.to_decimal_wad(leverage_raw);
         let mut storage_cache = StorageCache::new(self);
 
-        // let target = wad.clone() * self.to_decimal_wad(BigUint::from(2u32)) / 100 + wad.clone(); // 1.02
-        // let reserves_factor = wad.clone() / 5; // 20%
-
-        // let collateral_market_sc = self.require_asset_supported(collateral_token);
         let debt_market_sc = self.require_asset_supported(debt_token);
 
         let collateral_oracle = self.token_oracle(collateral_token).get();
@@ -65,21 +57,6 @@ pub trait MultiplyModule:
 
         let collateral_price_feed = self.get_token_price(collateral_token, &mut storage_cache);
         let debt_price_feed = self.get_token_price(debt_token, &mut storage_cache);
-
-        // let max_l = self.calculate_max_leverage(
-        //     &debt_payment.amount,
-        //     &target,
-        //     &e_mode,
-        //     &debt_config,
-        //     &self.get_total_reserves(debt_market_sc).get(),
-        //     &reserves_factor,
-        // );
-
-        // require!(
-        //     leverage <= &max_l,
-        //     "The leverage is over the maximum allowed: {}!",
-        //     max_l
-        // );
 
         let (account, nft_attributes) =
             self.create_account_nft(&caller, false, false, OptionalValue::Some(e_mode_category));
@@ -112,16 +89,26 @@ pub trait MultiplyModule:
             limits.clone().into_option(),
         );
 
+        require!(
+            initial_collateral.amount <= final_collateral_amount,
+            "Initial collateral amount is less than the final collateral amount"
+        );
+
         let initial_collateral_amount_dec = ManagedDecimal::from_raw_units(
             initial_collateral.amount.clone(),
-            collateral_price_feed.asset_decimals as usize,
+            collateral_price_feed.asset_decimals,
+        );
+        let final_collateral_amount_dec = ManagedDecimal::from_raw_units(
+            final_collateral_amount,
+            collateral_price_feed.asset_decimals,
         );
 
         let initial_egld_collateral =
             self.get_token_egld_value(&initial_collateral_amount_dec, &collateral_price_feed.price);
-        let final_strategy_collateral =
-            initial_egld_collateral.clone() * leverage / storage_cache.wad_dec.clone();
-        let required_collateral = final_strategy_collateral - initial_egld_collateral;
+        let final_egld_collateral =
+            self.get_token_egld_value(&final_collateral_amount_dec, &collateral_price_feed.price);
+
+        let required_collateral = final_egld_collateral - initial_egld_collateral;
 
         let debt_amount_to_flash_loan =
             self.convert_egld_to_tokens(&required_collateral, &debt_price_feed);
@@ -129,34 +116,23 @@ pub trait MultiplyModule:
         let flash_fee = debt_amount_to_flash_loan.clone() * debt_config.flashloan_fee.clone()
             / storage_cache.bps_dec.clone();
 
-        let total_borrowed = debt_amount_to_flash_loan.clone() + flash_fee.clone();
+        self.validate_borrow_cap(&debt_config, &debt_amount_to_flash_loan, debt_token);
 
-        self.validate_borrow_cap(&debt_config, &total_borrowed, debt_token);
+        let mut borrow_position =
+            self.get_or_create_borrow_position(account.token_nonce, &debt_config, debt_token);
 
-        let (borrow_index, timestamp) = self
+        borrow_position = self
             .tx()
             .to(debt_market_sc)
             .typed(proxy_pool::LiquidityPoolProxy)
-            .create_flash_strategy(
-                debt_token,
+            .create_strategy(
+                borrow_position,
                 debt_amount_to_flash_loan.clone(),
                 flash_fee.clone(),
                 debt_price_feed.price.clone(),
             )
             .returns(ReturnsResult)
             .sync_call();
-
-        let mut borrow_position = self.get_or_create_borrow_position(
-            account.token_nonce,
-            &debt_config,
-            debt_token,
-            // false,
-        );
-
-        borrow_position.principal_amount += &debt_amount_to_flash_loan;
-        borrow_position.interest_accrued += &flash_fee;
-        borrow_position.market_index = borrow_index;
-        borrow_position.last_update_timestamp = timestamp;
 
         let mut borrow_positions = self.borrow_positions(account.token_nonce);
 
@@ -310,6 +286,143 @@ pub trait MultiplyModule:
 
     #[payable]
     #[allow_multiple_var_args]
+    #[endpoint(swapDebt)]
+    fn swap_debt(
+        &self,
+        from_token: &EgldOrEsdtTokenIdentifier,
+        from_amount: BigUint,
+        to_token: &EgldOrEsdtTokenIdentifier,
+        steps: OptionalValue<ManagedVec<AggregatorStep<Self::Api>>>,
+        limits: OptionalValue<ManagedVec<TokenAmount<Self::Api>>>,
+    ) {
+        let mut storage_cache = StorageCache::new(self);
+        let caller = self.blockchain().get_caller();
+        let payments = self.call_value().all_transfers();
+        let (mut payments, maybe_account) = self.validate_supply_payment(&caller, &payments);
+
+        require!(
+            maybe_account.is_some(),
+            ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS
+        );
+
+        let account = maybe_account.unwrap();
+
+        let account_attributes = self.nft_attributes(&account);
+        // Refund NFT
+        self.tx().to(&caller).payment(&account).transfer();
+
+        let asset_info = storage_cache.get_cached_asset_info(to_token);
+
+        if account_attributes.is_isolated() {
+            require!(
+                asset_info.can_borrow_in_isolation(),
+                ERROR_SWAP_DEBT_NOT_SUPPORTED
+            );
+        }
+
+        // Retrieve borrow position for the given token
+        let mut borrow_positions = self.borrow_positions(account.token_nonce);
+        let maybe_borrow_position = borrow_positions.get(from_token);
+        require!(
+            maybe_borrow_position.is_some(),
+            "Token {} is not available for this account",
+            from_token
+        );
+        let mut borrow_position = maybe_borrow_position.unwrap();
+
+        // Required to be in sync with the global index for accurate swaps to avoid extra interest during withdraw
+        self.update_position(
+            &self.get_pool_address(&borrow_position.asset_id),
+            &mut borrow_position,
+            OptionalValue::Some(self.get_token_price(&from_token, &mut storage_cache).price),
+        );
+
+        let mut amount_to_repay = borrow_position.make_amount_decimal(from_amount);
+
+        amount_to_repay = if amount_to_repay > borrow_position.get_total_amount() {
+            borrow_position.get_total_amount()
+        } else {
+            amount_to_repay
+        };
+
+        let from_debt_feed = self.get_token_price(from_token, &mut storage_cache);
+        let to_debt_feed = self.get_token_price(to_token, &mut storage_cache);
+
+        let from_debt_egld_amount =
+            self.get_token_egld_value(&amount_to_repay, &from_debt_feed.price);
+
+        let required_to_swap = self.convert_egld_to_tokens(&from_debt_egld_amount, &to_debt_feed);
+        let debt_config = storage_cache.get_cached_asset_info(to_token);
+        let flash_fee = required_to_swap.clone() * debt_config.flashloan_fee.clone()
+            / storage_cache.bps_dec.clone();
+
+        let mut to_debt_borrow_position =
+            self.get_or_create_borrow_position(account.token_nonce, &debt_config, to_token);
+
+        let debt_market_sc =
+            storage_cache.get_cached_pool_address(&to_debt_borrow_position.asset_id);
+
+        to_debt_borrow_position = self
+            .tx()
+            .to(debt_market_sc)
+            .typed(proxy_pool::LiquidityPoolProxy)
+            .create_strategy(
+                to_debt_borrow_position,
+                required_to_swap.clone(),
+                flash_fee.clone(),
+                to_debt_feed.price.clone(),
+            )
+            .returns(ReturnsResult)
+            .sync_call();
+
+        self.update_position_event(
+            &required_to_swap,
+            &to_debt_borrow_position,
+            OptionalValue::Some(to_debt_feed.price),
+            OptionalValue::Some(&caller),
+            OptionalValue::Some(&account_attributes),
+        );
+
+        borrow_positions.insert(to_token.clone(), to_debt_borrow_position);
+
+        let received = self.swap_tokens(
+            &from_token,
+            &to_token,
+            &required_to_swap.into_raw_units(),
+            steps.into_option(),
+            limits.into_option(),
+        );
+
+        payments.push(received);
+
+        for payment in payments.iter() {
+            self.validate_payment(&payment);
+            let price_feed = self.get_token_price(&payment.token_identifier, &mut storage_cache);
+            let payment_decimal =
+                ManagedDecimal::from_raw_units(payment.amount.clone(), price_feed.asset_decimals);
+            self.process_repayment(
+                account.token_nonce,
+                &payment.token_identifier,
+                &payment_decimal,
+                &caller,
+                self.get_token_egld_value(&payment_decimal, &price_feed.price),
+                &price_feed,
+                &mut storage_cache,
+                &account_attributes,
+            );
+        }
+
+        // Make sure that after the swap the position is not becoming eligible for liquidation due to slippage
+        self.validate_health_factor_after_withdrawal(
+            account.token_nonce,
+            false,
+            &mut storage_cache,
+            None,
+        );
+    }
+
+    #[payable]
+    #[allow_multiple_var_args]
     #[endpoint(repayDebtWithCollateral)]
     fn repay_debt_with_collateral(
         &self,
@@ -392,10 +505,8 @@ pub trait MultiplyModule:
         for payment in payments.iter() {
             self.validate_payment(&payment);
             let feed = self.get_token_price(&payment.token_identifier, &mut storage_cache);
-            let payment_dec = ManagedDecimal::from_raw_units(
-                payment.amount.clone(),
-                feed.asset_decimals as usize,
-            );
+            let payment_dec =
+                ManagedDecimal::from_raw_units(payment.amount.clone(), feed.asset_decimals);
             // 3. Process repay
             self.process_repayment(
                 account.token_nonce,

@@ -1,5 +1,5 @@
 use common_constants::{BPS, BPS_PRECISION, WAD, WAD_PRECISION};
-use common_events::{AssetConfig, PriceFeedShort};
+use common_structs::{AssetConfig, PriceFeedShort};
 
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
