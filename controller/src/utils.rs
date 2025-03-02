@@ -218,14 +218,9 @@ pub trait LendingUtilsModule:
     fn validate_is_healthy(
         &self,
         account_nonce: u64,
-        is_liquidation: bool,
         cache: &mut Cache<Self>,
         safety_factor: Option<ManagedDecimal<Self::Api, NumDecimals>>,
     ) {
-        if is_liquidation {
-            return;
-        }
-
         let borrow_positions = self.borrow_positions(account_nonce);
         if borrow_positions.is_empty() {
             return;

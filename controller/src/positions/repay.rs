@@ -159,7 +159,11 @@ pub trait PositionRepayModule:
     ) -> AccountPosition<Self::Api> {
         let borrow_positions = self.borrow_positions(account_nonce);
         let position = borrow_positions.get(token_id);
-        require!(position.is_some(), "Borrow position not found for token");
+        require!(
+            position.is_some(),
+            "Borrowed token {} is not available for this account",
+            token_id
+        );
         position.unwrap()
     }
 

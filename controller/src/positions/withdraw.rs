@@ -83,6 +83,7 @@ pub trait PositionWithdrawModule:
             caller,
             position_attributes,
         );
+
         self.update_deposit_position_storage(account_nonce, &token_id, &updated_position);
 
         updated_position

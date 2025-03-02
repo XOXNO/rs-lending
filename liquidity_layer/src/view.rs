@@ -34,50 +34,6 @@ pub trait ViewModule:
         cache.get_total_capital()
     }
 
-    /// Computes the total accrued interest on a borrow position.
-    ///
-    /// The interest is computed based on the difference between the current and the initial borrow index.
-    ///
-    /// # Parameters
-    /// - `amount`: The principal amount borrowed.
-    /// - `initial_borrow_index`: The borrow index at the time of borrowing.
-    ///
-    /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The accrued interest.
-    #[view(getDebtInterest)]
-    fn get_debt_interest(
-        &self,
-        amount: ManagedDecimal<Self::Api, NumDecimals>,
-        initial_borrow_index: ManagedDecimal<Self::Api, NumDecimals>,
-    ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let current_borrow_index = self.borrow_index().get();
-        let borrow_index_diff = current_borrow_index - initial_borrow_index;
-
-        amount * borrow_index_diff
-    }
-
-    /// Computes the total accrued interest on a supply position.
-    ///
-    /// The interest is computed based on the difference between the current and the initial supply index.
-    ///
-    /// # Parameters
-    /// - `amount`: The principal amount supplied.
-    /// - `initial_supply_index`: The supply index at the time of supplying.
-    ///
-    /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The accrued interest.
-    #[view(getSupplyInterest)]
-    fn get_supply_interest(
-        &self,
-        amount: ManagedDecimal<Self::Api, NumDecimals>,
-        initial_supply_index: ManagedDecimal<Self::Api, NumDecimals>,
-    ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let current_supply_index = self.supply_index().get();
-        let supply_index_diff = current_supply_index - initial_supply_index;
-
-        amount * supply_index_diff
-    }
-
     /// Retrieves the current deposit rate for the pool.
     ///
     /// The deposit rate is derived from capital utilization, the borrow rate, and the reserve factor.

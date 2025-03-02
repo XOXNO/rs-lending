@@ -391,7 +391,6 @@ pub trait PositionDepositModule:
         if has_risks {
             self.validate_is_healthy(
                 account_nonce,
-                false,
                 cache,
                 Some(ManagedDecimal::from_raw_units(BigUint::from(20u64), 0usize)),
             );

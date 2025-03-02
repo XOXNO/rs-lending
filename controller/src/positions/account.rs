@@ -69,17 +69,6 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
         (nft_token_payment, attributes)
     }
 
-    /// Validates that an existing position NFT is active.
-    /// Prevents operations on invalid or inactive positions.
-    ///
-    /// # Arguments
-    /// - `account`: NFT payment to check.
-    fn validate_existing_account(&self, account: &EsdtTokenPayment<Self::Api>) {
-        self.require_active_account(account.token_nonce);
-        self.account_token()
-            .require_same_token(&account.token_identifier);
-    }
-
     /// Retrieves an existing position or creates a new one.
     /// Reuses existing NFTs or initializes new ones as needed.
     ///

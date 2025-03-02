@@ -216,12 +216,7 @@ pub trait UtilsModule:
             } else {
                 repayment.clone()
             };
-            let remaining = repayment.clone() - interest_repaid.clone();
-            let principal_repaid = if remaining > position.principal_amount.clone() {
-                position.principal_amount.clone()
-            } else {
-                remaining
-            };
+            let principal_repaid = repayment.clone() - interest_repaid.clone();
             (principal_repaid, interest_repaid, cache.zero.clone())
         }
     }

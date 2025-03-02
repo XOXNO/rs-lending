@@ -165,7 +165,7 @@ pub trait Controller:
         }
 
         // Prevent self-liquidation
-        self.validate_is_healthy(account_payment.token_nonce, false, &mut cache, None);
+        self.validate_is_healthy(account_payment.token_nonce, &mut cache, None);
 
         self.manage_account_after_withdrawal(&account_payment, &caller);
     }

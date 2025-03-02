@@ -122,7 +122,7 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
     ///
     /// # Arguments
     /// - `cache`: Mutable reference to pool state (`Cache<Self>`), used for borrow rate.
-    /// - `exp`: Time elapsed in seconds (`u64`).
+    /// - `exp`: Time elapsed in seconds (`u64`). Always higher than 0.
     ///
     /// # Returns
     /// - `ManagedDecimal<Self::Api, NumDecimals>`: Interest factor (RAY-based).
@@ -133,10 +133,7 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
         cache: &mut Cache<Self>,
         exp: u64,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let ray = self.ray(); // ManagedDecimal::from_raw_units(BigUint::from(RAY), RAY_PRECISION)
-        if exp == 0 {
-            return ray;
-        }
+        let ray = self.ray();
 
         let exp_dec = ManagedDecimal::from_raw_units(BigUint::from(exp), 0);
         let borrow_rate = self.calc_borrow_rate(&cache);

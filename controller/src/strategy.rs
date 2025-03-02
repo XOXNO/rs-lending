@@ -6,8 +6,7 @@ use crate::{
     aggregator::{AggregatorStep, TokenAmount},
     cache::Cache,
     helpers, oracle, positions, proxy_pool, storage, utils, validation, ERROR_ASSET_NOT_BORROWABLE,
-    ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL, ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS,
-    ERROR_SWAP_COLLATERAL_NOT_SUPPORTED,
+    ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL, ERROR_SWAP_COLLATERAL_NOT_SUPPORTED,
 };
 
 #[multiversx_sc::module]
@@ -173,7 +172,7 @@ pub trait SnapModule:
         );
 
         // 4. Validate health factor after looping was created to verify integrity of healthy
-        self.validate_is_healthy(account.token_nonce, false, &mut cache, None);
+        self.validate_is_healthy(account.token_nonce, &mut cache, None);
     }
 
     #[payable]
@@ -266,7 +265,7 @@ pub trait SnapModule:
         );
 
         // Make sure that after the swap the position is not becoming eligible for liquidation due to slippage
-        self.validate_is_healthy(account.token_nonce, false, &mut cache, None);
+        self.validate_is_healthy(account.token_nonce, &mut cache, None);
     }
 
     #[payable]
@@ -388,7 +387,7 @@ pub trait SnapModule:
         }
 
         // Make sure that after the swap the position is not becoming eligible for liquidation due to slippage
-        self.validate_is_healthy(account.token_nonce, false, &mut cache, None);
+        self.validate_is_healthy(account.token_nonce, &mut cache, None);
     }
 
     #[payable]
@@ -481,6 +480,6 @@ pub trait SnapModule:
         }
 
         // Make sure that after the swap the position is not becoming eligible for liquidation due to slippage
-        self.validate_is_healthy(account.token_nonce, false, &mut cache, None);
+        self.validate_is_healthy(account.token_nonce, &mut cache, None);
     }
 }

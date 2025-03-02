@@ -335,31 +335,6 @@ pub trait PositionBorrowModule:
         }
     }
 
-    /// Ensures a borrow position exists for a token.
-    ///
-    /// # Arguments
-    /// - `account_nonce`: Position NFT nonce.
-    /// - `borrow_token_id`: Borrowed token identifier.
-    ///
-    /// # Returns
-    /// - Validated borrow position.
-    fn validate_borrow_position(
-        &self,
-        account_nonce: u64,
-        borrow_token_id: &EgldOrEsdtTokenIdentifier,
-    ) -> AccountPosition<Self::Api> {
-        let borrow_positions = self.borrow_positions(account_nonce);
-        let bp_opt = borrow_positions.get(borrow_token_id);
-
-        require!(
-            bp_opt.is_some(),
-            "Borrowed token {} is not available for this account",
-            borrow_token_id
-        );
-
-        bp_opt.unwrap()
-    }
-
     /// Ensures a new borrow respects the isolated asset debt ceiling.
     ///
     /// # Arguments
