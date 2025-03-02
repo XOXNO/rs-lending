@@ -9,7 +9,7 @@ pub trait EventsModule {
         &self,
         token_pair: &TokenPair<Self::Api>,
         round_id: u32,
-        price_feed: &TimestampedPrice<Self::Api>,
+        feed: &TimestampedPrice<Self::Api>,
     ) {
         let epoch = self.blockchain().get_block_epoch();
 
@@ -18,9 +18,9 @@ pub trait EventsModule {
             &token_pair.to.clone(),
             round_id,
             &NewRoundEvent {
-                price: price_feed.price.clone(),
-                timestamp: price_feed.timestamp,
-                asset_decimals: price_feed.asset_decimals,
+                price: feed.price.clone(),
+                timestamp: feed.timestamp,
+                asset_decimals: feed.asset_decimals,
                 block: self.blockchain().get_block_nonce(),
                 epoch,
             },

@@ -4,10 +4,7 @@ use common_structs::{
 };
 use multiversx_sc::storage::StorageKey;
 
-use crate::{
-    contexts::base::StorageCache, helpers, oracle, positions, proxy_pool, storage, utils,
-    validation,
-};
+use crate::{cache::Cache, helpers, oracle, positions, proxy_pool, storage, utils, validation};
 use common_errors::{
     ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL, ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS,
     ERROR_MIX_ISOLATED_COLLATERAL, ERROR_POSITION_NOT_FOUND, ERROR_SUPPLY_CAP,
@@ -20,7 +17,7 @@ multiversx_sc::derive_imports!();
 
 #[multiversx_sc::module]
 pub trait PositionDepositModule:
-    storage::LendingStorageModule
+    storage::Storage
     + validation::ValidationModule
     + oracle::OracleModule
     + common_events::EventsModule
@@ -39,22 +36,21 @@ pub trait PositionDepositModule:
     /// - `account_nonce`: Position NFT nonce.
     /// - `position_attributes`: NFT attributes.
     /// - `deposit_payments`: Vector of deposit payments.
-    /// - `storage_cache`: Mutable storage cache.
+    /// - `cache`: Mutable storage cache.
     fn process_deposit(
         &self,
         caller: &ManagedAddress,
         account_nonce: u64,
         position_attributes: AccountAttributes,
         deposit_payments: &ManagedVec<EgldOrEsdtTokenPayment>,
-        storage_cache: &mut StorageCache<Self>,
+        cache: &mut Cache<Self>,
     ) {
         let e_mode = self.get_e_mode_category(position_attributes.get_emode_id());
         self.ensure_e_mode_not_deprecated(&e_mode);
 
         for deposit_payment in deposit_payments {
             self.validate_payment(&deposit_payment);
-            let mut asset_info =
-                storage_cache.get_cached_asset_info(&deposit_payment.token_identifier);
+            let mut asset_info = cache.get_cached_asset_info(&deposit_payment.token_identifier);
 
             let asset_emode_config = self.get_token_e_mode_config(
                 position_attributes.get_emode_id(),
@@ -80,7 +76,7 @@ pub trait PositionDepositModule:
                 &position_attributes,
             );
 
-            self.validate_supply_cap(&asset_info, &deposit_payment, storage_cache);
+            self.validate_supply_cap(&asset_info, &deposit_payment, cache);
 
             self.update_deposit_position(
                 account_nonce,
@@ -88,7 +84,7 @@ pub trait PositionDepositModule:
                 &asset_info,
                 caller,
                 &position_attributes,
-                storage_cache,
+                cache,
             );
         }
     }
@@ -139,7 +135,7 @@ pub trait PositionDepositModule:
     /// - `asset_info`: Asset configuration.
     /// - `caller`: Depositor's address.
     /// - `attributes`: NFT attributes.
-    /// - `storage_cache`: Mutable storage cache.
+    /// - `cache`: Mutable storage cache.
     ///
     /// # Returns
     /// - Updated deposit position.
@@ -150,9 +146,9 @@ pub trait PositionDepositModule:
         asset_info: &AssetConfig<Self::Api>,
         caller: &ManagedAddress,
         attributes: &AccountAttributes,
-        storage_cache: &mut StorageCache<Self>,
+        cache: &mut Cache<Self>,
     ) -> AccountPosition<Self::Api> {
-        let feed = self.get_token_price(&collateral.token_identifier, storage_cache);
+        let feed = self.get_token_price(&collateral.token_identifier, cache);
         let mut position = self.get_or_create_deposit_position(
             account_nonce,
             asset_info,
@@ -238,29 +234,43 @@ pub trait PositionDepositModule:
     /// - Tuple of (collateral payments, optional NFT payment).
     fn validate_supply_payment(
         &self,
-        caller: &ManagedAddress,
-        payments: &ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
+        require_account_payment: bool,
     ) -> (
         ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
         Option<EsdtTokenPayment<Self::Api>>,
+        ManagedAddress,
+        Option<AccountAttributes>,
     ) {
+        let caller = self.blockchain().get_caller();
+        let payments = self.call_value().all_transfers();
         require!(payments.len() >= 1, ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS);
 
-        self.require_non_zero_address(caller);
+        self.require_non_zero_address(&caller);
 
         let first_payment = payments.get(0);
 
         if self.account_token().get_token_id() == first_payment.token_identifier {
             self.require_active_account(first_payment.token_nonce);
 
+            let account_payment = first_payment.clone().unwrap_esdt();
+
+            let account_attributes = self.nft_attributes(&account_payment);
+            // Refund NFT
+            self.tx().to(&caller).payment(&account_payment).transfer();
             (
                 payments
                     .slice(1, payments.len())
                     .unwrap_or(ManagedVec::new()),
-                Some(first_payment.clone().unwrap_esdt()),
+                Some(account_payment),
+                caller,
+                Some(account_attributes),
             )
         } else {
-            (payments.clone(), None)
+            require!(
+                !require_account_payment,
+                ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS
+            );
+            (payments.clone(), None, caller, None)
         }
     }
 
@@ -313,16 +323,15 @@ pub trait PositionDepositModule:
     /// - `asset_info`: Asset configuration.
     /// - `deposit_payment`: Deposit payment details.
     /// - `is_vault`: Vault status flag.
-    /// - `storage_cache`: Mutable storage cache.
+    /// - `cache`: Mutable storage cache.
     fn validate_supply_cap(
         &self,
         asset_info: &AssetConfig<Self::Api>,
         deposit_payment: &EgldOrEsdtTokenPayment,
-        storage_cache: &mut StorageCache<Self>,
+        cache: &mut Cache<Self>,
     ) {
         if let Some(supply_cap) = &asset_info.supply_cap {
-            let pool_address =
-                storage_cache.get_cached_pool_address(&deposit_payment.token_identifier);
+            let pool_address = cache.get_cached_pool_address(&deposit_payment.token_identifier);
             let mut total_supplied = self.get_total_supply(pool_address).get();
 
             let vault_supplied_amount = self
@@ -344,7 +353,7 @@ pub trait PositionDepositModule:
         asset_id: &EgldOrEsdtTokenIdentifier<Self::Api>,
         has_risks: bool,
         asset_config: &mut AssetConfig<Self::Api>,
-        storage_cache: &mut StorageCache<Self>,
+        cache: &mut Cache<Self>,
     ) {
         self.require_active_account(account_nonce);
         let mut deposit_positions = self.deposit_positions(account_nonce);
@@ -380,10 +389,10 @@ pub trait PositionDepositModule:
         deposit_positions.insert(dp.asset_id.clone(), dp.clone());
 
         if has_risks {
-            self.validate_health_factor_after_withdrawal(
+            self.validate_is_healthy(
                 account_nonce,
                 false,
-                storage_cache,
+                cache,
                 Some(ManagedDecimal::from_raw_units(BigUint::from(20u64), 0usize)),
             );
         }

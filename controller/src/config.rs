@@ -10,7 +10,7 @@ pub use common_events::*;
 
 #[multiversx_sc::module]
 pub trait ConfigModule:
-    storage::LendingStorageModule
+    storage::Storage
     + utils::LendingUtilsModule
     + common_events::EventsModule
     + oracle::OracleModule

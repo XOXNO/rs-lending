@@ -67,9 +67,7 @@ pub trait Storage {
     /// - `ManagedDecimal<Self::Api, NumDecimals>`: The current borrow index.
     #[view(getBorrowIndex)]
     #[storage_mapper("borrow_index")]
-    fn borrow_index(
-        &self,
-    ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
+    fn borrow_index(&self) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
 
     /// Retrieves the current supply index.
     ///
@@ -79,9 +77,7 @@ pub trait Storage {
     /// - `ManagedDecimal<Self::Api, NumDecimals>`: The current supply index.
     #[view(getSupplyIndex)]
     #[storage_mapper("supply_index")]
-    fn supply_index(
-        &self,
-    ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
+    fn supply_index(&self) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
 
     /// Retrieves the last update timestamp for the interest indexes.
     ///

@@ -5,23 +5,21 @@ use common_structs::{
 };
 use multiversx_sc::storage::StorageKey;
 
-use crate::{
-    contexts::base::StorageCache, helpers, oracle, proxy_pool, storage, utils, validation,
-};
+use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validation};
 use common_errors::{
     ERROR_ASSET_NOT_BORROWABLE, ERROR_ASSET_NOT_BORROWABLE_IN_ISOLATION,
     ERROR_ASSET_NOT_BORROWABLE_IN_SILOED, ERROR_BORROW_CAP, ERROR_DEBT_CEILING_REACHED,
     ERROR_INSUFFICIENT_COLLATERAL,
 };
 
-use super::account;
+use super::{account, emode};
 
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
 #[multiversx_sc::module]
 pub trait PositionBorrowModule:
-    storage::LendingStorageModule
+    storage::Storage
     + validation::ValidationModule
     + oracle::OracleModule
     + common_events::EventsModule
@@ -29,7 +27,7 @@ pub trait PositionBorrowModule:
     + helpers::math::MathsModule
     + account::PositionAccountModule
     + common_math::SharedMathModule
-    + super::emode::EModeModule
+    + emode::EModeModule
 {
     /// Manages a borrow operation, updating positions and handling isolated debt.
     /// Orchestrates borrowing logic with validations and storage updates.
@@ -44,7 +42,7 @@ pub trait PositionBorrowModule:
     /// - `account`: NFT attributes.
     /// - `collaterals`: User's collateral positions.
     /// - `feed`: Price feed for the asset.
-    /// - `storage_cache`: Mutable storage cache.
+    /// - `cache`: Mutable storage cache.
     ///
     /// # Returns
     /// - Updated borrow position.
@@ -53,15 +51,13 @@ pub trait PositionBorrowModule:
         account_nonce: u64,
         borrow_token_id: &EgldOrEsdtTokenIdentifier,
         amount: ManagedDecimal<Self::Api, NumDecimals>,
-        amount_in_usd: ManagedDecimal<Self::Api, NumDecimals>,
         caller: &ManagedAddress,
         asset_config: &AssetConfig<Self::Api>,
         account: &AccountAttributes,
-        collaterals: &ManagedVec<AccountPosition<Self::Api>>,
         feed: &PriceFeedShort<Self::Api>,
-        storage_cache: &mut StorageCache<Self>,
+        cache: &mut Cache<Self>,
     ) -> AccountPosition<Self::Api> {
-        let pool_address = storage_cache.get_cached_pool_address(borrow_token_id);
+        let pool_address = cache.get_cached_pool_address(borrow_token_id);
         let mut borrow_position =
             self.get_or_create_borrow_position(account_nonce, asset_config, borrow_token_id);
 
@@ -71,13 +67,6 @@ pub trait PositionBorrowModule:
             amount.clone(),
             borrow_position,
             feed.price.clone(),
-        );
-
-        self.handle_isolated_debt(
-            collaterals,
-            storage_cache,
-            amount_in_usd.clone(),
-            account.is_isolated(),
         );
 
         self.store_borrow_position(account_nonce, borrow_token_id, &borrow_position);
@@ -142,12 +131,12 @@ pub trait PositionBorrowModule:
     ///
     /// # Arguments
     /// - `collaterals`: User's collateral positions.
-    /// - `storage_cache`: Mutable storage cache.
+    /// - `cache`: Mutable storage cache.
     /// - `amount_in_usd`: USD value of the borrow.
     fn handle_isolated_debt(
         &self,
         collaterals: &ManagedVec<AccountPosition<Self::Api>>,
-        storage_cache: &mut StorageCache<Self>,
+        cache: &mut Cache<Self>,
         amount_in_usd: ManagedDecimal<Self::Api, NumDecimals>,
         is_isolated: bool,
     ) {
@@ -156,7 +145,7 @@ pub trait PositionBorrowModule:
         }
 
         let collateral_token_id = &collaterals.get(0).asset_id;
-        let collateral_config = storage_cache.get_cached_asset_info(collateral_token_id);
+        let collateral_config = cache.get_cached_asset_info(collateral_token_id);
         self.validate_isolated_debt_ceiling(
             &collateral_config,
             collateral_token_id,
@@ -200,36 +189,6 @@ pub trait PositionBorrowModule:
         })
     }
 
-    /// Validates borrow operation parameters.
-    /// Ensures account, asset, and caller are valid.
-    ///
-    /// # Arguments
-    /// - `position_nft_payment`: NFT payment.
-    /// - `initial_caller`: Borrower's address.
-    fn validate_borrow_account(
-        &self,
-        return_account: bool,
-    ) -> (
-        EsdtTokenPayment<Self::Api>,
-        ManagedAddress,
-        AccountAttributes,
-    ) {
-        let account_payment = self.call_value().single_esdt().clone();
-        let caller = self.blockchain().get_caller();
-        self.require_active_account(account_payment.token_nonce);
-        self.account_token()
-            .require_same_token(&account_payment.token_identifier);
-        self.require_non_zero_address(&caller);
-        let account_attributes = self.nft_attributes(&account_payment);
-
-        if return_account {
-            // Transfer the account NFT back to the caller right after validation
-            self.tx().to(&caller).payment(&account_payment).transfer();
-        }
-
-        (account_payment, caller, account_attributes)
-    }
-
     /// Ensures a new borrow stays within the asset's borrow cap.
     ///
     /// # Arguments
@@ -241,9 +200,10 @@ pub trait PositionBorrowModule:
         asset_config: &AssetConfig<Self::Api>,
         amount: &ManagedDecimal<Self::Api, NumDecimals>,
         asset: &EgldOrEsdtTokenIdentifier,
+        cache: &mut Cache<Self>,
     ) {
         if let Some(borrow_cap) = &asset_config.borrow_cap {
-            let pool = self.pools_map(asset).get();
+            let pool = cache.get_cached_pool_address(asset);
             let total_borrow = self.get_total_borrow(pool).get();
 
             require!(
@@ -297,7 +257,7 @@ pub trait PositionBorrowModule:
     /// - `borrow_token_id`: Token to borrow.
     /// - `amount_raw`: Raw borrow amount.
     /// - `borrow_positions`: Current borrow positions.
-    /// - `storage_cache`: Mutable storage cache.
+    /// - `cache`: Mutable storage cache.
     ///
     /// # Returns
     /// - Tuple of (USD value, price feed, decimal amount).
@@ -307,24 +267,23 @@ pub trait PositionBorrowModule:
         borrow_token_id: &EgldOrEsdtTokenIdentifier,
         amount_raw: &BigUint,
         borrow_positions: &ManagedVec<AccountPosition<Self::Api>>,
-        storage_cache: &mut StorageCache<Self>,
+        cache: &mut Cache<Self>,
     ) -> (
         ManagedDecimal<Self::Api, NumDecimals>,
         PriceFeedShort<Self::Api>,
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
-        let asset_data_feed = self.get_token_price(borrow_token_id, storage_cache);
+        let asset_data_feed = self.get_token_price(borrow_token_id, cache);
         let amount =
             ManagedDecimal::from_raw_units(amount_raw.clone(), asset_data_feed.asset_decimals);
 
         let egld_amount = self.get_token_egld_value(&amount, &asset_data_feed.price);
 
-        let egld_total_borrowed =
-            self.calculate_total_borrow_in_egld(borrow_positions, storage_cache);
+        let egld_total_borrowed = self.calculate_total_borrow_in_egld(borrow_positions, cache);
 
         self.validate_borrow_collateral(ltv_base_amount, &egld_total_borrowed, &egld_amount);
 
-        let amount_in_usd = self.get_token_usd_value(&egld_amount, &storage_cache.egld_price_feed);
+        let amount_in_usd = self.get_token_usd_value(&egld_amount, &cache.egld_price_feed);
 
         (amount_in_usd, asset_data_feed, amount)
     }
@@ -336,14 +295,14 @@ pub trait PositionBorrowModule:
     /// - `borrow_token_id`: Token to borrow.
     /// - `nft_attributes`: NFT attributes.
     /// - `borrow_positions`: Current borrow positions.
-    /// - `storage_cache`: Mutable storage cache.
+    /// - `cache`: Mutable storage cache.
     fn validate_borrow_asset(
         &self,
         asset_config: &AssetConfig<Self::Api>,
         borrow_token_id: &EgldOrEsdtTokenIdentifier,
         nft_attributes: &AccountAttributes,
         borrow_positions: &ManagedVec<AccountPosition<Self::Api>>,
-        storage_cache: &mut StorageCache<Self>,
+        cache: &mut Cache<Self>,
     ) {
         // Check if borrowing is allowed in isolation mode
         if nft_attributes.is_isolated() {
@@ -364,7 +323,7 @@ pub trait PositionBorrowModule:
         // Check if trying to borrow a different asset when there's a siloed position
         if borrow_positions.len() == 1 {
             let first_position = borrow_positions.get(0);
-            let first_asset_config = storage_cache.get_cached_asset_info(&first_position.asset_id);
+            let first_asset_config = cache.get_cached_asset_info(&first_position.asset_id);
 
             // If either the existing position or new borrow is siloed, they must be the same asset
             if first_asset_config.is_siloed_borrowing() || asset_config.is_siloed_borrowing() {
@@ -425,7 +384,7 @@ pub trait PositionBorrowModule:
     /// Processes a single borrow operation, including validations and position updates.
     ///
     /// # Arguments
-    /// - `storage_cache`: Mutable reference to the storage cache.
+    /// - `cache`: Mutable reference to the storage cache.
     /// - `account_payment`: The account NFT payment.
     /// - `caller`: The address initiating the borrow.
     /// - `borrowed_token`: The token and amount to borrow.
@@ -437,8 +396,8 @@ pub trait PositionBorrowModule:
     /// - `is_bulk_borrow`: Flag indicating if this is part of a bulk borrow operation.
     fn process_borrow(
         &self,
-        storage_cache: &mut StorageCache<Self>,
-        account_payment: &EsdtTokenPayment<Self::Api>,
+        cache: &mut Cache<Self>,
+        account_nonce: u64,
         caller: &ManagedAddress,
         borrowed_token: &EgldOrEsdtTokenPayment<Self::Api>,
         account_attributes: &AccountAttributes,
@@ -454,19 +413,17 @@ pub trait PositionBorrowModule:
         ltv_collateral: &ManagedDecimal<Self::Api, NumDecimals>,
     ) {
         // Basic validations
-        self.require_asset_supported(&borrowed_token.token_identifier);
-        self.require_amount_greater_than_zero(&borrowed_token.amount);
+        self.validate_payment(&borrowed_token);
 
         // Get and validate asset configuration
-        let mut asset_config =
-            storage_cache.get_cached_asset_info(&borrowed_token.token_identifier);
+        let mut asset_config = cache.get_cached_asset_info(&borrowed_token.token_identifier);
 
         self.validate_borrow_asset(
             &asset_config,
             &borrowed_token.token_identifier,
             account_attributes,
             borrows,
-            storage_cache,
+            cache,
         );
 
         // Apply e-mode configuration
@@ -480,33 +437,38 @@ pub trait PositionBorrowModule:
         require!(asset_config.can_borrow(), ERROR_ASSET_NOT_BORROWABLE);
 
         // Validate borrow amounts and caps
-        let (borrow_amount_usd, price_feed, borrow_amount_dec) = self
-            .validate_and_get_borrow_amounts(
-                ltv_collateral,
-                &borrowed_token.token_identifier,
-                &borrowed_token.amount,
-                borrows,
-                storage_cache,
-            );
+        let (borrow_amount_usd, feed, borrow_amount_dec) = self.validate_and_get_borrow_amounts(
+            ltv_collateral,
+            &borrowed_token.token_identifier,
+            &borrowed_token.amount,
+            borrows,
+            cache,
+        );
 
         self.validate_borrow_cap(
             &asset_config,
             &borrow_amount_dec,
             &borrowed_token.token_identifier,
+            cache,
+        );
+
+        self.handle_isolated_debt(
+            collaterals,
+            cache,
+            borrow_amount_usd,
+            account_attributes.is_isolated(),
         );
 
         // Handle the borrow position
         let updated_position = self.handle_borrow_position(
-            account_payment.token_nonce,
+            account_nonce,
             &borrowed_token.token_identifier,
             borrow_amount_dec.clone(),
-            borrow_amount_usd,
             caller,
             &asset_config,
             account_attributes,
-            collaterals,
-            &price_feed,
-            storage_cache,
+            &feed,
+            cache,
         );
 
         // Update borrow positions for bulk borrows

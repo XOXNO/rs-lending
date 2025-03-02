@@ -5,13 +5,13 @@ use common_errors::ERROR_INVALID_SHARD;
 use multiversx_sc::storage::StorageKey;
 
 use crate::{
-    helpers, oracle, storage, utils, ERROR_ADDRESS_IS_ZERO, ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO,
+    helpers, oracle, storage, utils, ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO,
     ERROR_ASSET_NOT_SUPPORTED,
 };
 
 #[multiversx_sc::module]
 pub trait ValidationModule:
-    storage::LendingStorageModule
+    storage::Storage
     + utils::LendingUtilsModule
     + common_events::EventsModule
     + oracle::OracleModule
@@ -50,27 +50,6 @@ pub trait ValidationModule:
         self.require_amount_greater_than_zero(&payment.amount);
     }
 
-    /// Validates payments for liquidation operations.
-    /// Ensures debt repayments are valid and the caller is authorized.
-    ///
-    /// # Arguments
-    /// - `debt_repayments`: Vector of debt repayment payments.
-    /// - `initial_caller`: Address initiating the liquidation.
-    ///
-    /// # Errors
-    /// - Inherits errors from `validate_payment`.
-    /// - `ERROR_ADDRESS_IS_ZERO`: If the caller address is zero.
-    fn validate_liquidation_payments(
-        &self,
-        debt_repayments: &ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
-        initial_caller: &ManagedAddress,
-    ) {
-        for debt_payment in debt_repayments {
-            self.validate_payment(&debt_payment);
-        }
-        self.require_non_zero_address(initial_caller);
-    }
-
     /// Ensures an asset is supported by verifying its liquidity pool exists.
     ///
     /// # Arguments
@@ -101,19 +80,6 @@ pub trait ValidationModule:
             ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO
         );
     }
-
-    /// Ensures an address is not the zero address.
-    /// Validates caller or contract addresses to avoid invalid operations.
-    ///
-    /// # Arguments
-    /// - `address`: The address to validate as a `ManagedAddress`.
-    ///
-    /// # Errors
-    /// - `ERROR_ADDRESS_IS_ZERO`: If the address is zero.
-    fn require_non_zero_address(&self, address: &ManagedAddress) {
-        require!(!address.is_zero(), ERROR_ADDRESS_IS_ZERO);
-    }
-
     // --- Helper Functions ---
 
     /// Validates shard compatibility for flash loans.

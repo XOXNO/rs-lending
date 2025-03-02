@@ -3,30 +3,28 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
+pub mod cache;
 pub mod config;
-pub mod contexts;
-pub mod factory;
 pub mod helpers;
-pub mod strategy;
 pub mod oracle;
 pub mod positions;
 pub mod proxies;
 pub mod router;
 pub mod storage;
+pub mod strategy;
 pub mod utils;
 pub mod validation;
 pub mod views;
 
+use cache::Cache;
 pub use common_errors::*;
 pub use common_structs::*;
-use contexts::base::StorageCache;
 pub use proxies::*;
 
 #[multiversx_sc::contract]
-pub trait LendingPool:
-    factory::FactoryModule
-    + positions::account::PositionAccountModule
-    + positions::deposit::PositionDepositModule
+pub trait Controller:
+    positions::account::PositionAccountModule
+    + positions::supply::PositionDepositModule
     + positions::withdraw::PositionWithdrawModule
     + positions::borrow::PositionBorrowModule
     + positions::repay::PositionRepayModule
@@ -37,7 +35,7 @@ pub trait LendingPool:
     + router::RouterModule
     + config::ConfigModule
     + common_events::EventsModule
-    + storage::LendingStorageModule
+    + storage::Storage
     + oracle::OracleModule
     + validation::ValidationModule
     + utils::LendingUtilsModule
@@ -90,21 +88,24 @@ pub trait LendingPool:
     #[payable]
     #[endpoint(supply)]
     fn supply(&self, is_vault: bool, e_mode_category: OptionalValue<u8>) {
-        let mut storage_cache = StorageCache::new(self);
-        let payments = self.call_value().all_transfers();
-        let caller = self.blockchain().get_caller();
+        let mut cache = Cache::new(self);
 
         // Validate and extract payment details
-        let (collaterals, account_token) = self.validate_supply_payment(&caller, &payments);
-        require!(collaterals.len() >= 1, ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS);
+        let (collaterals, maybe_account, caller, maybe_attributes) =
+            self.validate_supply_payment(false);
+
+        require!(
+            collaterals.len() >= 1,
+            ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS
+        );
 
         // At this point we know we have at least one collateral
         let first_collateral = collaterals.get(0);
         self.validate_payment(&first_collateral);
 
-        let first_asset_info =
-            storage_cache.get_cached_asset_info(&first_collateral.token_identifier);
+        let first_asset_info = cache.get_cached_asset_info(&first_collateral.token_identifier);
 
+        // If the asset is isolated, we can only supply one collateral not a bulk
         require!(
             first_asset_info.is_isolated() && collaterals.len() == 1
                 || !first_asset_info.is_isolated(),
@@ -117,7 +118,8 @@ pub trait LendingPool:
             first_asset_info.is_isolated(),
             is_vault,
             e_mode_category,
-            account_token,
+            maybe_account,
+            maybe_attributes,
         );
 
         self.validate_vault_consistency(&account_attributes, is_vault);
@@ -128,7 +130,7 @@ pub trait LendingPool:
             account_nonce,
             account_attributes,
             &collaterals,
-            &mut storage_cache,
+            &mut cache,
         );
     }
 
@@ -142,17 +144,10 @@ pub trait LendingPool:
     #[payable]
     #[endpoint(withdraw)]
     fn withdraw(&self, collaterals: MultiValueEncoded<EgldOrEsdtTokenPayment<Self::Api>>) {
-        let account_payment = self.call_value().single_esdt();
-        let caller = self.blockchain().get_caller();
-        self.account_token()
-            .require_same_token(&account_payment.token_identifier);
-        self.require_non_zero_address(&caller);
+        let (account_payment, caller, account_attributes) = self.validate_account(false);
 
-        let account_attributes = self.nft_attributes(&account_payment);
-        self.require_active_account(account_payment.token_nonce);
-
-        let mut storage_cache = StorageCache::new(self);
-        storage_cache.allow_unsafe_price = false;
+        let mut cache = Cache::new(self);
+        cache.allow_unsafe_price = false;
 
         // Process each withdrawal
         for collateral in collaterals {
@@ -163,19 +158,14 @@ pub trait LendingPool:
                 &caller,
                 false,
                 None,
-                &mut storage_cache,
+                &mut cache,
                 &account_attributes,
                 false,
             );
         }
 
         // Prevent self-liquidation
-        self.validate_health_factor_after_withdrawal(
-            account_payment.token_nonce,
-            false,
-            &mut storage_cache,
-            None,
-        );
+        self.validate_is_healthy(account_payment.token_nonce, false, &mut cache, None);
 
         self.manage_account_after_withdrawal(&account_payment, &caller);
     }
@@ -190,27 +180,26 @@ pub trait LendingPool:
     #[payable]
     #[endpoint(borrow)]
     fn borrow(&self, borrowed_tokens: MultiValueEncoded<EgldOrEsdtTokenPayment<Self::Api>>) {
-        let mut storage_cache = StorageCache::new(self);
-        storage_cache.allow_unsafe_price = false;
+        let mut cache = Cache::new(self);
+        cache.allow_unsafe_price = false;
 
-        let (account_payment, caller, account_attributes) = self.validate_borrow_account(true);
+        let (account_payment, caller, account_attributes) = self.validate_account(true);
 
         // Sync positions with interest
         let collaterals = self.sync_deposit_positions_interest(
             account_payment.token_nonce,
-            &mut storage_cache,
+            &mut cache,
             false,
             &account_attributes,
         );
 
-        let (_, _, ltv_collateral) =
-            self.calculate_collateral_values(&collaterals, &mut storage_cache);
+        let (_, _, ltv_collateral) = self.calculate_collateral_values(&collaterals, &mut cache);
 
         let is_bulk_borrow = borrowed_tokens.len() > 1;
 
         let (mut borrows, mut borrow_index_mapper) = self.sync_borrow_positions_interest(
             account_payment.token_nonce,
-            &mut storage_cache,
+            &mut cache,
             false,
             is_bulk_borrow,
         );
@@ -221,8 +210,8 @@ pub trait LendingPool:
         // Process each borrow
         for borrowed_token in borrowed_tokens {
             self.process_borrow(
-                &mut storage_cache,
-                &account_payment,
+                &mut cache,
+                account_payment.token_nonce,
                 &caller,
                 &borrowed_token,
                 &account_attributes,
@@ -243,7 +232,7 @@ pub trait LendingPool:
     #[payable]
     #[endpoint(repay)]
     fn repay(&self, account_nonce: u64) {
-        let mut storage_cache = StorageCache::new(self);
+        let mut cache = Cache::new(self);
         let payments = self.call_value().all_transfers();
         let caller = self.blockchain().get_caller();
         self.require_active_account(account_nonce);
@@ -251,17 +240,18 @@ pub trait LendingPool:
 
         for payment in payments.iter() {
             self.validate_payment(&payment);
-            let price_feed = self.get_token_price(&payment.token_identifier, &mut storage_cache);
+            let feed = self.get_token_price(&payment.token_identifier, &mut cache);
             let payment_decimal =
-                ManagedDecimal::from_raw_units(payment.amount.clone(), price_feed.asset_decimals);
+                ManagedDecimal::from_raw_units(payment.amount.clone(), feed.asset_decimals);
+            let egld_value = self.get_token_egld_value(&payment_decimal, &feed.price);
             self.process_repayment(
                 account_nonce,
                 &payment.token_identifier,
                 &payment_decimal,
                 &caller,
-                self.get_token_egld_value(&payment_decimal, &price_feed.price),
-                &price_feed,
-                &mut storage_cache,
+                egld_value,
+                &feed,
+                &mut cache,
                 &account_attributes,
             );
         }
@@ -270,15 +260,13 @@ pub trait LendingPool:
     /// Liquidates an unhealthy position.
     ///
     /// # Arguments
-    /// - `liquidatee_account_nonce`: NFT nonce of the account to liquidate.
+    /// - `account_nonce`: NFT nonce of the account to liquidate.
     #[payable]
     #[endpoint(liquidate)]
-    fn liquidate(&self, liquidatee_account_nonce: u64) {
+    fn liquidate(&self, account_nonce: u64) {
         let payments = self.call_value().all_transfers();
         let caller = self.blockchain().get_caller();
-        self.require_active_account(liquidatee_account_nonce);
-        self.validate_liquidation_payments(&payments, &caller);
-        self.process_liquidation(liquidatee_account_nonce, &payments, &caller);
+        self.process_liquidation(account_nonce, &payments, &caller);
     }
 
     /// Executes a flash loan.
@@ -298,7 +286,8 @@ pub trait LendingPool:
         endpoint: ManagedBuffer<Self::Api>,
         arguments: ManagedArgBuffer<Self::Api>,
     ) {
-        let asset_config = self.asset_config(borrowed_asset_id).get();
+        let mut cache = Cache::new(self);
+        let asset_config = cache.get_cached_asset_info(borrowed_asset_id);
         require!(asset_config.can_flashloan(), ERROR_FLASHLOAN_NOT_ENABLED);
 
         let pool_address = self.get_pool_address(borrowed_asset_id);
@@ -306,20 +295,19 @@ pub trait LendingPool:
         self.require_amount_greater_than_zero(&amount);
         self.validate_flash_loan_endpoint(&endpoint);
 
-        let mut storage_cache = StorageCache::new(self);
-        let price_feed = self.get_token_price(borrowed_asset_id, &mut storage_cache);
+        let feed = self.get_token_price(borrowed_asset_id, &mut cache);
 
         self.tx()
             .to(pool_address)
             .typed(proxy_pool::LiquidityPoolProxy)
             .flash_loan(
                 borrowed_asset_id,
-                ManagedDecimal::from_raw_units(amount, price_feed.asset_decimals),
+                ManagedDecimal::from_raw_units(amount, feed.asset_decimals),
                 contract_address,
                 endpoint,
                 arguments,
                 asset_config.flashloan_fee.clone(),
-                price_feed.price.clone(),
+                feed.price.clone(),
             )
             .returns(ReturnsResult)
             .sync_call();
@@ -339,17 +327,17 @@ pub trait LendingPool:
     ) -> MultiValue2<ManagedVec<AccountPosition<Self::Api>>, ManagedVec<AccountPosition<Self::Api>>>
     {
         self.require_active_account(account_nonce);
-        let mut storage_cache = StorageCache::new(self);
+        let mut cache = Cache::new(self);
         let account_attributes = self.account_attributes(account_nonce).get();
         let deposits = self.sync_deposit_positions_interest(
             account_nonce,
-            &mut storage_cache,
+            &mut cache,
             true,
             &account_attributes,
         );
 
         let (borrows, _) =
-            self.sync_borrow_positions_interest(account_nonce, &mut storage_cache, true, false);
+            self.sync_borrow_positions_interest(account_nonce, &mut cache, true, false);
         (deposits, borrows).into()
     }
 
@@ -357,16 +345,16 @@ pub trait LendingPool:
     #[payable]
     #[endpoint(toggleVault)]
     fn toggle_vault(&self, status: bool) {
-        let (account_payment, caller, mut account_attributes) = self.validate_borrow_account(false);
+        let (account_payment, caller, mut account_attributes) = self.validate_account(false);
         self.validate_vault_account(&account_attributes, !status);
 
-        let mut storage_cache = StorageCache::new(self);
+        let mut cache = Cache::new(self);
         account_attributes.is_vault_position = status;
 
         self.process_vault_toggle(
             account_payment.token_nonce,
             status,
-            &mut storage_cache,
+            &mut cache,
             &account_attributes,
             &caller,
         );
@@ -389,8 +377,8 @@ pub trait LendingPool:
         account_nonces: MultiValueEncoded<u64>,
     ) {
         self.require_asset_supported(&asset_id);
-        let mut storage_cache = StorageCache::new(self);
-        let mut asset_config = self.asset_config(&asset_id).get();
+        let mut cache = Cache::new(self);
+        let mut asset_config = cache.get_cached_asset_info(&asset_id);
 
         for account_nonce in account_nonces {
             self.require_active_account(account_nonce);
@@ -399,7 +387,7 @@ pub trait LendingPool:
                 &asset_id,
                 has_risks,
                 &mut asset_config,
-                &mut storage_cache,
+                &mut cache,
             );
         }
     }
@@ -410,9 +398,9 @@ pub trait LendingPool:
     /// - `assets`: List of token identifiers to update.
     #[endpoint(updateIndexes)]
     fn update_indexes(&self, assets: MultiValueEncoded<EgldOrEsdtTokenIdentifier>) {
-        let mut storage_cache = StorageCache::new(self);
+        let mut cache = Cache::new(self);
         for asset_id in assets {
-            self.update_asset_index(&asset_id, &mut storage_cache);
+            self.update_asset_index(&asset_id, &mut cache);
         }
     }
 }

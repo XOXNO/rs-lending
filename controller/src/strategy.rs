@@ -4,7 +4,7 @@ use common_errors::ERROR_SWAP_DEBT_NOT_SUPPORTED;
 
 use crate::{
     aggregator::{AggregatorStep, TokenAmount},
-    contexts::base::StorageCache,
+    cache::Cache,
     helpers, oracle, positions, proxy_pool, storage, utils, validation, ERROR_ASSET_NOT_BORROWABLE,
     ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL, ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS,
     ERROR_SWAP_COLLATERAL_NOT_SUPPORTED,
@@ -12,21 +12,21 @@ use crate::{
 
 #[multiversx_sc::module]
 pub trait SnapModule:
-    storage::LendingStorageModule
+    storage::Storage
+    + helpers::math::MathsModule
     + oracle::OracleModule
     + validation::ValidationModule
     + utils::LendingUtilsModule
     + common_events::EventsModule
-    + helpers::math::MathsModule
+    + common_math::SharedMathModule
     + helpers::strategies::StrategiesModule
     + positions::account::PositionAccountModule
-    + positions::deposit::PositionDepositModule
+    + positions::supply::PositionDepositModule
     + positions::borrow::PositionBorrowModule
     + positions::withdraw::PositionWithdrawModule
     + positions::repay::PositionRepayModule
     + positions::vault::PositionVaultModule
     + positions::emode::EModeModule
-    + common_math::SharedMathModule
 {
     #[payable]
     #[endpoint]
@@ -44,7 +44,7 @@ pub trait SnapModule:
         let caller = self.blockchain().get_caller();
         let e_mode = self.get_e_mode_category(e_mode_category);
         self.ensure_e_mode_not_deprecated(&e_mode);
-        let mut storage_cache = StorageCache::new(self);
+        let mut cache = Cache::new(self);
 
         let debt_market_sc = self.require_asset_supported(debt_token);
 
@@ -52,11 +52,11 @@ pub trait SnapModule:
         let debt_oracle = self.token_oracle(debt_token).get();
         let payment_oracle = self.token_oracle(&payment.token_identifier).get();
 
-        let mut collateral_config = storage_cache.get_cached_asset_info(collateral_token);
-        let mut debt_config = storage_cache.get_cached_asset_info(debt_token);
+        let mut collateral_config = cache.get_cached_asset_info(collateral_token);
+        let mut debt_config = cache.get_cached_asset_info(debt_token);
 
-        let collateral_price_feed = self.get_token_price(collateral_token, &mut storage_cache);
-        let debt_price_feed = self.get_token_price(debt_token, &mut storage_cache);
+        let collateral_price_feed = self.get_token_price(collateral_token, &mut cache);
+        let debt_price_feed = self.get_token_price(debt_token, &mut cache);
 
         let (account, nft_attributes) =
             self.create_account_nft(&caller, false, false, OptionalValue::Some(e_mode_category));
@@ -113,10 +113,15 @@ pub trait SnapModule:
         let debt_amount_to_flash_loan =
             self.convert_egld_to_tokens(&required_collateral, &debt_price_feed);
 
-        let flash_fee = debt_amount_to_flash_loan.clone() * debt_config.flashloan_fee.clone()
-            / storage_cache.bps_dec.clone();
+        let flash_fee =
+            debt_amount_to_flash_loan.clone() * debt_config.flashloan_fee.clone() / self.bps();
 
-        self.validate_borrow_cap(&debt_config, &debt_amount_to_flash_loan, debt_token);
+        self.validate_borrow_cap(
+            &debt_config,
+            &debt_amount_to_flash_loan,
+            debt_token,
+            &mut cache,
+        );
 
         let mut borrow_position =
             self.get_or_create_borrow_position(account.token_nonce, &debt_config, debt_token);
@@ -164,16 +169,11 @@ pub trait SnapModule:
             &collateral_config,
             &caller,
             &nft_attributes,
-            &mut storage_cache,
+            &mut cache,
         );
 
         // 4. Validate health factor after looping was created to verify integrity of healthy
-        self.validate_health_factor_after_withdrawal(
-            account.token_nonce,
-            false,
-            &mut storage_cache,
-            None,
-        );
+        self.validate_is_healthy(account.token_nonce, false, &mut cache, None);
     }
 
     #[payable]
@@ -187,29 +187,18 @@ pub trait SnapModule:
         steps: OptionalValue<ManagedVec<AggregatorStep<Self::Api>>>,
         limits: OptionalValue<ManagedVec<TokenAmount<Self::Api>>>,
     ) {
-        let mut storage_cache = StorageCache::new(self);
-        let caller = self.blockchain().get_caller();
-        let controller = self.blockchain().get_sc_address();
-        let payments = self.call_value().all_transfers();
-        let (mut payments, maybe_account) = self.validate_supply_payment(&caller, &payments);
-
-        require!(
-            maybe_account.is_some(),
-            ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS
-        );
-
+        let mut cache = Cache::new(self);
+        let (mut payments, maybe_account, caller, maybe_attributes) =
+            self.validate_supply_payment(true);
         let account = maybe_account.unwrap();
-
-        let account_attributes = self.nft_attributes(&account);
-        // Refund NFT
-        self.tx().to(&caller).payment(&account).transfer();
+        let account_attributes = maybe_attributes.unwrap();
 
         require!(
             !account_attributes.is_isolated(),
             ERROR_SWAP_COLLATERAL_NOT_SUPPORTED
         );
 
-        let asset_info = storage_cache.get_cached_asset_info(to_token);
+        let asset_info = cache.get_cached_asset_info(to_token);
 
         require!(
             !asset_info.is_isolated(),
@@ -230,7 +219,7 @@ pub trait SnapModule:
         self.update_position(
             &self.get_pool_address(&deposit_position.asset_id),
             &mut deposit_position,
-            OptionalValue::Some(self.get_token_price(&from_token, &mut storage_cache).price),
+            OptionalValue::Some(self.get_token_price(&from_token, &mut cache).price),
         );
 
         let mut amount_to_swap = deposit_position.make_amount_decimal(from_amount);
@@ -242,6 +231,7 @@ pub trait SnapModule:
             amount_to_swap
         };
 
+        let controller = self.blockchain().get_sc_address();
         self.process_withdrawal(
             account.token_nonce,
             EgldOrEsdtTokenPayment::new(
@@ -252,7 +242,7 @@ pub trait SnapModule:
             &controller,
             false,
             None,
-            &mut storage_cache,
+            &mut cache,
             &account_attributes,
             true,
         );
@@ -272,16 +262,11 @@ pub trait SnapModule:
             account.token_nonce,
             account_attributes,
             &payments,
-            &mut storage_cache,
+            &mut cache,
         );
 
         // Make sure that after the swap the position is not becoming eligible for liquidation due to slippage
-        self.validate_health_factor_after_withdrawal(
-            account.token_nonce,
-            false,
-            &mut storage_cache,
-            None,
-        );
+        self.validate_is_healthy(account.token_nonce, false, &mut cache, None);
     }
 
     #[payable]
@@ -295,23 +280,15 @@ pub trait SnapModule:
         steps: OptionalValue<ManagedVec<AggregatorStep<Self::Api>>>,
         limits: OptionalValue<ManagedVec<TokenAmount<Self::Api>>>,
     ) {
-        let mut storage_cache = StorageCache::new(self);
-        let caller = self.blockchain().get_caller();
-        let payments = self.call_value().all_transfers();
-        let (mut payments, maybe_account) = self.validate_supply_payment(&caller, &payments);
-
-        require!(
-            maybe_account.is_some(),
-            ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS
-        );
+        let mut cache = Cache::new(self);
+        let (mut payments, maybe_account, caller, maybe_attributes) =
+            self.validate_supply_payment(true);
 
         let account = maybe_account.unwrap();
 
-        let account_attributes = self.nft_attributes(&account);
-        // Refund NFT
-        self.tx().to(&caller).payment(&account).transfer();
+        let account_attributes = maybe_attributes.unwrap();
 
-        let asset_info = storage_cache.get_cached_asset_info(to_token);
+        let asset_info = cache.get_cached_asset_info(to_token);
 
         if account_attributes.is_isolated() {
             require!(
@@ -334,7 +311,7 @@ pub trait SnapModule:
         self.update_position(
             &self.get_pool_address(&borrow_position.asset_id),
             &mut borrow_position,
-            OptionalValue::Some(self.get_token_price(&from_token, &mut storage_cache).price),
+            OptionalValue::Some(self.get_token_price(&from_token, &mut cache).price),
         );
 
         let mut amount_to_repay = borrow_position.make_amount_decimal(from_amount);
@@ -345,22 +322,20 @@ pub trait SnapModule:
             amount_to_repay
         };
 
-        let from_debt_feed = self.get_token_price(from_token, &mut storage_cache);
-        let to_debt_feed = self.get_token_price(to_token, &mut storage_cache);
+        let from_debt_feed = self.get_token_price(from_token, &mut cache);
+        let to_debt_feed = self.get_token_price(to_token, &mut cache);
 
         let from_debt_egld_amount =
             self.get_token_egld_value(&amount_to_repay, &from_debt_feed.price);
 
         let required_to_swap = self.convert_egld_to_tokens(&from_debt_egld_amount, &to_debt_feed);
-        let debt_config = storage_cache.get_cached_asset_info(to_token);
-        let flash_fee = required_to_swap.clone() * debt_config.flashloan_fee.clone()
-            / storage_cache.bps_dec.clone();
+        let debt_config = cache.get_cached_asset_info(to_token);
+        let flash_fee = required_to_swap.clone() * debt_config.flashloan_fee.clone() / self.bps();
 
         let mut to_debt_borrow_position =
             self.get_or_create_borrow_position(account.token_nonce, &debt_config, to_token);
 
-        let debt_market_sc =
-            storage_cache.get_cached_pool_address(&to_debt_borrow_position.asset_id);
+        let debt_market_sc = cache.get_cached_pool_address(&to_debt_borrow_position.asset_id);
 
         to_debt_borrow_position = self
             .tx()
@@ -397,28 +372,23 @@ pub trait SnapModule:
 
         for payment in payments.iter() {
             self.validate_payment(&payment);
-            let price_feed = self.get_token_price(&payment.token_identifier, &mut storage_cache);
+            let feed = self.get_token_price(&payment.token_identifier, &mut cache);
             let payment_decimal =
-                ManagedDecimal::from_raw_units(payment.amount.clone(), price_feed.asset_decimals);
+                ManagedDecimal::from_raw_units(payment.amount.clone(), feed.asset_decimals);
             self.process_repayment(
                 account.token_nonce,
                 &payment.token_identifier,
                 &payment_decimal,
                 &caller,
-                self.get_token_egld_value(&payment_decimal, &price_feed.price),
-                &price_feed,
-                &mut storage_cache,
+                self.get_token_egld_value(&payment_decimal, &feed.price),
+                &feed,
+                &mut cache,
                 &account_attributes,
             );
         }
 
         // Make sure that after the swap the position is not becoming eligible for liquidation due to slippage
-        self.validate_health_factor_after_withdrawal(
-            account.token_nonce,
-            false,
-            &mut storage_cache,
-            None,
-        );
+        self.validate_is_healthy(account.token_nonce, false, &mut cache, None);
     }
 
     #[payable]
@@ -432,22 +402,11 @@ pub trait SnapModule:
         steps: OptionalValue<ManagedVec<AggregatorStep<Self::Api>>>,
         limits: OptionalValue<ManagedVec<TokenAmount<Self::Api>>>,
     ) {
-        let mut storage_cache = StorageCache::new(self);
-        let caller = self.blockchain().get_caller();
-        let controller = self.blockchain().get_sc_address();
-        let payments = self.call_value().all_transfers();
-        let (mut payments, maybe_account) = self.validate_supply_payment(&caller, &payments);
-
-        require!(
-            maybe_account.is_some(),
-            ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS
-        );
-
+        let mut cache = Cache::new(self);
+        let (mut payments, maybe_account, caller, maybe_attributes) =
+            self.validate_supply_payment(true);
         let account = maybe_account.unwrap();
-
-        let account_attributes = self.nft_attributes(&account);
-        // Refund NFT
-        self.tx().to(&caller).payment(&account).transfer();
+        let account_attributes = maybe_attributes.unwrap();
 
         // Retrieve deposit position for the given token
         let deposit_positions = self.deposit_positions(account.token_nonce);
@@ -463,9 +422,9 @@ pub trait SnapModule:
 
         // Required to be in sync with the global index for accurate swaps to avoid extra interest during withdraw
         self.update_position(
-            &storage_cache.get_cached_pool_address(&deposit_position.asset_id),
+            &cache.get_cached_pool_address(&deposit_position.asset_id),
             &mut deposit_position,
-            OptionalValue::Some(self.get_token_price(&from_token, &mut storage_cache).price),
+            OptionalValue::Some(self.get_token_price(&from_token, &mut cache).price),
         );
 
         let mut amount_to_swap = deposit_position.make_amount_decimal(from_amount);
@@ -477,6 +436,7 @@ pub trait SnapModule:
             amount_to_swap
         };
 
+        let controller = self.blockchain().get_sc_address();
         self.process_withdrawal(
             account.token_nonce,
             EgldOrEsdtTokenPayment::new(
@@ -487,7 +447,7 @@ pub trait SnapModule:
             &controller,
             false,
             None,
-            &mut storage_cache,
+            &mut cache,
             &account_attributes,
             true,
         );
@@ -504,7 +464,7 @@ pub trait SnapModule:
 
         for payment in payments.iter() {
             self.validate_payment(&payment);
-            let feed = self.get_token_price(&payment.token_identifier, &mut storage_cache);
+            let feed = self.get_token_price(&payment.token_identifier, &mut cache);
             let payment_dec =
                 ManagedDecimal::from_raw_units(payment.amount.clone(), feed.asset_decimals);
             // 3. Process repay
@@ -515,17 +475,12 @@ pub trait SnapModule:
                 &caller,
                 self.get_token_egld_value(&payment_dec, &feed.price),
                 &feed,
-                &mut storage_cache,
+                &mut cache,
                 &account_attributes,
             );
         }
 
         // Make sure that after the swap the position is not becoming eligible for liquidation due to slippage
-        self.validate_health_factor_after_withdrawal(
-            account.token_nonce,
-            false,
-            &mut storage_cache,
-            None,
-        );
+        self.validate_is_healthy(account.token_nonce, false, &mut cache, None);
     }
 }

@@ -1,14 +1,14 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
-use crate::contexts::base::StorageCache;
+use crate::cache::Cache;
 use crate::{helpers, oracle, proxy_pool, storage, ERROR_NO_POOL_FOUND, WAD_PRECISION};
 use common_errors::*;
 use common_structs::*;
 
 #[multiversx_sc::module]
 pub trait LendingUtilsModule:
-    storage::LendingStorageModule
+    storage::Storage
     + oracle::OracleModule
     + common_events::EventsModule
     + common_math::SharedMathModule
@@ -25,7 +25,6 @@ pub trait LendingUtilsModule:
     ///
     /// # Errors
     /// - `ERROR_NO_POOL_FOUND`: If no pool exists for the asset.
-    #[view(getPoolAddress)]
     fn get_pool_address(&self, asset: &EgldOrEsdtTokenIdentifier) -> ManagedAddress {
         let pool_address = self.pools_map(asset).get();
         require!(!pool_address.is_zero(), ERROR_NO_POOL_FOUND);
@@ -37,7 +36,7 @@ pub trait LendingUtilsModule:
     ///
     /// # Arguments
     /// - `positions`: Vector of account positions.
-    /// - `storage_cache`: Mutable reference to the storage cache for efficiency.
+    /// - `cache`: Mutable reference to the storage cache for efficiency.
     ///
     /// # Returns
     /// - Tuple of:
@@ -47,22 +46,21 @@ pub trait LendingUtilsModule:
     fn calculate_collateral_values(
         &self,
         positions: &ManagedVec<AccountPosition<Self::Api>>,
-        storage_cache: &mut StorageCache<Self>,
+        cache: &mut Cache<Self>,
     ) -> (
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
-        let mut weighted_collateral = self.to_decimal_wad(BigUint::zero());
-        let mut total_collateral = self.to_decimal_wad(BigUint::zero());
-        let mut ltv_collateral = self.to_decimal_wad(BigUint::zero());
+        let mut weighted_collateral = self.wad_zero();
+        let mut total_collateral = self.wad_zero();
+        let mut ltv_collateral = self.wad_zero();
 
         for position in positions {
-            let collateral_in_egld = self.get_asset_egld_value(
-                &position.asset_id,
-                &position.get_total_amount(),
-                storage_cache,
-            );
+            let feed = self.get_token_price(&position.asset_id, cache);
+            let collateral_in_egld =
+                self.get_token_egld_value(&position.get_total_amount(), &feed.price);
+
             total_collateral += &collateral_in_egld;
             weighted_collateral += self.mul_half_up(
                 &collateral_in_egld,
@@ -81,24 +79,19 @@ pub trait LendingUtilsModule:
     ///
     /// # Arguments
     /// - `positions`: Vector of account positions.
-    /// - `storage_cache`: Mutable reference to the storage cache.
+    /// - `cache`: Mutable reference to the storage cache.
     ///
     /// # Returns
     /// - Total borrow value in EGLD as a `ManagedDecimal`.
     fn calculate_total_borrow_in_egld(
         &self,
         positions: &ManagedVec<AccountPosition<Self::Api>>,
-        storage_cache: &mut StorageCache<Self>,
+        cache: &mut Cache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let mut total_borrow = self.to_decimal_wad(BigUint::zero());
-        for position in positions {
-            total_borrow += self.get_asset_egld_value(
-                &position.asset_id,
-                &position.get_total_amount(),
-                storage_cache,
-            );
-        }
-        total_borrow
+        positions.iter().fold(self.wad_zero(), |acc, position| {
+            let feed = self.get_token_price(&position.asset_id, cache);
+            acc + self.get_token_egld_value(&position.get_total_amount(), &feed.price)
+        })
     }
 
     /// Adjusts the isolated debt tracking for an asset in USD.
@@ -118,7 +111,7 @@ pub trait LendingUtilsModule:
         amount_in_usd: ManagedDecimal<Self::Api, NumDecimals>,
         is_increase: bool,
     ) {
-        if amount_in_usd.eq(&self.to_decimal_wad(BigUint::zero())) {
+        if amount_in_usd.eq(&self.wad_zero()) {
             return;
         }
 
@@ -162,25 +155,6 @@ pub trait LendingUtilsModule:
             .sync_call();
     }
 
-    /// Calculates the EGLD value of a specified asset amount.
-    /// Converts token amounts to EGLD for standardized valuation.
-    ///
-    /// # Arguments
-    /// - `asset_id`: Token identifier (EGLD or ESDT) of the asset.
-    /// - `amount`: Amount of the asset as a `ManagedDecimal`.
-    /// - `storage_cache`: Mutable reference to the storage cache.
-    ///
-    /// # Returns
-    /// - EGLD value of the asset amount as a `ManagedDecimal`.
-    fn get_asset_egld_value(
-        &self,
-        asset_id: &EgldOrEsdtTokenIdentifier,
-        amount: &ManagedDecimal<Self::Api, NumDecimals>,
-        storage_cache: &mut StorageCache<Self>,
-    ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        self.get_token_amount_in_egld(asset_id, amount, storage_cache)
-    }
-
     /// Validates the endpoint for flash loans.
     fn validate_flash_loan_endpoint(&self, endpoint: &ManagedBuffer<Self::Api>) {
         require!(
@@ -222,14 +196,14 @@ pub trait LendingUtilsModule:
     fn update_asset_index(
         &self,
         asset_id: &EgldOrEsdtTokenIdentifier<Self::Api>,
-        storage_cache: &mut StorageCache<Self>,
+        cache: &mut Cache<Self>,
     ) {
         let pool_address = self.get_pool_address(asset_id);
-        let asset_price = self.get_token_price(asset_id, storage_cache);
+        let asset_price = self.get_token_price(asset_id, cache);
         self.tx()
             .to(pool_address)
             .typed(proxy_pool::LiquidityPoolProxy)
-            .update_indexes(asset_price.price.clone())
+            .update_indexes(asset_price.price)
             .sync_call();
     }
 
@@ -239,13 +213,13 @@ pub trait LendingUtilsModule:
     /// # Arguments
     /// - `account_nonce`: Position NFT nonce.
     /// - `is_liquidation`: Liquidation flag.
-    /// - `storage_cache`: Mutable storage cache.
+    /// - `cache`: Mutable storage cache.
     /// - `safety_factor`: Optional safety factor.
-    fn validate_health_factor_after_withdrawal(
+    fn validate_is_healthy(
         &self,
         account_nonce: u64,
         is_liquidation: bool,
-        storage_cache: &mut StorageCache<Self>,
+        cache: &mut Cache<Self>,
         safety_factor: Option<ManagedDecimal<Self::Api, NumDecimals>>,
     ) {
         if is_liquidation {
@@ -259,9 +233,9 @@ pub trait LendingUtilsModule:
 
         let deposit_positions = self.deposit_positions(account_nonce);
         let (collateral, _, _) =
-            self.calculate_collateral_values(&deposit_positions.values().collect(), storage_cache);
-        let borrowed = self
-            .calculate_total_borrow_in_egld(&borrow_positions.values().collect(), storage_cache);
+            self.calculate_collateral_values(&deposit_positions.values().collect(), cache);
+        let borrowed =
+            self.calculate_total_borrow_in_egld(&borrow_positions.values().collect(), cache);
         let health_factor = self.compute_health_factor(&collateral, &borrowed);
 
         let min_health_factor = if let Some(safety_factor_value) = safety_factor {

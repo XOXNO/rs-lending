@@ -62,6 +62,10 @@ pub trait SharedMathModule {
         ManagedDecimal::from_raw_units(value, WAD_PRECISION)
     }
 
+    fn wad_zero(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
+        self.to_decimal_wad(BigUint::zero())
+    }
+
     fn to_decimal_ray(self, value: BigUint) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         ManagedDecimal::from_raw_units(value, RAY_PRECISION)
     }

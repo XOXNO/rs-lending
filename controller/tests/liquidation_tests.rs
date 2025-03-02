@@ -1,5 +1,8 @@
 use multiversx_sc::types::{ConstDecimals, ManagedDecimal};
-use multiversx_sc_scenario::{api::StaticApi, imports::{BigUint, OptionalValue, TestAddress}};
+use multiversx_sc_scenario::{
+    api::StaticApi,
+    imports::{BigUint, OptionalValue, TestAddress},
+};
 pub mod constants;
 pub mod proxys;
 pub mod setup;
@@ -81,8 +84,14 @@ fn test_liquidation() {
     println!("Total EGLD Deposite {:?}", collateral);
     println!("Total EGLD Weighted {:?}", collateral_weighted);
     println!("Health Factor {:?}", health_factor);
-    assert!(borrowed >  ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64)));
-    assert!(collateral > ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64)));
+    assert!(
+        borrowed
+            > ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64))
+    );
+    assert!(
+        collateral
+            > ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64))
+    );
     state
         .world
         .current_block()
@@ -113,7 +122,6 @@ fn test_liquidation() {
     println!("Total EGLD Weighted {:?}", collateral_weighted);
     println!("Health Factor {:?}", health_factor);
 }
-
 
 #[test]
 fn test_liquidation_bad_debt_multi_asset() {
@@ -190,8 +198,14 @@ fn test_liquidation_bad_debt_multi_asset() {
     println!("Total EGLD Deposite {:?}", collateral);
     println!("Total EGLD Weighted {:?}", collateral_weighted);
     println!("Health Factor {:?}", health_factor);
-    assert!(borrowed > ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64)));
-    assert!(collateral > ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64)));
+    assert!(
+        borrowed
+            > ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64))
+    );
+    assert!(
+        collateral
+            > ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64))
+    );
     state
         .world
         .current_block()
@@ -211,13 +225,18 @@ fn test_liquidation_bad_debt_multi_asset() {
     println!("Health Factor {:?}", health_factor);
 
     let liquidator = TestAddress::new("liquidator");
-    state.world.account(liquidator).nonce(1).esdt_balance(
-        USDC_TOKEN,
-        BigUint::from(10000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
-    ).esdt_balance(
-        EGLD_TOKEN,
-        BigUint::from(1000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
-    );
+    state
+        .world
+        .account(liquidator)
+        .nonce(1)
+        .esdt_balance(
+            USDC_TOKEN,
+            BigUint::from(10000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
+        )
+        .esdt_balance(
+            EGLD_TOKEN,
+            BigUint::from(1000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+        );
     state.liquidate_account(
         &liquidator,
         &EGLD_TOKEN,
@@ -253,7 +272,6 @@ fn test_liquidation_bad_debt_multi_asset() {
     println!("Total EGLD Weighted {:?}", collateral_weighted);
     println!("Health Factor {:?}", health_factor);
 }
-
 
 #[test]
 fn test_liquidation_single_position() {
@@ -312,8 +330,14 @@ fn test_liquidation_single_position() {
     println!("Total EGLD Deposite {:?}", collateral);
     println!("Total EGLD Weighted {:?}", collateral_weighted);
     println!("Health Factor {:?}", health_factor);
-    assert!(borrowed > ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64)));
-    assert!(collateral > ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64)));
+    assert!(
+        borrowed
+            > ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64))
+    );
+    assert!(
+        collateral
+            > ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64))
+    );
 
     state
         .world
@@ -346,9 +370,15 @@ fn test_liquidation_single_position() {
     println!("Total EGLD Borrowed {:?}", borrowed);
     println!("Total EGLD Deposite {:?}", collateral);
     println!("Total EGLD Weighted {:?}", collateral_weighted);
-    println!("Health Factor {:?}", health_factor);    
-    assert!(borrowed >= ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64)));
-    assert!(collateral >= ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64)));
+    println!("Health Factor {:?}", health_factor);
+    assert!(
+        borrowed
+            >= ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64))
+    );
+    assert!(
+        collateral
+            >= ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64))
+    );
     // state.liquidate_account(
     //     &liquidator,
     //     &EGLD_TOKEN,

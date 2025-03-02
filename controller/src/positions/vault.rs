@@ -1,9 +1,7 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
-use crate::{
-    contexts::base::StorageCache, helpers, oracle, proxy_pool, storage, utils, validation,
-};
+use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validation};
 use common_errors::*;
 use common_structs::{AccountAttributes, AccountPosition, PriceFeedShort};
 
@@ -11,7 +9,7 @@ use super::account;
 
 #[multiversx_sc::module]
 pub trait PositionVaultModule:
-    storage::LendingStorageModule
+    storage::Storage
     + validation::ValidationModule
     + oracle::OracleModule
     + common_events::EventsModule
@@ -33,20 +31,20 @@ pub trait PositionVaultModule:
         &self,
         account_nonce: u64,
         enable: bool,
-        storage_cache: &mut StorageCache<Self>,
+        cache: &mut Cache<Self>,
         account_attributes: &AccountAttributes,
         caller: &ManagedAddress<Self::Api>,
     ) {
         let deposit_positions = self.deposit_positions(account_nonce);
 
         for mut dp in deposit_positions.values() {
-            let pool_address = storage_cache.get_cached_pool_address(&dp.asset_id);
-            let price_feed = self.get_token_price(&dp.asset_id, storage_cache);
+            let pool_address = cache.get_cached_pool_address(&dp.asset_id);
+            let feed = self.get_token_price(&dp.asset_id, cache);
             if enable {
                 self.enable_vault_position(
                     &mut dp,
                     pool_address,
-                    &price_feed,
+                    &feed,
                     account_nonce,
                     &caller,
                     account_attributes,
@@ -55,7 +53,7 @@ pub trait PositionVaultModule:
                 self.disable_vault_position(
                     &mut dp,
                     pool_address,
-                    &price_feed,
+                    &feed,
                     account_nonce,
                     &caller,
                     account_attributes,
@@ -69,17 +67,13 @@ pub trait PositionVaultModule:
         &self,
         dp: &mut AccountPosition<Self::Api>,
         pool_address: ManagedAddress<Self::Api>,
-        price_feed: &PriceFeedShort<Self::Api>,
+        feed: &PriceFeedShort<Self::Api>,
         account_nonce: u64,
         caller: &ManagedAddress<Self::Api>,
         account_attributes: &AccountAttributes,
     ) {
         let controller_sc = self.blockchain().get_sc_address();
-        self.update_position(
-            &pool_address,
-            dp,
-            OptionalValue::Some(price_feed.price.clone()),
-        );
+        self.update_position(&pool_address, dp, OptionalValue::Some(feed.price.clone()));
         let total_amount_with_interest = dp.get_total_amount();
 
         *dp = self
@@ -92,7 +86,7 @@ pub trait PositionVaultModule:
                 dp.clone(),
                 false,
                 None,
-                price_feed.price.clone(),
+                feed.price.clone(),
             )
             .returns(ReturnsResult)
             .sync_call();
@@ -111,7 +105,7 @@ pub trait PositionVaultModule:
         self.update_position_event(
             &dp.zero_decimal(),
             dp,
-            OptionalValue::Some(price_feed.price.clone()),
+            OptionalValue::Some(feed.price.clone()),
             OptionalValue::Some(caller),
             OptionalValue::Some(account_attributes),
         );
@@ -122,7 +116,7 @@ pub trait PositionVaultModule:
         &self,
         dp: &mut AccountPosition<Self::Api>,
         pool_address: ManagedAddress<Self::Api>,
-        price_feed: &PriceFeedShort<Self::Api>,
+        feed: &PriceFeedShort<Self::Api>,
         account_nonce: u64,
         caller: &ManagedAddress<Self::Api>,
         account_attributes: &AccountAttributes,
@@ -137,7 +131,7 @@ pub trait PositionVaultModule:
             .tx()
             .to(pool_address)
             .typed(proxy_pool::LiquidityPoolProxy)
-            .supply(dp.clone(), price_feed.price.clone())
+            .supply(dp.clone(), feed.price.clone())
             .egld_or_single_esdt(&dp.asset_id, 0, old_amount.into_raw_units())
             .returns(ReturnsResult)
             .sync_call();
@@ -148,7 +142,7 @@ pub trait PositionVaultModule:
         self.update_position_event(
             &dp.zero_decimal(),
             dp,
-            OptionalValue::Some(price_feed.price.clone()),
+            OptionalValue::Some(feed.price.clone()),
             OptionalValue::Some(caller),
             OptionalValue::Some(account_attributes),
         );

@@ -1130,7 +1130,6 @@ pub enum State {
     Active,
 }
 
-
 #[type_abi]
 #[derive(TopEncode, TopDecode)]
 pub struct Undelegation<Api>
@@ -1140,7 +1139,6 @@ where
     pub amount: BigUint<Api>,
     pub unbond_epoch: u64,
 }
-
 
 #[type_abi]
 #[derive(TopEncode, TopDecode)]

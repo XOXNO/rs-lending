@@ -25,14 +25,13 @@ pub trait StorageModule {
     //     from: &ManagedBuffer,
     //     to: &ManagedBuffer,
     // ) -> VecMapper<TimestampedPrice<Self::Api>>;
-    
+
     #[storage_mapper("rounds")]
     fn rounds_new(
         &self,
         from: &ManagedBuffer,
         to: &ManagedBuffer,
     ) -> SingleValueMapper<TimestampedPrice<Self::Api>>;
-    
 
     #[storage_mapper("first_submission_timestamp")]
     fn first_submission_timestamp(

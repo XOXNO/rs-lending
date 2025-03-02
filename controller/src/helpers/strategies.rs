@@ -14,10 +14,7 @@ pub struct MathHelpers;
 
 #[multiversx_sc::module]
 pub trait StrategiesModule:
-    oracle::OracleModule
-    + storage::LendingStorageModule
-    + math::MathsModule
-    + common_math::SharedMathModule
+    oracle::OracleModule + storage::Storage + math::MathsModule + common_math::SharedMathModule
 {
     fn get_xegld(&self, egld_amount: &BigUint, sc_address: &ManagedAddress) -> EsdtTokenPayment {
         let result = self

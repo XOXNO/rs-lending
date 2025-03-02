@@ -20,7 +20,6 @@ pub const SECONDS_PER_YEAR: u64 = 31_556_926;
 pub const SECONDS_PER_MINUTE: u64 = 60;
 pub const SECONDS_PER_HOUR: u64 = 3_600;
 
-
 pub const RAY: u128 = 1_000_000_000_000_000_000_000_000_000;
 pub const RAY_PRECISION: usize = 27;
 
@@ -29,12 +28,11 @@ pub const WAD: u128 = 1_000_000_000_000_000_000; // Represents 1 EGLD
 pub const WAD_PRECISION: usize = 18;
 
 pub const BPS: usize = 10_000; // 100%
-pub const BPS_PRECISION: usize= 4;
+pub const BPS_PRECISION: usize = 4;
 
+pub const BASE_NFT_URI: &[u8] = b"https://api.xoxno.com/user/account/image";
 
-/// Maximum bonus
-pub const MAX_BONUS: u128 = 3_000; // Represents 30% basis points
-
+// Storage keys for price aggregator and liquidity layer
 pub static TOTAL_BORROWED_AMOUNT_STORAGE_KEY: &[u8] = b"borrowed";
 
 pub static TOTAL_SUPPLY_AMOUNT_STORAGE_KEY: &[u8] = b"supplied";

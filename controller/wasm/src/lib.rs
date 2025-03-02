@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           64
+// Endpoints:                           63
 // Async Callback:                       1
-// Total number of exported functions:  67
+// Total number of exported functions:  66
 
 #![no_std]
 
@@ -55,7 +55,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         getBorrowPositions => borrow_positions
         getLiqPoolTemplateAddress => liq_pool_template_address
         getAccumulatorAddress => accumulator_address
-        getPoolsMap => pools_map
+        getPoolAddress => pools_map
         getPriceAggregatorAddress => price_aggregator_address
         getSafePriceAddress => safe_price_view
         getEGLDWrapperAddress => wegld_wrapper
@@ -68,7 +68,6 @@ multiversx_sc_wasm_adapter::endpoints! {
         getIsolatedAssetDebtUsd => isolated_asset_debt_usd
         getVaultSuppliedAmount => vault_supplied_amount
         getTokenOracle => token_oracle
-        getPoolAddress => get_pool_address
         getAllMarkets => get_all_markets
         canBeLiquidated => can_be_liquidated
         getHealthFactor => get_health_factor

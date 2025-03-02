@@ -3,20 +3,18 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
+use common_errors::ERROR_TEMPLATE_EMPTY;
 use common_structs::AssetConfig;
 
 use crate::{
-    contexts::base::StorageCache, helpers, oracle, positions, proxy_accumulator, proxy_pool,
-    storage, utils, validation, ERROR_ASSET_ALREADY_SUPPORTED, ERROR_INVALID_LIQUIDATION_THRESHOLD,
+    cache::Cache, helpers, oracle, positions, proxy_accumulator, proxy_pool, storage, utils,
+    validation, ERROR_ASSET_ALREADY_SUPPORTED, ERROR_INVALID_LIQUIDATION_THRESHOLD,
     ERROR_INVALID_TICKER, ERROR_NO_ACCUMULATOR_FOUND, ERROR_NO_POOL_FOUND,
 };
 
-use super::factory;
-
 #[multiversx_sc::module]
 pub trait RouterModule:
-    factory::FactoryModule
-    + storage::LendingStorageModule
+    storage::Storage
     + common_events::EventsModule
     + oracle::OracleModule
     + utils::LendingUtilsModule
@@ -207,6 +205,82 @@ pub trait RouterModule:
         );
     }
 
+    fn create_pool(
+        &self,
+        base_asset: &EgldOrEsdtTokenIdentifier,
+        max_borrow_rate: &BigUint,
+        base_borrow_rate: &BigUint,
+        slope1: &BigUint,
+        slope2: &BigUint,
+        slope3: &BigUint,
+        mid_utilization: &BigUint,
+        optimal_utilization: &BigUint,
+        reserve_factor: &BigUint,
+    ) -> ManagedAddress {
+        require!(
+            !self.liq_pool_template_address().is_empty(),
+            ERROR_TEMPLATE_EMPTY
+        );
+
+        let decimals = self.token_oracle(base_asset).get().price_decimals;
+
+        let new_address = self
+            .tx()
+            .typed(proxy_pool::LiquidityPoolProxy)
+            .init(
+                base_asset,
+                max_borrow_rate,
+                base_borrow_rate,
+                slope1,
+                slope2,
+                slope3,
+                mid_utilization,
+                optimal_utilization,
+                reserve_factor,
+                decimals,
+            )
+            .from_source(self.liq_pool_template_address().get())
+            .code_metadata(CodeMetadata::UPGRADEABLE | CodeMetadata::READABLE)
+            .returns(ReturnsNewManagedAddress)
+            .sync_call();
+
+        new_address
+    }
+
+    fn upgrade_pool(
+        &self,
+        lp_address: ManagedAddress,
+        max_borrow_rate: BigUint,
+        base_borrow_rate: BigUint,
+        slope1: BigUint,
+        slope2: BigUint,
+        slope3: BigUint,
+        mid_utilization: BigUint,
+        optimal_utilization: BigUint,
+        reserve_factor: BigUint,
+    ) {
+        require!(
+            !self.liq_pool_template_address().is_empty(),
+            ERROR_TEMPLATE_EMPTY
+        );
+        self.tx()
+            .to(lp_address)
+            .typed(proxy_pool::LiquidityPoolProxy)
+            .upgrade(
+                max_borrow_rate,
+                base_borrow_rate,
+                slope1,
+                slope2,
+                slope3,
+                mid_utilization,
+                optimal_utilization,
+                reserve_factor,
+            )
+            .from_source(self.liq_pool_template_address().get())
+            .code_metadata(CodeMetadata::UPGRADEABLE | CodeMetadata::READABLE)
+            .upgrade_async_call_and_exit();
+    }
+
     /// Claims revenue from multiple liquidity pools and deposits it into the accumulator.
     /// Collects protocol revenue from interest and fees.
     ///
@@ -218,7 +292,7 @@ pub trait RouterModule:
     #[only_owner]
     #[endpoint(claimRevenue)]
     fn claim_revenue(&self, assets: MultiValueEncoded<EgldOrEsdtTokenIdentifier>) {
-        let mut storage_cache = StorageCache::new(self);
+        let mut cache = Cache::new(self);
         let accumulator_address_mapper = self.accumulator_address();
 
         require!(
@@ -229,7 +303,7 @@ pub trait RouterModule:
         let accumulator_address = accumulator_address_mapper.get();
         for asset in assets {
             let pool_address = self.get_pool_address(&asset);
-            let data = self.get_token_price(&asset, &mut storage_cache);
+            let data = self.get_token_price(&asset, &mut cache);
             let revenue = self
                 .tx()
                 .to(pool_address)

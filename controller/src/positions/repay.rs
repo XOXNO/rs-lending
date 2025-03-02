@@ -1,18 +1,15 @@
-use common_structs::{AccountPosition, AccountAttributes, PriceFeedShort};
+use common_structs::{AccountAttributes, AccountPosition, PriceFeedShort};
 
-use crate::{
-    contexts::base::StorageCache, helpers, oracle, proxy_pool, storage, utils, validation,
-    WAD_PRECISION,
-};
+use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validation, WAD_PRECISION};
 
-use super::{account, borrow};
+use super::{account, borrow, emode};
 
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
 #[multiversx_sc::module]
 pub trait PositionRepayModule:
-    storage::LendingStorageModule
+    storage::Storage
     + validation::ValidationModule
     + oracle::OracleModule
     + common_events::EventsModule
@@ -21,7 +18,7 @@ pub trait PositionRepayModule:
     + account::PositionAccountModule
     + borrow::PositionBorrowModule
     + common_math::SharedMathModule
-    + super::emode::EModeModule
+    + emode::EModeModule
 {
     /// Processes a repayment via the liquidity pool.
     /// Updates the borrow position accordingly.
@@ -32,9 +29,9 @@ pub trait PositionRepayModule:
     /// - `repay_amount`: Repayment amount.
     /// - `caller`: Repayer's address.
     /// - `borrow_position`: Current borrow position.
-    /// - `price_feed`: Price data for the token.
+    /// - `feed`: Price data for the token.
     /// - `position_attributes`: NFT attributes.
-    /// - `storage_cache`: Mutable storage cache.
+    /// - `cache`: Mutable storage cache.
     fn process_repayment_through_pool(
         &self,
         account_nonce: u64,
@@ -42,16 +39,16 @@ pub trait PositionRepayModule:
         repay_amount: &ManagedDecimal<Self::Api, NumDecimals>,
         caller: &ManagedAddress,
         mut borrow_position: AccountPosition<Self::Api>,
-        price_feed: &PriceFeedShort<Self::Api>,
+        feed: &PriceFeedShort<Self::Api>,
         position_attributes: &AccountAttributes,
-        storage_cache: &mut StorageCache<Self>,
+        cache: &mut Cache<Self>,
     ) {
-        let pool_address = storage_cache.get_cached_pool_address(repay_token_id);
+        let pool_address = cache.get_cached_pool_address(repay_token_id);
         borrow_position = self
             .tx()
             .to(pool_address)
             .typed(proxy_pool::LiquidityPoolProxy)
-            .repay(caller, borrow_position.clone(), price_feed.price.clone())
+            .repay(caller, borrow_position.clone(), feed.price.clone())
             .egld_or_single_esdt(repay_token_id, 0, repay_amount.into_raw_units())
             .returns(ReturnsResult)
             .sync_call();
@@ -59,7 +56,7 @@ pub trait PositionRepayModule:
         self.update_position_event(
             repay_amount,
             &borrow_position,
-            OptionalValue::Some(price_feed.price.clone()),
+            OptionalValue::Some(feed.price.clone()),
             OptionalValue::Some(caller),
             OptionalValue::Some(position_attributes),
         );
@@ -73,17 +70,17 @@ pub trait PositionRepayModule:
     /// # Arguments
     /// - `account_nonce`: Position NFT nonce.
     /// - `position`: Borrow position.
-    /// - `price_feed`: Price data for the token.
+    /// - `feed`: Price data for the token.
     /// - `repay_amount`: Repayment amount in EGLD.
-    /// - `storage_cache`: Mutable storage cache.
+    /// - `cache`: Mutable storage cache.
     /// - `position_attributes`: NFT attributes.
     fn update_isolated_debt_after_repayment(
         &self,
         account_nonce: u64,
         position: &mut AccountPosition<Self::Api>,
-        price_feed: &PriceFeedShort<Self::Api>,
+        feed: &PriceFeedShort<Self::Api>,
         repay_amount: &ManagedDecimal<Self::Api, NumDecimals>,
-        storage_cache: &mut StorageCache<Self>,
+        cache: &mut Cache<Self>,
         position_attributes: &AccountAttributes,
     ) {
         if position_attributes.is_isolated() {
@@ -93,12 +90,11 @@ pub trait PositionRepayModule:
             self.update_position(
                 &asset_address,
                 position,
-                OptionalValue::Some(price_feed.price.clone()),
+                OptionalValue::Some(feed.price.clone()),
             );
-            let principal_amount =
-                self.calculate_principal_repayment(position, price_feed, repay_amount);
+            let principal_amount = self.calculate_principal_repayment(position, feed, repay_amount);
             let debt_usd_amount =
-                self.get_token_usd_value(&principal_amount, &storage_cache.egld_price_feed);
+                self.get_token_usd_value(&principal_amount, &cache.egld_price_feed);
             self.adjust_isolated_debt_usd(&collateral_token_id, debt_usd_amount, false);
         }
     }
@@ -112,8 +108,8 @@ pub trait PositionRepayModule:
     /// - `repay_amount`: Repayment amount.
     /// - `caller`: Repayer's address.
     /// - `repay_amount_in_egld`: EGLD value of repayment.
-    /// - `price_feed`: Price data for the token.
-    /// - `storage_cache`: Mutable storage cache.
+    /// - `feed`: Price data for the token.
+    /// - `cache`: Mutable storage cache.
     /// - `position_attributes`: NFT attributes.
     fn process_repayment(
         &self,
@@ -122,8 +118,8 @@ pub trait PositionRepayModule:
         repay_amount: &ManagedDecimal<Self::Api, NumDecimals>,
         caller: &ManagedAddress,
         repay_amount_in_egld: ManagedDecimal<Self::Api, NumDecimals>,
-        price_feed: &PriceFeedShort<Self::Api>,
-        storage_cache: &mut StorageCache<Self>,
+        feed: &PriceFeedShort<Self::Api>,
+        cache: &mut Cache<Self>,
         position_attributes: &AccountAttributes,
     ) {
         let mut borrow_position =
@@ -131,9 +127,9 @@ pub trait PositionRepayModule:
         self.update_isolated_debt_after_repayment(
             account_nonce,
             &mut borrow_position,
-            price_feed,
+            feed,
             &repay_amount_in_egld,
-            storage_cache,
+            cache,
             position_attributes,
         );
         self.process_repayment_through_pool(
@@ -142,9 +138,9 @@ pub trait PositionRepayModule:
             repay_amount,
             caller,
             borrow_position,
-            price_feed,
+            feed,
             position_attributes,
-            storage_cache,
+            cache,
         );
     }
 
@@ -172,7 +168,7 @@ pub trait PositionRepayModule:
     ///
     /// # Arguments
     /// - `borrow_position`: Position being repaid.
-    /// - `price_feed`: Price data for the token.
+    /// - `feed`: Price data for the token.
     /// - `amount_to_repay_in_egld`: Repayment amount in EGLD.
     ///
     /// # Returns
@@ -180,13 +176,13 @@ pub trait PositionRepayModule:
     fn calculate_principal_repayment(
         &self,
         borrow_position: &AccountPosition<Self::Api>,
-        price_feed: &PriceFeedShort<Self::Api>,
+        feed: &PriceFeedShort<Self::Api>,
         amount_to_repay_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let interest_egld_amount =
-            self.get_token_egld_value(&borrow_position.interest_accrued, &price_feed.price);
+            self.get_token_egld_value(&borrow_position.interest_accrued, &feed.price);
         let total_principal_borrowed_egld_amount =
-            self.get_token_egld_value(&borrow_position.principal_amount, &price_feed.price);
+            self.get_token_egld_value(&borrow_position.principal_amount, &feed.price);
 
         if amount_to_repay_in_egld <= &interest_egld_amount {
             return ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION);

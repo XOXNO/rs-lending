@@ -6,7 +6,7 @@ use common_structs::{
 multiversx_sc::imports!();
 
 #[multiversx_sc::module]
-pub trait LendingStorageModule {
+pub trait Storage {
     /// Get the set of allowed pools
     /// This storage mapper holds the addresses of pools that are allowed to participate in the lending protocol.
     #[view(getPoolAllowed)]
@@ -63,7 +63,7 @@ pub trait LendingStorageModule {
 
     /// Get the pools map
     /// This storage mapper holds a map of pools, used to get the address of a pool given a token ID.
-    #[view(getPoolsMap)]
+    #[view(getPoolAddress)]
     #[storage_mapper("pools_map")]
     fn pools_map(&self, asset: &EgldOrEsdtTokenIdentifier) -> SingleValueMapper<ManagedAddress>;
 

@@ -1,6 +1,6 @@
 use common_structs::{AccountAttributes, AccountPosition, AccountPositionType};
 
-use crate::{contexts::base::StorageCache, helpers, oracle, storage, utils, validation};
+use crate::{cache::Cache, helpers, oracle, storage, utils, validation};
 
 use super::account;
 
@@ -9,7 +9,7 @@ multiversx_sc::derive_imports!();
 
 #[multiversx_sc::module]
 pub trait PositionUpdateModule:
-    storage::LendingStorageModule
+    storage::Storage
     + validation::ValidationModule
     + oracle::OracleModule
     + common_events::EventsModule
@@ -23,7 +23,7 @@ pub trait PositionUpdateModule:
     ///
     /// # Arguments
     /// - `account_nonce`: Position NFT nonce.
-    /// - `storage_cache`: Mutable storage cache.
+    /// - `cache`: Mutable storage cache.
     /// - `should_fetch_price`: Flag to fetch prices.
     /// - `should_return_map`: Flag to return index map.
     ///
@@ -32,7 +32,7 @@ pub trait PositionUpdateModule:
     fn sync_borrow_positions_interest(
         &self,
         account_nonce: u64,
-        storage_cache: &mut StorageCache<Self>,
+        cache: &mut Cache<Self>,
         should_fetch_price: bool,
         should_return_map: bool,
     ) -> (
@@ -45,12 +45,9 @@ pub trait PositionUpdateModule:
 
         for (index, token_id) in borrow_positions_map.keys().enumerate() {
             let mut borrow_position = borrow_positions_map.get(&token_id).unwrap();
-            let pool_address = storage_cache.get_cached_pool_address(&borrow_position.asset_id);
-            let price = self.fetch_price_if_needed(
-                &borrow_position.asset_id,
-                storage_cache,
-                should_fetch_price,
-            );
+            let pool_address = cache.get_cached_pool_address(&borrow_position.asset_id);
+            let price =
+                self.fetch_price_if_needed(&borrow_position.asset_id, cache, should_fetch_price);
 
             self.update_position(&pool_address, &mut borrow_position, price);
 
@@ -75,7 +72,7 @@ pub trait PositionUpdateModule:
     ///
     /// # Arguments
     /// - `account_nonce`: Position NFT nonce.
-    /// - `storage_cache`: Mutable storage cache.
+    /// - `cache`: Mutable storage cache.
     /// - `should_fetch_price`: Flag to fetch prices.
     ///
     /// # Returns
@@ -83,7 +80,7 @@ pub trait PositionUpdateModule:
     fn sync_deposit_positions_interest(
         &self,
         account_nonce: u64,
-        storage_cache: &mut StorageCache<Self>,
+        cache: &mut Cache<Self>,
         should_fetch_price: bool,
         account_attributes: &AccountAttributes,
     ) -> ManagedVec<AccountPosition<Self::Api>> {
@@ -92,12 +89,11 @@ pub trait PositionUpdateModule:
 
         for mut deposit_position in deposit_positions_map.values() {
             if !account_attributes.is_vault() {
-                let pool_address =
-                    storage_cache.get_cached_pool_address(&deposit_position.asset_id);
+                let pool_address = cache.get_cached_pool_address(&deposit_position.asset_id);
 
                 let price = self.fetch_price_if_needed(
                     &deposit_position.asset_id,
-                    storage_cache,
+                    cache,
                     should_fetch_price,
                 );
 
@@ -121,7 +117,7 @@ pub trait PositionUpdateModule:
     ///
     /// # Arguments
     /// - `token_id`: Token identifier.
-    /// - `storage_cache`: Mutable storage cache.
+    /// - `cache`: Mutable storage cache.
     /// - `should_fetch`: Fetch price flag.
     ///
     /// # Returns
@@ -129,11 +125,11 @@ pub trait PositionUpdateModule:
     fn fetch_price_if_needed(
         &self,
         token_id: &EgldOrEsdtTokenIdentifier,
-        storage_cache: &mut StorageCache<Self>,
+        cache: &mut Cache<Self>,
         should_fetch: bool,
     ) -> OptionalValue<ManagedDecimal<Self::Api, NumDecimals>> {
         if should_fetch {
-            let result = self.get_token_price(token_id, storage_cache);
+            let result = self.get_token_price(token_id, cache);
             OptionalValue::Some(result.price)
         } else {
             OptionalValue::None

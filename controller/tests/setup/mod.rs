@@ -1,7 +1,7 @@
 use crate::{constants::*, proxys::*};
 use common_constants::{EGLD_TICKER, MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE};
 
-use contexts::base::StorageCache;
+use cache::Cache;
 
 use multiversx_sc::{
     imports::OptionalValue,
@@ -22,7 +22,7 @@ use rs_liquid_staking_sc::{
 use rs_liquid_xoxno::{config::ConfigModule as XoxnoConfigModule, rs_xoxno_proxy};
 
 use std::ops::Mul;
-use storage::LendingStorageModule;
+use storage::Storage;
 
 use controller::{positions::update::PositionUpdateModule, *};
 use multiversx_sc::types::{
@@ -970,13 +970,8 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .whitebox(controller::contract_obj, |sc| {
-                let mut storage_cache = StorageCache::new(&sc);
-                sc.sync_borrow_positions_interest(
-                    account_position,
-                    &mut storage_cache,
-                    true,
-                    false,
-                );
+                let mut cache = Cache::new(&sc);
+                sc.sync_borrow_positions_interest(account_position, &mut cache, true, false);
             });
     }
 
@@ -986,11 +981,11 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .whitebox(controller::contract_obj, |sc| {
-                let mut storage_cache = StorageCache::new(&sc);
+                let mut cache = Cache::new(&sc);
                 let account_attributes = sc.account_attributes(account_position).get();
                 sc.sync_deposit_positions_interest(
                     account_position,
-                    &mut storage_cache,
+                    &mut cache,
                     true,
                     &account_attributes,
                 );

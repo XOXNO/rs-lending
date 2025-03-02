@@ -144,7 +144,7 @@ pub trait UtilsModule:
             let price_result = median::calculate(submissions_vec.as_mut_slice());
             let price_opt = price_result.unwrap_or_else(|err| sc_panic!(err.as_bytes()));
             let price = price_opt.unwrap_or_else(|| sc_panic!(NO_SUBMISSIONS_ERROR));
-            let price_feed = TimestampedPrice {
+            let feed = TimestampedPrice {
                 price,
                 timestamp: self.blockchain().get_block_timestamp(),
                 asset_decimals,
@@ -154,10 +154,9 @@ pub trait UtilsModule:
             submissions.clear();
             self.first_submission_timestamp(&token_pair).clear();
             self.last_submission_timestamp(&token_pair).clear();
-            self.rounds_new(&token_pair.from, &token_pair.to)
-                .set(&price_feed);
+            self.rounds_new(&token_pair.from, &token_pair.to).set(&feed);
 
-            self.emit_new_round_event(&token_pair, round_id, &price_feed);
+            self.emit_new_round_event(&token_pair, round_id, &feed);
         }
     }
 

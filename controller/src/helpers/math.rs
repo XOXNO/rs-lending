@@ -80,7 +80,7 @@ pub trait MathsModule: common_math::SharedMathModule {
         weighted_collateral_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
         borrowed_value_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        if borrowed_value_in_egld == &self.to_decimal_wad(BigUint::zero()) {
+        if borrowed_value_in_egld == &self.wad_zero() {
             return self.to_decimal_wad(BigUint::from(u128::MAX));
         }
         let health_factor = self.div_half_up(
@@ -376,8 +376,10 @@ pub trait MathsModule: common_math::SharedMathModule {
             &target_hf,
             min_bonus,
         );
+
         let bonus =
             self.calculate_dynamic_liquidation_bonus(current_hf, &target_hf, min_bonus, &max_bonus);
+
         self.compute_liquidation_details(
             total_collateral,
             weighted_collateral_in_egld,

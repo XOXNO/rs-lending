@@ -25,7 +25,7 @@ The **Oracle Module** is a vital component of the lending protocol, engineered t
 
 ### ⚡ Gas-Optimized Caching
 
-- **Transaction-Level Cache:** Prices fetched within the same transaction are stored in **storage_cache**, eliminating redundant external calls.
+- **Transaction-Level Cache:** Prices fetched within the same transaction are stored in **cache**, eliminating redundant external calls.
 - **Efficient Retrieval:** Cached prices are reused instantly, reducing gas costs and enhancing performance.
 
 ### 🏰 Secure TWAP & Safe Pricing

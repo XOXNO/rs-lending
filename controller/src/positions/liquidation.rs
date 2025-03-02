@@ -1,7 +1,7 @@
 use common_constants::{BPS_PRECISION, RAY_PRECISION, WAD_PRECISION};
 use common_structs::{AccountAttributes, AccountPosition, PriceFeedShort};
 
-use crate::{contexts::base::StorageCache, helpers, oracle, storage, utils, validation};
+use crate::{cache::Cache, helpers, oracle, storage, utils, validation};
 use common_errors::ERROR_HEALTH_FACTOR;
 
 use super::{account, borrow, emode, repay, update, vault, withdraw};
@@ -11,7 +11,7 @@ multiversx_sc::derive_imports!();
 
 #[multiversx_sc::module]
 pub trait PositionLiquidationModule:
-    storage::LendingStorageModule
+    storage::Storage
     + validation::ValidationModule
     + oracle::OracleModule
     + common_events::EventsModule
@@ -33,7 +33,7 @@ pub trait PositionLiquidationModule:
     /// - `account_nonce`: Position NFT nonce.
     /// - `debt_payments`: Debt repayment payments.
     /// - `caller`: Liquidator's address.
-    /// - `storage_cache`: Mutable storage cache.
+    /// - `cache`: Mutable storage cache.
     ///
     /// # Returns
     /// - Tuple of (seized collateral details, repaid token details).
@@ -42,7 +42,7 @@ pub trait PositionLiquidationModule:
         account_nonce: u64,
         debt_payments: &ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
         caller: &ManagedAddress,
-        storage_cache: &mut StorageCache<Self>,
+        cache: &mut Cache<Self>,
         account_attributes: &AccountAttributes,
     ) -> (
         ManagedVec<MultiValue2<EgldOrEsdtTokenPayment, ManagedDecimal<Self::Api, NumDecimals>>>,
@@ -55,31 +55,24 @@ pub trait PositionLiquidationModule:
         >,
     ) {
         let mut refunds = ManagedVec::new();
-        let deposit_positions = self.sync_deposit_positions_interest(
-            account_nonce,
-            storage_cache,
-            false,
-            &account_attributes,
-        );
+        let deposit_positions =
+            self.sync_deposit_positions_interest(account_nonce, cache, false, &account_attributes);
         let (borrow_positions, map_debt_indexes) =
-            self.sync_borrow_positions_interest(account_nonce, storage_cache, false, true);
+            self.sync_borrow_positions_interest(account_nonce, cache, false, true);
 
         let (debt_payment_in_egld, mut repaid_tokens) = self.calculate_repayment_amounts(
             debt_payments,
             &borrow_positions,
             &mut refunds,
             map_debt_indexes,
-            storage_cache,
+            cache,
         );
 
         let (liquidation_collateral, total_collateral, _) =
-            self.calculate_collateral_values(&deposit_positions, storage_cache);
-        let (proportional_weighted, bonus_weighted) = self.calculate_seizure_proportions(
-            &total_collateral,
-            &deposit_positions,
-            storage_cache,
-        );
-        let borrowed_egld = self.calculate_total_borrow_in_egld(&borrow_positions, storage_cache);
+            self.calculate_collateral_values(&deposit_positions, cache);
+        let (proportional_weighted, bonus_weighted) =
+            self.calculate_seizure_proportions(&total_collateral, &deposit_positions, cache);
+        let borrowed_egld = self.calculate_total_borrow_in_egld(&borrow_positions, cache);
         let health_factor =
             self.validate_liquidation_health_factor(&liquidation_collateral, &borrowed_egld);
 
@@ -98,7 +91,6 @@ pub trait PositionLiquidationModule:
                 &mut repaid_tokens,
                 &mut refunds,
                 debt_payment_in_egld - max_debt_to_repay.clone(),
-                storage_cache,
             );
         }
 
@@ -114,7 +106,7 @@ pub trait PositionLiquidationModule:
             &total_collateral,
             &max_debt_to_repay,
             &bonus_rate,
-            storage_cache,
+            cache,
         );
 
         (seized_collaterals, repaid_tokens)
@@ -133,15 +125,19 @@ pub trait PositionLiquidationModule:
         debt_payments: &ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
         caller: &ManagedAddress,
     ) {
-        let mut storage_cache = StorageCache::new(self);
-        storage_cache.allow_unsafe_price = false;
+        let mut cache = Cache::new(self);
+        cache.allow_unsafe_price = false;
+        self.validate_liquidation_payments(debt_payments, caller);
+
+        self.require_active_account(account_nonce);
+
         let account_attributes = self.account_attributes(account_nonce).get();
 
         let (seized_collaterals, repaid_tokens) = self.execute_liquidation(
             account_nonce,
             debt_payments,
             caller,
-            &mut storage_cache,
+            &mut cache,
             &account_attributes,
         );
 
@@ -157,7 +153,7 @@ pub trait PositionLiquidationModule:
                 caller,
                 debt_egld_value,
                 &debt_price_feed,
-                &mut storage_cache,
+                &mut cache,
                 &account_attributes,
             );
         }
@@ -170,7 +166,7 @@ pub trait PositionLiquidationModule:
                 caller,
                 true,
                 Some(protocol_fee),
-                &mut storage_cache,
+                &mut cache,
                 &account_attributes,
                 false,
             );
@@ -196,6 +192,27 @@ pub trait PositionLiquidationModule:
         health_factor
     }
 
+    /// Validates payments for liquidation operations.
+    /// Ensures debt repayments are valid and the caller is authorized.
+    ///
+    /// # Arguments
+    /// - `debt_repayments`: Vector of debt repayment payments.
+    /// - `initial_caller`: Address initiating the liquidation.
+    ///
+    /// # Errors
+    /// - Inherits errors from `validate_payment`.
+    /// - `ERROR_ADDRESS_IS_ZERO`: If the caller address is zero.
+    fn validate_liquidation_payments(
+        &self,
+        debt_repayments: &ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
+        initial_caller: &ManagedAddress,
+    ) {
+        for debt_payment in debt_repayments {
+            self.validate_payment(&debt_payment);
+        }
+        self.require_non_zero_address(initial_caller);
+    }
+
     /// Calculates collateral to seize based on debt repayment.
     /// Applies proportional seizure with bonus.
     ///
@@ -204,7 +221,7 @@ pub trait PositionLiquidationModule:
     /// - `total_collateral_value`: Total collateral in EGLD.
     /// - `debt_to_be_repaid`: Debt amount to repay.
     /// - `bonus_rate`: Liquidation bonus in BPS.
-    /// - `storage_cache`: Mutable storage cache.
+    /// - `cache`: Mutable storage cache.
     ///
     /// # Returns
     /// - Vector of (seized payment, protocol fee) tuples.
@@ -214,19 +231,19 @@ pub trait PositionLiquidationModule:
         total_collateral_value: &ManagedDecimal<Self::Api, NumDecimals>,
         debt_to_be_repaid: &ManagedDecimal<Self::Api, NumDecimals>,
         bonus_rate: &ManagedDecimal<Self::Api, NumDecimals>,
-        storage_cache: &mut StorageCache<Self>,
+        cache: &mut Cache<Self>,
     ) -> ManagedVec<MultiValue2<EgldOrEsdtTokenPayment, ManagedDecimal<Self::Api, NumDecimals>>>
     {
         let mut seized_amounts_by_collateral = ManagedVec::new();
 
         for asset in deposit_positions {
             let total_amount = asset.get_total_amount();
-            let asset_data = self.get_token_price(&asset.asset_id, storage_cache);
+            let asset_data = self.get_token_price(&asset.asset_id, cache);
             let asset_egld_value = self.get_token_egld_value(&total_amount, &asset_data.price);
 
             // Proportion = (asset_egld_value * WAD) / total_collateral_value
             let proportion = self.div_half_up(
-                &(asset_egld_value * storage_cache.wad_dec.clone()),
+                &(asset_egld_value * self.wad()),
                 total_collateral_value,
                 WAD_PRECISION,
             );
@@ -240,14 +257,14 @@ pub trait PositionLiquidationModule:
             let seized_units = self.convert_egld_to_tokens(&seized_egld, &asset_data);
 
             // Apply bonus: seized_units_after_bonus = seized_units * (bps + bonus_rate) / bps
-            let bonus_bps = storage_cache.bps_dec.clone() + bonus_rate.clone();
+            let bonus_bps = self.wad() + bonus_rate.clone();
             let numerator = self.mul_half_up(&seized_units, &bonus_bps, RAY_PRECISION);
             let seized_units_after_bonus = numerator.rescale(asset_data.asset_decimals);
 
             // Protocol fee = (bonus portion) * liquidation_fees / bps
             let protocol_fee = (seized_units_after_bonus.clone() - seized_units.clone())
                 * asset.liquidation_fees.clone()
-                / storage_cache.bps_dec.clone();
+                / self.bps();
 
             let final_amount = BigUint::min(
                 seized_units_after_bonus.into_raw_units().clone(),
@@ -271,7 +288,7 @@ pub trait PositionLiquidationModule:
     /// - `borrows`: Borrow positions.
     /// - `refunds`: Mutable refund vector.
     /// - `borrows_index_map`: Token-to-index mapping.
-    /// - `storage_cache`: Mutable storage cache.
+    /// - `cache`: Mutable storage cache.
     ///
     /// # Returns
     /// - Tuple of (total repaid in EGLD, repaid token details).
@@ -281,7 +298,7 @@ pub trait PositionLiquidationModule:
         borrows: &ManagedVec<AccountPosition<Self::Api>>,
         refunds: &mut ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
         borrows_index_map: ManagedMapEncoded<Self::Api, EgldOrEsdtTokenIdentifier, usize>,
-        storage_cache: &mut StorageCache<Self>,
+        cache: &mut Cache<Self>,
     ) -> (
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedVec<
@@ -292,10 +309,10 @@ pub trait PositionLiquidationModule:
             >,
         >,
     ) {
-        let mut total_repaid = self.to_decimal_wad(BigUint::zero());
+        let mut total_repaid = self.wad_zero();
         let mut repaid_tokens = ManagedVec::new();
         for payment_ref in repayments {
-            let token_feed = self.get_token_price(&payment_ref.token_identifier, storage_cache);
+            let token_feed = self.get_token_price(&payment_ref.token_identifier, cache);
             let original_borrow = self.get_position_by_index(
                 &payment_ref.token_identifier,
                 borrows,
@@ -341,7 +358,7 @@ pub trait PositionLiquidationModule:
     /// # Arguments
     /// - `total_collateral_in_egld`: Total collateral in EGLD.
     /// - `positions`: Deposit positions.
-    /// - `storage_cache`: Mutable storage cache.
+    /// - `cache`: Mutable storage cache.
     ///
     /// # Returns
     /// - Tuple of (proportional, bonus-weighted) values.
@@ -349,7 +366,7 @@ pub trait PositionLiquidationModule:
         &self,
         total_collateral_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
         positions: &ManagedVec<AccountPosition<Self::Api>>,
-        storage_cache: &mut StorageCache<Self>,
+        cache: &mut Cache<Self>,
     ) -> (
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
@@ -358,7 +375,7 @@ pub trait PositionLiquidationModule:
         let mut weighted_bonus = self.to_decimal_bps(BigUint::zero());
 
         for dp in positions {
-            let feed = self.get_token_price(&dp.asset_id, storage_cache);
+            let feed = self.get_token_price(&dp.asset_id, cache);
             let collateral_in_egld = self.get_token_egld_value(&dp.get_total_amount(), &feed.price);
             let fraction = self
                 .div_half_up(&collateral_in_egld, total_collateral_in_egld, RAY_PRECISION)
@@ -433,7 +450,7 @@ pub trait PositionLiquidationModule:
     /// - `repaid_tokens`: Mutable repaid token details.
     /// - `refunds`: Mutable refund vector.
     /// - `excess_in_egld`: Excess payment in EGLD.
-    /// - `storage_cache`: Mutable storage cache.
+    /// - `cache`: Mutable storage cache.
     fn process_excess_payment(
         &self,
         repaid_tokens: &mut ManagedVec<
@@ -445,21 +462,19 @@ pub trait PositionLiquidationModule:
         >,
         refunds: &mut ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
         excess_in_egld: ManagedDecimal<Self::Api, NumDecimals>,
-        storage_cache: &mut StorageCache<Self>,
     ) {
         let mut remaining_excess = excess_in_egld;
 
         for index in 0..repaid_tokens.len() {
-            if remaining_excess == storage_cache.wad_dec_zero {
+            if remaining_excess == self.wad_zero() {
                 break;
             }
 
-            let (mut debt_payment, mut egld_asset_amount, price_feed) =
+            let (mut debt_payment, mut egld_asset_amount, feed) =
                 repaid_tokens.get(index).clone().into_tuple();
 
             if egld_asset_amount >= remaining_excess {
-                let excess_in_original =
-                    self.convert_egld_to_tokens(&remaining_excess, &price_feed);
+                let excess_in_original = self.convert_egld_to_tokens(&remaining_excess, &feed);
                 debt_payment.amount -= excess_in_original.into_raw_units();
                 egld_asset_amount -= &remaining_excess;
 
@@ -468,10 +483,9 @@ pub trait PositionLiquidationModule:
                     0,
                     excess_in_original.into_raw_units().clone(),
                 ));
-                let _ =
-                    repaid_tokens.set(index, (debt_payment, egld_asset_amount, price_feed).into());
+                let _ = repaid_tokens.set(index, (debt_payment, egld_asset_amount, feed).into());
 
-                remaining_excess = storage_cache.wad_dec_zero.clone();
+                remaining_excess = self.wad_zero();
             } else {
                 refunds.push(debt_payment);
                 let _ = repaid_tokens.remove(index);

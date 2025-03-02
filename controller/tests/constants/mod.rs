@@ -323,7 +323,7 @@ pub fn get_segld_config() -> SetupConfig {
 pub fn get_legld_config() -> SetupConfig {
     SetupConfig {
         config: AssetConfig {
-            loan_to_value   : ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
+            loan_to_value: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
             liquidation_threshold: ManagedDecimal::from_raw_units(
                 BigUint::from(LIQ_THRESOLD),
                 BPS_PRECISION,
@@ -474,7 +474,10 @@ pub fn get_siloed_config() -> SetupConfig {
             is_borrowable: true,
             e_mode_enabled: false,
             is_isolated_asset: false,
-            isolation_debt_ceiling_usd: ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION),
+            isolation_debt_ceiling_usd: ManagedDecimal::from_raw_units(
+                BigUint::zero(),
+                WAD_PRECISION,
+            ),
             is_siloed_borrowing: true,
             is_flashloanable: true,
             flashloan_fee: ManagedDecimal::from_raw_units(
@@ -519,7 +522,10 @@ pub fn get_capped_config() -> SetupConfig {
             is_borrowable: true,
             e_mode_enabled: false,
             is_isolated_asset: false,
-            isolation_debt_ceiling_usd: ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION),
+            isolation_debt_ceiling_usd: ManagedDecimal::from_raw_units(
+                BigUint::zero(),
+                WAD_PRECISION,
+            ),
             is_siloed_borrowing: false,
             is_flashloanable: true,
             flashloan_fee: ManagedDecimal::from_raw_units(

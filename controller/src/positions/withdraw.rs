@@ -1,8 +1,6 @@
 use common_structs::{AccountAttributes, AccountPosition, PriceFeedShort};
 
-use crate::{
-    contexts::base::StorageCache, helpers, oracle, proxy_pool, storage, utils, validation,
-};
+use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validation};
 
 use super::{account, vault};
 
@@ -11,7 +9,7 @@ multiversx_sc::derive_imports!();
 
 #[multiversx_sc::module]
 pub trait PositionWithdrawModule:
-    storage::LendingStorageModule
+    storage::Storage
     + validation::ValidationModule
     + oracle::OracleModule
     + common_events::EventsModule
@@ -30,7 +28,7 @@ pub trait PositionWithdrawModule:
     /// - `caller`: Withdrawer's address.
     /// - `is_liquidation`: Liquidation flag.
     /// - `liquidation_fee`: Optional fee for liquidation.
-    /// - `storage_cache`: Mutable storage cache.
+    /// - `cache`: Mutable storage cache.
     /// - `position_attributes`: NFT attributes.
     /// - `is_swap`: Swap operation flag.
     ///
@@ -43,13 +41,13 @@ pub trait PositionWithdrawModule:
         caller: &ManagedAddress,
         is_liquidation: bool,
         liquidation_fee: Option<ManagedDecimal<Self::Api, NumDecimals>>,
-        storage_cache: &mut StorageCache<Self>,
+        cache: &mut Cache<Self>,
         position_attributes: &AccountAttributes,
         is_swap: bool,
     ) -> AccountPosition<Self::Api> {
         let (token_id, _, requested_amount) = withdraw_payment.into_tuple();
-        let price_feed = self.get_token_price(&token_id, storage_cache);
-        let pool_address = storage_cache.get_cached_pool_address(&token_id);
+        let feed = self.get_token_price(&token_id, cache);
+        let pool_address = cache.get_cached_pool_address(&token_id);
 
         let mut deposit_position = self.get_deposit_position(account_nonce, &token_id);
         let withdraw_amount = self.calculate_withdraw_amount(&deposit_position, requested_amount);
@@ -62,7 +60,7 @@ pub trait PositionWithdrawModule:
                 liquidation_fee,
                 caller,
                 pool_address,
-                &price_feed,
+                &feed,
                 &mut deposit_position,
                 is_swap,
             )
@@ -74,14 +72,14 @@ pub trait PositionWithdrawModule:
                 &mut deposit_position,
                 is_liquidation,
                 liquidation_fee,
-                &price_feed,
+                &feed,
             )
         };
 
         self.emit_withdrawal_event(
             &withdraw_amount,
             &updated_position,
-            &price_feed,
+            &feed,
             caller,
             position_attributes,
         );
@@ -100,7 +98,7 @@ pub trait PositionWithdrawModule:
     /// - `liquidation_fee_opt`: Optional liquidation fee.
     /// - `caller`: Receiver's address.
     /// - `pool_address`: Pool address.
-    /// - `price_feed`: Price data for the token.
+    /// - `feed`: Price data for the token.
     /// - `deposit_position`: Mutable deposit position.
     /// - `is_swap`: Swap operation flag.
     ///
@@ -114,7 +112,7 @@ pub trait PositionWithdrawModule:
         liquidation_fee_opt: Option<ManagedDecimal<Self::Api, NumDecimals>>,
         caller: &ManagedAddress,
         pool_address: ManagedAddress,
-        price_feed: &PriceFeedShort<Self::Api>,
+        feed: &PriceFeedShort<Self::Api>,
         deposit_position: &mut AccountPosition<Self::Api>,
         is_swap: bool,
     ) -> AccountPosition<Self::Api> {
@@ -125,7 +123,7 @@ pub trait PositionWithdrawModule:
             let liquidation_fee = liquidation_fee_opt.unwrap();
             let amount_after_fee = amount.clone() - liquidation_fee.clone();
             self.transfer_withdrawn_assets(caller, token_id, &amount_after_fee, is_swap);
-            self.transfer_liquidation_fee(pool_address, token_id, &liquidation_fee, price_feed);
+            self.transfer_liquidation_fee(pool_address, token_id, &liquidation_fee, feed);
         } else {
             self.transfer_withdrawn_assets(caller, token_id, amount, is_swap);
         }
@@ -142,7 +140,7 @@ pub trait PositionWithdrawModule:
     /// - `deposit_position`: Mutable deposit position.
     /// - `is_liquidation`: Liquidation flag.
     /// - `liquidation_fee`: Optional fee.
-    /// - `price_feed`: Price data for the token.
+    /// - `feed`: Price data for the token.
     ///
     /// # Returns
     /// - Updated deposit position.
@@ -154,7 +152,7 @@ pub trait PositionWithdrawModule:
         deposit_position: &mut AccountPosition<Self::Api>,
         is_liquidation: bool,
         liquidation_fee: Option<ManagedDecimal<Self::Api, NumDecimals>>,
-        price_feed: &PriceFeedShort<Self::Api>,
+        feed: &PriceFeedShort<Self::Api>,
     ) -> AccountPosition<Self::Api> {
         self.tx()
             .to(pool_address)
@@ -165,7 +163,7 @@ pub trait PositionWithdrawModule:
                 deposit_position.clone(),
                 is_liquidation,
                 liquidation_fee,
-                price_feed.price.clone(),
+                feed.price.clone(),
             )
             .returns(ReturnsResult)
             .sync_call()
@@ -274,18 +272,18 @@ pub trait PositionWithdrawModule:
     /// - `pool_address`: Pool address.
     /// - `token_id`: Token identifier.
     /// - `fee`: Fee amount.
-    /// - `price_feed`: Price data for the token.
+    /// - `feed`: Price data for the token.
     fn transfer_liquidation_fee(
         &self,
         pool_address: ManagedAddress,
         token_id: &EgldOrEsdtTokenIdentifier,
         fee: &ManagedDecimal<Self::Api, NumDecimals>,
-        price_feed: &PriceFeedShort<Self::Api>,
+        feed: &PriceFeedShort<Self::Api>,
     ) {
         self.tx()
             .to(pool_address)
             .typed(proxy_pool::LiquidityPoolProxy)
-            .add_protocol_revenue(price_feed.price.clone())
+            .add_protocol_revenue(feed.price.clone())
             .egld_or_single_esdt(token_id, 0, fee.into_raw_units())
             .returns(ReturnsResult)
             .sync_call();
@@ -297,21 +295,21 @@ pub trait PositionWithdrawModule:
     /// # Arguments
     /// - `amount`: Withdrawn amount.
     /// - `position`: Updated position.
-    /// - `price_feed`: Price data for the token.
+    /// - `feed`: Price data for the token.
     /// - `caller`: Withdrawer's address.
     /// - `position_attributes`: NFT attributes.
     fn emit_withdrawal_event(
         &self,
         amount: &ManagedDecimal<Self::Api, NumDecimals>,
         position: &AccountPosition<Self::Api>,
-        price_feed: &PriceFeedShort<Self::Api>,
+        feed: &PriceFeedShort<Self::Api>,
         caller: &ManagedAddress,
         position_attributes: &AccountAttributes,
     ) {
         self.update_position_event(
             amount,
             position,
-            OptionalValue::Some(price_feed.price.clone()),
+            OptionalValue::Some(feed.price.clone()),
             OptionalValue::Some(caller),
             OptionalValue::Some(position_attributes),
         );

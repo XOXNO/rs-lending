@@ -1,15 +1,16 @@
+use common_constants::BASE_NFT_URI;
 use common_structs::AccountAttributes;
 
 use crate::storage;
-use common_errors::{ERROR_ACCOUNT_NOT_IN_THE_MARKET, ERROR_POSITION_SHOULD_BE_VAULT};
+use common_errors::{
+    ERROR_ACCOUNT_NOT_IN_THE_MARKET, ERROR_ADDRESS_IS_ZERO, ERROR_POSITION_SHOULD_BE_VAULT,
+};
 
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
 #[multiversx_sc::module]
-pub trait PositionAccountModule:
-    common_events::EventsModule + storage::LendingStorageModule
-{
+pub trait PositionAccountModule: common_events::EventsModule + storage::Storage {
     /// Creates a new NFT for a user's lending position.
     /// Tracks position type (isolated, vault, e-mode) via NFT attributes.
     ///
@@ -37,9 +38,28 @@ pub trait PositionAccountModule:
             },
             is_vault_position: is_vault,
         };
-        let nft_token_payment = self
-            .account_token()
-            .nft_create_and_send::<AccountAttributes>(caller, BigUint::from(1u64), &attributes);
+
+        let nft_token_payment = self.account_token().nft_create_named::<AccountAttributes>(
+            BigUint::from(1u64),
+            &ManagedBuffer::from("Lending Account"),
+            &attributes,
+        );
+
+        let _ = self
+            .tx()
+            .typed(system_proxy::UserBuiltinProxy)
+            .nft_add_multiple_uri(
+                self.account_token().get_token_id_ref(),
+                nft_token_payment.token_nonce,
+                &ManagedVec::from_single_item(sc_format!(
+                    "{}/{}",
+                    BASE_NFT_URI,
+                    nft_token_payment.token_nonce
+                )),
+            );
+
+        self.account_token()
+            .send_payment(caller, &nft_token_payment);
 
         self.account_positions()
             .insert(nft_token_payment.token_nonce);
@@ -79,12 +99,10 @@ pub trait PositionAccountModule:
         is_vault: bool,
         e_mode_category: OptionalValue<u8>,
         existing_account: Option<EsdtTokenPayment<Self::Api>>,
+        maybe_attributes: Option<AccountAttributes>,
     ) -> (u64, AccountAttributes) {
         if let Some(account) = existing_account {
-            self.validate_existing_account(&account);
-            let account_attributes = self.nft_attributes(&account);
-            self.tx().to(caller).payment(&account).transfer();
-            (account.token_nonce, account_attributes)
+            (account.token_nonce, maybe_attributes.unwrap())
         } else {
             let (payment, account_attributes) =
                 self.create_account_nft(caller, is_isolated, is_vault, e_mode_category);
@@ -121,6 +139,48 @@ pub trait PositionAccountModule:
             self.account_positions().contains(&nonce),
             ERROR_ACCOUNT_NOT_IN_THE_MARKET
         );
+    }
+
+    /// Validates borrow operation parameters.
+    /// Ensures account, asset, and caller are valid.
+    ///
+    /// # Arguments
+    /// - `position_nft_payment`: NFT payment.
+    /// - `initial_caller`: Borrower's address.
+    fn validate_account(
+        &self,
+        return_account: bool,
+    ) -> (
+        EsdtTokenPayment<Self::Api>,
+        ManagedAddress,
+        AccountAttributes,
+    ) {
+        let account_payment = self.call_value().single_esdt().clone();
+        let caller = self.blockchain().get_caller();
+        self.require_active_account(account_payment.token_nonce);
+        self.account_token()
+            .require_same_token(&account_payment.token_identifier);
+        self.require_non_zero_address(&caller);
+        let account_attributes = self.nft_attributes(&account_payment);
+
+        if return_account {
+            // Transfer the account NFT back to the caller right after validation
+            self.tx().to(&caller).payment(&account_payment).transfer();
+        }
+
+        (account_payment, caller, account_attributes)
+    }
+
+    /// Ensures an address is not the zero address.
+    /// Validates caller or contract addresses to avoid invalid operations.
+    ///
+    /// # Arguments
+    /// - `address`: The address to validate as a `ManagedAddress`.
+    ///
+    /// # Errors
+    /// - `ERROR_ADDRESS_IS_ZERO`: If the address is zero.
+    fn require_non_zero_address(&self, address: &ManagedAddress) {
+        require!(!address.is_zero(), ERROR_ADDRESS_IS_ZERO);
     }
 
     /// Validates consistency between position and operation vault status.
