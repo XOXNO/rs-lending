@@ -10,6 +10,7 @@ AGGREGATOR_ADDR=erd1qqqqqqqqqqqqqpgq7a48t570jjudy0xjxhuzcdwndcq9gt2tah0s7tg84a
 SAFE_PRICE_VIEW_ADDRESS=erd1qqqqqqqqqqqqqpgqcmnum66jxyfpcnvqk5eahj5n3ny4vkfn0n4szjjskv
 ACCUMULATOR_ADDRESS=erd1qqqqqqqqqqqqqpgqyxfc4r5fmw2ljcgwxj2nuzv72y9ryvyhah0sgn5vv2
 WEGLD_ADDRESS=erd1qqqqqqqqqqqqqpgqpv09kfzry5y4sj05udcngesat07umyj70n4sa2c0rp
+ASH_SWAP_ADDRESS=erd1qqqqqqqqqqqqqpgqydv5wa99jnhwtls28vtpwww8mfuvjdsqah0sre0ltj
 
 ACCOUNT_TOKEN_NAME="str:XOXNOLendingAccount"
 ACCOUNT_TOKEN_TICKER="str:BOBERLEND"
@@ -138,6 +139,20 @@ setAccumulator() {
     mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=20000000 \
     --ledger --ledger-account-index=0 --ledger-address-index=0 \
     --function="setAccumulator" --arguments ${ACCUMULATOR_ADDRESS} \
+    --proxy=${PROXY} --chain=${CHAIN_ID} --send
+}
+
+setAggregator() {
+    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=20000000 \
+    --ledger --ledger-account-index=0 --ledger-address-index=0 \
+    --function="setAggregator" --arguments ${AGGREGATOR_ADDR} \
+    --proxy=${PROXY} --chain=${CHAIN_ID} --send
+}
+
+setAshSwap() {
+    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=20000000 \
+    --ledger --ledger-account-index=0 --ledger-address-index=0 \
+    --function="setAshSwap" --arguments ${ASH_SWAP_ADDRESS} \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 

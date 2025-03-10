@@ -30,7 +30,7 @@ pub const WAD_PRECISION: usize = 18;
 pub const BPS: usize = 10_000; // 100%
 pub const BPS_PRECISION: usize = 4;
 
-pub const BASE_NFT_URI: &[u8] = b"https://api.xoxno.com/user/account/image";
+pub const BASE_NFT_URI: &[u8] = b"https://api.xoxno.com/user/lending/image";
 
 // Storage keys for price aggregator and liquidity layer
 pub static TOTAL_BORROWED_AMOUNT_STORAGE_KEY: &[u8] = b"borrowed";

@@ -50,12 +50,12 @@ pub trait PositionWithdrawModule:
         let pool_address = cache.get_cached_pool_address(&token_id);
 
         let mut deposit_position = self.get_deposit_position(account_nonce, &token_id);
-        let withdraw_amount = self.calculate_withdraw_amount(&deposit_position, requested_amount);
+        let amount = self.cap_withdraw_amount(&deposit_position, requested_amount);
 
         let updated_position = if position_attributes.is_vault() {
             self.process_vault_withdrawal(
                 &token_id,
-                &withdraw_amount,
+                &amount,
                 is_liquidation,
                 liquidation_fee,
                 caller,
@@ -68,7 +68,7 @@ pub trait PositionWithdrawModule:
             self.process_market_withdrawal(
                 pool_address,
                 caller,
-                &withdraw_amount,
+                &amount,
                 &mut deposit_position,
                 is_liquidation,
                 liquidation_fee,
@@ -77,7 +77,7 @@ pub trait PositionWithdrawModule:
         };
 
         self.emit_withdrawal_event(
-            &withdraw_amount,
+            &amount,
             &updated_position,
             &feed,
             caller,
@@ -229,7 +229,7 @@ pub trait PositionWithdrawModule:
     ///
     /// # Returns
     /// - Actual withdrawal amount in decimal format.
-    fn calculate_withdraw_amount(
+    fn cap_withdraw_amount(
         &self,
         deposit_position: &AccountPosition<Self::Api>,
         requested_amount: BigUint,

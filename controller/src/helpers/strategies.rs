@@ -119,22 +119,20 @@ pub trait StrategiesModule:
         oracle_payment: &OracleProvider<Self::Api>,
         wanted_collateral: &EgldOrEsdtTokenIdentifier,
         oracle_collateral: &OracleProvider<Self::Api>,
+        caller: &ManagedAddress,
         steps: Option<ManagedVec<AggregatorStep<Self::Api>>>,
         limits: Option<ManagedVec<TokenAmount<Self::Api>>>,
     ) -> EgldOrEsdtTokenPayment {
-        if &payment.token_identifier == wanted_collateral {
-            return payment.clone();
-        } else {
-            self.convert_token_from_to(
-                oracle_collateral,
-                wanted_collateral,
-                &payment.token_identifier,
-                &payment.amount,
-                oracle_payment,
-                steps,
-                limits,
-            )
-        }
+        self.convert_token_from_to(
+            oracle_collateral,
+            wanted_collateral,
+            &payment.token_identifier,
+            &payment.amount,
+            oracle_payment,
+            caller,
+            steps,
+            limits,
+        )
     }
 
     fn process_flash_loan_to_collateral(
@@ -145,6 +143,7 @@ pub trait StrategiesModule:
         init_collateral_amount: &BigUint,
         to_provider: &OracleProvider<Self::Api>,
         from_provider: &OracleProvider<Self::Api>,
+        caller: &ManagedAddress,
         steps: Option<ManagedVec<AggregatorStep<Self::Api>>>,
         limits: Option<ManagedVec<TokenAmount<Self::Api>>>,
     ) -> EgldOrEsdtTokenPayment {
@@ -154,6 +153,7 @@ pub trait StrategiesModule:
             from_token,
             from_amount,
             from_provider,
+            caller,
             steps,
             limits,
         );
@@ -185,6 +185,7 @@ pub trait StrategiesModule:
         quote_token: &EgldOrEsdtTokenIdentifier,
         to_provider: &OracleProvider<Self::Api>,
         from_provider: &OracleProvider<Self::Api>,
+        caller: &ManagedAddress,
         steps: Option<ManagedVec<AggregatorStep<Self::Api>>>,
         limits: Option<ManagedVec<TokenAmount<Self::Api>>>,
     ) -> EgldOrEsdtTokenPayment {
@@ -215,6 +216,7 @@ pub trait StrategiesModule:
             from_token,
             &s,
             from_provider,
+            caller,
             steps.clone(),
             limits.clone(),
         );
@@ -245,9 +247,13 @@ pub trait StrategiesModule:
         from_token: &EgldOrEsdtTokenIdentifier,
         from_amount: &BigUint,
         from_provider: &OracleProvider<Self::Api>,
+        caller: &ManagedAddress,
         steps: Option<ManagedVec<AggregatorStep<Self::Api>>>,
         limits: Option<ManagedVec<TokenAmount<Self::Api>>>,
     ) -> EgldOrEsdtTokenPayment {
+        if to_token == from_token {
+            return EgldOrEsdtTokenPayment::new(to_token.clone(), 0, from_amount.clone());
+        }
         match (
             from_provider.oracle_type.clone(),
             to_provider.oracle_type.clone(),
@@ -256,7 +262,7 @@ pub trait StrategiesModule:
                 if from_token == &to_provider.base_token_id {
                     self.convert_to_lsd(from_token, &from_amount, to_provider)
                 } else {
-                    self.swap_tokens(to_token, from_token, from_amount, steps, limits)
+                    self.swap_tokens(to_token, from_token, from_amount, caller, steps, limits)
                 }
             }
             // Normal to LP: Convert if part of LP, handling EGLD/WEGLD
@@ -271,6 +277,7 @@ pub trait StrategiesModule:
                         &quote_token,
                         to_provider,
                         from_provider,
+                        caller,
                         steps,
                         limits,
                     )
@@ -294,6 +301,7 @@ pub trait StrategiesModule:
                         &quote_token,
                         to_provider,
                         from_provider,
+                        caller,
                         steps,
                         limits,
                     )
@@ -306,7 +314,7 @@ pub trait StrategiesModule:
                 }
             }
             // Other cases (simplified for brevity)
-            _ => self.swap_tokens(to_token, from_token, from_amount, steps, limits),
+            _ => self.swap_tokens(to_token, from_token, from_amount, caller, steps, limits),
         }
     }
 
@@ -334,6 +342,7 @@ pub trait StrategiesModule:
         quote_token: &EgldOrEsdtTokenIdentifier,
         to_provider: &OracleProvider<Self::Api>,
         from_provider: &OracleProvider<Self::Api>,
+        caller: &ManagedAddress,
         steps: Option<ManagedVec<AggregatorStep<Self::Api>>>,
         limits: Option<ManagedVec<TokenAmount<Self::Api>>>,
     ) -> EgldOrEsdtTokenPayment {
@@ -368,6 +377,7 @@ pub trait StrategiesModule:
             &final_other,
             &other_amount.amount,
             &self.token_oracle(other_token).get(),
+            caller,
             steps,
             limits,
         );
@@ -425,24 +435,26 @@ pub trait StrategiesModule:
         to: &EgldOrEsdtTokenIdentifier,
         from: &EgldOrEsdtTokenIdentifier,
         amount: &BigUint,
+        caller: &ManagedAddress,
         steps_opt: Option<ManagedVec<AggregatorStep<Self::Api>>>,
         limits_opt: Option<ManagedVec<TokenAmount<Self::Api>>>,
     ) -> EgldOrEsdtTokenPayment {
+        // Ensure steps and limits are provided
         require!(
             steps_opt.is_some() && limits_opt.is_some(),
             "Steps and limits are required"
         );
-        let mut steps = steps_opt.unwrap();
+
+        let steps = steps_opt.unwrap();
         let limits = limits_opt.unwrap();
+        // Set up the aggregator contract call
         let call = self
             .tx()
             .to(self.aggregator().get())
             .typed(AggregatorContractProxy);
-        let mut first_step = steps.get(0).clone();
-        first_step.amount_in = amount.clone();
-        let _ = steps.set(0, first_step);
 
-        if from.is_esdt() {
+        // Collect all received payments in a unified format
+        let received_payments = if from.is_esdt() {
             let second_call = call
                 .aggregate_esdt(
                     steps,
@@ -450,28 +462,75 @@ pub trait StrategiesModule:
                     to.is_egld(),
                     OptionalValue::<ManagedAddress>::None,
                 )
-                .egld_or_single_esdt(&from, 0, amount);
+                .egld_or_single_esdt(from, 0, amount);
 
-            let result = if to.is_egld() {
-                let amount = second_call.returns(ReturnsBackTransfersEGLD).sync_call();
-                EgldOrEsdtTokenPayment::new(EgldOrEsdtTokenIdentifier::egld(), 0, amount)
-            } else {
-                second_call
-                    .returns(ReturnsBackTransfersSingleESDT)
-                    .sync_call()
-                    .into()
-            };
+            let returned = second_call.returns(ReturnsResult).sync_call();
+            let (egld_amount, other_esdts) = returned.into_tuple();
+            let mut payments: ManagedVec<EgldOrEsdtTokenPayment<Self::Api>> = ManagedVec::new();
 
-            result
+            if egld_amount > 0 {
+                payments.push(EgldOrEsdtTokenPayment::new(
+                    EgldOrEsdtTokenIdentifier::egld(),
+                    0,
+                    egld_amount,
+                ));
+            }
+
+            for esdt in other_esdts.iter() {
+                payments.push(EgldOrEsdtTokenPayment::new(
+                    EgldOrEsdtTokenIdentifier::esdt(esdt.token_identifier.clone()),
+                    esdt.token_nonce,
+                    esdt.amount.clone(),
+                ));
+            }
+
+            payments
         } else {
-            let result = call
+            let esdt_payments = call
                 .aggregate_egld(steps, limits, OptionalValue::<ManagedAddress>::None)
                 .egld(amount)
-                .returns(ReturnsBackTransfersSingleESDT)
+                .returns(ReturnsResult)
                 .sync_call();
 
-            result.into_multi_egld_or_esdt_payment()
+            esdt_payments
+                .into_iter()
+                .map(|esdt| {
+                    EgldOrEsdtTokenPayment::new(
+                        EgldOrEsdtTokenIdentifier::esdt(esdt.token_identifier),
+                        esdt.token_nonce,
+                        esdt.amount,
+                    )
+                })
+                .collect()
+        };
+
+        // Process payments to extract desired token and refunds
+        let mut wanted_result = EgldOrEsdtTokenPayment::new(to.clone(), 0, BigUint::from(0u32));
+        let mut refunds = ManagedVec::new();
+
+        for payment in received_payments.iter() {
+            if payment.token_identifier == *to {
+                wanted_result.amount += &payment.amount;
+            } else {
+                refunds.push(payment.clone());
+            }
         }
+
+        // Send any refunds to the caller
+        if refunds.len() > 0 {
+            self.tx()
+                .to(caller)
+                .payment(refunds)
+                .transfer_if_not_empty();
+        }
+
+        // Ensure we received the desired token
+        require!(
+            wanted_result.amount > 0,
+            "No tokens received from aggregator"
+        );
+
+        wanted_result
     }
 
     fn get_reserves(&self, oracle_address: &ManagedAddress) -> (BigUint, BigUint, BigUint) {
@@ -482,6 +541,20 @@ pub trait StrategiesModule:
             .returns(ReturnsResult)
             .sync_call_readonly()
             .into_tuple()
+    }
+
+    fn estimate(
+        &self,
+        oracle_address: &ManagedAddress,
+        token_in: &TokenIdentifier,
+        amount: &BigUint,
+    ) -> BigUint {
+        self.tx()
+            .to(oracle_address)
+            .typed(proxy_xexchange_pair::PairProxy)
+            .get_equivalent(token_in, amount)
+            .returns(ReturnsResult)
+            .sync_call_readonly()
     }
 
     fn wrap_egld(&self, amount: &BigUint) {

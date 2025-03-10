@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           63
+// Endpoints:                           64
 // Async Callback:                       1
-// Total number of exported functions:  66
+// Total number of exported functions:  67
 
 #![no_std]
 
@@ -37,6 +37,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         setTokenOracle => set_token_oracle
         editTokenOracleTolerance => edit_token_oracle_tolerance
         setAggregator => set_aggregator
+        setAshSwap => set_ash_swap
         setAccumulator => set_accumulator
         setSafePriceView => set_safe_price_view
         setLiquidityPoolTemplate => set_liquidity_pool_template

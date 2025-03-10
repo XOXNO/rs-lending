@@ -84,6 +84,7 @@ pub trait SnapModule:
             &payment_oracle,
             collateral_token,
             &collateral_oracle,
+            &caller,
             steps.clone().into_option(),
             limits.clone().into_option(),
         );
@@ -158,6 +159,7 @@ pub trait SnapModule:
             &initial_collateral.amount,
             &collateral_oracle,
             &debt_oracle,
+            &caller,
             steps.into_option(),
             limits.into_option(),
         );
@@ -221,6 +223,11 @@ pub trait SnapModule:
             OptionalValue::Some(self.get_token_price(&from_token, &mut cache).price),
         );
 
+        self.update_deposit_position_storage(
+            account.token_nonce,
+            from_token,
+            &mut deposit_position,
+        );
         let mut amount_to_swap = deposit_position.make_amount_decimal(from_amount);
 
         // Cap the withdrawal amount to the available balance with interest
@@ -246,10 +253,16 @@ pub trait SnapModule:
             true,
         );
 
-        let received = self.swap_tokens(
+        let from_oracle = self.token_oracle(from_token).get();
+        let to_oracle = self.token_oracle(to_token).get();
+
+        let received = self.convert_token_from_to(
+            &to_oracle,
             &to_token,
             &from_token,
             &amount_to_swap.into_raw_units(),
+            &from_oracle,
+            &caller,
             steps.into_option(),
             limits.into_option(),
         );
@@ -297,21 +310,25 @@ pub trait SnapModule:
         }
 
         // Retrieve borrow position for the given token
-        let mut borrow_positions = self.borrow_positions(account.token_nonce);
+        let borrow_positions = self.borrow_positions(account.token_nonce);
         let maybe_borrow_position = borrow_positions.get(from_token);
+
         require!(
             maybe_borrow_position.is_some(),
             "Token {} is not available for this account",
             from_token
         );
+
         let mut borrow_position = maybe_borrow_position.unwrap();
 
         // Required to be in sync with the global index for accurate swaps to avoid extra interest during withdraw
         self.update_position(
-            &self.get_pool_address(&borrow_position.asset_id),
+            &cache.get_cached_pool_address(&borrow_position.asset_id),
             &mut borrow_position,
             OptionalValue::Some(self.get_token_price(&from_token, &mut cache).price),
         );
+
+        self.update_borrow_position_storage(account.token_nonce, from_token, &mut borrow_position);
 
         let mut amount_to_repay = borrow_position.make_amount_decimal(from_amount);
 
@@ -357,12 +374,17 @@ pub trait SnapModule:
             OptionalValue::Some(&account_attributes),
         );
 
-        borrow_positions.insert(to_token.clone(), to_debt_borrow_position);
+        self.update_borrow_position_storage(
+            account.token_nonce,
+            to_token,
+            &mut to_debt_borrow_position,
+        );
 
         let received = self.swap_tokens(
             &from_token,
             &to_token,
             &required_to_swap.into_raw_units(),
+            &caller,
             steps.into_option(),
             limits.into_option(),
         );
@@ -374,6 +396,7 @@ pub trait SnapModule:
             let feed = self.get_token_price(&payment.token_identifier, &mut cache);
             let payment_decimal =
                 ManagedDecimal::from_raw_units(payment.amount.clone(), feed.asset_decimals);
+
             self.process_repayment(
                 account.token_nonce,
                 &payment.token_identifier,
@@ -397,7 +420,7 @@ pub trait SnapModule:
         &self,
         from_token: &EgldOrEsdtTokenIdentifier,
         from_amount: BigUint,
-        debt_token: &EgldOrEsdtTokenIdentifier,
+        to_token: &EgldOrEsdtTokenIdentifier,
         steps: OptionalValue<ManagedVec<AggregatorStep<Self::Api>>>,
         limits: OptionalValue<ManagedVec<TokenAmount<Self::Api>>>,
     ) {
@@ -426,6 +449,12 @@ pub trait SnapModule:
             OptionalValue::Some(self.get_token_price(&from_token, &mut cache).price),
         );
 
+        self.update_deposit_position_storage(
+            account.token_nonce,
+            from_token,
+            &mut deposit_position,
+        );
+
         let mut amount_to_swap = deposit_position.make_amount_decimal(from_amount);
 
         // Cap the withdrawal amount to the available balance with interest
@@ -451,10 +480,15 @@ pub trait SnapModule:
             true,
         );
 
-        let received = self.swap_tokens(
-            &debt_token,
+        let from_oracle = self.token_oracle(from_token).get();
+        let to_oracle = self.token_oracle(to_token).get();
+        let received = self.convert_token_from_to(
+            &to_oracle,
+            &to_token,
             &from_token,
             &amount_to_swap.into_raw_units(),
+            &from_oracle,
+            &caller,
             steps.into_option(),
             limits.into_option(),
         );

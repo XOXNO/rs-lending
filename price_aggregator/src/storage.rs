@@ -19,13 +19,6 @@ pub trait StorageModule {
     #[storage_mapper("oracle_status")]
     fn oracle_status(&self) -> MapMapper<ManagedAddress, OracleStatus>;
 
-    // #[storage_mapper("rounds")]
-    // fn rounds(
-    //     &self,
-    //     from: &ManagedBuffer,
-    //     to: &ManagedBuffer,
-    // ) -> VecMapper<TimestampedPrice<Self::Api>>;
-
     #[storage_mapper("rounds")]
     fn rounds_new(
         &self,

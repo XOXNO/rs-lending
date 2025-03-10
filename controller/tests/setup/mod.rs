@@ -4,7 +4,7 @@ use common_constants::{EGLD_TICKER, MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE};
 use cache::Cache;
 
 use multiversx_sc::{
-    imports::OptionalValue,
+    imports::{MultiValue2, OptionalValue},
     types::{
         BigUint, EgldOrEsdtTokenPayment, ManagedAddress, ManagedArgBuffer, ManagedBuffer,
         ManagedDecimal, MultiValueEncoded, NumDecimals, ReturnsNewManagedAddress, ReturnsResult,
@@ -161,6 +161,58 @@ impl LendingPoolTestState {
     //     // println!("Max Leverage: {:?}", max_liquidate_amount);
     //     // return max_liquidate_amount;
     // }
+
+    pub fn edit_asset_config(
+        &mut self,
+        asset: EgldOrEsdtTokenIdentifier<StaticApi>,
+        loan_to_value: &BigUint<StaticApi>,
+        liquidation_threshold: &BigUint<StaticApi>,
+        liquidation_bonus: &BigUint<StaticApi>,
+        liquidation_fees: &BigUint<StaticApi>,
+        is_isolated_asset: bool,
+        isolation_debt_ceiling_usd: &BigUint<StaticApi>,
+        is_siloed_borrowing: bool,
+        is_flashloanable: bool,
+        flashloan_fee: &BigUint<StaticApi>,
+        is_collateralizable: bool,
+        is_borrowable: bool,
+        isolation_borrow_enabled: bool,
+        borrow_cap: &BigUint<StaticApi>,
+        supply_cap: &BigUint<StaticApi>,
+        error_message: Option<&[u8]>,
+    ) {
+        let call = self
+            .world
+            .tx()
+            .from(OWNER_ADDRESS.to_managed_address())
+            .to(&self.lending_sc)
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .edit_asset_config(
+                asset,
+                loan_to_value,
+                liquidation_threshold,
+                liquidation_bonus,
+                liquidation_fees,
+                is_isolated_asset,
+                isolation_debt_ceiling_usd,
+                is_siloed_borrowing,
+                is_flashloanable,
+                flashloan_fee,
+                is_collateralizable,
+                is_borrowable,
+                isolation_borrow_enabled,
+                borrow_cap,
+                supply_cap,
+            );
+        if error_message.is_some() {
+            call.returns(ExpectMessage(
+                core::str::from_utf8(error_message.unwrap()).unwrap(),
+            ))
+            .run();
+        } else {
+            call.run();
+        }
+    }
 
     pub fn get_usd_price(
         &mut self,
@@ -435,6 +487,84 @@ impl LendingPoolTestState {
             .run();
     }
 
+    // Core lending operations
+    pub fn supply_empty_asset_error(
+        &mut self,
+        from: &TestAddress,
+        account_nonce: OptionalValue<u64>,
+        e_mode_category: OptionalValue<u8>,
+        is_vault: bool,
+        error_message: &[u8],
+    ) {
+        let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
+
+        if let OptionalValue::Some(account_nonce) = account_nonce {
+            vec.push(EsdtTokenPayment::new(
+                ACCOUNT_TOKEN.to_token_identifier(),
+                account_nonce,
+                BigUint::from(1u64),
+            ));
+        }
+
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .supply(is_vault, e_mode_category)
+            .multi_esdt(vec)
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
+    pub fn supply_bulk_error(
+        &mut self,
+        from: &TestAddress,
+        account_nonce: OptionalValue<u64>,
+        e_mode_category: OptionalValue<u8>,
+        is_vault: bool,
+        assets: ManagedVec<StaticApi, EsdtTokenPayment<StaticApi>>,
+        error_message: &[u8],
+    ) {
+        let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
+
+        if let OptionalValue::Some(account_nonce) = account_nonce {
+            vec.push(EsdtTokenPayment::new(
+                ACCOUNT_TOKEN.to_token_identifier(),
+                account_nonce,
+                BigUint::from(1u64),
+            ));
+        }
+        vec.extend(assets);
+
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .supply(is_vault, e_mode_category)
+            .multi_esdt(vec)
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
+    pub fn empty_supply_asset_error(
+        &mut self,
+        from: &TestAddress,
+        e_mode_category: OptionalValue<u8>,
+        is_vault: bool,
+        error_message: &[u8],
+    ) {
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .supply(is_vault, e_mode_category)
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
     pub fn supply_asset_error_payment_count(
         &mut self,
         from: &TestAddress,
@@ -620,6 +750,22 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::LendingPoolProxy)
             .borrow(array)
+            .esdt(TestEsdtTransfer(ACCOUNT_TOKEN, account_nonce, 1u64))
+            .run();
+    }
+
+    pub fn borrow_assets(
+        &mut self,
+        account_nonce: u64,
+        from: &TestAddress,
+        assets: MultiValueEncoded<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
+    ) {
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .borrow(assets)
             .esdt(TestEsdtTransfer(ACCOUNT_TOKEN, account_nonce, 1u64))
             .run();
     }
@@ -990,6 +1136,50 @@ impl LendingPoolTestState {
                     &account_attributes,
                 );
             });
+    }
+
+    pub fn deposit_positions(
+        &mut self,
+        nonce: u64,
+    ) -> MultiValueEncoded<
+        StaticApi,
+        MultiValue2<EgldOrEsdtTokenIdentifier<StaticApi>, AccountPosition<StaticApi>>,
+    > {
+        let query = self
+            .world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .deposit_positions(nonce)
+            .returns(ReturnsResult)
+            .run();
+
+        return query;
+    }
+
+    pub fn update_account_threshold(
+        &mut self,
+        asset_id: EgldOrEsdtTokenIdentifier<StaticApi>,
+        has_risks: bool,
+        account_nonces: MultiValueEncoded<StaticApi, u64>,
+        error_message: Option<&[u8]>,
+    ) {
+        let call = self
+            .world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::LendingPoolProxy)
+            .update_account_threshold(asset_id, has_risks, account_nonces);
+
+        if error_message.is_some() {
+            call.returns(ExpectMessage(
+                core::str::from_utf8(error_message.unwrap()).unwrap(),
+            ))
+            .run();
+        } else {
+            call.run();
+        };
     }
 
     pub fn update_markets(

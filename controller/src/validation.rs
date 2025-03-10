@@ -1,8 +1,6 @@
 multiversx_sc::imports!();
 
-use common_constants::TOTAL_RESERVES_AMOUNT_STORAGE_KEY;
 use common_errors::ERROR_INVALID_SHARD;
-use multiversx_sc::storage::StorageKey;
 
 use crate::{
     helpers, oracle, storage, utils, ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO,
@@ -18,24 +16,6 @@ pub trait ValidationModule:
     + helpers::math::MathsModule
     + common_math::SharedMathModule
 {
-    /// Retrieves the total reserves for a liquidity pool.
-    /// Provides liquidity data for reserve factor checks or availability.
-    ///
-    /// # Arguments
-    /// - `pair_address`: Address of the liquidity pool.
-    ///
-    /// # Returns
-    /// - `SingleValueMapper`: Total reserves in `ManagedDecimal` format, tied to the pool address.
-    fn get_total_reserves(
-        &self,
-        pair_address: ManagedAddress,
-    ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>, ManagedAddress> {
-        SingleValueMapper::<_, _, ManagedAddress>::new_from_address(
-            pair_address,
-            StorageKey::new(TOTAL_RESERVES_AMOUNT_STORAGE_KEY),
-        )
-    }
-
     /// Validates a payment for operations like repayments or deposits.
     /// Ensures the asset is supported and the amount is valid.
     ///

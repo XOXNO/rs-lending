@@ -1,6 +1,6 @@
 use common_structs::{AccountAttributes, AccountPosition, PriceFeedShort};
 
-use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validation, WAD_PRECISION};
+use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validation};
 
 use super::{account, borrow, emode};
 
@@ -183,18 +183,16 @@ pub trait PositionRepayModule:
         feed: &PriceFeedShort<Self::Api>,
         amount_to_repay_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let interest_egld_amount =
-            self.get_token_egld_value(&borrow_position.interest_accrued, &feed.price);
-        let total_principal_borrowed_egld_amount =
-            self.get_token_egld_value(&borrow_position.principal_amount, &feed.price);
+        let interest = self.get_token_egld_value(&borrow_position.interest_accrued, &feed.price);
+        let principal = self.get_token_egld_value(&borrow_position.principal_amount, &feed.price);
 
-        if amount_to_repay_in_egld <= &interest_egld_amount {
-            return ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION);
+        if amount_to_repay_in_egld <= &interest {
+            return self.wad_zero();
         }
 
-        let diff = amount_to_repay_in_egld.clone() - interest_egld_amount;
-        if diff > total_principal_borrowed_egld_amount {
-            total_principal_borrowed_egld_amount
+        let diff = amount_to_repay_in_egld.clone() - interest;
+        if diff > principal {
+            principal
         } else {
             diff
         }

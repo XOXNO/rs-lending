@@ -79,7 +79,7 @@ pub trait PositionLiquidationModule:
         let (max_debt_to_repay, bonus_rate) = self.calculate_liquidation_amounts(
             &borrowed_egld,
             &total_collateral,
-            liquidation_collateral,
+            &liquidation_collateral,
             &proportional_weighted,
             &bonus_weighted,
             &health_factor,
@@ -247,30 +247,29 @@ pub trait PositionLiquidationModule:
                 total_collateral_value,
                 WAD_PRECISION,
             );
-
             // Seized EGLD = proportion * debt_to_be_repaid (rescaled from RAY to WAD precision)
             let seized_egld_numerator_ray =
                 self.mul_half_up(&proportion, debt_to_be_repaid, RAY_PRECISION);
             let seized_egld = seized_egld_numerator_ray.rescale(WAD_PRECISION);
-
             // Convert seized EGLD to token units
             let seized_units = self.convert_egld_to_tokens(&seized_egld, &asset_data);
-
             // Apply bonus: seized_units_after_bonus = seized_units * (bps + bonus_rate) / bps
             let bonus_bps = self.wad() + bonus_rate.clone();
             let numerator = self.mul_half_up(&seized_units, &bonus_bps, RAY_PRECISION);
             let seized_units_after_bonus = numerator.rescale(asset_data.asset_decimals);
 
             // Protocol fee = (bonus portion) * liquidation_fees / bps
-            let protocol_fee = (seized_units_after_bonus.clone() - seized_units.clone())
-                * asset.liquidation_fees.clone()
-                / self.bps();
-
+            let protocol_fee = self
+                .mul_half_up(
+                    &(seized_units_after_bonus.clone() - seized_units.clone()),
+                    &asset.liquidation_fees.clone(),
+                    RAY_PRECISION,
+                )
+                .rescale(asset_data.asset_decimals);
             let final_amount = BigUint::min(
                 seized_units_after_bonus.into_raw_units().clone(),
                 total_amount.into_raw_units().clone(),
             );
-
             seized_amounts_by_collateral.push(MultiValue2::from((
                 EgldOrEsdtTokenPayment::new(asset.asset_id.clone(), 0, final_amount),
                 protocol_fee,
@@ -409,7 +408,7 @@ pub trait PositionLiquidationModule:
         &self,
         total_debt_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
         total_collateral_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
-        weighted_collateral_in_egld: ManagedDecimal<Self::Api, NumDecimals>,
+        weighted_collateral_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
         proportion_seized: &ManagedDecimal<Self::Api, NumDecimals>,
         base_liquidation_bonus: &ManagedDecimal<Self::Api, NumDecimals>,
         health_factor: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -419,27 +418,26 @@ pub trait PositionLiquidationModule:
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
         let (max_repayable_debt, bonus) = self.estimate_liquidation_amount(
-            weighted_collateral_in_egld.into_raw_units(),
-            proportion_seized.into_raw_units(),
-            total_collateral_in_egld.into_raw_units(),
-            total_debt_in_egld.into_raw_units(),
-            base_liquidation_bonus.into_raw_units(),
-            health_factor.into_raw_units(),
+            weighted_collateral_in_egld,
+            proportion_seized,
+            total_collateral_in_egld,
+            total_debt_in_egld,
+            base_liquidation_bonus,
+            health_factor,
         );
 
         if debt_payment.is_some() {
+            let payment = debt_payment.into_option().unwrap();
             (
-                self.to_decimal_wad(BigUint::min(
-                    debt_payment.into_option().unwrap().into_raw_units().clone(),
-                    max_repayable_debt,
-                )),
-                self.to_decimal_bps(bonus),
+                if payment > max_repayable_debt {
+                    max_repayable_debt
+                } else {
+                    payment
+                },
+                bonus,
             )
         } else {
-            (
-                self.to_decimal_wad(max_repayable_debt),
-                self.to_decimal_bps(bonus),
-            )
+            (max_repayable_debt, bonus)
         }
     }
 

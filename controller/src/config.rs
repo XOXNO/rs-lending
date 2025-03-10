@@ -183,6 +183,26 @@ pub trait ConfigModule:
         self.price_aggregator_address().set(&aggregator);
     }
 
+    /// Sets the AshSwap contract address.
+    /// Configures the source for AshSwap price data.
+    ///
+    /// # Arguments
+    /// - `aggregator`: Address of the AshSwap contract.
+    ///
+    /// # Errors
+    /// - `ERROR_INVALID_AGGREGATOR`: If address is zero or not a smart contract.
+    #[only_owner]
+    #[endpoint(setAshSwap)]
+    fn set_ash_swap(&self, aggregator: ManagedAddress) {
+        require!(!aggregator.is_zero(), ERROR_INVALID_AGGREGATOR);
+
+        require!(
+            self.blockchain().is_smart_contract(&aggregator),
+            ERROR_INVALID_AGGREGATOR
+        );
+        self.aggregator().set(&aggregator);
+    }
+
     /// Sets the accumulator contract address.
     /// Configures where protocol revenue is collected.
     ///
@@ -543,7 +563,6 @@ pub trait ConfigModule:
             } else {
                 Some(supply_cap)
             },
-            // decimals: old_config.decimals
         };
 
         map.set(new_config);

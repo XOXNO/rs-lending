@@ -167,12 +167,4 @@ pub trait UtilsModule:
         self.first_submission_timestamp(token_pair).clear();
         self.last_submission_timestamp(token_pair).clear();
     }
-
-    fn check_decimals(&self, from: &ManagedBuffer, to: &ManagedBuffer, asset_decimals: u8) {
-        let configured_decimals = self.get_pair_decimals(from, to);
-        require!(
-            asset_decimals == configured_decimals,
-            WRONG_NUMBER_OF_DECIMALS_ERROR
-        )
-    }
 }
