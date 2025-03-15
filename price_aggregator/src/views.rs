@@ -21,15 +21,7 @@ pub trait ViewsModule:
             to: token_pair.to,
             timestamp: last_price.timestamp,
             price: last_price.price,
-            asset_decimals: last_price.asset_decimals,
         }
-    }
-
-    #[view(getPairDecimals)]
-    fn get_pair_decimals(&self, from: &ManagedBuffer, to: &ManagedBuffer) -> u8 {
-        self.pair_decimals(from, to)
-            .get()
-            .unwrap_or_else(|| sc_panic!(PAIR_DECIMALS_NOT_CONFIGURED_ERROR))
     }
 
     #[view(latestRoundData)]
@@ -60,15 +52,6 @@ pub trait ViewsModule:
         let token_pair = TokenPair { from, to };
         let feed = self.make_price_feed(token_pair, round_values.get());
         feed
-    }
-
-    #[view(latestPriceFeedOptional)]
-    fn latest_price_feed_optional(
-        &self,
-        from: ManagedBuffer,
-        to: ManagedBuffer,
-    ) -> OptionalValue<PriceFeed<Self::Api>> {
-        Some(self.latest_price_feed(from, to)).into()
     }
 
     #[view(getOracles)]

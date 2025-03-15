@@ -1,11 +1,6 @@
 use controller::{ERROR_POSITION_SHOULD_BE_VAULT, ERROR_SUPPLY_CAP, RAY_PRECISION, WAD_PRECISION};
-use multiversx_sc::types::{
-    ConstDecimals, EgldOrEsdtTokenIdentifier, ManagedDecimal, MultiValueEncoded,
-};
-use multiversx_sc_scenario::{
-    api::StaticApi,
-    imports::{BigUint, OptionalValue, TestAddress},
-};
+use multiversx_sc::types::{EgldOrEsdtTokenIdentifier, ManagedDecimal, MultiValueEncoded};
+use multiversx_sc_scenario::imports::{BigUint, OptionalValue, TestAddress};
 pub mod constants;
 pub mod proxys;
 pub mod setup;
@@ -37,7 +32,10 @@ fn test_basic_vault_supply_and_borrow() {
     let vault_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);
     assert_eq!(
         vault_supplied,
-        ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(100u64))
+        ManagedDecimal::from_raw_units(
+            BigUint::from(100u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+            EGLD_DECIMALS
+        )
     );
 
     // Test normal user supply and borrow against vault liquidity
@@ -82,8 +80,10 @@ fn test_vault_supply_and_withdraw() {
     );
 
     let vault_amount = state.get_vault_supplied_amount(EGLD_TOKEN);
-    let expected_value =
-        ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(100u64));
+    let expected_value = ManagedDecimal::from_raw_units(
+        BigUint::from(100u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+        EGLD_DECIMALS,
+    );
     assert_eq!(vault_amount, expected_value);
 
     state
@@ -95,8 +95,10 @@ fn test_vault_supply_and_withdraw() {
     state.withdraw_asset(&vault, EGLD_TOKEN, BigUint::from(50u64), 1, EGLD_DECIMALS);
 
     let after_withdraw_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);
-    let expected_value =
-        ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(50u64));
+    let expected_value = ManagedDecimal::from_raw_units(
+        BigUint::from(50u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+        EGLD_DECIMALS,
+    );
     assert_eq!(after_withdraw_supplied, expected_value);
 
     state
@@ -210,9 +212,10 @@ fn test_vault_liquidation() {
     println!("debt: {:?}", debt);
     assert!(
         vault_supplied
-            < ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(
-                100u64
-            ))
+            < ManagedDecimal::from_raw_units(
+                BigUint::from(100u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+                EGLD_DECIMALS
+            )
     );
 }
 
@@ -253,11 +256,17 @@ fn test_mixed_vault_and_normal_supply() {
 
     assert_eq!(
         vault_supplied,
-        ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(100u64))
+        ManagedDecimal::from_raw_units(
+            BigUint::from(100u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+            EGLD_DECIMALS
+        )
     );
     assert_eq!(
         total_supplied,
-        ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(100u64))
+        ManagedDecimal::from_raw_units(
+            BigUint::from(100u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+            EGLD_DECIMALS
+        )
     );
     // Verify utilization rate includes both supplies
     let utilization = state.get_market_utilization(state.egld_market.clone());
@@ -322,11 +331,17 @@ fn test_vault_multiple_positions() {
 
     assert_eq!(
         egld_supplied,
-        ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(100u64))
+        ManagedDecimal::from_raw_units(
+            BigUint::from(100u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+            EGLD_DECIMALS
+        )
     );
     assert_eq!(
         usdc_supplied,
-        ManagedDecimal::<StaticApi, ConstDecimals<USDC_DECIMALS>>::from(BigUint::from(5000u64))
+        ManagedDecimal::from_raw_units(
+            BigUint::from(5000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
+            USDC_DECIMALS
+        )
     );
 }
 
@@ -352,7 +367,10 @@ fn test_enable_vault_no_interest_no_borrows() {
     let egld_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);
     assert_eq!(
         egld_supplied,
-        ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(100u64))
+        ManagedDecimal::from_raw_units(
+            BigUint::from(100u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+            EGLD_DECIMALS
+        )
     );
     state.disable_vault(&vault, 1);
     let egld_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);
@@ -407,7 +425,10 @@ fn test_enable_disable_vault_with_borrows_and_interest() {
     let egld_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);
     assert_eq!(
         egld_supplied,
-        ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(100u64))
+        ManagedDecimal::from_raw_units(
+            BigUint::from(100u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+            EGLD_DECIMALS
+        )
     );
 
     state.disable_vault(&vault, 1);
@@ -426,9 +447,10 @@ fn test_enable_disable_vault_with_borrows_and_interest() {
     state.update_account_positions(&vault, 1);
     assert!(
         egld_supplied
-            > ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(
-                100u64
-            )),
+            > ManagedDecimal::from_raw_units(
+                BigUint::from(100u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+                EGLD_DECIMALS
+            ),
     );
 }
 
@@ -476,25 +498,12 @@ fn test_disable_enable_vault_with_borrows_and_interest() {
     state.borrow_asset(&vault, USDC_TOKEN, BigUint::from(1000u64), 1, USDC_DECIMALS);
     state.world.current_block().block_timestamp(530000u64);
     let egld_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);
-    assert!(
-        egld_supplied
-            == ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64))
-    );
+    assert!(egld_supplied == ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
     let collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
-    assert!(
-        collateral
-            >= ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(
-                100u64
-            ))
-    );
+    assert!(collateral >= ManagedDecimal::from_raw_units(BigUint::from(100u64), EGLD_DECIMALS));
     state.enable_vault(&vault, 1);
     let egld_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);
-    assert!(
-        egld_supplied
-            > ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(
-                100u64
-            )),
-    );
+    assert!(egld_supplied > ManagedDecimal::from_raw_units(BigUint::from(100u64), EGLD_DECIMALS),);
     state.world.current_block().block_timestamp(535000u64);
     state.disable_vault(&vault, 1);
 
@@ -503,10 +512,7 @@ fn test_disable_enable_vault_with_borrows_and_interest() {
     markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
     state.update_markets(&vault, markets);
     state.update_account_positions(&vault, 1);
-    assert!(
-        egld_supplied
-            == ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64))
-    );
+    assert!(egld_supplied == ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
 }
 
 #[test]

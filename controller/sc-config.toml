@@ -9,3 +9,6 @@ path = "../controller/tests/proxys/proxy_lending_pool.rs"
 
 [[proxy]]
 path = "../flash_mock/src/proxy_lending.rs"
+
+[[proxy]]
+path = "../proxy/controller.rs"

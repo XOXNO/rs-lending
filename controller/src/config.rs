@@ -82,7 +82,7 @@ pub trait ConfigModule:
                     .returns(ReturnsResult)
                     .sync_call_readonly();
                 EgldOrEsdtTokenIdentifier::esdt(token_id)
-            }
+            },
             ExchangeSource::XExchange => {
                 let token_id = self
                     .tx()
@@ -92,12 +92,12 @@ pub trait ConfigModule:
                     .returns(ReturnsResult)
                     .sync_call_readonly();
                 EgldOrEsdtTokenIdentifier::esdt(token_id)
-            }
+            },
             ExchangeSource::XEGLD => EgldOrEsdtTokenIdentifier::egld(),
             ExchangeSource::LEGLD => EgldOrEsdtTokenIdentifier::egld(),
             _ => {
                 panic!("Invalid exchange source")
-            }
+            },
         };
 
         let second_token_id = match source {
@@ -110,13 +110,13 @@ pub trait ConfigModule:
                     .returns(ReturnsResult)
                     .sync_call_readonly();
                 EgldOrEsdtTokenIdentifier::esdt(token_id)
-            }
+            },
             ExchangeSource::XEGLD => first_token_id.clone(),
             ExchangeSource::LEGLD => first_token_id.clone(),
             ExchangeSource::LXOXNO => first_token_id.clone(),
             _ => {
                 panic!("Invalid exchange source")
-            }
+            },
         };
 
         let tolerance = self.validate_and_calculate_tolerances(&first_tolerance, &last_tolerance);

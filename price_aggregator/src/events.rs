@@ -20,7 +20,6 @@ pub trait EventsModule {
             &NewRoundEvent {
                 price: feed.price.clone(),
                 timestamp: feed.timestamp,
-                asset_decimals: feed.asset_decimals,
                 block: self.blockchain().get_block_nonce(),
                 epoch,
             },
@@ -33,7 +32,7 @@ pub trait EventsModule {
         #[indexed] from: &ManagedBuffer,
         #[indexed] to: &ManagedBuffer,
         #[indexed] round: u32,
-        new_round_event: &NewRoundEvent<Self::Api>,
+        #[indexed] new_round_event: &NewRoundEvent<Self::Api>,
     );
 
     fn emit_discard_submission_event(
@@ -62,7 +61,7 @@ pub trait EventsModule {
         #[indexed] from: &ManagedBuffer,
         #[indexed] to: &ManagedBuffer,
         #[indexed] round: u32,
-        discard_submission_event: &DiscardSubmissionEvent,
+        #[indexed] discard_submission_event: &DiscardSubmissionEvent,
     );
 
     #[event("discard_round")]
@@ -79,6 +78,6 @@ pub trait EventsModule {
         #[indexed] from: &ManagedBuffer,
         #[indexed] to: &ManagedBuffer,
         #[indexed] round: u32,
-        price: &BigUint,
+        #[indexed] price: &BigUint,
     );
 }

@@ -23,6 +23,8 @@ where
     pub reserves: ManagedDecimal<C::Api, NumDecimals>,
     /// The amount of the asset currently borrowed.
     pub borrowed: ManagedDecimal<C::Api, NumDecimals>,
+    /// The amount of the asset pending to be collected as bad debt.
+    pub bad_debt: ManagedDecimal<C::Api, NumDecimals>,
     /// The amount of the asset reserved for protocol revenue (subset of reserves).
     pub revenue: ManagedDecimal<C::Api, NumDecimals>,
     /// The timestamp of the current block (seconds since Unix epoch).
@@ -65,6 +67,7 @@ where
             supplied: sc_ref.supplied().get(),
             reserves: sc_ref.reserves().get(),
             borrowed: sc_ref.borrowed().get(),
+            bad_debt: sc_ref.bad_debt().get(),
             revenue: sc_ref.revenue().get(),
             timestamp: sc_ref.blockchain().get_block_timestamp(),
             pool_asset: sc_ref.pool_asset().get(),
@@ -95,6 +98,7 @@ where
         self.sc_ref.supplied().set(&self.supplied);
         self.sc_ref.reserves().set(&self.reserves);
         self.sc_ref.borrowed().set(&self.borrowed);
+        self.sc_ref.bad_debt().set(&self.bad_debt);
         self.sc_ref.revenue().set(&self.revenue);
         self.sc_ref.borrow_index().set(&self.borrow_index);
         self.sc_ref.supply_index().set(&self.supply_index);

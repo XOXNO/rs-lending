@@ -146,7 +146,7 @@ impl LendingPoolTestState {
     //     //     .world
     //     //     .query()
     //     //     .to(self.lending_sc.clone())
-    //     //     .typed(proxy_lending_pool::LendingPoolProxy)
+    //     //     .typed(proxy_lending_pool::ControllerProxy)
     //     //     .calculate_max_leverage(
     //     //         &initial_deposit,
     //     //         &target_hf,
@@ -186,7 +186,7 @@ impl LendingPoolTestState {
             .tx()
             .from(OWNER_ADDRESS.to_managed_address())
             .to(&self.lending_sc)
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .edit_asset_config(
                 asset,
                 loan_to_value,
@@ -221,7 +221,7 @@ impl LendingPoolTestState {
         self.world
             .query()
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .get_usd_price(token_id)
             .returns(ReturnsResult)
             .run()
@@ -234,7 +234,7 @@ impl LendingPoolTestState {
         self.world
             .query()
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .get_egld_price(token_id)
             .returns(ReturnsResult)
             .run()
@@ -253,7 +253,7 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(&self.lending_sc)
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .flash_loan(token, amount, contract, endpoint, arguments)
             .run();
     }
@@ -272,7 +272,7 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(&self.lending_sc)
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .flash_loan(token, amount, contract, endpoint, arguments)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
@@ -283,7 +283,7 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .toggle_vault(true)
             .single_esdt(
                 &ACCOUNT_TOKEN.to_token_identifier(),
@@ -303,7 +303,7 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .toggle_vault(true)
             .single_esdt(
                 &ACCOUNT_TOKEN.to_token_identifier(),
@@ -319,7 +319,7 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .toggle_vault(false)
             .single_esdt(
                 &ACCOUNT_TOKEN.to_token_identifier(),
@@ -339,7 +339,7 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .toggle_vault(false)
             .single_esdt(
                 &ACCOUNT_TOKEN.to_token_identifier(),
@@ -354,7 +354,7 @@ impl LendingPoolTestState {
         self.world
             .query()
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .get_usd_price(token_id)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
@@ -378,7 +378,7 @@ impl LendingPoolTestState {
             .tx()
             .from(OWNER_ADDRESS)
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .create_liquidity_pool(
                 token_id,
                 max_borrow_rate,
@@ -442,7 +442,7 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .supply(is_vault, e_mode_category)
             .multi_esdt(vec)
             .run();
@@ -480,7 +480,7 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .supply(is_vault, e_mode_category)
             .multi_esdt(vec)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
@@ -510,7 +510,7 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .supply(is_vault, e_mode_category)
             .multi_esdt(vec)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
@@ -541,7 +541,7 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .supply(is_vault, e_mode_category)
             .multi_esdt(vec)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
@@ -559,7 +559,7 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .supply(is_vault, e_mode_category)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
@@ -607,7 +607,7 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .supply(is_vault, e_mode_category)
             .multi_esdt(vec)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
@@ -623,7 +623,7 @@ impl LendingPoolTestState {
             .tx()
             .from(OWNER_ADDRESS)
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .claim_revenue(array)
             .run();
     }
@@ -656,7 +656,7 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .withdraw(array)
             .esdt(transfer)
             .run();
@@ -687,7 +687,7 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .withdraw(array)
             .esdt(transfer)
             .run();
@@ -721,7 +721,7 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .withdraw(array)
             .esdt(transfer)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
@@ -748,7 +748,7 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .borrow(array)
             .esdt(TestEsdtTransfer(ACCOUNT_TOKEN, account_nonce, 1u64))
             .run();
@@ -764,7 +764,7 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .borrow(assets)
             .esdt(TestEsdtTransfer(ACCOUNT_TOKEN, account_nonce, 1u64))
             .run();
@@ -791,7 +791,7 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .borrow(array)
             .esdt(TestEsdtTransfer(ACCOUNT_TOKEN, account_nonce, 1u64))
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
@@ -814,7 +814,7 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .repay(account_nonce)
             .esdt(transfer)
             .run();
@@ -833,7 +833,7 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .repay(account_nonce)
             .esdt(transfer)
             .run();
@@ -858,7 +858,7 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .liquidate(account_nonce)
             .esdt(transfer)
             .run();
@@ -881,7 +881,7 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .liquidate(account_nonce)
             .esdt(transfer)
             .run();
@@ -900,7 +900,7 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .liquidate(account_nonce)
             .esdt(transfer)
             .run();
@@ -1061,7 +1061,7 @@ impl LendingPoolTestState {
             .world
             .query()
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .get_health_factor(account_position)
             .returns(ReturnsResult)
             .run();
@@ -1074,7 +1074,7 @@ impl LendingPoolTestState {
             .world
             .query()
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .can_be_liquidated(account_position)
             .returns(ReturnsResult)
             .run();
@@ -1149,7 +1149,7 @@ impl LendingPoolTestState {
             .world
             .query()
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .deposit_positions(nonce)
             .returns(ReturnsResult)
             .run();
@@ -1169,7 +1169,7 @@ impl LendingPoolTestState {
             .tx()
             .from(OWNER_ADDRESS)
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .update_account_threshold(asset_id, has_risks, account_nonces);
 
         if error_message.is_some() {
@@ -1191,7 +1191,7 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .update_indexes(markets)
             .run();
     }
@@ -1201,7 +1201,7 @@ impl LendingPoolTestState {
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .update_account_positions(account_position)
             .run();
     }
@@ -1213,7 +1213,7 @@ impl LendingPoolTestState {
         self.world
             .query()
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .vault_supplied_amount(token_id)
             .returns(ReturnsResult)
             .run()
@@ -1228,7 +1228,7 @@ impl LendingPoolTestState {
             .world
             .query()
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .get_collateral_amount_for_token(account_position, token_id)
             .returns(ReturnsResult)
             .run();
@@ -1245,7 +1245,7 @@ impl LendingPoolTestState {
         self.world
             .query()
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .get_collateral_amount_for_token(account_position, token_id)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
@@ -1260,7 +1260,7 @@ impl LendingPoolTestState {
             .world
             .query()
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .get_borrow_amount_for_token(account_position, token_id)
             .returns(ReturnsResult)
             .run();
@@ -1277,7 +1277,7 @@ impl LendingPoolTestState {
         self.world
             .query()
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .get_borrow_amount_for_token(account_position, token_id)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
@@ -1290,7 +1290,7 @@ impl LendingPoolTestState {
         self.world
             .query()
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .isolated_asset_debt_usd(token_id)
             .returns(ReturnsResult)
             .run()
@@ -1304,7 +1304,7 @@ impl LendingPoolTestState {
             .world
             .query()
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .get_total_borrow_in_egld(account_position)
             .returns(ReturnsResult)
             .run();
@@ -1320,7 +1320,7 @@ impl LendingPoolTestState {
             .world
             .query()
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .get_total_borrow_in_egld(account_position)
             .returns(ReturnsResult)
             .run();
@@ -1336,7 +1336,7 @@ impl LendingPoolTestState {
             .world
             .query()
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .get_total_collateral_in_egld(account_position)
             .returns(ReturnsResult)
             .run();
@@ -1352,7 +1352,7 @@ impl LendingPoolTestState {
             .world
             .query()
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .get_total_collateral_in_egld(account_position)
             .returns(ReturnsResult)
             .run();
@@ -1368,7 +1368,7 @@ impl LendingPoolTestState {
             .world
             .query()
             .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::LendingPoolProxy)
+            .typed(proxy_lending_pool::ControllerProxy)
             .get_liquidation_collateral_available(account_position)
             .returns(ReturnsResult)
             .run();
@@ -1419,7 +1419,7 @@ pub fn setup_lending_pool(
     let lending_sc = world
         .tx()
         .from(OWNER_ADDRESS)
-        .typed(proxy_lending_pool::LendingPoolProxy)
+        .typed(proxy_lending_pool::ControllerProxy)
         .init(
             template_address_liquidity_pool,
             price_aggregator_sc,
@@ -1549,7 +1549,7 @@ pub fn set_oracle_token_data(
         .tx()
         .from(OWNER_ADDRESS)
         .to(lending_sc)
-        .typed(proxy_lending_pool::LendingPoolProxy)
+        .typed(proxy_lending_pool::ControllerProxy)
         .set_token_oracle(
             XEGLD_TOKEN.to_token_identifier(),
             18usize,
@@ -1566,7 +1566,7 @@ pub fn set_oracle_token_data(
         .tx()
         .from(OWNER_ADDRESS)
         .to(lending_sc)
-        .typed(proxy_lending_pool::LendingPoolProxy)
+        .typed(proxy_lending_pool::ControllerProxy)
         .set_token_oracle(
             LXOXNO_TOKEN.to_token_identifier(),
             18usize,
@@ -1593,7 +1593,7 @@ pub fn set_oracle_token_data(
         .tx()
         .from(OWNER_ADDRESS)
         .to(lending_sc)
-        .typed(proxy_lending_pool::LendingPoolProxy)
+        .typed(proxy_lending_pool::ControllerProxy)
         .set_token_oracle(
             LP_EGLD_TOKEN,
             EGLD_DECIMALS as u8,
@@ -1609,7 +1609,7 @@ pub fn set_oracle_token_data(
         .tx()
         .from(OWNER_ADDRESS)
         .to(lending_sc)
-        .typed(proxy_lending_pool::LendingPoolProxy)
+        .typed(proxy_lending_pool::ControllerProxy)
         .set_token_oracle(
             EgldOrEsdtTokenIdentifier::egld(),
             EGLD_DECIMALS as u8,
@@ -1626,7 +1626,7 @@ pub fn set_oracle_token_data(
         .tx()
         .from(OWNER_ADDRESS)
         .to(lending_sc)
-        .typed(proxy_lending_pool::LendingPoolProxy)
+        .typed(proxy_lending_pool::ControllerProxy)
         .set_token_oracle(
             EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
             EGLD_DECIMALS as u8,
@@ -1643,7 +1643,7 @@ pub fn set_oracle_token_data(
         .tx()
         .from(OWNER_ADDRESS)
         .to(lending_sc)
-        .typed(proxy_lending_pool::LendingPoolProxy)
+        .typed(proxy_lending_pool::ControllerProxy)
         .set_token_oracle(
             USDC_TOKEN.to_token_identifier(),
             USDC_DECIMALS as u8,
@@ -1671,7 +1671,7 @@ pub fn set_oracle_token_data(
         .tx()
         .from(OWNER_ADDRESS)
         .to(lending_sc)
-        .typed(proxy_lending_pool::LendingPoolProxy)
+        .typed(proxy_lending_pool::ControllerProxy)
         .set_token_oracle(
             ISOLATED_TOKEN.to_token_identifier(),
             ISOLATED_DECIMALS as u8,
@@ -1699,7 +1699,7 @@ pub fn set_oracle_token_data(
         .tx()
         .from(OWNER_ADDRESS)
         .to(lending_sc)
-        .typed(proxy_lending_pool::LendingPoolProxy)
+        .typed(proxy_lending_pool::ControllerProxy)
         .set_token_oracle(
             SILOED_TOKEN.to_token_identifier(),
             SILOED_DECIMALS as u8,
@@ -1727,7 +1727,7 @@ pub fn set_oracle_token_data(
         .tx()
         .from(OWNER_ADDRESS)
         .to(lending_sc)
-        .typed(proxy_lending_pool::LendingPoolProxy)
+        .typed(proxy_lending_pool::ControllerProxy)
         .set_token_oracle(
             CAPPED_TOKEN.to_token_identifier(),
             CAPPED_DECIMALS as u8,
@@ -1755,7 +1755,7 @@ pub fn set_oracle_token_data(
         .tx()
         .from(OWNER_ADDRESS)
         .to(lending_sc)
-        .typed(proxy_lending_pool::LendingPoolProxy)
+        .typed(proxy_lending_pool::ControllerProxy)
         .set_token_oracle(
             SEGLD_TOKEN.to_token_identifier(),
             SEGLD_DECIMALS as u8,
@@ -1783,7 +1783,7 @@ pub fn set_oracle_token_data(
         .tx()
         .from(OWNER_ADDRESS)
         .to(lending_sc)
-        .typed(proxy_lending_pool::LendingPoolProxy)
+        .typed(proxy_lending_pool::ControllerProxy)
         .set_token_oracle(
             LEGLD_TOKEN.to_token_identifier(),
             LEGLD_DECIMALS as u8,
@@ -1811,7 +1811,7 @@ pub fn set_oracle_token_data(
         .tx()
         .from(OWNER_ADDRESS)
         .to(lending_sc)
-        .typed(proxy_lending_pool::LendingPoolProxy)
+        .typed(proxy_lending_pool::ControllerProxy)
         .set_token_oracle(
             XOXNO_TOKEN.to_token_identifier(),
             XOXNO_DECIMALS as u8,
@@ -1994,7 +1994,6 @@ pub fn setup_price_aggregator(
         &price_aggregator_sc,
         EGLD_TICKER,
         EGLD_PRICE_IN_DOLLARS,
-        EGLD_DECIMALS,
     );
 
     submit_price(
@@ -2002,7 +2001,6 @@ pub fn setup_price_aggregator(
         &price_aggregator_sc,
         SEGLD_TICKER,
         SEGLD_PRICE_IN_DOLLARS,
-        SEGLD_DECIMALS,
     );
 
     submit_price(
@@ -2010,7 +2008,6 @@ pub fn setup_price_aggregator(
         &price_aggregator_sc,
         LEGLD_TICKER,
         LEGLD_PRICE_IN_DOLLARS,
-        LEGLD_DECIMALS,
     );
 
     submit_price(
@@ -2018,7 +2015,6 @@ pub fn setup_price_aggregator(
         &price_aggregator_sc,
         USDC_TICKER,
         USDC_PRICE_IN_DOLLARS,
-        USDC_DECIMALS,
     );
 
     submit_price(
@@ -2026,28 +2022,24 @@ pub fn setup_price_aggregator(
         &price_aggregator_sc,
         XEGLD_TICKER,
         XEGLD_PRICE_IN_DOLLARS,
-        XEGLD_DECIMALS,
     );
     submit_price(
         world,
         &price_aggregator_sc,
         ISOLATED_TICKER,
         ISOLATED_PRICE_IN_DOLLARS,
-        ISOLATED_DECIMALS,
     );
     submit_price(
         world,
         &price_aggregator_sc,
         SILOED_TICKER,
         SILOED_PRICE_IN_DOLLARS,
-        SILOED_DECIMALS,
     );
     submit_price(
         world,
         &price_aggregator_sc,
         CAPPED_TICKER,
         CAPPED_PRICE_IN_DOLLARS,
-        CAPPED_DECIMALS,
     );
 
     submit_price(
@@ -2055,7 +2047,6 @@ pub fn setup_price_aggregator(
         &price_aggregator_sc,
         XOXNO_TICKER,
         XOXNO_PRICE_IN_DOLLARS,
-        XOXNO_DECIMALS,
     );
 
     (price_aggregator_sc, price_aggregator_whitebox)
@@ -2208,7 +2199,6 @@ pub fn submit_price(
     price_aggregator_sc: &ManagedAddress<StaticApi>,
     from: &[u8],
     price: u64,
-    asset_decimals: usize,
 ) -> () {
     let oracles = vec![
         ORACLE_ADDRESS_1,
@@ -2216,18 +2206,6 @@ pub fn submit_price(
         ORACLE_ADDRESS_3,
         ORACLE_ADDRESS_4,
     ];
-
-    world
-        .tx()
-        .from(OWNER_ADDRESS)
-        .to(price_aggregator_sc)
-        .typed(proxy_aggregator::PriceAggregatorProxy)
-        .set_pair_decimals(
-            ManagedBuffer::from(from),
-            ManagedBuffer::from(DOLLAR_TICKER),
-            asset_decimals as u8,
-        )
-        .run();
 
     // world.current_block().block_timestamp(1740184106);
     for oracle in oracles {
@@ -2282,7 +2260,7 @@ pub fn create_e_mode_category(world: &mut ScenarioWorld, lending_sc: &ManagedAdd
         .tx()
         .from(OWNER_ADDRESS)
         .to(lending_sc)
-        .typed(proxy_lending_pool::LendingPoolProxy)
+        .typed(proxy_lending_pool::ControllerProxy)
         .add_e_mode_category(
             BigUint::from(LTV),
             BigUint::from(E_MODE_LIQ_THRESOLD),
@@ -2303,7 +2281,7 @@ pub fn add_asset_to_e_mode_category(
         .tx()
         .from(OWNER_ADDRESS)
         .to(lending_sc)
-        .typed(proxy_lending_pool::LendingPoolProxy)
+        .typed(proxy_lending_pool::ControllerProxy)
         .add_asset_to_e_mode_category(asset, category_id, can_be_collateral, can_be_borrowed)
         .returns(ReturnsResult)
         .run();
@@ -2319,7 +2297,7 @@ pub fn setup_market(
         .tx()
         .from(OWNER_ADDRESS)
         .to(lending_sc)
-        .typed(proxy_lending_pool::LendingPoolProxy)
+        .typed(proxy_lending_pool::ControllerProxy)
         .create_liquidity_pool(
             token,
             BigUint::from(R_MAX),

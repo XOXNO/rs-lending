@@ -9,4 +9,7 @@ path = "../controller/src/proxies/proxy_price_aggregator.rs"
 
 [[proxy]]
 path = "../controller/tests/proxys/proxy_aggregator.rs"
+
+[[proxy]]
+path = "../proxy/price_aggregator.rs"
  

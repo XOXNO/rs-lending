@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           15
+// Endpoints:                           12
 // Async Callback (empty):               1
-// Total number of exported functions:  18
+// Total number of exported functions:  15
 
 #![no_std]
 
@@ -26,15 +26,12 @@ multiversx_sc_wasm_adapter::endpoints! {
         unpause => unpause_endpoint
         isPaused => paused_status
         submission_count => submission_count
-        getPairDecimals => get_pair_decimals
         latestRoundData => latest_round_data
         latestPriceFeed => latest_price_feed
-        latestPriceFeedOptional => latest_price_feed_optional
         getOracles => get_oracles
         addOracles => add_oracles
         removeOracles => remove_oracles
         setSubmissionCount => set_submission_count
-        setPairDecimals => set_pair_decimals
     )
 }
 

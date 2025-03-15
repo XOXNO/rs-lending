@@ -147,14 +147,14 @@ pub trait PositionUpdateModule:
             common_events::AccountPositionType::Deposit => {
                 self.deposit_positions(account_nonce)
                     .insert(position.asset_id.clone(), position.clone());
-            }
+            },
             AccountPositionType::Borrow => {
                 self.borrow_positions(account_nonce)
                     .insert(position.asset_id.clone(), position.clone());
-            }
+            },
             AccountPositionType::None => {
                 panic!("Position type is None");
-            }
+            },
         }
     }
 

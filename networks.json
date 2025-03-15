@@ -1,0 +1,77 @@
+{
+  "devnet": {
+    "proxy": "https://devnet-gateway.xoxno.com",
+    "chain_id": "D",
+    "addresses": {
+      "controller": "",
+      "lp_template": "",
+      "aggregator": "erd1qqqqqqqqqqqqqpgq7a48t570jjudy0xjxhuzcdwndcq9gt2tah0s7tg84a",
+      "ash": "erd1qqqqqqqqqqqqqpgqzshqdqcdzdl43vhy7p7q8uhc5xzu5x7zh2usyz5kg6",
+      "wegld": "erd1qqqqqqqqqqqqqpgqpv09kfzry5y4sj05udcngesat07umyj70n4sa2c0rp",
+      "safe_price_view": "erd1qqqqqqqqqqqqqpgqcmnum66jxyfpcnvqk5eahj5n3ny4vkfn0n4szjjskv",
+      "accumulator": "erd1qqqqqqqqqqqqqpgqyxfc4r5fmw2ljcgwxj2nuzv72y9ryvyhah0sgn5vv2",
+      "price_aggregator": "erd1qqqqqqqqqqqqqpgq7a48t570jjudy0xjxhuzcdwndcq9gt2tah0s7tg84a"
+    },
+    "oracles": [
+      "erd1e2r4m874a7whe5n2sftrxqy758kl3s6gvs8ekmac2yuhxlg70shs5lhc7t",
+      "erd13r5dhrpx8wk6l4lvwr52y5thx7q56g4w9l7sznef3vlp8yqvqmfs5l2vq0",
+      "erd1l2u03tmtpphrwwq0xn3gfu23ufzjexu0p54zya8ufhlyrrx64vzsvyfgvg",
+      "erd12yxd5phejzw83gn8qh6jfz6q9a0ekyyhkfd3c49r03mxw25l3a5swq3nf7",
+      "erd1nz0w0cnlpxsdqa2vm6mfmzc9qhptjae9x44kn3fkzsgns8dcz5pscja98t",
+      "erd16yaq7n30gdka6hvnly365kecckqqsl48m2g8vrrmcr5w6h79pussyc4wu2",
+      "erd14xglrv7xt8pu90zgx0v9dd5u8cu4crl6yw7x0vfgse4r3dkkqnuse59u75"
+    ],
+    "account_token": {
+      "name": "XOXNOLendingAccount",
+      "ticker": "BOBERLEND",
+      "issue_cost": 50000000000000000
+    },
+    "paths": {
+      "controller": "../output/controller.wasm",
+      "market": "../../liquidity_layer/output/liquidity_layer.wasm",
+      "price_aggregator": "./price_aggregator/output/price_aggregator.wasm"
+    },
+    "ledger": {
+      "account_index": 0,
+      "address_index": 0
+    }
+  },
+  "mainnet": {
+    "proxy": "https://gateway.xoxno.com",
+    "chain_id": "1",
+    "addresses": {
+      "controller": "erd1qqqqqqqqqqqqqpgq0lzzvt2faev4upyf44uhzvhjmca0qexj2jpsgrwcyz",
+      "lp_template": "erd1qqqqqqqqqqqqqpgqxg88vgw9qwmedm3jufstn2k3rvqk7mjj2jps08hwgu",
+      "aggregator": "erd1qqqqqqqqqqqqqpgqhe8t5jewz7fdkk7v5xk5nvv8xttcq4vv2jpsssmvuy",
+      "cex_aggregator": "erd1qqqqqqqqqqqqqpgqj9tjgqr36krezwkrtcs35j20zqj08mqj2jpsxnvy8j",
+      "ash": "erd1qqqqqqqqqqqqqpgqmr8u2ucp4h759hptfpltc5cxw5ngrdmj2jpsavj2fx",
+      "wegld": "erd1qqqqqqqqqqqqqpgqa0fsfshnff4n76jhcye6k7uvd7qacsq42jpsp6shh2",
+      "safe_price_view": "erd1qqqqqqqqqqqqqpgqwrzws56t3qnw6p28n3m5yjxlpdz4ewt42jpse6gg6u",
+      "accumulator": "erd1qqqqqqqqqqqqqpgqc8h0rf8cmgkpu48pz6zqwymfpnk24xj32jps2pu4em",
+      "price_aggregator": "erd1qqqqqqqqqqqqqpgqhe8t5jewz7fdkk7v5xk5nvv8xttcq4vv2jpsssmvuy"
+    },
+    "oracles": [
+      "erd1qqqqqqqqqqqqqpgqw73yd0qgwehqz9u23p4v2k78axhpj2xgvpus2fk3kz",
+      "erd1qqqqqqqqqqqqqpgq05ddn9jy4v98t4zyj94r4k50exmyjnh4vpusv2nszr",
+      "erd1qqqqqqqqqqqqqpgqcf38mxz2frqpv0ls3mzdz3hkpgd3v3c9vpuszmn0u9",
+      "erd1qqqqqqqqqqqqqpgqjvpx30vs60tdj9a9pusp5c3r44adw9hzvpuskupsnz",
+      "erd1qqqqqqqqqqqqqpgqy7y5kel22qh5ekxfh9ndmt5exdy38a8dvpusmfhe99",
+      "erd1qqqqqqqqqqqqqpgq57c4069n35xnpz9qvs8j6f9ytjx706c8vpus95j5dy",
+      "erd1qqqqqqqqqqqqqpgqzf4jyvj92w53n7dq85ecfyr0m0u0j9m3vpusjugjuw"
+    ],
+    "account_token": {
+      "name": "XOXNOLendingAccount",
+      "ticker": "XOLEND",
+      "issue_cost": 50000000000000000
+    },
+    "paths": {
+      "controller": "../output/controller.wasm",
+      "market": "../../liquidity_layer/output/liquidity_layer.wasm",
+      "price_aggregator": "./price_aggregator/output/price_aggregator.wasm"
+    },
+    "ledger": {
+      "account_index": 0,
+      "address_index": 0
+    }
+  }
+} 

@@ -1,4 +1,8 @@
-use crate::structs::{OracleStatus, TokenPair};
+use crate::{
+    constants::{SUBMISSION_LIST_MAX_LEN, SUBMISSION_LIST_MIN_LEN},
+    errors::{SUBMISSION_LIST_CAPACITY_EXCEEDED_ERROR, SUBMISSION_LIST_MIN_LEN_ERROR},
+    structs::OracleStatus,
+};
 
 multiversx_sc::imports!();
 
@@ -52,26 +56,26 @@ pub trait AdminModule:
             let _ = oracle_mapper.remove(&oracle);
         }
 
-        self.require_valid_submission_count(submission_count);
-        self.submission_count().set(submission_count);
+        self.set_submission_count(submission_count);
     }
 
     #[only_owner]
     #[endpoint(setSubmissionCount)]
     fn set_submission_count(&self, submission_count: usize) {
         self.require_valid_submission_count(submission_count);
+        require!(
+            submission_count <= SUBMISSION_LIST_MAX_LEN,
+            SUBMISSION_LIST_CAPACITY_EXCEEDED_ERROR
+        );
+        require!(
+            submission_count >= SUBMISSION_LIST_MIN_LEN,
+            SUBMISSION_LIST_MIN_LEN_ERROR
+        );
+        let oracles = self.get_oracles().len();
+        require!(
+            submission_count <= oracles,
+            SUBMISSION_LIST_CAPACITY_EXCEEDED_ERROR
+        );
         self.submission_count().set(submission_count);
-    }
-
-    #[only_owner]
-    #[endpoint(setPairDecimals)]
-    fn set_pair_decimals(&self, from: ManagedBuffer, to: ManagedBuffer, asset_decimals: u8) {
-        let pair_decimals_mapper = self.pair_decimals(&from, &to);
-        if !pair_decimals_mapper.is_empty() {
-            self.require_paused();
-        }
-        pair_decimals_mapper.set(Some(asset_decimals));
-        let pair: TokenPair<<Self as ContractBase>::Api> = TokenPair { from, to };
-        self.clear_submissions(&pair);
     }
 }

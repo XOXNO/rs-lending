@@ -76,7 +76,7 @@ pub trait OracleModule:
             OracleType::Lp => self._get_safe_lp_price(configs, cache),
             OracleType::Normal => {
                 self._get_normal_price_in_egld(configs, original_market_token, cache)
-            }
+            },
             _ => sc_panic!(ERROR_INVALID_ORACLE_TOKEN_TYPE),
         }
     }
@@ -196,7 +196,7 @@ pub trait OracleModule:
             .safe_price_proxy(self.safe_price_view().get())
             ._get_safe_price_by_timestamp_offset(
                 &configs.oracle_contract_address,
-                SECONDS_PER_HOUR,
+                SECONDS_PER_MINUTE * 15,
                 EsdtTokenPayment::new(token_id.clone().unwrap_esdt(), 0, one_token),
             )
             .returns(ReturnsResult)
@@ -272,22 +272,24 @@ pub trait OracleModule:
                     &tolerances.first_upper_ratio,
                     &tolerances.first_lower_ratio,
                 ) {
-                    safe_price
+                    aggregator_price
                 } else if self.is_within_anchor(
                     &aggregator_price,
                     &safe_price,
                     &tolerances.last_upper_ratio,
                     &tolerances.last_lower_ratio,
                 ) {
-                    safe_price
+                    (aggregator_price + safe_price) / 2
                 } else {
                     require!(cache.allow_unsafe_price, ERROR_UN_SAFE_PRICE_NOT_ALLOWED);
                     safe_price
                 }
-            }
+            },
             (OptionalValue::Some(aggregator_price), OptionalValue::None) => aggregator_price,
             (OptionalValue::None, OptionalValue::Some(safe_price)) => safe_price,
-            (OptionalValue::None, OptionalValue::None) => sc_panic!(ERROR_NO_LAST_PRICE_FOUND),
+            (OptionalValue::None, OptionalValue::None) => {
+                sc_panic!(ERROR_NO_LAST_PRICE_FOUND)
+            },
         }
     }
 
@@ -427,7 +429,6 @@ pub trait OracleModule:
             to: token_pair.to,
             timestamp: last_price.timestamp,
             price: last_price.price,
-            asset_decimals: last_price.asset_decimals,
         }
     }
 

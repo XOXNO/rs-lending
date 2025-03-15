@@ -1,0 +1,78 @@
+{
+  "devnet": {
+    "1": {
+      "name": "EGLD Derivatives",
+      "ltv": "9250",
+      "liquidation_threshold": "9550",
+      "liquidation_bonus": "150",
+      "assets": {
+        "XEGLD": {
+          "can_be_collateral": "0x01",
+          "can_be_borrowed": "0x01"
+        },
+        "XEGLDWEGLD": {
+          "can_be_collateral": "0x01",
+          "can_be_borrowed": "0x01"
+        },
+        "EGLD": {
+          "can_be_collateral": "0x01",
+          "can_be_borrowed": "0x01"
+        }
+      }
+    },
+    "2": {
+      "name": "XOXNO Derivatives",
+      "ltv": "9000",
+      "liquidation_threshold": "9500",
+      "liquidation_bonus": "200",
+      "assets": {
+        "XOXNO": {
+          "can_be_collateral": "0x01",
+          "can_be_borrowed": "0x01"
+        },
+        "LXOXNO": {
+          "can_be_collateral": "0x01",
+          "can_be_borrowed": "0x01"
+        }
+      }
+    }
+  },
+  "mainnet": {
+    "1": {
+      "name": "EGLD Derivatives",
+      "ltv": "9250",
+      "liquidation_threshold": "9550",
+      "liquidation_bonus": "150",
+      "assets": {
+        "XEGLD": {
+          "can_be_collateral": "0x01",
+          "can_be_borrowed": "0x01"
+        },
+        "XEGLDWEGLD": {
+          "can_be_collateral": "0x01",
+          "can_be_borrowed": "0x01"
+        },
+        "EGLD": {
+          "can_be_collateral": "0x01",
+          "can_be_borrowed": "0x01"
+        }
+      }
+    },
+    "2": {
+      "name": "XOXNO Derivatives",
+      "ltv": "9000",
+      "liquidation_threshold": "9500",
+      "liquidation_bonus": "200",
+      "assets": {
+        "XOXNO": {
+          "can_be_collateral": "0x01",
+          "can_be_borrowed": "0x01"
+        },
+        "LXOXNO": {
+          "can_be_collateral": "0x01",
+          "can_be_borrowed": "0x01"
+        }
+      }
+    }
+  }
+}

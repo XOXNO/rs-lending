@@ -45,19 +45,28 @@ pub trait UtilsModule:
         let accrued_interest =
             self.calc_interest(&cache.borrowed, &cache.borrow_index, &old_borrow_index);
 
-        // 2. Calculate protocol's share
-        let protocol_fee = self
-            .mul_half_up(
-                &accrued_interest,
-                &cache.params.reserve_factor,
-                RAY_PRECISION,
-            )
-            .rescale(cache.params.asset_decimals);
-        // 3. Update reserves
-        cache.revenue += &protocol_fee;
+        // If the accrued interest is less than the bad debt, we can collect the entire accrued interest
+        if accrued_interest.le(&cache.bad_debt) {
+            cache.bad_debt -= &accrued_interest;
+            self.to_decimal(BigUint::zero(), cache.params.asset_decimals)
+        } else {
+            // If the accrued interest is greater than the bad debt, we clear the bad debt and calculate the protocol's share and the suppliers' share
+            let left_accrued_interest = accrued_interest - cache.bad_debt.clone();
+            cache.bad_debt = self.to_decimal(BigUint::zero(), cache.params.asset_decimals);
+            // 2. Calculate protocol's share
+            let protocol_fee = self
+                .mul_half_up(
+                    &left_accrued_interest,
+                    &cache.params.reserve_factor,
+                    RAY_PRECISION,
+                )
+                .rescale(cache.params.asset_decimals);
+            // 3. Update reserves
+            cache.revenue += &protocol_fee;
 
-        // 4. Return suppliers' share
-        accrued_interest - protocol_fee
+            // 4. Return suppliers' share
+            left_accrued_interest - protocol_fee
+        }
     }
 
     /// Updates both borrow and supply indexes based on elapsed time since the last update.

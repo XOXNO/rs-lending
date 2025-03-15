@@ -1,9 +1,6 @@
 use controller::ERROR_INSUFFICIENT_COLLATERAL;
-use multiversx_sc::types::{ConstDecimals, ManagedDecimal};
-use multiversx_sc_scenario::{
-    api::StaticApi,
-    imports::{BigUint, OptionalValue, TestAddress},
-};
+use multiversx_sc::types::ManagedDecimal;
+use multiversx_sc_scenario::imports::{BigUint, OptionalValue, TestAddress};
 pub mod constants;
 pub mod proxys;
 pub mod setup;
@@ -85,14 +82,8 @@ fn test_liquidation() {
     println!("Total EGLD Deposite {:?}", collateral);
     println!("Total EGLD Weighted {:?}", collateral_weighted);
     println!("Health Factor {:?}", health_factor);
-    assert!(
-        borrowed
-            > ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64))
-    );
-    assert!(
-        collateral
-            > ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64))
-    );
+    assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
+    assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
     state
         .world
         .current_block()
@@ -102,13 +93,18 @@ fn test_liquidation() {
     println!("Health Factor {:?}", health_factor);
 
     let liquidator = TestAddress::new("liquidator");
-    state.world.account(liquidator).nonce(1).esdt_balance(
-        USDC_TOKEN,
-        BigUint::from(10000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
-    ).esdt_balance(
-        EGLD_TOKEN,
-        BigUint::from(10000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
-    );
+    state
+        .world
+        .account(liquidator)
+        .nonce(1)
+        .esdt_balance(
+            USDC_TOKEN,
+            BigUint::from(10000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
+        )
+        .esdt_balance(
+            EGLD_TOKEN,
+            BigUint::from(10000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+        );
 
     let borrowed_usdc = state.get_borrow_amount_for_token(2, USDC_TOKEN);
     state.liquidate_account_dem(
@@ -217,14 +213,8 @@ fn test_liquidation_bad_debt_multi_asset() {
     println!("Total EGLD Deposite {:?}", collateral);
     println!("Total EGLD Weighted {:?}", collateral_weighted);
     println!("Health Factor {:?}", health_factor);
-    assert!(
-        borrowed
-            > ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64))
-    );
-    assert!(
-        collateral
-            > ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64))
-    );
+    assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
+    assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
     state
         .world
         .current_block()
@@ -349,14 +339,8 @@ fn test_liquidation_single_position() {
     println!("Total EGLD Deposite {:?}", collateral);
     println!("Total EGLD Weighted {:?}", collateral_weighted);
     println!("Health Factor {:?}", health_factor);
-    assert!(
-        borrowed
-            > ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64))
-    );
-    assert!(
-        collateral
-            > ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64))
-    );
+    assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
+    assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
 
     state
         .world
@@ -390,15 +374,9 @@ fn test_liquidation_single_position() {
     println!("Total EGLD Deposite {:?}", collateral);
     println!("Total EGLD Weighted {:?}", collateral_weighted);
     println!("Health Factor {:?}", health_factor);
-    assert!(
-        borrowed
-            >= ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64))
-    );
-    assert!(
-        collateral
-            >= ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(0u64))
-    );
-    assert!(health_factor > ManagedDecimal::<StaticApi, ConstDecimals<EGLD_DECIMALS>>::from(BigUint::from(1u64)));
+    assert!(borrowed >= ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
+    assert!(collateral >= ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
+    assert!(health_factor > ManagedDecimal::from_raw_units(BigUint::from(1u64), EGLD_DECIMALS));
     // state.liquidate_account(
     //     &liquidator,
     //     &EGLD_TOKEN,

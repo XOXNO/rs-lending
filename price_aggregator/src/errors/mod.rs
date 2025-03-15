@@ -11,3 +11,4 @@ pub const MEDIAN_1_INVALID_INDEX: &[u8] = b"Median1 invalid index";
 pub const MEDIAN_2_INVALID_INDEX: &[u8] = b"Median2 invalid index";
 pub const MEDIAN_INVALID_INDEX: &[u8] = b"Median invalid index";
 pub const TOKEN_PAIR_NOT_FOUND_ERROR: &[u8] = b"Token pair not found";
+pub const SUBMISSION_LIST_MIN_LEN_ERROR: &[u8] = b"Submission list min length error";

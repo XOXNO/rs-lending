@@ -156,8 +156,8 @@
     "oracle_type": "1",
     "oracle_source": "1",
     "oracle_decimals": "18",
-    "first_tolerance": "125",
-    "last_tolerance": "150"
+    "first_tolerance": "225",
+    "last_tolerance": "450"
   },
   "LXOXNO": {
     "token_id": "LXOXNO-a00540",

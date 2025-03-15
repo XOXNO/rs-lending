@@ -11,4 +11,4 @@ path = "src/events.rs"
 path = "../structs"
 
 [dependencies.multiversx-sc]
-version = "0.56.0"
+version = "0.57.0"

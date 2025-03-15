@@ -5,13 +5,6 @@ use crate::structs::{OracleStatus, TimestampedPrice, TokenPair};
 
 #[multiversx_sc::module]
 pub trait StorageModule {
-    #[storage_mapper("pair_decimals")]
-    fn pair_decimals(
-        &self,
-        from: &ManagedBuffer,
-        to: &ManagedBuffer,
-    ) -> SingleValueMapper<Option<u8>>;
-
     #[view]
     #[storage_mapper("submission_count")]
     fn submission_count(&self) -> SingleValueMapper<usize>;

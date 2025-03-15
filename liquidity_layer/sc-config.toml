@@ -10,4 +10,5 @@ path = "../controller/src/proxies/proxy_pool.rs"
 [[proxy]]
 path = "../controller/tests/proxys/proxy_liquidity_pool.rs"
 
- 
+[[proxy]]
+path = "../proxy/liquidity_layer.rs"

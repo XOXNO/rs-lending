@@ -78,14 +78,9 @@ pub trait UtilsModule:
         if accepted {
             submissions.insert(caller.clone(), price.clone());
             last_sub_time_mapper.set(current_timestamp);
-            let configured_decimals = self.get_pair_decimals(&token_pair.from, &token_pair.to);
 
-            self.create_new_round(
-                token_pair.clone(),
-                round_id,
-                submissions,
-                configured_decimals,
-            );
+            self.create_new_round(token_pair.clone(), round_id, submissions);
+
             self.add_submission_event(
                 &token_pair.from.clone(),
                 &token_pair.to.clone(),
@@ -127,7 +122,6 @@ pub trait UtilsModule:
         token_pair: TokenPair<Self::Api>,
         round_id: u32,
         mut submissions: MapMapper<ManagedAddress, BigUint>,
-        asset_decimals: u8,
     ) {
         let submissions_len = submissions.len();
         if submissions_len >= self.submission_count().get() {
@@ -147,7 +141,6 @@ pub trait UtilsModule:
             let feed = TimestampedPrice {
                 price,
                 timestamp: self.blockchain().get_block_timestamp(),
-                asset_decimals,
                 round: round_id,
             };
 

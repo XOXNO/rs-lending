@@ -49,6 +49,14 @@ pub trait Storage {
     #[storage_mapper("borrowed")]
     fn borrowed(&self) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
 
+    /// Retrieves the total bad debt from the pool.
+    ///
+    /// # Returns
+    /// - `BigUint`: The total bad debt pending to be collected.
+    #[view(getBadDebt)]
+    #[storage_mapper("bad_debt")]
+    fn bad_debt(&self) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
+
     /// Returns the market parameters.
     ///
     /// These include interest rate parameters and asset asset_decimals.

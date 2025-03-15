@@ -234,6 +234,7 @@ pub trait LiquidityModule:
 
         cache.reserves -= &to_withdraw;
         cache.supplied -= &principal;
+
         position.principal_amount -= &principal;
         position.interest_accrued -= &interest;
 

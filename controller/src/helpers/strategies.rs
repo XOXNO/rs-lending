@@ -264,7 +264,7 @@ pub trait StrategiesModule:
                 } else {
                     self.swap_tokens(to_token, from_token, from_amount, caller, steps, limits)
                 }
-            }
+            },
             // Normal to LP: Convert if part of LP, handling EGLD/WEGLD
             (OracleType::Normal, OracleType::Lp) | (OracleType::Derived, OracleType::Lp) => {
                 let (base_token, quote_token) = self.get_lp_tokens(to_provider);
@@ -288,7 +288,7 @@ pub trait StrategiesModule:
                         to_token
                     );
                 }
-            }
+            },
             // LP to Normal/Derived: Unified conversion
             (OracleType::Lp, OracleType::Normal) | (OracleType::Lp, OracleType::Derived) => {
                 let (base_token, quote_token) = self.get_lp_tokens(from_provider);
@@ -312,7 +312,7 @@ pub trait StrategiesModule:
                         from_token
                     );
                 }
-            }
+            },
             // Other cases (simplified for brevity)
             _ => self.swap_tokens(to_token, from_token, from_amount, caller, steps, limits),
         }

@@ -230,7 +230,7 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
         rewards_increase: ManagedDecimal<Self::Api, NumDecimals>,
         cache: &mut Cache<Self>,
     ) {
-        if cache.supplied != cache.zero {
+        if cache.supplied != cache.zero && rewards_increase != cache.zero {
             let rewards_ratio = self.div_half_up(&rewards_increase, &cache.supplied, RAY_PRECISION);
 
             let rewards_factor = self.ray() + rewards_ratio;

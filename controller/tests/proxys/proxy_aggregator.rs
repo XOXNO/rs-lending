@@ -159,22 +159,6 @@ where
             .original_result()
     }
 
-    pub fn get_pair_decimals<
-        Arg0: ProxyArg<ManagedBuffer<Env::Api>>,
-        Arg1: ProxyArg<ManagedBuffer<Env::Api>>,
-    >(
-        self,
-        from: Arg0,
-        to: Arg1,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, u8> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getPairDecimals")
-            .argument(&from)
-            .argument(&to)
-            .original_result()
-    }
-
     pub fn latest_round_data<
         Arg0: ProxyArg<MultiValueEncoded<Env::Api, TokenPair<Env::Api>>>,
     >(
@@ -199,22 +183,6 @@ where
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("latestPriceFeed")
-            .argument(&from)
-            .argument(&to)
-            .original_result()
-    }
-
-    pub fn latest_price_feed_optional<
-        Arg0: ProxyArg<ManagedBuffer<Env::Api>>,
-        Arg1: ProxyArg<ManagedBuffer<Env::Api>>,
-    >(
-        self,
-        from: Arg0,
-        to: Arg1,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, OptionalValue<PriceFeed<Env::Api>>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("latestPriceFeedOptional")
             .argument(&from)
             .argument(&to)
             .original_result()
@@ -272,25 +240,6 @@ where
             .argument(&submission_count)
             .original_result()
     }
-
-    pub fn set_pair_decimals<
-        Arg0: ProxyArg<ManagedBuffer<Env::Api>>,
-        Arg1: ProxyArg<ManagedBuffer<Env::Api>>,
-        Arg2: ProxyArg<u8>,
-    >(
-        self,
-        from: Arg0,
-        to: Arg1,
-        asset_decimals: Arg2,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("setPairDecimals")
-            .argument(&from)
-            .argument(&to)
-            .argument(&asset_decimals)
-            .original_result()
-    }
 }
 
 #[type_abi]
@@ -301,7 +250,6 @@ where
 {
     pub price: BigUint<Api>,
     pub timestamp: u64,
-    pub asset_decimals: u8,
     pub block: u64,
     pub epoch: u64,
 }
@@ -335,5 +283,4 @@ where
     pub to: ManagedBuffer<Api>,
     pub timestamp: u64,
     pub price: BigUint<Api>,
-    pub asset_decimals: u8,
 }

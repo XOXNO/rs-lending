@@ -261,6 +261,19 @@ where
             .original_result()
     }
 
+    /// Retrieves the total bad debt from the pool. 
+    ///  
+    /// # Returns 
+    /// - `BigUint`: The total bad debt pending to be collected. 
+    pub fn bad_debt(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getBadDebt")
+            .original_result()
+    }
+
     /// Returns the market parameters. 
     ///  
     /// These include interest rate parameters and asset asset_decimals. 
@@ -728,58 +741,6 @@ where
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getTotalCapital")
-            .original_result()
-    }
-
-    /// Computes the total accrued interest on a borrow position. 
-    ///  
-    /// The interest is computed based on the difference between the current and the initial borrow index. 
-    ///  
-    /// # Parameters 
-    /// - `amount`: The principal amount borrowed. 
-    /// - `initial_borrow_index`: The borrow index at the time of borrowing. 
-    ///  
-    /// # Returns 
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The accrued interest. 
-    pub fn get_debt_interest<
-        Arg0: ProxyArg<ManagedDecimal<Env::Api, usize>>,
-        Arg1: ProxyArg<ManagedDecimal<Env::Api, usize>>,
-    >(
-        self,
-        amount: Arg0,
-        initial_borrow_index: Arg1,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getDebtInterest")
-            .argument(&amount)
-            .argument(&initial_borrow_index)
-            .original_result()
-    }
-
-    /// Computes the total accrued interest on a supply position. 
-    ///  
-    /// The interest is computed based on the difference between the current and the initial supply index. 
-    ///  
-    /// # Parameters 
-    /// - `amount`: The principal amount supplied. 
-    /// - `initial_supply_index`: The supply index at the time of supplying. 
-    ///  
-    /// # Returns 
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The accrued interest. 
-    pub fn get_supply_interest<
-        Arg0: ProxyArg<ManagedDecimal<Env::Api, usize>>,
-        Arg1: ProxyArg<ManagedDecimal<Env::Api, usize>>,
-    >(
-        self,
-        amount: Arg0,
-        initial_supply_index: Arg1,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getSupplyInterest")
-            .argument(&amount)
-            .argument(&initial_supply_index)
             .original_result()
     }
 

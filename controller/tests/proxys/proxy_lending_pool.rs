@@ -9,23 +9,23 @@
 
 use multiversx_sc::proxy_imports::*;
 
-pub struct LendingPoolProxy;
+pub struct ControllerProxy;
 
-impl<Env, From, To, Gas> TxProxyTrait<Env, From, To, Gas> for LendingPoolProxy
+impl<Env, From, To, Gas> TxProxyTrait<Env, From, To, Gas> for ControllerProxy
 where
     Env: TxEnv,
     From: TxFrom<Env>,
     To: TxTo<Env>,
     Gas: TxGas<Env>,
 {
-    type TxProxyMethods = LendingPoolProxyMethods<Env, From, To, Gas>;
+    type TxProxyMethods = ControllerProxyMethods<Env, From, To, Gas>;
 
     fn proxy_methods(self, tx: Tx<Env, From, To, (), Gas, (), ()>) -> Self::TxProxyMethods {
-        LendingPoolProxyMethods { wrapped_tx: tx }
+        ControllerProxyMethods { wrapped_tx: tx }
     }
 }
 
-pub struct LendingPoolProxyMethods<Env, From, To, Gas>
+pub struct ControllerProxyMethods<Env, From, To, Gas>
 where
     Env: TxEnv,
     From: TxFrom<Env>,
@@ -36,7 +36,7 @@ where
 }
 
 #[rustfmt::skip]
-impl<Env, From, Gas> LendingPoolProxyMethods<Env, From, (), Gas>
+impl<Env, From, Gas> ControllerProxyMethods<Env, From, (), Gas>
 where
     Env: TxEnv,
     Env::Api: VMApi,
@@ -82,7 +82,7 @@ where
 }
 
 #[rustfmt::skip]
-impl<Env, From, To, Gas> LendingPoolProxyMethods<Env, From, To, Gas>
+impl<Env, From, To, Gas> ControllerProxyMethods<Env, From, To, Gas>
 where
     Env: TxEnv,
     Env::Api: VMApi,
@@ -101,7 +101,7 @@ where
 }
 
 #[rustfmt::skip]
-impl<Env, From, To, Gas> LendingPoolProxyMethods<Env, From, To, Gas>
+impl<Env, From, To, Gas> ControllerProxyMethods<Env, From, To, Gas>
 where
     Env: TxEnv,
     Env::Api: VMApi,
@@ -189,16 +189,16 @@ where
     /// Liquidates an unhealthy position. 
     ///  
     /// # Arguments 
-    /// - `liquidatee_account_nonce`: NFT nonce of the account to liquidate. 
+    /// - `account_nonce`: NFT nonce of the account to liquidate. 
     pub fn liquidate<
         Arg0: ProxyArg<u64>,
     >(
         self,
-        liquidatee_account_nonce: Arg0,
+        account_nonce: Arg0,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("liquidate")
-            .argument(&liquidatee_account_nonce)
+            .argument(&account_nonce)
             .original_result()
     }
 
@@ -617,6 +617,27 @@ where
             .original_result()
     }
 
+    /// Sets the AshSwap contract address. 
+    /// Configures the source for AshSwap price data. 
+    ///  
+    /// # Arguments 
+    /// - `aggregator`: Address of the AshSwap contract. 
+    ///  
+    /// # Errors 
+    /// - `ERROR_INVALID_AGGREGATOR`: If address is zero or not a smart contract. 
+    pub fn set_ash_swap<
+        Arg0: ProxyArg<ManagedAddress<Env::Api>>,
+    >(
+        self,
+        aggregator: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("setAshSwap")
+            .argument(&aggregator)
+            .original_result()
+    }
+
     /// Sets the accumulator contract address. 
     /// Configures where protocol revenue is collected. 
     ///  
@@ -1031,7 +1052,7 @@ where
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getPoolsMap")
+            .raw_call("getPoolAddress")
             .argument(&asset)
             .original_result()
     }
@@ -1189,30 +1210,6 @@ where
             .original_result()
     }
 
-    /// Retrieves the liquidity pool address for a given asset. 
-    /// Ensures the asset has an associated pool; errors if not found. 
-    ///  
-    /// # Arguments 
-    /// - `asset`: The token identifier (EGLD or ESDT) of the asset. 
-    ///  
-    /// # Returns 
-    /// - `ManagedAddress`: The address of the liquidity pool. 
-    ///  
-    /// # Errors 
-    /// - `ERROR_NO_POOL_FOUND`: If no pool exists for the asset. 
-    pub fn get_pool_address<
-        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-    >(
-        self,
-        asset: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getPoolAddress")
-            .argument(&asset)
-            .original_result()
-    }
-
     /// Retrieves extended configuration views for multiple assets. 
     /// Includes market addresses and current prices in EGLD and USD. 
     ///  
@@ -1238,7 +1235,7 @@ where
     /// Checks if the health factor is below 1 (100% in WAD precision). 
     ///  
     /// # Arguments 
-    /// - `account_position`: NFT nonce of the account position. 
+    /// - `account_nonce`: NFT nonce of the account position. 
     ///  
     /// # Returns 
     /// - `bool`: `true` if the position can be liquidated. 
@@ -1246,12 +1243,12 @@ where
         Arg0: ProxyArg<u64>,
     >(
         self,
-        account_position: Arg0,
+        account_nonce: Arg0,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, bool> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("canBeLiquidated")
-            .argument(&account_position)
+            .argument(&account_nonce)
             .original_result()
     }
 
@@ -1259,7 +1256,7 @@ where
     /// Indicates position safety; lower values increase liquidation risk. 
     ///  
     /// # Arguments 
-    /// - `account_position`: NFT nonce of the account position. 
+    /// - `account_nonce`: NFT nonce of the account position. 
     ///  
     /// # Returns 
     /// - Health factor as a `ManagedDecimal` in WAD precision. 
@@ -1267,12 +1264,12 @@ where
         Arg0: ProxyArg<u64>,
     >(
         self,
-        account_position: Arg0,
+        account_nonce: Arg0,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getHealthFactor")
-            .argument(&account_position)
+            .argument(&account_nonce)
             .original_result()
     }
 
@@ -1280,7 +1277,7 @@ where
     /// Fails if the token is not part of the position’s collateral. 
     ///  
     /// # Arguments 
-    /// - `account_position`: NFT nonce of the account position. 
+    /// - `account_nonce`: NFT nonce of the account position. 
     /// - `token_id`: Token identifier (EGLD or ESDT) to query. 
     ///  
     /// # Returns 
@@ -1293,13 +1290,13 @@ where
         Arg1: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
     >(
         self,
-        account_position: Arg0,
+        account_nonce: Arg0,
         token_id: Arg1,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getCollateralAmountForToken")
-            .argument(&account_position)
+            .argument(&account_nonce)
             .argument(&token_id)
             .original_result()
     }
@@ -1308,7 +1305,7 @@ where
     /// Fails if the token is not part of the position’s borrows. 
     ///  
     /// # Arguments 
-    /// - `account_position`: NFT nonce of the account position. 
+    /// - `account_nonce`: NFT nonce of the account position. 
     /// - `token_id`: Token identifier (EGLD or ESDT) to query. 
     ///  
     /// # Returns 
@@ -1321,13 +1318,13 @@ where
         Arg1: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
     >(
         self,
-        account_position: Arg0,
+        account_nonce: Arg0,
         token_id: Arg1,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getBorrowAmountForToken")
-            .argument(&account_position)
+            .argument(&account_nonce)
             .argument(&token_id)
             .original_result()
     }
@@ -1336,7 +1333,7 @@ where
     /// Sums the EGLD value of all borrowed assets. 
     ///  
     /// # Arguments 
-    /// - `account_position`: NFT nonce of the account position. 
+    /// - `account_nonce`: NFT nonce of the account position. 
     ///  
     /// # Returns 
     /// - Total borrow value in EGLD as a `ManagedDecimal`. 
@@ -1344,12 +1341,12 @@ where
         Arg0: ProxyArg<u64>,
     >(
         self,
-        account_position: Arg0,
+        account_nonce: Arg0,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getTotalBorrowInEgld")
-            .argument(&account_position)
+            .argument(&account_nonce)
             .original_result()
     }
 
@@ -1357,7 +1354,7 @@ where
     /// Sums the EGLD value of all collateral assets (unweighted). 
     ///  
     /// # Arguments 
-    /// - `account_position`: NFT nonce of the account position. 
+    /// - `account_nonce`: NFT nonce of the account position. 
     ///  
     /// # Returns 
     /// - Total collateral value in EGLD as a `ManagedDecimal`. 
@@ -1365,12 +1362,12 @@ where
         Arg0: ProxyArg<u64>,
     >(
         self,
-        account_position: Arg0,
+        account_nonce: Arg0,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getTotalCollateralInEgld")
-            .argument(&account_position)
+            .argument(&account_nonce)
             .original_result()
     }
 
@@ -1399,7 +1396,7 @@ where
     /// Represents collateral value weighted by loan-to-value ratios. 
     ///  
     /// # Arguments 
-    /// - `account_position`: NFT nonce of the account position. 
+    /// - `account_nonce`: NFT nonce of the account position. 
     ///  
     /// # Returns 
     /// - LTV-weighted collateral in EGLD as a `ManagedDecimal`. 
@@ -1407,12 +1404,12 @@ where
         Arg0: ProxyArg<u64>,
     >(
         self,
-        account_position: Arg0,
+        account_nonce: Arg0,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getLtvCollateralInEgld")
-            .argument(&account_position)
+            .argument(&account_nonce)
             .original_result()
     }
 
@@ -1543,7 +1540,7 @@ where
         self,
         from_token: Arg0,
         from_amount: Arg1,
-        debt_token: Arg2,
+        to_token: Arg2,
         steps: Arg3,
         limits: Arg4,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
@@ -1551,7 +1548,7 @@ where
             .raw_call("repayDebtWithCollateral")
             .argument(&from_token)
             .argument(&from_amount)
-            .argument(&debt_token)
+            .argument(&to_token)
             .argument(&steps)
             .argument(&limits)
             .original_result()

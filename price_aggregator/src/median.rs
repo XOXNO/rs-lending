@@ -14,10 +14,9 @@ pub fn calculate<M: ManagedTypeApi>(
     let len = list.len();
     let middle_index = len / 2;
     if len % 2 == 0 {
-        // [2.1,2.2,2.0,2.3]
-        let median1 = list.get(middle_index - 1).ok_or(MEDIAN_1_INVALID_INDEX)?; // 2.2
-        let median2 = list.get(middle_index).ok_or(MEDIAN_2_INVALID_INDEX)?; // 2.0
-        Result::Ok(Some((median1.clone() + median2.clone()) / 2u64)) // 4.2 / 2 = 2.1
+        let median1 = list.get(middle_index - 1).ok_or(MEDIAN_1_INVALID_INDEX)?;
+        let median2 = list.get(middle_index).ok_or(MEDIAN_2_INVALID_INDEX)?;
+        Result::Ok(Some((median1.clone() + median2.clone()) / 2u64))
     } else {
         let median = list.get(middle_index).ok_or(MEDIAN_INVALID_INDEX)?;
         Result::Ok(Some(median.clone()))

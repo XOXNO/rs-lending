@@ -126,6 +126,11 @@ pub trait LiquidityPool:
             asset_decimals,
         ));
 
+        self.bad_debt().set(ManagedDecimal::from_raw_units(
+            BigUint::zero(),
+            asset_decimals,
+        ));
+
         let timestamp = self.blockchain().get_block_timestamp();
         self.last_timestamp().set(timestamp);
     }
