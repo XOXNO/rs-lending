@@ -109,22 +109,36 @@ upgrade_all_markets() {
     done
 }
 
+# Function to convert percentage to RAY (27 decimals)
+to_ray() {
+    local value=$1
+    echo "$value"000000000000000000000000000
+}
+
+# Function to convert a number to the correct decimal places based on oracle_decimals
+to_decimals() {
+    local value=$1
+    local decimals=$2
+    echo "${value}$(printf '%0*d' "$decimals" 0)"
+}
+
 # Function to build market arguments
 build_market_args() {
     local market_name=$1
     local -a args=()
+    local oracle_decimals=$(get_config_value "$market_name" "oracle_decimals")
     
     # Token configuration
     args+=("str:$(get_config_value "$market_name" "token_id")")
 
-    # Interest rate parameters
-    args+=("$(get_config_value "$market_name" "max_rate")")
-    args+=("$(get_config_value "$market_name" "base_rate")")
-    args+=("$(get_config_value "$market_name" "slope1")")
-    args+=("$(get_config_value "$market_name" "slope2")")
-    args+=("$(get_config_value "$market_name" "slope3")")
-    args+=("$(get_config_value "$market_name" "mid_utilization")")
-    args+=("$(get_config_value "$market_name" "optimal_utilization")")
+    # Interest rate parameters - convert from percentage to RAY
+    args+=("$(to_ray "$(get_config_value "$market_name" "max_rate")")")
+    args+=("$(to_ray "$(get_config_value "$market_name" "base_rate")")")
+    args+=("$(to_ray "$(get_config_value "$market_name" "slope1")")")
+    args+=("$(to_ray "$(get_config_value "$market_name" "slope2")")")
+    args+=("$(to_ray "$(get_config_value "$market_name" "slope3")")")
+    args+=("$(to_ray "$(get_config_value "$market_name" "mid_utilization")")")
+    args+=("$(to_ray "$(get_config_value "$market_name" "optimal_utilization")")")
     args+=("$(get_config_value "$market_name" "reserve_factor")")
 
     # Risk parameters
@@ -144,9 +158,9 @@ build_market_args() {
     args+=("$(get_config_value "$market_name" "can_borrow_in_isolation")")
     args+=("$(get_config_value "$market_name" "oracle_decimals")")
 
-    # Caps
-    args+=("$(get_config_value "$market_name" "borrow_cap")")
-    args+=("$(get_config_value "$market_name" "supply_cap")")
+    # Caps - scale according to oracle_decimals
+    args+=("$(to_decimals "$(get_config_value "$market_name" "borrow_cap")" "$oracle_decimals")")
+    args+=("$(to_decimals "$(get_config_value "$market_name" "supply_cap")" "$oracle_decimals")")
     
     echo "${args[@]}"
 }
@@ -159,14 +173,14 @@ build_market_upgrade_args() {
     # Token configuration
     args+=("str:$(get_config_value "$market_name" "token_id")")
 
-    # Interest rate parameters
-    args+=("$(get_config_value "$market_name" "max_rate")")
-    args+=("$(get_config_value "$market_name" "base_rate")")
-    args+=("$(get_config_value "$market_name" "slope1")")
-    args+=("$(get_config_value "$market_name" "slope2")")
-    args+=("$(get_config_value "$market_name" "slope3")")
-    args+=("$(get_config_value "$market_name" "mid_utilization")")
-    args+=("$(get_config_value "$market_name" "optimal_utilization")")
+    # Interest rate parameters - convert from percentage to RAY
+    args+=("$(to_ray "$(get_config_value "$market_name" "max_rate")")")
+    args+=("$(to_ray "$(get_config_value "$market_name" "base_rate")")")
+    args+=("$(to_ray "$(get_config_value "$market_name" "slope1")")")
+    args+=("$(to_ray "$(get_config_value "$market_name" "slope2")")")
+    args+=("$(to_ray "$(get_config_value "$market_name" "slope3")")")
+    args+=("$(to_ray "$(get_config_value "$market_name" "mid_utilization")")")
+    args+=("$(to_ray "$(get_config_value "$market_name" "optimal_utilization")")")
     args+=("$(get_config_value "$market_name" "reserve_factor")")
 
     echo "${args[@]}"
@@ -177,14 +191,14 @@ build_market_template_upgrade_args() {
     local market_name=$1
     local -a args=()
 
-    # Interest rate parameters
-    args+=("$(get_config_value "$market_name" "max_rate")")
-    args+=("$(get_config_value "$market_name" "base_rate")")
-    args+=("$(get_config_value "$market_name" "slope1")")
-    args+=("$(get_config_value "$market_name" "slope2")")
-    args+=("$(get_config_value "$market_name" "slope3")")
-    args+=("$(get_config_value "$market_name" "mid_utilization")")
-    args+=("$(get_config_value "$market_name" "optimal_utilization")")
+    # Interest rate parameters - convert from percentage to RAY
+    args+=("$(to_ray "$(get_config_value "$market_name" "max_rate")")")
+    args+=("$(to_ray "$(get_config_value "$market_name" "base_rate")")")
+    args+=("$(to_ray "$(get_config_value "$market_name" "slope1")")")
+    args+=("$(to_ray "$(get_config_value "$market_name" "slope2")")")
+    args+=("$(to_ray "$(get_config_value "$market_name" "slope3")")")
+    args+=("$(to_ray "$(get_config_value "$market_name" "mid_utilization")")")
+    args+=("$(to_ray "$(get_config_value "$market_name" "optimal_utilization")")")
     args+=("$(get_config_value "$market_name" "reserve_factor")")
 
     echo "${args[@]}"
@@ -197,14 +211,14 @@ build_market_template_deploy_args() {
     # Token configuration
     args+=("str:$(get_config_value "$market_name" "token_id")")
 
-    # Interest rate parameters
-    args+=("$(get_config_value "$market_name" "max_rate")")
-    args+=("$(get_config_value "$market_name" "base_rate")")
-    args+=("$(get_config_value "$market_name" "slope1")")
-    args+=("$(get_config_value "$market_name" "slope2")")
-    args+=("$(get_config_value "$market_name" "slope3")")
-    args+=("$(get_config_value "$market_name" "mid_utilization")")
-    args+=("$(get_config_value "$market_name" "optimal_utilization")")
+    # Interest rate parameters - convert from percentage to RAY
+    args+=("$(to_ray "$(get_config_value "$market_name" "max_rate")")")
+    args+=("$(to_ray "$(get_config_value "$market_name" "base_rate")")")
+    args+=("$(to_ray "$(get_config_value "$market_name" "slope1")")")
+    args+=("$(to_ray "$(get_config_value "$market_name" "slope2")")")
+    args+=("$(to_ray "$(get_config_value "$market_name" "slope3")")")
+    args+=("$(to_ray "$(get_config_value "$market_name" "mid_utilization")")")
+    args+=("$(to_ray "$(get_config_value "$market_name" "optimal_utilization")")")
     args+=("$(get_config_value "$market_name" "reserve_factor")")
     args+=("$(get_config_value "$market_name" "oracle_decimals")")
 
@@ -440,17 +454,17 @@ show_market_config() {
     echo "Liquidation Threshold: $(format_percentage $(get_config_value "$market" "liquidation_threshold"))%"
     echo "Liquidation Bonus: $(format_percentage $(get_config_value "$market" "liquidation_bonus"))%"
     echo "Liquidation Base Fee: $(format_percentage $(get_config_value "$market" "liquidation_base_fee"))%"
-    echo "Borrow Cap: $(format_token_amount $(get_config_value "$market" "borrow_cap") $asset_decimals) ${market}"
-    echo "Supply Cap: $(format_token_amount $(get_config_value "$market" "supply_cap") $asset_decimals) ${market}"
+    echo "Borrow Cap: $(get_config_value "$market" "borrow_cap") ${market}"
+    echo "Supply Cap: $(get_config_value "$market" "supply_cap") ${market}"
     
-    # Interest rate parameters with 27 decimals
-    echo "Base Rate: $(format_percentage $(get_config_value "$market" "base_rate") 27)%"
-    echo "Max Rate: $(format_percentage $(get_config_value "$market" "max_rate") 27)%"
-    echo "Slope1: $(format_percentage $(get_config_value "$market" "slope1") 27)%"
-    echo "Slope2: $(format_percentage $(get_config_value "$market" "slope2") 27)%"
-    echo "Slope3: $(format_percentage $(get_config_value "$market" "slope3") 27)%"
-    echo "Mid Utilization: $(format_percentage $(get_config_value "$market" "mid_utilization") 27)%"
-    echo "Optimal Utilization: $(format_percentage $(get_config_value "$market" "optimal_utilization") 27)%"
+    # Interest rate parameters - already in percentage format in config
+    echo "Base Rate: $(get_config_value "$market" "base_rate")%"
+    echo "Max Rate: $(get_config_value "$market" "max_rate")%"
+    echo "Slope1: $(get_config_value "$market" "slope1")%"
+    echo "Slope2: $(get_config_value "$market" "slope2")%"
+    echo "Slope3: $(get_config_value "$market" "slope3")%"
+    echo "Mid Utilization: $(get_config_value "$market" "mid_utilization")%"
+    echo "Optimal Utilization: $(get_config_value "$market" "optimal_utilization")%"
     
     echo "Reserve Factor: $(format_percentage $(get_config_value "$market" "reserve_factor"))%"
     echo "Can Be Collateral: $(get_config_value "$market" "can_be_collateral")"

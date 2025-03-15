@@ -21,8 +21,8 @@ Our protocol is a modular, state‑of‑the‑art solution that lets you:
 
 - **Multi‑Slope Interest Rate Model:**  
   Our rates adjust in real time based on market utilization. Whether you're borrowing or supplying, you always get fair, dynamic pricing with smooth transitions—no more one-size-fits-all rates!
-- **High Precision with 21‑Decimal Basis Points:**  
-  Our calculations use 21 asset_decimals for basis points (BP) to ensure every fraction of interest is accurately tracked, minimizing rounding errors and maximizing fairness. 📊
+- **High Precision with 27‑Decimal Basis Points:**  
+  Our calculations use 27 asset_decimals for basis points (BP) to ensure every fraction of interest is accurately tracked, minimizing rounding errors and maximizing fairness. 📊
 
 ### E‑Mode: Supercharged Borrowing Power
 
@@ -85,229 +85,161 @@ This repository contains network-aware scripts for deploying and managing the Mu
    - `make` (optional, for using Makefile targets)
 
 2. Make the scripts executable:
-   ```
-   chmod +x market_configs_v2.sh
+   ```bash
+   chmod +x configs/script.sh
    ```
 
 ## Network Configuration
 
-The system uses two types of configuration files:
+The system uses three types of configuration files:
 
 1. **networks.json** - Contains network-specific settings:
-
    - Network endpoints (proxy, chain ID)
    - Contract addresses
+   - Oracle addresses
    - Account token details
    - File paths for WASM binaries
    - Ledger configuration
 
-2. **Network-specific market configs** - Contain market parameters specific to each network:
+2. **Network-specific market configs** - Contain market parameters:
    - Located in `configs/`
    - `devnet_market_configs.json` - Market configurations for devnet
    - `mainnet_market_configs.json` - Market configurations for mainnet
 
-If you need to add or modify network configurations, edit the appropriate files:
-
-- For network infrastructure: `networks.json`
-- For market parameters: The corresponding network market config file
+3. **E-Mode configuration** - Contains E-Mode categories and their settings:
+   - Located in `configs/emodes.json`
+   - Defines E-Mode categories per network
+   - Specifies assets and their parameters for each category
 
 ## Usage
 
-You can interact with the system in two ways:
-
-### 1. Using the Makefile
-
-The Makefile provides convenient shortcuts for common operations:
 
 ```bash
-# Show help
-make help
+make <network> <command> [arguments]
 
-# Deploy controller on devnet
-make devnet-deploy-controller
-
-# Create market on mainnet
-make mainnet-create-market MARKET=EGLD
-
-# List available markets
-make devnet-list-markets
-
-# List available networks
-make list-networks
-```
-
-### 2. Using the Script Directly
-
-You can also use the script directly, specifying the network as an environment variable:
-
-```bash
-# Set network
-export NETWORK=devnet
-
-# Deploy controller
-./market_configs_v2.sh deployController
-
-# Create market
-./market_configs_v2.sh createMarket EGLD
-
-# For one-off commands, specify the network inline
-NETWORK=mainnet ./market_configs_v2.sh list
+# Examples:
+make devnet createMarket EGLD
+make devnet addEModeCategory 1
+make devnet addAssetToEMode 1 EGLD
+make devnet show EGLD
+make devnet listMarkets
 ```
 
 ## Common Operations
 
-### Deploying the Controller
-
+### Controller Management
 ```bash
-make devnet-deploy-controller
-# or
-make mainnet-deploy-controller
+# Deploy controller
+make devnet deployController
+
+# Upgrade controller
+make devnet upgradeController
+
+# Register account token
+make devnet registerAccountToken
 ```
 
-### Creating a New Market
-
+### Market Management
 ```bash
-make devnet-create-market MARKET=EGLD
-# or
-make mainnet-create-market MARKET=EGLD
+# Create market
+make devnet createMarket EGLD
+
+# Upgrade specific market
+make devnet upgradeMarket EGLD
+
+# Upgrade all markets
+make devnet upgradeAllMarkets
+
+# Show market configuration
+make devnet show EGLD
+
+# List all markets
+make devnet listMarkets
+
+# Edit asset configuration
+make devnet editAssetConfig EGLD
 ```
 
-### Upgrading a Market
-
+### Oracle Management
 ```bash
-make devnet-upgrade-market MARKET=EGLD
-# or
-make mainnet-upgrade-market MARKET=EGLD
+# Create oracle for a market
+make devnet createOracle EGLD
+
+# Edit oracle tolerance
+make devnet editOracleTolerance EGLD
+
+# Deploy price aggregator
+make devnet deployPriceAggregator
+
+# Add oracles to price aggregator
+make devnet addOracles <address1> [address2] [address3] ...
+
+# Pause/unpause price aggregator
+make devnet pauseAggregator
+make devnet unpauseAggregator
 ```
 
-### Upgrading All Markets
-
+### E-Mode Management
 ```bash
-make devnet-upgrade-all-markets
-# or
-make mainnet-upgrade-all-markets
+# List E-Mode categories
+make devnet listEModeCategories
+
+# Add new E-Mode category
+make devnet addEModeCategory 1
+
+# Add asset to E-Mode category
+make devnet addAssetToEMode 1 EGLD
 ```
 
-### Creating Token Oracles
-
+### Revenue Management
 ```bash
-make devnet-create-oracle MARKET=EGLD
-# or
-make mainnet-create-oracle MARKET=EGLD
+# Claim revenue from all markets
+make devnet claimRevenue
 ```
 
-### Managing Price Aggregator
+## Market Configuration Structure
 
-```bash
-# Deploy the price aggregator
-make devnet-deploy-price-aggregator
-
-# Unpause the price aggregator
-make mainnet-unpause-price-aggregator
-
-# Add oracles to the price aggregator
-make devnet-add-oracles-price-aggregator
-```
-
-## Managing E-Mode Categories
-
-E-Mode (Efficiency Mode) allows users to borrow more when using correlated assets. For example, stablecoins or assets from the same ecosystem.
-
-### Adding E-Mode Categories
-
-```bash
-# Add a stablecoin E-Mode category
-make devnet-add-emode-category ID=1
-
-# Add an EGLD ecosystem E-Mode category
-make mainnet-add-emode-category ID=2
-```
-
-### Adding Assets to E-Mode Categories
-
-```bash
-# Add USDC to stablecoin E-Mode (category 1)
-make devnet-add-asset-to-emode ID=1 ASSET=USDC
-
-# Add EGLD to ecosystem E-Mode (category 2)
-make mainnet-add-asset-to-emode ID=2 ASSET=EGLD
-```
-
-### Listing E-Mode Categories
-
-```bash
-# Show all E-Mode categories and their assets
-make devnet-list-emode-categories
-```
-
-## Asset Configuration Management
-
-### Editing Asset Configuration
-
-You can update an asset's risk parameters, flags, and caps without recreating the market:
-
-```bash
-# Update EGLD configuration
-make devnet-edit-asset-config MARKET=EGLD
-```
-
-### Editing Oracle Tolerance
-
-Update price oracle tolerance values for a specific asset:
-
-```bash
-# Update EGLD price oracle tolerance
-make devnet-edit-oracle-tolerance MARKET=EGLD
-```
-
-## Configuration Structure
-
-The system uses two configuration structures:
-
-1. **Market Configurations** - Token-level settings including interest rates, risk parameters, and oracle settings
-2. **E-Mode Configurations** - Categories of correlated assets with their own risk parameters
-
-Example E-Mode configuration (in `devnet_market_configs.json`):
+Market configurations use human-readable values that are automatically scaled when used in transactions:
 
 ```json
-"emodes": {
-  "1": {
-    "name": "Stablecoins",
-    "ltv": "9500",
-    "liquidation_threshold": "9700",
-    "liquidation_bonus": "150",
-    "assets": {
-      "USDC": {
-        "can_be_collateral": "0x01",
-        "can_be_borrowed": "0x01"
-      },
-      "USDT": {
-        "can_be_collateral": "0x01",
-        "can_be_borrowed": "0x01"
-      }
-    }
+{
+  "EGLD": {
+    "token_id": "EGLD",
+    "ltv": "7500",                    // 75.00%
+    "liquidation_threshold": "8000",   // 80.00%
+    "liquidation_bonus": "550",        // 5.50%
+    "borrow_cap": "20000",            // 20,000 EGLD
+    "supply_cap": "20000",            // 20,000 EGLD
+    "base_rate": "1",                 // 1%
+    "max_rate": "69",                 // 69%
+    "slope1": "5",                    // 5%
+    "slope2": "15",                   // 15%
+    "slope3": "50",                   // 50%
+    "mid_utilization": "65",          // 65%
+    "optimal_utilization": "90",      // 90%
+    "reserve_factor": "2500",         // 25.00%
+    "oracle_decimals": "18"           // Used for scaling caps
   }
 }
 ```
 
-## Adding a New Network
-
-To add a new network:
-
-1. Edit `networks.json` and add a new network entry with all required settings
-2. Create a new market config file in `configs/` named `{network}_market_configs.json`
-3. Update the Makefile to include targets for the new network
-
-Example network entry for a new testnet:
+## E-Mode Configuration Structure
 
 ```json
-"testnet": {
-  "proxy": "https://testnet-gateway.multiversx.com",
-  "chain_id": "T",
-  "addresses": {
-    "controller": "erd1...",
-    ...
-  },
-  ...
+{
+  "devnet": {
+    "1": {
+      "name": "EGLD Derivatives",
+      "ltv": "9250",                  // 92.50%
+      "liquidation_threshold": "9550", // 95.50%
+      "liquidation_bonus": "150",      // 1.50%
+      "assets": {
+        "EGLD": {
+          "can_be_collateral": "0x01",
+          "can_be_borrowed": "0x01"
+        }
+      }
+    }
+  }
 }
 ```
