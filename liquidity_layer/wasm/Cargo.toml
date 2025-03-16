@@ -24,7 +24,7 @@ overflow-checks = false
 [profile.dev]
 panic = "abort"
 
-[dependencies.liquidity-layer]
+[dependencies.liquidity_layer]
 path = ".."
 
 [dependencies.multiversx-sc-wasm-adapter]

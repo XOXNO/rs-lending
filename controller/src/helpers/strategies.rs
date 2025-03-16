@@ -1,9 +1,11 @@
-use common_constants::WEGLD_TICKER;
+use common_constants::{BPS, WEGLD_TICKER};
+use common_errors::{ERROR_WRONG_TOKEN, ERROR_ZERO_AMOUNT};
 use common_structs::{ExchangeSource, OracleProvider, OracleType};
 
 use crate::{
+    oracle,
     proxy_ashswap::{AggregatorContractProxy, AggregatorStep, TokenAmount},
-    proxy_lxoxno, oracle, proxy_xexchange_pair, storage, proxy_wegld, proxy_xegld,
+    proxy_lxoxno, proxy_wegld, proxy_xegld, proxy_xexchange_pair, storage,
 };
 
 use super::math;
@@ -67,28 +69,22 @@ pub trait StrategiesModule:
     fn create_lp_token(
         &self,
         sc_address: &ManagedAddress,
-        first_token: &EgldOrEsdtTokenIdentifier,
-        second_token: &EgldOrEsdtTokenIdentifier,
-        first_token_amount: BigUint,
-        secont_token_amount: BigUint,
+        base_token: &EgldOrEsdtTokenIdentifier,
+        quote_token: &EgldOrEsdtTokenIdentifier,
+        base_token_amount: BigUint,
+        quote_token_amount: BigUint,
     ) -> (EgldOrEsdtTokenIdentifier, BigUint) {
         let mut payments = ManagedVec::new();
-        // sc_panic!(
-        //     "Creating LP token: {}, {}, {}, {}",
-        //     first_token,
-        //     second_token,
-        //     first_token_amount,
-        //     secont_token_amount
-        // );
+
         payments.push(EsdtTokenPayment::new(
-            second_token.clone().into_esdt_option().unwrap(),
+            base_token.clone().into_esdt_option().unwrap(),
             0,
-            secont_token_amount,
+            base_token_amount,
         ));
         payments.push(EsdtTokenPayment::new(
-            first_token.clone().into_esdt_option().unwrap(),
+            quote_token.clone().into_esdt_option().unwrap(),
             0,
-            first_token_amount,
+            quote_token_amount,
         ));
 
         let (lp_received, first, second) = self
@@ -189,55 +185,88 @@ pub trait StrategiesModule:
         steps: Option<ManagedVec<AggregatorStep<Self::Api>>>,
         limits: Option<ManagedVec<TokenAmount<Self::Api>>>,
     ) -> EgldOrEsdtTokenPayment {
+        // Get initial reserves to estimate ratio
         let (r_base, r_quote, _) = self.get_reserves(&to_provider.oracle_contract_address);
+
+        // Determine if input token is base or quote
         let is_from_base = from_token == base_token
             || (from_token.is_egld()
                 && base_token.clone().unwrap_esdt().ticker() == self.get_wegld_token_id());
-        let (token_a, token_b, r_a, r_b) = if is_from_base {
+
+        // Set input token and other token based on which one the input token is
+        let (input_token, other_token, r_input, r_other) = if is_from_base {
             (base_token, quote_token, r_base, r_quote)
         } else {
             (quote_token, base_token, r_quote, r_base)
         };
 
-        // Calculate amount to swap based on instant reserve ratio
-        let s = (from_amount * &r_b) / (r_a + &r_b);
-        // sc_panic!(
-        //     "Converting Token: {} to LP: {}, token_a: {}, token_b: {}, s: {}",
-        //     from_token,
-        //     to_token,
-        //     token_a,
-        //     token_b,
-        //     s,
-        // );
+        // Calculate swap amount based on the current reserves ratio
+        // For optimal LP creation, we need to match the reserves ratio
+        // Reserve ratio input:other determines what portion to swap
 
-        let y = self.convert_token_from_to(
-            &self.token_oracle(token_b).get(),
-            token_b,
+        // Scale for precision (avoid division errors with small numbers)
+        let scale = BigUint::from(BPS);
+
+        // Calculate what percentage of our input should be swapped to maintain ratio
+        // ratio_factor = r_other / (r_input + r_other)
+        let ratio_numerator = r_other.clone() * &scale;
+        let ratio_denominator = r_input.clone() + r_other.clone();
+        let ratio_factor = ratio_numerator / ratio_denominator;
+
+        // Calculate swap amount
+        let swap_amount = from_amount.clone() * &ratio_factor / &scale;
+
+        // Ensure we're swapping a positive amount
+        require!(swap_amount > 0, ERROR_ZERO_AMOUNT);
+
+        // Swap tokens via aggregator to get the other token
+        let other_token_payment = self.convert_token_from_to(
+            &self.token_oracle(other_token).get(),
+            other_token,
             from_token,
-            &s,
+            &swap_amount,
             from_provider,
             caller,
             steps.clone(),
             limits.clone(),
         );
 
-        // Handle EGLD to WEGLD wrapping
-        let amount_a = from_amount - &s;
-        let amount_b = y.amount;
-        if from_token.is_egld() {
-            self.wrap_egld(&amount_a);
-        }
+        // Calculate remaining amount of input token after swap
+        let remaining_input_amount = from_amount.clone() - &swap_amount;
+        let received_other_amount = other_token_payment.amount;
 
-        // Create LP token
+        // Handle EGLD to WEGLD wrapping if needed for LP creation
+        let final_input_amount = if from_token.is_egld()
+            && input_token.clone().unwrap_esdt().ticker() == self.get_wegld_token_id()
+        {
+            self.wrap_egld(&remaining_input_amount);
+            remaining_input_amount
+        } else {
+            remaining_input_amount
+        };
+
+        // Prepare amounts for LP token creation, ensuring correct order (base, quote)
+        let (base_amount, quote_amount) = if is_from_base {
+            (final_input_amount, received_other_amount)
+        } else {
+            (received_other_amount, final_input_amount)
+        };
+
+        // Create LP token with the amounts we have
         let lp_amount = self.create_lp_token(
             &to_provider.oracle_contract_address,
-            token_a,
-            token_b,
-            amount_a,
-            amount_b,
+            base_token,
+            quote_token,
+            base_amount,
+            quote_amount,
         );
 
-        EgldOrEsdtTokenPayment::new(lp_amount.0, 0, lp_amount.1)
+        let result = EgldOrEsdtTokenPayment::new(lp_amount.0, 0, lp_amount.1);
+
+        require!(result.amount > 0, ERROR_ZERO_AMOUNT);
+        require!(result.token_identifier == *to_token, ERROR_WRONG_TOKEN);
+
+        result
     }
 
     fn convert_token_from_to(
@@ -346,7 +375,8 @@ pub trait StrategiesModule:
         steps: Option<ManagedVec<AggregatorStep<Self::Api>>>,
         limits: Option<ManagedVec<TokenAmount<Self::Api>>>,
     ) -> EgldOrEsdtTokenPayment {
-        let (amount_base, amount_quote) = self
+        // Split the LP token into its constituent base and quote tokens
+        let (base_payment, quote_payment) = self
             .split_collateral(
                 from_amount,
                 &from_token.as_esdt_option().unwrap(),
@@ -354,43 +384,59 @@ pub trait StrategiesModule:
             )
             .into_tuple();
 
-        let (target_amount, other_amount, other_token) = if to_token == base_token
+        // Determine if the target token is the base or quote token
+        let is_target_base = to_token == base_token
             || (to_token.is_egld()
-                && base_token.clone().unwrap_esdt().ticker() == self.get_wegld_token_id())
-        {
-            (amount_base, amount_quote, quote_token)
+                && base_token.clone().unwrap_esdt().ticker() == self.get_wegld_token_id());
+        
+        // Assign target tokens and other tokens based on which one is the desired output
+        let (target_payment, other_payment, other_token) = if is_target_base {
+            (base_payment, quote_payment, quote_token)
         } else {
-            (amount_quote, amount_base, base_token)
+            (quote_payment, base_payment, base_token)
         };
 
-        let final_other = if other_amount.token_identifier.ticker() == self.get_wegld_token_id() {
-            self.unwrap_wegld(&other_amount.amount, &other_amount.token_identifier);
-
+        // Handle WEGLD to EGLD conversion if needed for the other token
+        let other_token_identifier = if other_payment.token_identifier.ticker() == self.get_wegld_token_id() {
+            self.unwrap_wegld(&other_payment.amount, &other_payment.token_identifier);
             EgldOrEsdtTokenIdentifier::egld()
         } else {
             other_token.clone()
         };
 
-        let converted = self.convert_token_from_to(
+        // Convert the other token to the target token
+        let converted_payment = self.convert_token_from_to(
             to_provider,
             to_token,
-            &final_other,
-            &other_amount.amount,
+            &other_token_identifier,
+            &other_payment.amount,
             &self.token_oracle(other_token).get(),
             caller,
             steps,
             limits,
         );
 
-        // Handle WEGLD to EGLD unwrapping
-        let final_amount = target_amount.amount + converted.amount;
-        if to_token.is_egld()
-            && target_amount.token_identifier.ticker() == self.get_wegld_token_id()
+        // Combine all received amounts of the target token
+        let total_amount = target_payment.amount + converted_payment.amount;
+        
+        // Handle WEGLD to EGLD unwrapping if needed for the final result
+        let final_amount = if to_token.is_egld()
+            && target_payment.token_identifier.ticker() == self.get_wegld_token_id()
         {
-            self.unwrap_wegld(&final_amount, &target_amount.token_identifier);
-        }
+            self.unwrap_wegld(&total_amount, &target_payment.token_identifier);
+            total_amount
+        } else {
+            total_amount
+        };
 
-        EgldOrEsdtTokenPayment::new(to_token.clone(), 0, final_amount)
+        // Create the final payment object
+        let result = EgldOrEsdtTokenPayment::new(to_token.clone(), 0, final_amount);
+        
+        // Validate the result
+        require!(result.amount > 0, ERROR_ZERO_AMOUNT);
+        require!(result.token_identifier == *to_token, ERROR_WRONG_TOKEN);
+        
+        result
     }
 
     fn convert_to_lsd(

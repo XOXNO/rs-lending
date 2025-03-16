@@ -1,11 +1,11 @@
 [package]
-name = "liquidity-layer-meta"
+name = "liquidity_layer-meta"
 version = "0.0.0"
 authors = ["Mihai Eremia <mihai@xoxno.com>"]
 edition = "2021"
 publish = false
 
-[dependencies.liquidity-layer]
+[dependencies.liquidity_layer]
 path = ".."
 
 [dependencies.multiversx-sc-meta-lib]

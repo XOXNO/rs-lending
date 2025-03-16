@@ -87,7 +87,7 @@ pub const CAPPED_PRICE_IN_DOLLARS: u64 = 2; // $2
 pub const CAPPED_DECIMALS: usize = 8;
 
 pub const LENDING_POOL_ADDRESS: TestSCAddress = TestSCAddress::new("controller");
-pub const LIQUIDITY_POOL_ADDRESS: TestSCAddress = TestSCAddress::new("liquidity-layer");
+pub const LIQUIDITY_POOL_ADDRESS: TestSCAddress = TestSCAddress::new("liquidity_layer");
 pub const PRICE_AGGREGATOR_ADDRESS: TestSCAddress = TestSCAddress::new("price_aggregator");
 pub const EGLD_LIQUID_STAKING_ADDRESS: TestSCAddress = TestSCAddress::new("egld-liquid-staking");
 pub const XOXNO_LIQUID_STAKING_ADDRESS: TestSCAddress = TestSCAddress::new("xoxno-liquid-staking");

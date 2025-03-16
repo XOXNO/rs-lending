@@ -19,13 +19,13 @@ EMODES_CONFIG_FILE="configs/emodes.json"
 # Contract paths configuration
 OUTPUT_DOCKER="output-docker"
 CONTROLLER_NAME="controller"
-MARKET_NAME="market"
-PRICE_AGGREGATOR_NAME="price-aggregator"
+MARKET_NAME="liquidity_layer"
+PRICE_AGGREGATOR_NAME="price_aggregator"
 
 # WASM paths
-PROJECT_CONTROLLER="${OUTPUT_DOCKER}/${CONTROLLER_NAME}/${CONTROLLER_NAME}.wasm"
-PROJECT_MARKET="${OUTPUT_DOCKER}/${MARKET_NAME}/${MARKET_NAME}.wasm"
-PRICE_AGGREGATOR_PATH="${OUTPUT_DOCKER}/${PRICE_AGGREGATOR_NAME}/${PRICE_AGGREGATOR_NAME}.wasm"
+PROJECT_CONTROLLER="./${OUTPUT_DOCKER}/${CONTROLLER_NAME}/${CONTROLLER_NAME}.wasm"
+PROJECT_MARKET="./${OUTPUT_DOCKER}/${MARKET_NAME}/${MARKET_NAME}.wasm"
+PRICE_AGGREGATOR_PATH="./${OUTPUT_DOCKER}/${PRICE_AGGREGATOR_NAME}/${PRICE_AGGREGATOR_NAME}.wasm"
 
 # Source JSON paths for contract verification
 CONTROLLER_SOURCE="${OUTPUT_DOCKER}/${CONTROLLER_NAME}/${CONTROLLER_NAME}-0.0.0.source.json"
@@ -38,7 +38,7 @@ if [ "$NETWORK" = "devnet" ]; then
 else
     VERIFIER_URL="https://play-api.multiversx.com"
 fi
-DOCKER_IMAGE="multiversx/sdk-rust-contract-builder:v8.0.0"
+DOCKER_IMAGE="multiversx/sdk-rust-contract-builder:v8.0.1"
 
 # Check if market config file exists
 if [ ! -f "$MARKET_CONFIG_FILE" ]; then
@@ -93,7 +93,7 @@ verifyMarketContract() {
 }
 
 verifyPriceAggregatorContract() {
-    verifyContract "${PRICE_AGGREGATOR_ADDRESS}" "${PRICE_AGGREGATOR_SOURCE}" "price-aggregator"
+    verifyContract "${PRICE_AGGREGATOR_ADDRESS}" "${PRICE_AGGREGATOR_SOURCE}" "price_aggregator"
 }
 
 # Function to get network configuration value
@@ -141,9 +141,6 @@ ACCOUNT_TOKEN_NAME="str:$(get_network_value "account_token.name")"
 ACCOUNT_TOKEN_TICKER="str:$(get_network_value "account_token.ticker")"
 ISSUE_COST=$(get_network_value "account_token.issue_cost")
 
-# Load paths
-PROJECT_CONTROLLER=$(get_network_value "paths.controller")
-PROJECT_MARKET=$(get_network_value "paths.market")
 
 echo "Using network: $NETWORK"
 echo "Proxy: $PROXY"
@@ -173,7 +170,23 @@ upgrade_all_markets() {
 # Function to convert percentage to RAY (27 decimals)
 to_ray() {
     local value=$1
-    echo "$value"000000000000000000000000000
+    local numeric_value=$(echo "$value" | sed 's/[^0-9.]//g')
+    
+    if [ -z "$numeric_value" ] || [ "$numeric_value" = "null" ]; then
+        echo "0"
+        return
+    fi
+    
+    # Use higher precision for the division, then set scale=0 only for the final result
+    # This ensures values like 40/100 = 0.4 are preserved during calculation
+    local result=$(echo "scale=10; temp = ($numeric_value / 100) * 1000000000000000000000000000; scale=0; temp / 1" | bc)
+    
+    # If result is empty (bc error), return 0
+    if [ -z "$result" ]; then
+        echo "0"
+    else
+        echo "$result"
+    fi
 }
 
 # Function to convert a number to the correct decimal places based on oracle_decimals
@@ -189,17 +202,45 @@ build_market_args() {
     local -a args=()
     local oracle_decimals=$(get_config_value "$market_name" "oracle_decimals")
     
+    # Debug output
+    echo "Building market args for $market_name:"
+    echo "Token ID: $(get_config_value "$market_name" "token_id")"
+    echo "Max rate: $(get_config_value "$market_name" "max_rate")"
+    echo "Base rate: $(get_config_value "$market_name" "base_rate")"
+    echo "Slope1: $(get_config_value "$market_name" "slope1")"
+    echo "Slope2: $(get_config_value "$market_name" "slope2")"
+    echo "Slope3: $(get_config_value "$market_name" "slope3")"
+    echo "Mid utilization: $(get_config_value "$market_name" "mid_utilization")"
+    echo "Optimal utilization: $(get_config_value "$market_name" "optimal_utilization")"
+    
     # Token configuration
     args+=("str:$(get_config_value "$market_name" "token_id")")
 
     # Interest rate parameters - convert from percentage to RAY
-    args+=("$(to_ray "$(get_config_value "$market_name" "max_rate")")")
-    args+=("$(to_ray "$(get_config_value "$market_name" "base_rate")")")
-    args+=("$(to_ray "$(get_config_value "$market_name" "slope1")")")
-    args+=("$(to_ray "$(get_config_value "$market_name" "slope2")")")
-    args+=("$(to_ray "$(get_config_value "$market_name" "slope3")")")
-    args+=("$(to_ray "$(get_config_value "$market_name" "mid_utilization")")")
-    args+=("$(to_ray "$(get_config_value "$market_name" "optimal_utilization")")")
+    max_rate=$(to_ray "$(get_config_value "$market_name" "max_rate")")
+    base_rate=$(to_ray "$(get_config_value "$market_name" "base_rate")")
+    slope1=$(to_ray "$(get_config_value "$market_name" "slope1")")
+    slope2=$(to_ray "$(get_config_value "$market_name" "slope2")")
+    slope3=$(to_ray "$(get_config_value "$market_name" "slope3")")
+    mid_util=$(to_ray "$(get_config_value "$market_name" "mid_utilization")")
+    opt_util=$(to_ray "$(get_config_value "$market_name" "optimal_utilization")")
+    
+    echo "Converted values:"
+    echo "Max rate (RAY): $max_rate"
+    echo "Base rate (RAY): $base_rate"
+    echo "Slope1 (RAY): $slope1"
+    echo "Slope2 (RAY): $slope2"
+    echo "Slope3 (RAY): $slope3"
+    echo "Mid utilization (RAY): $mid_util"
+    echo "Optimal utilization (RAY): $opt_util"
+    
+    args+=("$max_rate")
+    args+=("$base_rate")
+    args+=("$slope1")
+    args+=("$slope2")
+    args+=("$slope3")
+    args+=("$mid_util") 
+    args+=("$opt_util")
     args+=("$(get_config_value "$market_name" "reserve_factor")")
 
     # Risk parameters
@@ -313,12 +354,16 @@ deploy_price_aggregator() {
     echo "Deploying price aggregator for network: $NETWORK"
     echo "Contract path: $PRICE_AGGREGATOR_PATH"
 
+    # Get submission counts from network configuration
+    local submission_counts=$(get_network_value "submission_counts")
+    echo "Using submission counts: $submission_counts"
+
     # Convert oracle addresses to CLI arguments
     read -a oracle_array <<< "$PRICE_AGGREGATOR_ORACLES"
 
     mxpy contract deploy --bytecode=${PRICE_AGGREGATOR_PATH} --recall-nonce \
     --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
-    --gas-limit=250000000 --outfile="deploy-price-aggregator-${NETWORK}.json" --arguments 0x01 ${oracle_array[@]} \
+    --gas-limit=250000000 --outfile="deploy-price-aggregator-${NETWORK}.json" --arguments 0x$(printf "%02x" $submission_counts) ${oracle_array[@]} \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 
     echo ""
@@ -377,13 +422,10 @@ add_oracles_price_aggregator() {
 }
 
 deploy_controller() {
-    mxpy contract deploy --bytecode=${PROJECT_CONTROLLER} --recall-nonce \
+    mxpy --verbose contract deploy --bytecode=${PROJECT_CONTROLLER} --recall-nonce \
     --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
     --gas-limit=450000000 --outfile="deploy-${NETWORK}.json" --arguments ${LP_TEMPLATE_ADDRESS} ${PRICE_AGGREGATOR_ADDRESS} ${SAFE_PRICE_VIEW_ADDRESS} ${ACCUMULATOR_ADDRESS} ${WEGLD_ADDRESS} ${ASH_ADDRESS} \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
-
-    echo ""
-    echo "Smart contract address: ${ADDRESS}"
 }
 
 upgrade_controller() {

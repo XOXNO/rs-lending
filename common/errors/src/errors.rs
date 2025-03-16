@@ -148,3 +148,13 @@ pub static ERROR_OPTIMAL_UTILIZATION_TOO_HIGH: &[u8] =
 pub static ERROR_INVALID_RESERVE_FACTOR: &[u8] =
     b"Reserve factor invalid: must be less than 10000.";
 pub static ERROR_INVALID_ONEDEX_PAIR_ID: &[u8] = b"Invalid onedex pair id.";
+
+pub static ERROR_WRONG_TOKEN: &[u8] = b"Wrong received token.";
+
+pub static ERROR_ZERO_AMOUNT: &[u8] = b"Amount is zero.";
+
+pub static ERROR_MULTIPLY_STRATEGY_REQUIRES_FLASH_LOAN: &[u8] =
+    b"Multiply strategy requires flash loan leverage.";
+
+pub static ERROR_INITIAL_COLLATERAL_OVER_FINAL_COLLATERAL: &[u8] =
+    b"Initial collateral is over the final collateral amount";

@@ -17,7 +17,7 @@ version = "0.57.0"
 [dependencies.multiversx-wegld-swap-sc]
 version = "0.57.0"
 
-[dependencies.liquidity-layer]
+[dependencies.liquidity_layer]
 path = "../liquidity_layer"
 
 [dependencies.common-structs]

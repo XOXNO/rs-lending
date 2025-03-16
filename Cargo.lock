@@ -264,7 +264,7 @@ dependencies = [
  "flash-mock",
  "hex",
  "liquid-staking",
- "liquidity-layer",
+ "liquidity_layer",
  "multiversx-sc",
  "multiversx-sc-modules",
  "multiversx-sc-scenario",
@@ -635,7 +635,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "liquidity-layer"
+name = "liquidity_layer"
 version = "0.0.1"
 dependencies = [
  "common-constants",
@@ -648,10 +648,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "liquidity-layer-meta"
+name = "liquidity_layer-meta"
 version = "0.0.0"
 dependencies = [
- "liquidity-layer",
+ "liquidity_layer",
  "multiversx-sc-meta-lib",
 ]
 

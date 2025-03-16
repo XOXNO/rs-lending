@@ -1,5 +1,5 @@
 [package]
-name = "liquidity-layer"
+name = "liquidity_layer"
 version = "0.0.1"
 authors = ["Mihai Eremia <mihai@xoxno.com>"]
 edition = "2021"
