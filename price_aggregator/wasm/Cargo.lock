@@ -148,7 +148,7 @@ dependencies = [
 
 [[package]]
 name = "price_aggregator"
-version = "0.47.1"
+version = "0.57.0"
 dependencies = [
  "arrayvec",
  "multiversx-sc",

@@ -6,11 +6,13 @@ POSITIONAL_MARKET_ACTIONS := createMarket createOracle upgradeMarket editAssetCo
 POSITIONAL_ID_ACTIONS := addEModeCategory
 POSITIONAL_ID_ASSET_ACTIONS := addAssetToEMode
 POSITIONAL_ORACLE_ACTIONS := addOracles
+POSITIONAL_ADDRESS_ACTIONS := verifyMarket
 SIMPLE_ACTIONS := deployPriceAggregator upgradePriceAggregator pauseAggregator unpauseAggregator \
                   deployTemplateMarket upgradeTemplateMarket \
                   deployController upgradeController \
                   registerToken claimRevenue \
-                  listMarkets upgradeAllMarkets listEModeCategories
+                  listMarkets upgradeAllMarkets listEModeCategories \
+                  verifyController verifyPriceAggregator
 
 # Help command
 help:
@@ -45,6 +47,11 @@ help:
 	@echo "    listMarkets              - List all available markets"
 	@echo "    listEModeCategories      - List all E-Mode categories"
 	@echo "    claimRevenue             - Claim revenue from all markets"
+	@echo ""
+	@echo "  Verification commands:"
+	@echo "    verifyController              - Verify the controller contract"
+	@echo "    verifyMarket <address>        - Verify a market contract at the specified address"
+	@echo "    verifyPriceAggregator        - Verify the price aggregator contract"
 	@echo ""
 	@echo "  Commands with market name:"
 	@for action in $(POSITIONAL_MARKET_ACTIONS); do \
@@ -126,6 +133,17 @@ $(NETWORKS):
 			exit 1; \
 		fi; \
 		NETWORK=$@ ./configs/script.sh $(word 2,$(MAKECMDGOALS)) $(wordlist 3,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS)); \
+	elif echo "$(POSITIONAL_ADDRESS_ACTIONS)" | grep -w "$(word 2,$(MAKECMDGOALS))" > /dev/null; then \
+		if [ -z "$(word 3,$(MAKECMDGOALS))" ]; then \
+			echo "Error: Address is required for $(word 2,$(MAKECMDGOALS))."; \
+			echo "Usage: make $@ $(word 2,$(MAKECMDGOALS)) <address>"; \
+			exit 1; \
+		fi; \
+		address="$(ADDRESS)"; \
+		if [ -z "$$address" ]; then \
+			address="$(word 3,$(MAKECMDGOALS))"; \
+		fi; \
+		NETWORK=$@ ./configs/script.sh $(word 2,$(MAKECMDGOALS)) $$address; \
 	elif echo "$(SIMPLE_ACTIONS)" | grep -w "$(word 2,$(MAKECMDGOALS))" > /dev/null; then \
 		if [ "$(word 2,$(MAKECMDGOALS))" = "listMarkets" ]; then \
 			NETWORK=$@ ./configs/script.sh list; \
@@ -145,7 +163,7 @@ $(NETWORKS):
 	fi
 
 # Define all commands as empty targets to allow for the syntax make network command
-$(SIMPLE_ACTIONS) $(POSITIONAL_MARKET_ACTIONS) $(POSITIONAL_ID_ACTIONS) $(POSITIONAL_ID_ASSET_ACTIONS) $(POSITIONAL_ORACLE_ACTIONS):
+$(SIMPLE_ACTIONS) $(POSITIONAL_MARKET_ACTIONS) $(POSITIONAL_ID_ACTIONS) $(POSITIONAL_ID_ASSET_ACTIONS) $(POSITIONAL_ORACLE_ACTIONS) $(POSITIONAL_ADDRESS_ACTIONS):
 	@: # Do nothing, this is just to let make accept these as targets
 
 # Make third and fourth words targets (for positional arguments)
@@ -256,4 +274,34 @@ mainnet-edit-asset-config:
 	NETWORK=mainnet ./configs/script.sh editAssetConfig $(MARKET)
 
 mainnet-edit-oracle-tolerance:
-	NETWORK=mainnet ./configs/script.sh editOracleTolerance $(MARKET) 
+	NETWORK=mainnet ./configs/script.sh editOracleTolerance $(MARKET)
+
+# Add new targets for verification functions - devnet
+devnet-verify-controller:
+	NETWORK=devnet ./configs/script.sh verifyController
+
+devnet-verify-market:
+	@if [ -z "$(ADDRESS)" ]; then \
+		echo "Error: Market address is required for verification"; \
+		echo "Usage: make devnet-verify-market ADDRESS=<market_address>"; \
+		exit 1; \
+	fi
+	NETWORK=devnet ./configs/script.sh verifyMarket $(ADDRESS)
+
+devnet-verify-price-aggregator:
+	NETWORK=devnet ./configs/script.sh verifyPriceAggregator
+
+# Add new targets for verification functions - mainnet
+mainnet-verify-controller:
+	NETWORK=mainnet ./configs/script.sh verifyController
+
+mainnet-verify-market:
+	@if [ -z "$(ADDRESS)" ]; then \
+		echo "Error: Market address is required for verification"; \
+		echo "Usage: make mainnet-verify-market ADDRESS=<market_address>"; \
+		exit 1; \
+	fi
+	NETWORK=mainnet ./configs/script.sh verifyMarket $(ADDRESS)
+
+mainnet-verify-price-aggregator:
+	NETWORK=mainnet ./configs/script.sh verifyPriceAggregator 

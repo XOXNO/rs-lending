@@ -2149,7 +2149,7 @@ pub fn setup_xoxno_liquid_staking(
     let xoxno_liquid_staking_sc = world
         .tx()
         .from(OWNER_ADDRESS)
-        .typed(lxoxno_proxy::RsLiquidXoxnoProxy)
+        .typed(proxy_lxoxno::RsLiquidXoxnoProxy)
         .init(XOXNO_TOKEN)
         .code(XOXNO_LIQUID_STAKING_PATH)
         .returns(ReturnsNewManagedAddress)

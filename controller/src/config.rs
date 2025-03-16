@@ -67,6 +67,7 @@ pub trait ConfigModule:
         source: ExchangeSource,
         first_tolerance: BigUint,
         last_tolerance: BigUint,
+        one_dex_pair_id: OptionalValue<usize>,
     ) {
         let mapper = self.token_oracle(market_token);
 
@@ -77,8 +78,19 @@ pub trait ConfigModule:
                 let token_id = self
                     .tx()
                     .to(contract_address)
-                    .typed(lxoxno_proxy::RsLiquidXoxnoProxy)
+                    .typed(proxy_lxoxno::RsLiquidXoxnoProxy)
                     .main_token()
+                    .returns(ReturnsResult)
+                    .sync_call_readonly();
+                EgldOrEsdtTokenIdentifier::esdt(token_id)
+            },
+            ExchangeSource::Onedex => {
+                require!(one_dex_pair_id.is_some(), ERROR_INVALID_ONEDEX_PAIR_ID);
+                let token_id = self
+                    .tx()
+                    .to(contract_address)
+                    .typed(proxy_onedex::OneDexProxy)
+                    .pair_first_token_id(one_dex_pair_id.clone().into_option().unwrap())
                     .returns(ReturnsResult)
                     .sync_call_readonly();
                 EgldOrEsdtTokenIdentifier::esdt(token_id)
@@ -111,6 +123,16 @@ pub trait ConfigModule:
                     .sync_call_readonly();
                 EgldOrEsdtTokenIdentifier::esdt(token_id)
             },
+            ExchangeSource::Onedex => {
+                let token_id = self
+                    .tx()
+                    .to(contract_address)
+                    .typed(proxy_onedex::OneDexProxy)
+                    .pair_second_token_id(one_dex_pair_id.clone().into_option().unwrap())
+                    .returns(ReturnsResult)
+                    .sync_call_readonly();
+                EgldOrEsdtTokenIdentifier::esdt(token_id)
+            },
             ExchangeSource::XEGLD => first_token_id.clone(),
             ExchangeSource::LEGLD => first_token_id.clone(),
             ExchangeSource::LXOXNO => first_token_id.clone(),
@@ -130,6 +152,7 @@ pub trait ConfigModule:
             price_decimals: decimals,
             pricing_method,
             tolerance,
+            onedex_pair_id: one_dex_pair_id.clone().into_option().unwrap_or(0),
         };
 
         mapper.set(&oracle);

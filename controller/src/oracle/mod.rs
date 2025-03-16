@@ -1,8 +1,8 @@
 multiversx_sc::imports!();
 use common_constants::{
     EGLD_TICKER, PRICE_AGGREGATOR_ROUNDS_STORAGE_KEY, PRICE_AGGREGATOR_STATUS_STORAGE_KEY,
-    SECONDS_PER_HOUR, SECONDS_PER_MINUTE, STATE_PAIR_STORAGE_KEY, USD_TICKER, WAD_PRECISION,
-    WEGLD_TICKER,
+    SECONDS_PER_HOUR, SECONDS_PER_MINUTE, STATE_PAIR_ONEDEX_STORAGE_KEY, STATE_PAIR_STORAGE_KEY,
+    USD_TICKER, WAD_PRECISION, WEGLD_TICKER,
 };
 use common_structs::{ExchangeSource, OracleProvider, OracleType, PriceFeedShort, PricingMethod};
 use multiversx_sc::storage::StorageKey;
@@ -15,9 +15,10 @@ use price_aggregator::{
 use crate::{
     cache::Cache,
     helpers,
-    proxies::{lxoxno_proxy, proxy_legld, xegld_proxy},
+    proxies::{proxy_legld, proxy_lxoxno, proxy_xegld},
+    proxy_onedex::{self, State as StateOnedex},
     proxy_price_aggregator::PriceFeed,
-    proxy_xexchange_pair::State,
+    proxy_xexchange_pair::State as StateXExchange,
     storage, ERROR_INVALID_EXCHANGE_SOURCE, ERROR_INVALID_ORACLE_TOKEN_TYPE,
     ERROR_NO_LAST_PRICE_FOUND, ERROR_ORACLE_TOKEN_NOT_FOUND, ERROR_PAIR_NOT_ACTIVE,
     ERROR_PRICE_AGGREGATOR_NOT_SET, ERROR_UN_SAFE_PRICE_NOT_ALLOWED,
@@ -147,7 +148,7 @@ pub trait OracleModule:
         let ratio = self
             .tx()
             .to(&configs.oracle_contract_address)
-            .typed(xegld_proxy::LiquidStakingProxy)
+            .typed(proxy_xegld::LiquidStakingProxy)
             .get_exchange_rate()
             .returns(ReturnsResult)
             .sync_call_readonly();
@@ -162,7 +163,7 @@ pub trait OracleModule:
         let ratio = self
             .tx()
             .to(&configs.oracle_contract_address)
-            .typed(lxoxno_proxy::RsLiquidXoxnoProxy)
+            .typed(proxy_lxoxno::RsLiquidXoxnoProxy)
             .get_exchange_rate()
             .returns(ReturnsResult)
             .sync_call_readonly();
@@ -172,12 +173,18 @@ pub trait OracleModule:
     }
 
     // --- Utility Functions ---
-    fn get_pair_state(&self, pair: &ManagedAddress) -> State {
+    fn get_pair_state(&self, pair: &ManagedAddress) -> StateXExchange {
         SingleValueMapper::<_, _, ManagedAddress>::new_from_address(
             pair.clone(),
             StorageKey::new(STATE_PAIR_STORAGE_KEY),
         )
         .get()
+    }
+
+    fn get_pair_state_onedex(&self, pair: &ManagedAddress, pair_id: usize) -> StateOnedex {
+        let mut key = StorageKey::new(STATE_PAIR_ONEDEX_STORAGE_KEY);
+        key.append_item(&pair_id);
+        SingleValueMapper::<_, _, ManagedAddress>::new_from_address(pair.clone(), key).get()
     }
 
     // --- Safe Price Functions ---
@@ -189,18 +196,49 @@ pub trait OracleModule:
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let egld_ticker = ManagedBuffer::new_from_bytes(EGLD_TICKER);
         let one_token = BigUint::from(10u64).pow(configs.price_decimals as u32);
-        let pair_status = self.get_pair_state(&configs.oracle_contract_address);
-        require!(pair_status == State::Active, ERROR_PAIR_NOT_ACTIVE);
 
-        let result = self
-            .safe_price_proxy(self.safe_price_view().get())
-            ._get_safe_price_by_timestamp_offset(
-                &configs.oracle_contract_address,
-                SECONDS_PER_MINUTE * 15,
-                EsdtTokenPayment::new(token_id.clone().unwrap_esdt(), 0, one_token),
-            )
-            .returns(ReturnsResult)
-            .sync_call_readonly();
+        let result = if configs.exchange_source == ExchangeSource::Onedex {
+            let pair_status = self
+                .get_pair_state_onedex(&configs.oracle_contract_address, configs.onedex_pair_id);
+            require!(pair_status == StateOnedex::Active, ERROR_PAIR_NOT_ACTIVE);
+            let from_identifier = token_id.clone().unwrap_esdt();
+            let to_identifier = if from_identifier == configs.quote_token_id.clone().unwrap_esdt() {
+                configs.base_token_id.clone()
+            } else {
+                configs.quote_token_id.clone()
+            };
+            let result = self
+                .tx()
+                .to(&configs.oracle_contract_address)
+                .typed(proxy_onedex::OneDexProxy)
+                .get_safe_price_by_timestamp_offset(
+                    from_identifier.clone(),
+                    to_identifier.clone().unwrap_esdt(),
+                    SECONDS_PER_MINUTE * 15,
+                    EsdtTokenPayment::new(from_identifier, 0, one_token),
+                )
+                .returns(ReturnsResult)
+                .sync_call_readonly();
+
+            result
+        } else if configs.exchange_source == ExchangeSource::XExchange {
+            let pair_status = self.get_pair_state(&configs.oracle_contract_address);
+            require!(pair_status == StateXExchange::Active, ERROR_PAIR_NOT_ACTIVE);
+
+            let result = self
+                .safe_price_proxy(self.safe_price_view().get())
+                ._get_safe_price_by_timestamp_offset(
+                    &configs.oracle_contract_address,
+                    SECONDS_PER_MINUTE * 15,
+                    EsdtTokenPayment::new(token_id.clone().unwrap_esdt(), 0, one_token),
+                )
+                .returns(ReturnsResult)
+                .sync_call_readonly();
+
+            result
+        } else {
+            sc_panic!(ERROR_INVALID_EXCHANGE_SOURCE)
+        };
 
         let new_token_id = EgldOrEsdtTokenIdentifier::esdt(result.token_identifier.clone());
         let result_ticker = self.get_token_ticker(&new_token_id);

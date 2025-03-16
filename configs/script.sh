@@ -16,6 +16,30 @@ NETWORKS_FILE="networks.json"
 MARKET_CONFIG_FILE="configs/${NETWORK}_market_configs.json"
 EMODES_CONFIG_FILE="configs/emodes.json"
 
+# Contract paths configuration
+OUTPUT_DOCKER="output-docker"
+CONTROLLER_NAME="controller"
+MARKET_NAME="market"
+PRICE_AGGREGATOR_NAME="price-aggregator"
+
+# WASM paths
+PROJECT_CONTROLLER="${OUTPUT_DOCKER}/${CONTROLLER_NAME}/${CONTROLLER_NAME}.wasm"
+PROJECT_MARKET="${OUTPUT_DOCKER}/${MARKET_NAME}/${MARKET_NAME}.wasm"
+PRICE_AGGREGATOR_PATH="${OUTPUT_DOCKER}/${PRICE_AGGREGATOR_NAME}/${PRICE_AGGREGATOR_NAME}.wasm"
+
+# Source JSON paths for contract verification
+CONTROLLER_SOURCE="${OUTPUT_DOCKER}/${CONTROLLER_NAME}/${CONTROLLER_NAME}-0.0.0.source.json"
+MARKET_SOURCE="${OUTPUT_DOCKER}/${MARKET_NAME}/${MARKET_NAME}-0.0.1.source.json"
+PRICE_AGGREGATOR_SOURCE="${OUTPUT_DOCKER}/${PRICE_AGGREGATOR_NAME}/${PRICE_AGGREGATOR_NAME}-0.57.0.source.json"
+
+# Verification configuration
+if [ "$NETWORK" = "devnet" ]; then
+    VERIFIER_URL="https://devnet-play-api.multiversx.com"
+else
+    VERIFIER_URL="https://play-api.multiversx.com"
+fi
+DOCKER_IMAGE="multiversx/sdk-rust-contract-builder:v8.0.0"
+
 # Check if market config file exists
 if [ ! -f "$MARKET_CONFIG_FILE" ]; then
     echo "Error: Market configuration file not found: $MARKET_CONFIG_FILE"
@@ -33,6 +57,44 @@ if [ ! -f "$NETWORKS_FILE" ]; then
     echo "Error: Network configuration file not found: $NETWORKS_FILE"
     exit 1
 fi
+
+# Function to verify contract
+verifyContract() {
+    local contract_address=$1
+    local source_json=$2
+    local contract_name=$3
+
+    echo "Verifying ${contract_name} contract on ${NETWORK}..."
+    echo "Contract address: ${contract_address}"
+    echo "Source JSON: ${source_json}"
+
+    mxpy --verbose contract verify "${contract_address}" \
+    --packaged-src="${source_json}" \
+    --verifier-url="${VERIFIER_URL}" \
+    --docker-image="${DOCKER_IMAGE}" \
+    --ledger \
+    --ledger-account-index=${LEDGER_ACCOUNT_INDEX} \
+    --ledger-address-index=${LEDGER_ADDRESS_INDEX} || return
+}
+
+# Function to verify specific contracts
+verifyControllerContract() {
+    verifyContract "${ADDRESS}" "${CONTROLLER_SOURCE}" "controller"
+}
+
+verifyMarketContract() {
+    local market_address=$1
+    if [ -z "$market_address" ]; then
+        echo "Error: Market address is required for verification"
+        echo "Usage: verifyMarket <market_address>"
+        exit 1
+    fi
+    verifyContract "$market_address" "${MARKET_SOURCE}" "market"
+}
+
+verifyPriceAggregatorContract() {
+    verifyContract "${PRICE_AGGREGATOR_ADDRESS}" "${PRICE_AGGREGATOR_SOURCE}" "price-aggregator"
+}
 
 # Function to get network configuration value
 get_network_value() {
@@ -72,7 +134,6 @@ ACCUMULATOR_ADDRESS=$(get_network_value "addresses.accumulator")
 PRICE_AGGREGATOR_ADDRESS=$(get_network_value "addresses.price_aggregator")
 
 # Load price aggregator config
-PRICE_AGGREGATOR_PATH=$(get_network_value "paths.price_aggregator")
 PRICE_AGGREGATOR_ORACLES=$(get_network_value "oracles[]" | tr '\n' ' ')
 
 # Load account token config
@@ -237,6 +298,13 @@ create_oracle_args() {
     args+=("$(get_config_value "$market_name" "oracle_source")")
     args+=("$(get_config_value "$market_name" "first_tolerance")")
     args+=("$(get_config_value "$market_name" "last_tolerance")")
+    
+    # Check if pair_id exists in config and add it if present
+    local pair_id=$(jq -r ".[\"$market_name\"][\"pair_id\"] // empty" "$MARKET_CONFIG_FILE")
+    if [ ! -z "$pair_id" ]; then
+        args+=("$pair_id")
+    fi
+    
     echo "${args[@]}"
 }
 
@@ -780,6 +848,20 @@ case "$1" in
     "listMarkets")
         list_markets
         ;;
+    "verifyController")
+        verifyControllerContract
+        ;;
+    "verifyMarket")
+        if [ -z "$2" ]; then
+            echo "Please specify a market address"
+            echo "Usage: verifyMarket <market_address>"
+            exit 1
+        fi
+        verifyMarketContract "$2"
+        ;;
+    "verifyPriceAggregator")
+        verifyPriceAggregatorContract
+        ;;
     *)
         echo "Usage: $0 COMMAND [ARGS]"
         echo ""
@@ -815,6 +897,11 @@ case "$1" in
         echo "  addAssetToEMode ID ASSET      - Add an asset to an E-Mode category"
         echo "  editAssetConfig MARKET        - Edit asset configuration"
         echo "  listEModeCategories           - List all E-Mode categories"
+        echo ""
+        echo "Verification Commands:"
+        echo "  verifyController              - Verify the controller contract"
+        echo "  verifyMarket                  - Verify the market contract"
+        echo "  verifyPriceAggregator         - Verify the price aggregator contract"
         exit 1
         ;;
 esac

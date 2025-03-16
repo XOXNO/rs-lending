@@ -41,6 +41,8 @@ pub static TOTAL_RESERVES_AMOUNT_STORAGE_KEY: &[u8] = b"reserves";
 
 pub static STATE_PAIR_STORAGE_KEY: &[u8] = b"state";
 
+pub static STATE_PAIR_ONEDEX_STORAGE_KEY: &[u8] = b"pair_state";
+
 pub static PRICE_AGGREGATOR_ROUNDS_STORAGE_KEY: &[u8] = b"rounds";
 
 pub static PRICE_AGGREGATOR_STATUS_STORAGE_KEY: &[u8] = b"pause_module:paused";

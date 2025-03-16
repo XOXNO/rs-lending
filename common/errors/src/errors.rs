@@ -147,3 +147,4 @@ pub static ERROR_OPTIMAL_UTILIZATION_TOO_HIGH: &[u8] =
     b"Optimal utilization invalid: must be less than 1.0.";
 pub static ERROR_INVALID_RESERVE_FACTOR: &[u8] =
     b"Reserve factor invalid: must be less than 10000.";
+pub static ERROR_INVALID_ONEDEX_PAIR_ID: &[u8] = b"Invalid onedex pair id.";

@@ -3,7 +3,7 @@ multiversx_sc::imports!();
 use common_errors::ERROR_SWAP_DEBT_NOT_SUPPORTED;
 
 use crate::{
-    aggregator::{AggregatorStep, TokenAmount},
+    proxy_ashswap::{AggregatorStep, TokenAmount},
     cache::Cache,
     helpers, oracle, positions, proxy_pool, storage, utils, validation, ERROR_ASSET_NOT_BORROWABLE,
     ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL, ERROR_SWAP_COLLATERAL_NOT_SUPPORTED,

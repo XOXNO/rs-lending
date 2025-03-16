@@ -1,4 +1,4 @@
-# Elrond IDE
+# MultiversX IDE
 
 **/node_modules
 **/output/**
@@ -22,3 +22,4 @@ lcov.info
 **/upgrade.json
 
 **/testnet.toml
+**/output-docker/**

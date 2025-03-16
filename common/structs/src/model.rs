@@ -313,6 +313,7 @@ pub enum ExchangeSource {
     LXOXNO,
     XEGLD,
     LEGLD,
+    Onedex,
 }
 
 /// OracleProvider defines the configuration for an oracle provider that supplies price data.
@@ -329,6 +330,7 @@ pub struct OracleProvider<M: ManagedTypeApi> {
     pub oracle_type: OracleType,
     pub exchange_source: ExchangeSource,
     pub price_decimals: usize,
+    pub onedex_pair_id: usize,
 }
 /// PriceFeedShort provides a compact representation of a token's price,
 /// including the price value and the number of asset_decimals used.

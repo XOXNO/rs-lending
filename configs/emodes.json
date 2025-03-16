@@ -3,7 +3,7 @@
     "1": {
       "name": "EGLD Derivatives",
       "ltv": "9250",
-      "liquidation_threshold": "9550",
+      "liquidation_threshold": "9650",
       "liquidation_bonus": "150",
       "assets": {
         "XEGLD": {
@@ -41,7 +41,7 @@
     "1": {
       "name": "EGLD Derivatives",
       "ltv": "9250",
-      "liquidation_threshold": "9550",
+      "liquidation_threshold": "9650",
       "liquidation_bonus": "150",
       "assets": {
         "XEGLD": {

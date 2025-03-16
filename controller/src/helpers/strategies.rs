@@ -2,8 +2,8 @@ use common_constants::WEGLD_TICKER;
 use common_structs::{ExchangeSource, OracleProvider, OracleType};
 
 use crate::{
-    aggregator::{AggregatorContractProxy, AggregatorStep, TokenAmount},
-    lxoxno_proxy, oracle, proxy_xexchange_pair, storage, wegld_proxy, xegld_proxy,
+    proxy_ashswap::{AggregatorContractProxy, AggregatorStep, TokenAmount},
+    proxy_lxoxno, oracle, proxy_xexchange_pair, storage, proxy_wegld, proxy_xegld,
 };
 
 use super::math;
@@ -20,7 +20,7 @@ pub trait StrategiesModule:
         let result = self
             .tx()
             .to(sc_address)
-            .typed(xegld_proxy::LiquidStakingProxy)
+            .typed(proxy_xegld::LiquidStakingProxy)
             .delegate(OptionalValue::<ManagedAddress>::None)
             .egld(egld_amount)
             .returns(ReturnsResult)
@@ -40,7 +40,7 @@ pub trait StrategiesModule:
         let lxoxno = self
             .tx()
             .to(sc_address)
-            .typed(lxoxno_proxy::RsLiquidXoxnoProxy)
+            .typed(proxy_lxoxno::RsLiquidXoxnoProxy)
             .delegate(OptionalValue::<ManagedAddress>::None)
             .single_esdt(&xoxno_token.as_esdt_option().unwrap(), 0, xoxno_amount)
             .returns(ReturnsResult)
@@ -414,14 +414,14 @@ pub trait StrategiesModule:
         if oracle_collateral.exchange_source == ExchangeSource::XEGLD {
             self.tx()
                 .to(&oracle_collateral.oracle_contract_address)
-                .typed(xegld_proxy::LiquidStakingProxy)
+                .typed(proxy_xegld::LiquidStakingProxy)
                 .get_exchange_rate()
                 .returns(ReturnsResult)
                 .sync_call_readonly()
         } else if oracle_collateral.exchange_source == ExchangeSource::LXOXNO {
             self.tx()
                 .to(&oracle_collateral.oracle_contract_address)
-                .typed(lxoxno_proxy::RsLiquidXoxnoProxy)
+                .typed(proxy_lxoxno::RsLiquidXoxnoProxy)
                 .get_exchange_rate()
                 .returns(ReturnsResult)
                 .sync_call_readonly()
@@ -560,7 +560,7 @@ pub trait StrategiesModule:
     fn wrap_egld(&self, amount: &BigUint) {
         self.tx()
             .to(self.wegld_wrapper().get())
-            .typed(wegld_proxy::EgldEsdtSwapProxy)
+            .typed(proxy_wegld::EgldEsdtSwapProxy)
             .wrap_egld()
             .egld(amount)
             .sync_call();
@@ -569,7 +569,7 @@ pub trait StrategiesModule:
     fn unwrap_wegld(&self, amount: &BigUint, token: &TokenIdentifier) {
         self.tx()
             .to(self.wegld_wrapper().get())
-            .typed(wegld_proxy::EgldEsdtSwapProxy)
+            .typed(proxy_wegld::EgldEsdtSwapProxy)
             .unwrap_egld()
             .single_esdt(token, 0, amount)
             .sync_call();
