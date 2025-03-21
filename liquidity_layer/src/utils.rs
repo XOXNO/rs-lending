@@ -133,8 +133,7 @@ pub trait UtilsModule:
             return self.to_decimal(BigUint::zero(), amount.scale());
         }
 
-        let numerator: ManagedDecimal<<Self as ContractBase>::Api, usize> =
-            self.mul_half_up(amount, current_index, RAY_PRECISION);
+        let numerator = self.mul_half_up(amount, current_index, RAY_PRECISION);
         let new_amount = self
             .div_half_up(&numerator, account_position_index, RAY_PRECISION)
             .rescale(amount.scale());

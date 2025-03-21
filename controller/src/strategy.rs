@@ -113,19 +113,17 @@ pub trait SnapModule:
         );
 
         // Calculate how much additional collateral we need
-        let initial_collateral_amount_dec = if is_payment_same_as_debt
-            && collateral_token != debt_token
-        {
-            ManagedDecimal::from_raw_units(BigUint::zero(), collateral_price_feed.asset_decimals)
-        // Create a zero decimal using from_raw_units
-        } else {
-            ManagedDecimal::from_raw_units(
-                initial_collateral.amount.clone(),
-                collateral_price_feed.asset_decimals,
-            )
-        };
+        let initial_collateral_amount_dec =
+            if is_payment_same_as_debt && collateral_token != debt_token {
+                self.to_decimal(BigUint::zero(), collateral_price_feed.asset_decimals)
+            } else {
+                self.to_decimal(
+                    initial_collateral.amount.clone(),
+                    collateral_price_feed.asset_decimals,
+                )
+            };
 
-        let final_collateral_amount_dec = ManagedDecimal::from_raw_units(
+        let final_collateral_amount_dec = self.to_decimal(
             final_collateral_amount,
             collateral_price_feed.asset_decimals,
         );
@@ -145,14 +143,12 @@ pub trait SnapModule:
         let debt_amount_to_flash_loan = if is_payment_same_as_debt && collateral_token != debt_token
         {
             // Convert payment amount to decimal format for proper comparison
-            let payment_amount_dec = ManagedDecimal::from_raw_units(
-                payment.amount.clone(),
-                debt_price_feed.asset_decimals,
-            );
+            let payment_amount_dec =
+                self.to_decimal(payment.amount.clone(), debt_price_feed.asset_decimals);
 
             // If payment already exceeds what we need, we don't need to flash loan anything
             if payment_amount_dec >= total_debt_token_needed {
-                ManagedDecimal::from_raw_units(BigUint::zero(), debt_price_feed.asset_decimals)
+                self.to_decimal(BigUint::zero(), debt_price_feed.asset_decimals)
             } else {
                 // Otherwise, flash loan only the difference needed
                 total_debt_token_needed - payment_amount_dec
@@ -177,7 +173,7 @@ pub trait SnapModule:
 
         // Skip flash loan if amount is zero (payment was sufficient)
         let needs_flash_loan = debt_amount_to_flash_loan
-            > ManagedDecimal::from_raw_units(BigUint::zero(), debt_price_feed.asset_decimals);
+            > self.to_decimal(BigUint::zero(), debt_price_feed.asset_decimals);
 
         // For multiply strategy, we always require a flash loan component
         require!(
@@ -299,18 +295,20 @@ pub trait SnapModule:
         );
         let mut deposit_position = maybe_deposit_position.unwrap();
 
-        // Required to be in sync with the global index for accurate swaps to avoid extra interest during withdraw
-        self.update_position(
-            &self.get_pool_address(&deposit_position.asset_id),
-            &mut deposit_position,
-            OptionalValue::Some(self.get_token_price(&from_token, &mut cache).price),
-        );
+        if !account_attributes.is_vault() {
+            // Required to be in sync with the global index for accurate swaps to avoid extra interest during withdraw
+            self.update_position(
+                &self.get_pool_address(&deposit_position.asset_id),
+                &mut deposit_position,
+                OptionalValue::Some(self.get_token_price(&from_token, &mut cache).price),
+            );
 
-        self.update_deposit_position_storage(
-            account.token_nonce,
-            from_token,
-            &mut deposit_position,
-        );
+            self.update_deposit_position_storage(
+                account.token_nonce,
+                from_token,
+                &mut deposit_position,
+            );
+        }
         let mut amount_to_swap = deposit_position.make_amount_decimal(from_amount);
 
         // Cap the withdrawal amount to the available balance with interest
@@ -370,7 +368,7 @@ pub trait SnapModule:
     fn swap_debt(
         &self,
         from_token: &EgldOrEsdtTokenIdentifier,
-        from_amount: BigUint,
+        to_amount: BigUint,
         to_token: &EgldOrEsdtTokenIdentifier,
         steps: OptionalValue<ManagedVec<AggregatorStep<Self::Api>>>,
         limits: OptionalValue<ManagedVec<TokenAmount<Self::Api>>>,
@@ -392,56 +390,27 @@ pub trait SnapModule:
             );
         }
 
-        // Retrieve borrow position for the given token
-        let borrow_positions = self.borrow_positions(account.token_nonce);
-        let maybe_borrow_position = borrow_positions.get(from_token);
-
-        require!(
-            maybe_borrow_position.is_some(),
-            "Token {} is not available for this account",
-            from_token
-        );
-
-        let mut borrow_position = maybe_borrow_position.unwrap();
-
-        // Required to be in sync with the global index for accurate swaps to avoid extra interest during withdraw
-        self.update_position(
-            &cache.get_cached_pool_address(&borrow_position.asset_id),
-            &mut borrow_position,
-            OptionalValue::Some(self.get_token_price(&from_token, &mut cache).price),
-        );
-
-        self.update_borrow_position_storage(account.token_nonce, from_token, &mut borrow_position);
-
-        let mut amount_to_repay = borrow_position.make_amount_decimal(from_amount);
-
-        amount_to_repay = if amount_to_repay > borrow_position.get_total_amount() {
-            borrow_position.get_total_amount()
-        } else {
-            amount_to_repay
-        };
-
-        let from_debt_feed = self.get_token_price(from_token, &mut cache);
         let to_debt_feed = self.get_token_price(to_token, &mut cache);
 
-        let from_debt_egld_amount =
-            self.get_token_egld_value(&amount_to_repay, &from_debt_feed.price);
+        let required_to_swap = self.convert_egld_to_tokens(
+            &self.to_decimal(to_amount, to_debt_feed.asset_decimals),
+            &to_debt_feed,
+        );
 
-        let required_to_swap = self.convert_egld_to_tokens(&from_debt_egld_amount, &to_debt_feed);
         let debt_config = cache.get_cached_asset_info(to_token);
         let flash_fee = required_to_swap.clone() * debt_config.flashloan_fee.clone() / self.bps();
 
-        let mut to_debt_borrow_position =
+        let mut borrow_position =
             self.get_or_create_borrow_position(account.token_nonce, &debt_config, to_token);
 
-        let debt_market_sc = cache.get_cached_pool_address(&to_debt_borrow_position.asset_id);
+        let debt_market_sc = cache.get_cached_pool_address(&borrow_position.asset_id);
 
-        to_debt_borrow_position = self
+        borrow_position = self
             .tx()
             .to(debt_market_sc)
             .typed(proxy_pool::LiquidityPoolProxy)
             .create_strategy(
-                to_debt_borrow_position,
+                borrow_position,
                 required_to_swap.clone(),
                 flash_fee.clone(),
                 to_debt_feed.price.clone(),
@@ -451,17 +420,13 @@ pub trait SnapModule:
 
         self.update_position_event(
             &required_to_swap,
-            &to_debt_borrow_position,
+            &borrow_position,
             OptionalValue::Some(to_debt_feed.price),
             OptionalValue::Some(&caller),
             OptionalValue::Some(&account_attributes),
         );
 
-        self.update_borrow_position_storage(
-            account.token_nonce,
-            to_token,
-            &mut to_debt_borrow_position,
-        );
+        self.update_borrow_position_storage(account.token_nonce, to_token, &mut borrow_position);
 
         let received = self.swap_tokens(
             &from_token,
@@ -474,18 +439,17 @@ pub trait SnapModule:
 
         payments.push(received);
 
-        for payment in payments.iter() {
-            self.validate_payment(&payment);
-            let feed = self.get_token_price(&payment.token_identifier, &mut cache);
-            let payment_decimal =
-                ManagedDecimal::from_raw_units(payment.amount.clone(), feed.asset_decimals);
+        for payment_ref in payments.iter() {
+            self.validate_payment(&payment_ref);
+            let feed = self.get_token_price(&payment_ref.token_identifier, &mut cache);
+            let payment = self.to_decimal(payment_ref.amount.clone(), feed.asset_decimals);
 
             self.process_repayment(
                 account.token_nonce,
-                &payment.token_identifier,
-                &payment_decimal,
+                &payment_ref.token_identifier,
+                &payment,
                 &caller,
-                self.get_token_egld_value(&payment_decimal, &feed.price),
+                self.get_token_egld_value(&payment, &feed.price),
                 &feed,
                 &mut cache,
                 &account_attributes,
@@ -525,18 +489,20 @@ pub trait SnapModule:
 
         let mut deposit_position = maybe_deposit_position.unwrap();
 
-        // Required to be in sync with the global index for accurate swaps to avoid extra interest during withdraw
-        self.update_position(
-            &cache.get_cached_pool_address(&deposit_position.asset_id),
-            &mut deposit_position,
-            OptionalValue::Some(self.get_token_price(&from_token, &mut cache).price),
-        );
+        if !account_attributes.is_vault() {
+            // Required to be in sync with the global index for accurate swaps to avoid extra interest during withdraw
+            self.update_position(
+                &cache.get_cached_pool_address(&deposit_position.asset_id),
+                &mut deposit_position,
+                OptionalValue::Some(self.get_token_price(&from_token, &mut cache).price),
+            );
 
-        self.update_deposit_position_storage(
-            account.token_nonce,
-            from_token,
-            &mut deposit_position,
-        );
+            self.update_deposit_position_storage(
+                account.token_nonce,
+                from_token,
+                &mut deposit_position,
+            );
+        }
 
         let mut amount_to_swap = deposit_position.make_amount_decimal(from_amount);
 

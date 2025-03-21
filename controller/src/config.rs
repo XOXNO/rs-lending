@@ -71,7 +71,7 @@ pub trait ConfigModule:
     ) {
         let mapper = self.token_oracle(market_token);
 
-        require!(mapper.is_empty(), ERROR_ORACLE_TOKEN_NOT_FOUND);
+        require!(mapper.is_empty(), ERROR_ORACLE_TOKEN_EXISTING);
 
         let first_token_id = match source {
             ExchangeSource::LXOXNO => {

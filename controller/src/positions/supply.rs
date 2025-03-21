@@ -106,24 +106,24 @@ pub trait PositionDepositModule:
         asset_info: &AssetConfig<Self::Api>,
         token_id: &EgldOrEsdtTokenIdentifier,
     ) -> AccountPosition<Self::Api> {
-        let positions = self.deposit_positions(account_nonce);
-
-        positions.get(token_id).unwrap_or_else(|| {
-            let data = self.token_oracle(token_id).get();
-            AccountPosition::new(
-                AccountPositionType::Deposit,
-                token_id.clone(),
-                ManagedDecimal::from_raw_units(BigUint::zero(), data.price_decimals),
-                ManagedDecimal::from_raw_units(BigUint::zero(), data.price_decimals),
-                account_nonce,
-                self.blockchain().get_block_timestamp(),
-                self.ray(),
-                asset_info.liquidation_threshold.clone(),
-                asset_info.liquidation_bonus.clone(),
-                asset_info.liquidation_fees.clone(),
-                asset_info.loan_to_value.clone(),
-            )
-        })
+        self.deposit_positions(account_nonce)
+            .get(token_id)
+            .unwrap_or_else(|| {
+                let data = self.token_oracle(token_id).get();
+                AccountPosition::new(
+                    AccountPositionType::Deposit,
+                    token_id.clone(),
+                    ManagedDecimal::from_raw_units(BigUint::zero(), data.price_decimals),
+                    ManagedDecimal::from_raw_units(BigUint::zero(), data.price_decimals),
+                    account_nonce,
+                    self.blockchain().get_block_timestamp(),
+                    self.ray(),
+                    asset_info.liquidation_threshold.clone(),
+                    asset_info.liquidation_bonus.clone(),
+                    asset_info.liquidation_fees.clone(),
+                    asset_info.loan_to_value.clone(),
+                )
+            })
     }
 
     /// Updates a deposit position with a new deposit amount.

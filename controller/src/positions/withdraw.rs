@@ -52,7 +52,7 @@ pub trait PositionWithdrawModule:
         let mut deposit_position = self.get_deposit_position(account_nonce, &token_id);
         let amount = self.cap_withdraw_amount(&deposit_position, requested_amount);
 
-        let updated_position = if position_attributes.is_vault() {
+        if position_attributes.is_vault() {
             self.process_vault_withdrawal(
                 &token_id,
                 &amount,
@@ -63,7 +63,7 @@ pub trait PositionWithdrawModule:
                 &feed,
                 &mut deposit_position,
                 is_swap,
-            )
+            );
         } else {
             self.process_market_withdrawal(
                 pool_address,
@@ -73,20 +73,20 @@ pub trait PositionWithdrawModule:
                 is_liquidation,
                 liquidation_fee,
                 &feed,
-            )
+            );
         };
 
         self.emit_withdrawal_event(
             &amount,
-            &updated_position,
+            &deposit_position,
             &feed,
             caller,
             position_attributes,
         );
 
-        self.update_deposit_position_storage(account_nonce, &token_id, &updated_position);
+        self.update_deposit_position_storage(account_nonce, &token_id, &deposit_position);
 
-        updated_position
+        deposit_position
     }
 
     /// Processes a vault withdrawal.
@@ -154,8 +154,9 @@ pub trait PositionWithdrawModule:
         is_liquidation: bool,
         liquidation_fee: Option<ManagedDecimal<Self::Api, NumDecimals>>,
         feed: &PriceFeedShort<Self::Api>,
-    ) -> AccountPosition<Self::Api> {
-        self.tx()
+    ) {
+        *deposit_position = self
+            .tx()
             .to(pool_address)
             .typed(proxy_pool::LiquidityPoolProxy)
             .withdraw(
@@ -167,7 +168,7 @@ pub trait PositionWithdrawModule:
                 feed.price.clone(),
             )
             .returns(ReturnsResult)
-            .sync_call()
+            .sync_call();
     }
 
     /// Manages the position NFT after withdrawal.

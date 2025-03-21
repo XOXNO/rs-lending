@@ -87,6 +87,8 @@ pub static ERROR_INVALID_ORACLE_TOKEN_TYPE: &[u8] = b"Invalid oracle token type.
 
 pub static ERROR_ORACLE_TOKEN_NOT_FOUND: &[u8] = b"Oracle token not found.";
 
+pub static ERROR_ORACLE_TOKEN_EXISTING: &[u8] = b"Oracle token already exists.";
+
 pub static ERROR_UNEXPECTED_FIRST_TOLERANCE: &[u8] = b"Unexpected first tolerance.";
 
 pub static ERROR_UNEXPECTED_LAST_TOLERANCE: &[u8] = b"Unexpected last tolerance.";

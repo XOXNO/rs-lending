@@ -388,7 +388,7 @@ pub trait StrategiesModule:
         let is_target_base = to_token == base_token
             || (to_token.is_egld()
                 && base_token.clone().unwrap_esdt().ticker() == self.get_wegld_token_id());
-        
+
         // Assign target tokens and other tokens based on which one is the desired output
         let (target_payment, other_payment, other_token) = if is_target_base {
             (base_payment, quote_payment, quote_token)
@@ -397,12 +397,13 @@ pub trait StrategiesModule:
         };
 
         // Handle WEGLD to EGLD conversion if needed for the other token
-        let other_token_identifier = if other_payment.token_identifier.ticker() == self.get_wegld_token_id() {
-            self.unwrap_wegld(&other_payment.amount, &other_payment.token_identifier);
-            EgldOrEsdtTokenIdentifier::egld()
-        } else {
-            other_token.clone()
-        };
+        let other_token_identifier =
+            if other_payment.token_identifier.ticker() == self.get_wegld_token_id() {
+                self.unwrap_wegld(&other_payment.amount, &other_payment.token_identifier);
+                EgldOrEsdtTokenIdentifier::egld()
+            } else {
+                other_token.clone()
+            };
 
         // Convert the other token to the target token
         let converted_payment = self.convert_token_from_to(
@@ -418,7 +419,7 @@ pub trait StrategiesModule:
 
         // Combine all received amounts of the target token
         let total_amount = target_payment.amount + converted_payment.amount;
-        
+
         // Handle WEGLD to EGLD unwrapping if needed for the final result
         let final_amount = if to_token.is_egld()
             && target_payment.token_identifier.ticker() == self.get_wegld_token_id()
@@ -431,11 +432,11 @@ pub trait StrategiesModule:
 
         // Create the final payment object
         let result = EgldOrEsdtTokenPayment::new(to_token.clone(), 0, final_amount);
-        
+
         // Validate the result
         require!(result.amount > 0, ERROR_ZERO_AMOUNT);
         require!(result.token_identifier == *to_token, ERROR_WRONG_TOKEN);
-        
+
         result
     }
 
@@ -510,19 +511,18 @@ pub trait StrategiesModule:
                 )
                 .egld_or_single_esdt(from, 0, amount);
 
-            let returned = second_call.returns(ReturnsResult).sync_call();
-            let (egld_amount, other_esdts) = returned.into_tuple();
+            let back_transfers = second_call.returns(ReturnsBackTransfersReset).sync_call();
             let mut payments: ManagedVec<EgldOrEsdtTokenPayment<Self::Api>> = ManagedVec::new();
 
-            if egld_amount > 0 {
+            if back_transfers.total_egld_amount > 0 {
                 payments.push(EgldOrEsdtTokenPayment::new(
                     EgldOrEsdtTokenIdentifier::egld(),
                     0,
-                    egld_amount,
+                    back_transfers.total_egld_amount,
                 ));
             }
 
-            for esdt in other_esdts.iter() {
+            for esdt in back_transfers.esdt_payments.iter() {
                 payments.push(EgldOrEsdtTokenPayment::new(
                     EgldOrEsdtTokenIdentifier::esdt(esdt.token_identifier.clone()),
                     esdt.token_nonce,
@@ -532,13 +532,16 @@ pub trait StrategiesModule:
 
             payments
         } else {
-            let esdt_payments = call
+            let back_transfers = call
                 .aggregate_egld(steps, limits, OptionalValue::<ManagedAddress>::None)
                 .egld(amount)
-                .returns(ReturnsResult)
+                .returns(ReturnsBackTransfersReset)
                 .sync_call();
 
-            esdt_payments
+            require!(back_transfers.total_egld_amount == 0, ERROR_ZERO_AMOUNT);
+
+            back_transfers
+                .esdt_payments
                 .into_iter()
                 .map(|esdt| {
                     EgldOrEsdtTokenPayment::new(

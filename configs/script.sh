@@ -38,7 +38,7 @@ if [ "$NETWORK" = "devnet" ]; then
 else
     VERIFIER_URL="https://play-api.multiversx.com"
 fi
-DOCKER_IMAGE="multiversx/sdk-rust-contract-builder:v8.0.1"
+DOCKER_IMAGE="multiversx/sdk-rust-contract-builder:v9.0.0"
 
 # Check if market config file exists
 if [ ! -f "$MARKET_CONFIG_FILE" ]; then
@@ -203,15 +203,15 @@ build_market_args() {
     local oracle_decimals=$(get_config_value "$market_name" "oracle_decimals")
     
     # Debug output
-    echo "Building market args for $market_name:"
-    echo "Token ID: $(get_config_value "$market_name" "token_id")"
-    echo "Max rate: $(get_config_value "$market_name" "max_rate")"
-    echo "Base rate: $(get_config_value "$market_name" "base_rate")"
-    echo "Slope1: $(get_config_value "$market_name" "slope1")"
-    echo "Slope2: $(get_config_value "$market_name" "slope2")"
-    echo "Slope3: $(get_config_value "$market_name" "slope3")"
-    echo "Mid utilization: $(get_config_value "$market_name" "mid_utilization")"
-    echo "Optimal utilization: $(get_config_value "$market_name" "optimal_utilization")"
+    # echo "Building market args for $market_name:"
+    # echo "Token ID: $(get_config_value "$market_name" "token_id")"
+    # echo "Max rate: $(get_config_value "$market_name" "max_rate")"
+    # echo "Base rate: $(get_config_value "$market_name" "base_rate")"
+    # echo "Slope1: $(get_config_value "$market_name" "slope1")"
+    # echo "Slope2: $(get_config_value "$market_name" "slope2")"
+    # echo "Slope3: $(get_config_value "$market_name" "slope3")"
+    # echo "Mid utilization: $(get_config_value "$market_name" "mid_utilization")"
+    # echo "Optimal utilization: $(get_config_value "$market_name" "optimal_utilization")"
     
     # Token configuration
     args+=("str:$(get_config_value "$market_name" "token_id")")
@@ -225,14 +225,14 @@ build_market_args() {
     mid_util=$(to_ray "$(get_config_value "$market_name" "mid_utilization")")
     opt_util=$(to_ray "$(get_config_value "$market_name" "optimal_utilization")")
     
-    echo "Converted values:"
-    echo "Max rate (RAY): $max_rate"
-    echo "Base rate (RAY): $base_rate"
-    echo "Slope1 (RAY): $slope1"
-    echo "Slope2 (RAY): $slope2"
-    echo "Slope3 (RAY): $slope3"
-    echo "Mid utilization (RAY): $mid_util"
-    echo "Optimal utilization (RAY): $opt_util"
+    # echo "Converted values:"
+    # echo "Max rate (RAY): $max_rate"
+    # echo "Base rate (RAY): $base_rate"
+    # echo "Slope1 (RAY): $slope1"
+    # echo "Slope2 (RAY): $slope2"
+    # echo "Slope3 (RAY): $slope3"
+    # echo "Mid utilization (RAY): $mid_util"
+    # echo "Optimal utilization (RAY): $opt_util"
     
     args+=("$max_rate")
     args+=("$base_rate")
@@ -477,7 +477,7 @@ create_token_oracle() {
     
     local args=( $(create_oracle_args "$market_name") )
     echo "${args[@]}"
-    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=20000000 \
+    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=100000000 \
     --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
     --function="setTokenOracle" --arguments "${args[@]}" \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
@@ -513,7 +513,7 @@ create_market() {
     echo "Token ID: $(get_config_value "$market_name" "token_id")"
     
     local args=( $(build_market_args "$market_name") )
-    
+
     mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=100000000 \
     --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
     --function="createLiquidityPool" --arguments "${args[@]}" \
@@ -747,7 +747,7 @@ claim_revenue() {
         args+=("str:$token_id")
     done
     
-    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=50000000 \
+    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=450000000 \
     --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
     --function="claimRevenue" --arguments "${args[@]}" \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
