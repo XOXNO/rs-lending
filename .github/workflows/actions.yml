@@ -23,6 +23,6 @@ jobs:
     uses: multiversx/mx-sc-actions/.github/workflows/contracts.yml@v4.2.2
     with:
       rust-toolchain: stable
-      coverage-args: --ignore-filename-regex='/.cargo/git' --output ./coverage.md
+      coverage-args: --ignore-filename-regex='/\/(tests|.*_mock)\/|\/.cargo\/git\/|\/.rustup\/toolchains\/|\/controller\/tests\/|\/flash_mock\/|\/meta\/src\/|\/.*proxies.*\/|\/.*proxy.*\/|\/[^\/]*proxy[^\/]*$/' --output ./coverage.md
     secrets:
       token: ${{ secrets.GITHUB_TOKEN }}
