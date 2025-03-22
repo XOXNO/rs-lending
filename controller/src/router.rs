@@ -111,15 +111,9 @@ pub trait RouterModule:
 
         // Init ManagedDecimal for future usage and avoiding storage decode errors for checks
         self.vault_supplied_amount(&base_asset)
-            .set(ManagedDecimal::from_raw_units(
-                BigUint::zero(),
-                asset_decimals,
-            ));
+            .set(self.to_decimal(BigUint::zero(), asset_decimals));
         self.isolated_asset_debt_usd(&base_asset)
-            .set(ManagedDecimal::from_raw_units(
-                BigUint::zero(),
-                asset_decimals,
-            ));
+            .set(self.to_decimal(BigUint::zero(), asset_decimals));
 
         require!(
             &liquidation_threshold > &ltv,

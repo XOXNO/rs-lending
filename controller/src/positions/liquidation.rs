@@ -146,10 +146,7 @@ pub trait PositionLiquidationModule:
             self.process_repayment(
                 account_nonce,
                 &debt_payment.token_identifier,
-                &ManagedDecimal::from_raw_units(
-                    debt_payment.amount,
-                    debt_price_feed.asset_decimals,
-                ),
+                &self.to_decimal(debt_payment.amount, debt_price_feed.asset_decimals),
                 caller,
                 debt_egld_value,
                 &debt_price_feed,
@@ -317,10 +314,7 @@ pub trait PositionLiquidationModule:
                 borrows,
                 &borrows_index_map,
             );
-            let amount_dec = ManagedDecimal::from_raw_units(
-                payment_ref.amount.clone(),
-                token_feed.asset_decimals,
-            );
+            let amount_dec = self.to_decimal(payment_ref.amount.clone(), token_feed.asset_decimals);
 
             let token_egld_amount = self.get_token_egld_value(&amount_dec, &token_feed.price);
 

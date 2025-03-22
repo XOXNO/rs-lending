@@ -167,7 +167,7 @@ pub trait OracleModule:
             .get_exchange_rate()
             .returns(ReturnsResult)
             .sync_call_readonly();
-        let ratio_dec = ManagedDecimal::from_raw_units(ratio, configs.price_decimals);
+        let ratio_dec = self.to_decimal(ratio, configs.price_decimals);
         let main_price = self.get_token_price(&configs.base_token_id, cache);
         self.get_token_egld_value(&ratio_dec, &main_price.price)
     }
@@ -310,7 +310,7 @@ pub trait OracleModule:
                     &tolerances.first_upper_ratio,
                     &tolerances.first_lower_ratio,
                 ) {
-                    aggregator_price
+                    safe_price
                 } else if self.is_within_anchor(
                     &aggregator_price,
                     &safe_price,
@@ -396,11 +396,11 @@ pub trait OracleModule:
         let second_token_data = self.get_token_price(&second, cache);
 
         let first_token_egld_price = self.get_token_egld_value(
-            &ManagedDecimal::from_raw_units(first_token.amount, first_token_data.asset_decimals),
+            &self.to_decimal(first_token.amount, first_token_data.asset_decimals),
             &first_token_data.price,
         );
         let second_token_egld_price = self.get_token_egld_value(
-            &ManagedDecimal::from_raw_units(second_token.amount, second_token_data.asset_decimals),
+            &self.to_decimal(second_token.amount, second_token_data.asset_decimals),
             &second_token_data.price,
         );
 

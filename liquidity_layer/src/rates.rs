@@ -34,7 +34,7 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
     fn calc_borrow_rate(&self, cache: &Cache<Self>) -> ManagedDecimal<Self::Api, NumDecimals> {
         let utilization = cache.get_utilization();
         let params = cache.params.clone();
-        let sec_per_year = ManagedDecimal::from_raw_units(BigUint::from(SECONDS_PER_YEAR), 0);
+        let sec_per_year = self.to_decimal(BigUint::from(SECONDS_PER_YEAR), 0);
 
         let annual_rate = if utilization < params.mid_utilization {
             // Region 1: utilization < mid_utilization
@@ -135,13 +135,13 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let ray = self.ray();
 
-        let exp_dec = ManagedDecimal::from_raw_units(BigUint::from(exp), 0);
+        let exp_dec = self.to_decimal(BigUint::from(exp), 0);
         let borrow_rate = self.calc_borrow_rate(&cache);
 
         let exp_minus_one = exp - 1;
         let exp_minus_two = if exp > 2 { exp - 2 } else { 0 };
-        let exp_minus_one_dec = ManagedDecimal::from_raw_units(BigUint::from(exp_minus_one), 0);
-        let exp_minus_two_dec = ManagedDecimal::from_raw_units(BigUint::from(exp_minus_two), 0);
+        let exp_minus_one_dec = self.to_decimal(BigUint::from(exp_minus_one), 0);
+        let exp_minus_two_dec = self.to_decimal(BigUint::from(exp_minus_two), 0);
 
         // Base powers using per-second rate
         let base_power_two = self.mul_half_up(&borrow_rate, &borrow_rate, RAY_PRECISION);
@@ -154,7 +154,7 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
                 &base_power_two,
                 RAY_PRECISION,
             ),
-            &ManagedDecimal::from_raw_units(BigUint::from(2u64), 0),
+            &self.to_decimal(BigUint::from(2u64), 0),
             RAY_PRECISION,
         );
 
@@ -169,7 +169,7 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
                 &base_power_three,
                 RAY_PRECISION,
             ),
-            &ManagedDecimal::from_raw_units(BigUint::from(6u64), 0),
+            &self.to_decimal(BigUint::from(6u64), 0),
             RAY_PRECISION,
         );
 

@@ -40,6 +40,7 @@ pub trait SnapModule:
         collateral_token: &EgldOrEsdtTokenIdentifier,
         final_collateral_amount: BigUint,
         debt_token: &EgldOrEsdtTokenIdentifier,
+        mode: ManagedBuffer,
         steps: OptionalValue<ManagedVec<AggregatorStep<Self::Api>>>,
         limits: OptionalValue<ManagedVec<TokenAmount<Self::Api>>>,
     ) {
@@ -547,8 +548,7 @@ pub trait SnapModule:
         for payment in payments.iter() {
             self.validate_payment(&payment);
             let feed = self.get_token_price(&payment.token_identifier, &mut cache);
-            let payment_dec =
-                ManagedDecimal::from_raw_units(payment.amount.clone(), feed.asset_decimals);
+            let payment_dec = self.to_decimal(payment.amount.clone(), feed.asset_decimals);
             // 3. Process repay
             self.process_repayment(
                 account.token_nonce,

@@ -367,7 +367,7 @@ pub trait MathsModule: common_math::SharedMathModule {
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
         // Capped at 15%
-        let max_bonus = ManagedDecimal::from_raw_units(BigUint::from(1_500u64), BPS_PRECISION);
+        let max_bonus = self.to_decimal(BigUint::from(1_500u64), BPS_PRECISION);
 
         let bonus = self.calculate_linear_bonus(
             current_hf,

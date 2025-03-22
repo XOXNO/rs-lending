@@ -171,11 +171,11 @@ pub trait UtilsModule:
             position.market_index = index.clone();
             return;
         }
-        let accumulated_interest =
+        let interest =
             self.calc_interest(&position.get_total_amount(), &index, &position.market_index);
 
-        if accumulated_interest.gt(&cache.zero) {
-            position.interest_accrued += &accumulated_interest;
+        if interest.gt(&cache.zero) {
+            position.interest_accrued += &interest;
             position.last_update_timestamp = cache.timestamp;
             position.market_index = index.clone();
         }

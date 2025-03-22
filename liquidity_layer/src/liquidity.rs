@@ -440,7 +440,8 @@ pub trait LiquidityModule:
         position
     }
 
-    /// Adds external revenue to the pool, such as from vault liquidations.
+    /// Adds external revenue to the pool, such as from vault liquidations or other sources.
+    /// It will first pay the bad debt and then add the remaining amount to revenue and reserves.
     ///
     /// **Purpose**: Increases protocol revenue and reserves with funds from external sources.
     ///
@@ -461,10 +462,121 @@ pub trait LiquidityModule:
         let mut cache = Cache::new(self);
         let amount = self.get_payment_amount(&cache);
 
-        cache.revenue += &amount;
-        cache.reserves += &amount;
+        if amount <= cache.bad_debt {
+            cache.bad_debt -= &amount;
+        } else {
+            let remaining_amount = amount - cache.bad_debt.clone();
+            cache.bad_debt = cache.zero.clone();
+            cache.revenue += &remaining_amount;
+            cache.reserves += &remaining_amount;
+        }
 
         self.emit_market_update(&cache, price);
+    }
+
+    /// Adds bad debt to the pool, such as from liquidations.
+    ///
+    /// **Purpose**: Increases protocol bad debt.
+    ///
+    /// **Reason**: After liquidations, when bad debt is left over, the position will infinitely accrue interest that will never be repaid.
+    /// This function allows the protocol to collect this bad debt and add it the bad debt tracker which will paid over time from the protocol revenue and suppliers interest.
+    ///
+    /// **Process**:
+    /// 1. Updates global indexes.
+    /// 2. Adds the amount to bad debt.
+    /// 3. Subtracts the amount from borrowed.
+    /// 4. Emits a market state event.
+    ///
+    /// # Arguments
+    /// - `position`: The position to add bad debt to (`AccountPosition<Self::Api>`).
+    /// - `price`: The asset price for market update (`ManagedDecimal<Self::Api, NumDecimals>`).
+    ///
+    /// # Returns
+    /// - `AccountPosition<Self::Api>`: The updated position after adding bad debt.
+    #[only_owner]
+    #[endpoint(addBadDebt)]
+    fn add_bad_debt(
+        &self,
+        mut position: AccountPosition<Self::Api>,
+        price: &ManagedDecimal<Self::Api, NumDecimals>,
+    ) -> AccountPosition<Self::Api> {
+        let mut cache = Cache::new(self);
+
+        self.global_sync(&mut cache);
+
+        self.position_sync(&mut position, &mut cache);
+
+        require!(cache.is_same_asset(&position.asset_id), ERROR_INVALID_ASSET);
+
+        cache.bad_debt += position.get_total_amount();
+
+        cache.borrowed -= position.principal_amount;
+
+        position.principal_amount = cache.zero.clone();
+        position.interest_accrued = cache.zero.clone();
+
+        self.emit_market_update(&cache, price);
+
+        position
+    }
+
+    /// Seizes dust collateral from the pool, adding it to protocol revenue.
+    ///
+    /// **Purpose**: Allows the protocol to collect dust collateral from the pool, increasing revenue.
+    ///
+    /// **Reason**: After liquidations, when bad debt is left over, the supplied position might still have a dust balance that is not liquidatable.
+    /// This function allows the protocol to collect this dust and add it to revenue, while clearing the position and the infinite interest that would be accrued on it.
+    ///
+    /// **Process**:
+    /// 1. Updates global indexes.
+    /// 2. Adds the dust collateral to protocol revenue.
+    /// 3. Subtracts the dust collateral from supplied.
+    /// 4. Emits a market state event.
+    ///
+    /// # Arguments
+    /// - `position`: The position to seize dust collateral from (`AccountPosition<Self::Api>`).
+    /// - `price`: The asset price for market update (`ManagedDecimal<Self::Api, NumDecimals>`).
+    #[only_owner]
+    #[endpoint(seizeDustCollateral)]
+    fn seize_dust_collateral(
+        &self,
+        mut position: AccountPosition<Self::Api>,
+        price: &ManagedDecimal<Self::Api, NumDecimals>,
+    ) -> AccountPosition<Self::Api> {
+        let mut cache = Cache::new(self);
+
+        self.global_sync(&mut cache);
+
+        self.position_sync(&mut position, &mut cache);
+
+        require!(cache.is_same_asset(&position.asset_id), ERROR_INVALID_ASSET);
+
+        if position.get_total_amount() <= cache.bad_debt {
+            cache.bad_debt -= position.get_total_amount();
+        } else {
+            let remaining_amount = position.get_total_amount() - cache.bad_debt.clone();
+            cache.bad_debt = cache.zero.clone();
+            cache.revenue += &remaining_amount;
+            require!(
+                cache.has_supplied(&position.principal_amount),
+                ERROR_INSUFFICIENT_LIQUIDITY
+            );
+
+            // If the remaining amount is greater than the principal amount, we subtract the principal amount
+            // Otherwise, we subtract the remaining amount
+            cache.supplied -= if remaining_amount > position.principal_amount {
+                position.principal_amount
+            } else {
+                remaining_amount
+            };
+        }
+
+        position.principal_amount = cache.zero.clone();
+        position.interest_accrued = cache.zero.clone();
+
+        self.emit_market_update(&cache, price);
+
+        position
     }
 
     /// Claims accumulated protocol revenue and transfers it to the owner.

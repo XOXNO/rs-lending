@@ -176,8 +176,8 @@ pub trait PositionBorrowModule:
             AccountPosition::new(
                 AccountPositionType::Borrow,
                 token_id.clone(),
-                ManagedDecimal::from_raw_units(BigUint::zero(), price_data.price_decimals),
-                ManagedDecimal::from_raw_units(BigUint::zero(), price_data.price_decimals),
+                self.to_decimal(BigUint::zero(), price_data.price_decimals),
+                self.to_decimal(BigUint::zero(), price_data.price_decimals),
                 account_nonce,
                 self.blockchain().get_block_timestamp(),
                 self.ray(),
@@ -208,7 +208,7 @@ pub trait PositionBorrowModule:
 
             require!(
                 total_borrow.clone() + amount.clone()
-                    <= ManagedDecimal::from_raw_units(borrow_cap.clone(), total_borrow.scale()),
+                    <= self.to_decimal(borrow_cap.clone(), total_borrow.scale()),
                 ERROR_BORROW_CAP
             );
         }
@@ -274,8 +274,7 @@ pub trait PositionBorrowModule:
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
         let asset_data_feed = self.get_token_price(borrow_token_id, cache);
-        let amount =
-            ManagedDecimal::from_raw_units(amount_raw.clone(), asset_data_feed.asset_decimals);
+        let amount = self.to_decimal(amount_raw.clone(), asset_data_feed.asset_decimals);
 
         let egld_amount = self.get_token_egld_value(&amount, &asset_data_feed.price);
 

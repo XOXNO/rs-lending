@@ -113,8 +113,8 @@ pub trait PositionDepositModule:
                 AccountPosition::new(
                     AccountPositionType::Deposit,
                     token_id.clone(),
-                    ManagedDecimal::from_raw_units(BigUint::zero(), data.price_decimals),
-                    ManagedDecimal::from_raw_units(BigUint::zero(), data.price_decimals),
+                    self.to_decimal(BigUint::zero(), data.price_decimals),
+                    self.to_decimal(BigUint::zero(), data.price_decimals),
                     account_nonce,
                     self.blockchain().get_block_timestamp(),
                     self.ray(),
@@ -392,7 +392,7 @@ pub trait PositionDepositModule:
             self.validate_is_healthy(
                 account_nonce,
                 cache,
-                Some(ManagedDecimal::from_raw_units(BigUint::from(20u64), 0usize)),
+                Some(self.to_decimal(BigUint::from(20u64), 0usize)),
             );
         }
 

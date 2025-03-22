@@ -68,7 +68,7 @@ verifyContract() {
     echo "Contract address: ${contract_address}"
     echo "Source JSON: ${source_json}"
 
-    mxpy --verbose contract verify "${contract_address}" \
+    mxpy contract verify "${contract_address}" \
     --packaged-src="${source_json}" \
     --verifier-url="${VERIFIER_URL}" \
     --docker-image="${DOCKER_IMAGE}" \

@@ -106,30 +106,20 @@ pub trait LiquidityPool:
         self.borrow_index().set(self.ray());
         self.supply_index().set(self.ray());
 
-        self.supplied().set(ManagedDecimal::from_raw_units(
-            BigUint::zero(),
-            asset_decimals,
-        ));
+        self.supplied()
+            .set(self.to_decimal(BigUint::zero(), asset_decimals));
 
-        self.reserves().set(ManagedDecimal::from_raw_units(
-            BigUint::zero(),
-            asset_decimals,
-        ));
+        self.reserves()
+            .set(self.to_decimal(BigUint::zero(), asset_decimals));
 
-        self.borrowed().set(ManagedDecimal::from_raw_units(
-            BigUint::zero(),
-            asset_decimals,
-        ));
+        self.borrowed()
+            .set(self.to_decimal(BigUint::zero(), asset_decimals));
 
-        self.revenue().set(ManagedDecimal::from_raw_units(
-            BigUint::zero(),
-            asset_decimals,
-        ));
+        self.revenue()
+            .set(self.to_decimal(BigUint::zero(), asset_decimals));
 
-        self.bad_debt().set(ManagedDecimal::from_raw_units(
-            BigUint::zero(),
-            asset_decimals,
-        ));
+        self.bad_debt()
+            .set(self.to_decimal(BigUint::zero(), asset_decimals));
 
         let timestamp = self.blockchain().get_block_timestamp();
         self.last_timestamp().set(timestamp);

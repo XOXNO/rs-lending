@@ -26,7 +26,7 @@ pub trait SharedMathModule {
         // Round half-up
         let rounded_product = (product + &half_ray) / ray;
 
-        ManagedDecimal::from_raw_units(rounded_product, precision)
+        self.to_decimal(rounded_product, precision)
     }
 
     fn mul_half_up_signed(
@@ -71,7 +71,7 @@ pub trait SharedMathModule {
         let half_denominator = denominator.clone() / BigUint::from(2u64);
         let rounded_quotient = (numerator + half_denominator) / denominator;
 
-        ManagedDecimal::from_raw_units(rounded_quotient, precision)
+        self.to_decimal(rounded_quotient, precision)
     }
 
     fn div_half_up_signed(
@@ -97,7 +97,7 @@ pub trait SharedMathModule {
     }
 
     fn to_decimal_wad(self, value: BigUint) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
-        ManagedDecimal::from_raw_units(value, WAD_PRECISION)
+        self.to_decimal(value, WAD_PRECISION)
     }
 
     fn wad_zero(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
@@ -109,23 +109,23 @@ pub trait SharedMathModule {
     }
 
     fn to_decimal_ray(self, value: BigUint) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
-        ManagedDecimal::from_raw_units(value, RAY_PRECISION)
+        self.to_decimal(value, RAY_PRECISION)
     }
 
     fn to_decimal_bps(self, value: BigUint) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
-        ManagedDecimal::from_raw_units(value, BPS_PRECISION)
+        self.to_decimal(value, BPS_PRECISION)
     }
 
     fn ray(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
-        ManagedDecimal::from_raw_units(BigUint::from(RAY), RAY_PRECISION)
+        self.to_decimal(BigUint::from(RAY), RAY_PRECISION)
     }
 
     fn wad(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
-        ManagedDecimal::from_raw_units(BigUint::from(WAD), WAD_PRECISION)
+        self.to_decimal(BigUint::from(WAD), WAD_PRECISION)
     }
 
     fn bps(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
-        ManagedDecimal::from_raw_units(BigUint::from(BPS), BPS_PRECISION)
+        self.to_decimal(BigUint::from(BPS), BPS_PRECISION)
     }
 
     fn to_decimal(

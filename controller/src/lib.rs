@@ -241,8 +241,7 @@ pub trait Controller:
         for payment in payments.iter() {
             self.validate_payment(&payment);
             let feed = self.get_token_price(&payment.token_identifier, &mut cache);
-            let payment_decimal =
-                ManagedDecimal::from_raw_units(payment.amount.clone(), feed.asset_decimals);
+            let payment_decimal = self.to_decimal(payment.amount.clone(), feed.asset_decimals);
             let egld_value = self.get_token_egld_value(&payment_decimal, &feed.price);
             self.process_repayment(
                 account_nonce,
@@ -302,7 +301,7 @@ pub trait Controller:
             .typed(proxy_pool::LiquidityPoolProxy)
             .flash_loan(
                 borrowed_asset_id,
-                ManagedDecimal::from_raw_units(amount, feed.asset_decimals),
+                self.to_decimal(amount, feed.asset_decimals),
                 contract_address,
                 endpoint,
                 arguments,
