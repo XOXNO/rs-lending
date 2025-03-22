@@ -40,7 +40,6 @@ pub trait SnapModule:
         collateral_token: &EgldOrEsdtTokenIdentifier,
         final_collateral_amount: BigUint,
         debt_token: &EgldOrEsdtTokenIdentifier,
-        mode: ManagedBuffer,
         steps: OptionalValue<ManagedVec<AggregatorStep<Self::Api>>>,
         limits: OptionalValue<ManagedVec<TokenAmount<Self::Api>>>,
     ) {

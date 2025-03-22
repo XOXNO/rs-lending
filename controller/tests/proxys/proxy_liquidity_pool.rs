@@ -658,7 +658,8 @@ where
             .original_result()
     }
 
-    /// Adds external revenue to the pool, such as from vault liquidations. 
+    /// Adds external revenue to the pool, such as from vault liquidations or other sources. 
+    /// It will first pay the bad debt and then add the remaining amount to revenue and reserves. 
     ///  
     /// **Purpose**: Increases protocol revenue and reserves with funds from external sources. 
     ///  
@@ -680,6 +681,73 @@ where
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("addProtocolRevenue")
+            .argument(&price)
+            .original_result()
+    }
+
+    /// Adds bad debt to the pool, such as from liquidations. 
+    ///  
+    /// **Purpose**: Increases protocol bad debt. 
+    ///  
+    /// **Reason**: After liquidations, when bad debt is left over, the position will infinitely accrue interest that will never be repaid. 
+    /// This function allows the protocol to collect this bad debt and add it the bad debt tracker which will paid over time from the protocol revenue and suppliers interest. 
+    ///  
+    /// **Process**: 
+    /// 1. Updates global indexes. 
+    /// 2. Adds the amount to bad debt. 
+    /// 3. Subtracts the amount from borrowed. 
+    /// 4. Emits a market state event. 
+    ///  
+    /// # Arguments 
+    /// - `position`: The position to add bad debt to (`AccountPosition<Self::Api>`). 
+    /// - `price`: The asset price for market update (`ManagedDecimal<Self::Api, NumDecimals>`). 
+    ///  
+    /// # Returns 
+    /// - `AccountPosition<Self::Api>`: The updated position after adding bad debt. 
+    pub fn add_bad_debt<
+        Arg0: ProxyArg<common_structs::AccountPosition<Env::Api>>,
+        Arg1: ProxyArg<ManagedDecimal<Env::Api, usize>>,
+    >(
+        self,
+        position: Arg0,
+        price: Arg1,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::AccountPosition<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("addBadDebt")
+            .argument(&position)
+            .argument(&price)
+            .original_result()
+    }
+
+    /// Seizes dust collateral from the pool, adding it to protocol revenue. 
+    ///  
+    /// **Purpose**: Allows the protocol to collect dust collateral from the pool, increasing revenue. 
+    ///  
+    /// **Reason**: After liquidations, when bad debt is left over, the supplied position might still have a dust balance that is not liquidatable. 
+    /// This function allows the protocol to collect this dust and add it to revenue, while clearing the position and the infinite interest that would be accrued on it. 
+    ///  
+    /// **Process**: 
+    /// 1. Updates global indexes. 
+    /// 2. Adds the dust collateral to protocol revenue. 
+    /// 3. Subtracts the dust collateral from supplied. 
+    /// 4. Emits a market state event. 
+    ///  
+    /// # Arguments 
+    /// - `position`: The position to seize dust collateral from (`AccountPosition<Self::Api>`). 
+    /// - `price`: The asset price for market update (`ManagedDecimal<Self::Api, NumDecimals>`). 
+    pub fn seize_dust_collateral<
+        Arg0: ProxyArg<common_structs::AccountPosition<Env::Api>>,
+        Arg1: ProxyArg<ManagedDecimal<Env::Api, usize>>,
+    >(
+        self,
+        position: Arg0,
+        price: Arg1,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::AccountPosition<Env::Api>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("seizeDustCollateral")
+            .argument(&position)
             .argument(&price)
             .original_result()
     }

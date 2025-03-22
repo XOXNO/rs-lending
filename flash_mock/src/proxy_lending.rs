@@ -543,6 +543,7 @@ where
         Arg5: ProxyArg<common_structs::ExchangeSource>,
         Arg6: ProxyArg<BigUint<Env::Api>>,
         Arg7: ProxyArg<BigUint<Env::Api>>,
+        Arg8: ProxyArg<OptionalValue<usize>>,
     >(
         self,
         market_token: Arg0,
@@ -553,6 +554,7 @@ where
         source: Arg5,
         first_tolerance: Arg6,
         last_tolerance: Arg7,
+        one_dex_pair_id: Arg8,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
@@ -565,6 +567,7 @@ where
             .argument(&source)
             .argument(&first_tolerance)
             .argument(&last_tolerance)
+            .argument(&one_dex_pair_id)
             .original_result()
     }
 
@@ -1460,16 +1463,18 @@ where
         Arg1: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg2: ProxyArg<BigUint<Env::Api>>,
         Arg3: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-        Arg4: ProxyArg<OptionalValue<ManagedVec<Env::Api, AggregatorStep<Env::Api>>>>,
-        Arg5: ProxyArg<OptionalValue<ManagedVec<Env::Api, TokenAmount<Env::Api>>>>,
+        Arg4: ProxyArg<ManagedBuffer<Env::Api>>,
+        Arg5: ProxyArg<OptionalValue<ManagedVec<Env::Api, AggregatorStep<Env::Api>>>>,
+        Arg6: ProxyArg<OptionalValue<ManagedVec<Env::Api, TokenAmount<Env::Api>>>>,
     >(
         self,
         e_mode_category: Arg0,
         collateral_token: Arg1,
         final_collateral_amount: Arg2,
         debt_token: Arg3,
-        steps: Arg4,
-        limits: Arg5,
+        mode: Arg4,
+        steps: Arg5,
+        limits: Arg6,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("multiply")
@@ -1477,6 +1482,7 @@ where
             .argument(&collateral_token)
             .argument(&final_collateral_amount)
             .argument(&debt_token)
+            .argument(&mode)
             .argument(&steps)
             .argument(&limits)
             .original_result()
@@ -1515,7 +1521,7 @@ where
     >(
         self,
         from_token: Arg0,
-        from_amount: Arg1,
+        to_amount: Arg1,
         to_token: Arg2,
         steps: Arg3,
         limits: Arg4,
@@ -1523,7 +1529,7 @@ where
         self.wrapped_tx
             .raw_call("swapDebt")
             .argument(&from_token)
-            .argument(&from_amount)
+            .argument(&to_amount)
             .argument(&to_token)
             .argument(&steps)
             .argument(&limits)

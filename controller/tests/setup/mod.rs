@@ -1559,6 +1559,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XEGLD,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            OptionalValue::<usize>::None,
         )
         .run();
 
@@ -1576,6 +1577,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::LXOXNO,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            OptionalValue::<usize>::None,
         )
         .run();
 
@@ -1603,6 +1605,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            OptionalValue::<usize>::None,
         )
         .run();
     world
@@ -1619,6 +1622,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            OptionalValue::<usize>::None,
         )
         .run();
 
@@ -1636,6 +1640,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            OptionalValue::<usize>::None,
         )
         .run();
 
@@ -1653,6 +1658,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            OptionalValue::<usize>::None,
         )
         .run();
 
@@ -1681,6 +1687,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            OptionalValue::<usize>::None,
         )
         .run();
 
@@ -1709,6 +1716,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            OptionalValue::<usize>::None,
         )
         .run();
 
@@ -1737,6 +1745,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            OptionalValue::<usize>::None,
         )
         .run();
 
@@ -1765,6 +1774,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            OptionalValue::<usize>::None,
         )
         .run();
 
@@ -1793,6 +1803,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            OptionalValue::<usize>::None,
         )
         .run();
 
@@ -1821,6 +1832,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            OptionalValue::<usize>::None,
         )
         .run();
 }
