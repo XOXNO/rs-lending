@@ -3,7 +3,7 @@
     "proxy": "https://devnet-gateway.xoxno.com",
     "chain_id": "D",
     "addresses": {
-      "controller": "erd1qqqqqqqqqqqqqpgqzrpysqyqthv5zxjyhq8ay0p26u04sax9ah0swh4w80",
+      "controller": "erd1qqqqqqqqqqqqqpgqmdncrczsg7uvu9rhhqcc4gy8feuapn2cah0s8qwlny",
       "lp_template": "erd1qqqqqqqqqqqqqpgq33v0m9arkfheqxprjqt04rsm4y5tj59zah0sxjv3dc",
       "price_aggregator": "erd1qqqqqqqqqqqqqpgqcd5jnctcnyhcqep70fwvr3y9eel52kt4ah0saez2dj",
       "ash": "erd1qqqqqqqqqqqqqpgqzshqdqcdzdl43vhy7p7q8uhc5xzu5x7zh2usyz5kg6",

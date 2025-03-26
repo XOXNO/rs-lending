@@ -28,9 +28,9 @@ PROJECT_MARKET="./${OUTPUT_DOCKER}/${MARKET_NAME}/${MARKET_NAME}.wasm"
 PRICE_AGGREGATOR_PATH="./${OUTPUT_DOCKER}/${PRICE_AGGREGATOR_NAME}/${PRICE_AGGREGATOR_NAME}.wasm"
 
 # Source JSON paths for contract verification
-CONTROLLER_SOURCE="${OUTPUT_DOCKER}/${CONTROLLER_NAME}/${CONTROLLER_NAME}-0.0.0.source.json"
-MARKET_SOURCE="${OUTPUT_DOCKER}/${MARKET_NAME}/${MARKET_NAME}-0.0.1.source.json"
-PRICE_AGGREGATOR_SOURCE="${OUTPUT_DOCKER}/${PRICE_AGGREGATOR_NAME}/${PRICE_AGGREGATOR_NAME}-0.57.0.source.json"
+CONTROLLER_SOURCE="./${OUTPUT_DOCKER}/${CONTROLLER_NAME}/${CONTROLLER_NAME}-0.0.0.source.json"
+MARKET_SOURCE="./${OUTPUT_DOCKER}/${MARKET_NAME}/${MARKET_NAME}-0.0.1.source.json"
+PRICE_AGGREGATOR_SOURCE="./${OUTPUT_DOCKER}/${PRICE_AGGREGATOR_NAME}/${PRICE_AGGREGATOR_NAME}-0.57.0.source.json"
 
 # Verification configuration
 if [ "$NETWORK" = "devnet" ]; then
@@ -68,7 +68,7 @@ verifyContract() {
     echo "Contract address: ${contract_address}"
     echo "Source JSON: ${source_json}"
 
-    mxpy contract verify "${contract_address}" \
+    mxpy --verbose contract verify "${contract_address}" \
     --packaged-src="${source_json}" \
     --verifier-url="${VERIFIER_URL}" \
     --docker-image="${DOCKER_IMAGE}" \
