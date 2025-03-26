@@ -1,6 +1,6 @@
 use common_constants::{
-    BPS, MAX_FIRST_TOLERANCE, MAX_LAST_TOLERANCE, MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE,
-    RAY_PRECISION, WAD_PRECISION,
+    BPS, K_SCALLING_FACTOR, MAX_FIRST_TOLERANCE, MAX_LAST_TOLERANCE, MAX_LIQUIDATION_BONUS,
+    MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE, RAY_PRECISION, WAD_PRECISION,
 };
 use common_errors::{
     ERROR_UNEXPECTED_ANCHOR_TOLERANCES, ERROR_UNEXPECTED_FIRST_TOLERANCE,
@@ -40,7 +40,7 @@ pub trait MathsModule: common_math::SharedMathModule {
     ///
     /// # Returns
     /// - USD value in WAD precision.
-    fn get_token_usd_value(
+    fn get_egld_usd_value(
         &self,
         amount: &ManagedDecimal<Self::Api, NumDecimals>,
         token_price: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -175,8 +175,9 @@ pub trait MathsModule: common_math::SharedMathModule {
         target_hf: &ManagedDecimal<Self::Api, NumDecimals>,
         min_bonus: &ManagedDecimal<Self::Api, NumDecimals>,
         max_bonus: &ManagedDecimal<Self::Api, NumDecimals>,
-        k: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
+
+        let k = self.to_decimal_bps(BigUint::from(K_SCALLING_FACTOR));
         // Calculate the health factor gap: (target_hf - current_hf) / target_hf
         let gap = self.div_half_up(
             &(target_hf.clone() - current_hf.clone()),
@@ -184,7 +185,7 @@ pub trait MathsModule: common_math::SharedMathModule {
             RAY_PRECISION,
         );
         // Calculate the scaled term: k * gap
-        let scaled_term = self.mul_half_up(k, &gap, RAY_PRECISION);
+        let scaled_term = self.mul_half_up(&k, &gap, RAY_PRECISION);
         // Clamp the scaled term between 0 and 1
         let clamped_term = if scaled_term > self.ray() {
             self.ray()
@@ -318,9 +319,6 @@ pub trait MathsModule: common_math::SharedMathModule {
         );
 
         if safe_new_hf >= self.wad() {
-            sc_print!("safe_new_hf: {}", safe_new_hf);
-            sc_print!("safest_debt: {}", safest_debt);
-            sc_print!("safest_bonus: {}", safest_bonus);
             return (safest_debt, safest_bonus);
         }
 
@@ -333,8 +331,7 @@ pub trait MathsModule: common_math::SharedMathModule {
             current_hf,
             self.wad(),
         );
-        sc_print!("limit_debt: {}", limit_debt);
-        sc_print!("limit_bonus: {}", limit_bonus);
+
         return (limit_debt, limit_bonus);
     }
 
@@ -367,15 +364,9 @@ pub trait MathsModule: common_math::SharedMathModule {
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
         // Capped at 15%
-        let max_bonus = self.to_decimal(BigUint::from(1_500u64), BPS_PRECISION);
+        let max_bonus = self.to_decimal_bps(BigUint::from(MAX_LIQUIDATION_BONUS));
 
-        let bonus = self.calculate_linear_bonus(
-            current_hf,
-            &target_hf,
-            min_bonus,
-            &max_bonus,
-            &self.to_decimal_bps(BigUint::from(20_000u64)), // 200%
-        );
+        let bonus = self.calculate_linear_bonus(current_hf, &target_hf, min_bonus, &max_bonus);
 
         self.compute_liquidation_details(
             total_collateral,

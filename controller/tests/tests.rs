@@ -1,8 +1,13 @@
 use controller::{
     AccountAttributes, ERROR_HEALTH_FACTOR_WITHDRAW, ERROR_INVALID_LIQUIDATION_THRESHOLD,
 };
-use multiversx_sc::types::{EgldOrEsdtTokenIdentifier, ManagedDecimal, MultiValueEncoded};
-use multiversx_sc_scenario::imports::{BigUint, OptionalValue, TestAddress};
+use multiversx_sc::types::{
+    EgldOrEsdtTokenIdentifier, ManagedDecimal, ManagedOption, MultiValueEncoded,
+};
+use multiversx_sc_scenario::{
+    api::StaticApi,
+    imports::{BigUint, OptionalValue, TestAddress},
+};
 pub mod constants;
 pub mod proxys;
 pub mod setup;
@@ -309,10 +314,11 @@ fn test_complete_market_exit() {
             ACCOUNT_TOKEN,
             2,
             BigUint::from(1u64),
-            AccountAttributes {
+            AccountAttributes::<StaticApi> {
                 is_isolated_position: false,
                 e_mode_category_id: 0,
                 is_vault_position: false,
+                isolated_token: ManagedOption::none(),
             },
         );
     let borrow_amount_in_dollars = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
@@ -346,10 +352,11 @@ fn test_complete_market_exit() {
             ACCOUNT_TOKEN,
             2,
             BigUint::zero(),
-            AccountAttributes {
+            AccountAttributes::<StaticApi> {
                 is_isolated_position: false,
                 e_mode_category_id: 0,
                 is_vault_position: false,
+                isolated_token: ManagedOption::none(),
             },
         );
 

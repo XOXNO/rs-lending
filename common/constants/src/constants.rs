@@ -10,6 +10,9 @@ pub const MIN_LAST_TOLERANCE: u128 = 150;
 /// Maximum last tolerance for oracle price fluctuation (100%)
 pub const MAX_LAST_TOLERANCE: u128 = 10_000;
 
+pub const MAX_LIQUIDATION_BONUS: u128 = 1_500; // 15%
+pub const K_SCALLING_FACTOR: u128 = 20_000; // 200%
+
 pub const EGLD_TICKER: &[u8] = b"EGLD";
 pub const WEGLD_TICKER: &[u8] = b"WEGLD";
 pub const USD_TICKER: &[u8] = b"USD";
@@ -23,8 +26,8 @@ pub const SECONDS_PER_HOUR: u64 = 3_600;
 pub const RAY: u128 = 1_000_000_000_000_000_000_000_000_000;
 pub const RAY_PRECISION: usize = 27;
 
-/// Basis points for 1 EGLD which is the base price for all assets
-pub const WAD: u128 = 1_000_000_000_000_000_000; // Represents 1 EGLD
+/// Basis points for 1 EGLD which is the base price for all assets or 1 USD
+pub const WAD: u128 = 1_000_000_000_000_000_000; // Represents 1 EGLD OR 1 USD
 pub const WAD_PRECISION: usize = 18;
 
 pub const BPS: usize = 10_000; // 100%

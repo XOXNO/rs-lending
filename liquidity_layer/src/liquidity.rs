@@ -557,6 +557,7 @@ pub trait LiquidityModule:
             let remaining_amount = position.get_total_amount() - cache.bad_debt.clone();
             cache.bad_debt = cache.zero.clone();
             cache.revenue += &remaining_amount;
+
             require!(
                 cache.has_supplied(&position.principal_amount),
                 ERROR_INSUFFICIENT_LIQUIDITY

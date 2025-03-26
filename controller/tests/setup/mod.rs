@@ -1344,6 +1344,16 @@ impl LendingPoolTestState {
         collateral_amount_egld
     }
 
+    pub fn clean_bad_debt(&mut self, account_position: u64) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS.to_managed_address())
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .clean_bad_debt(account_position)
+            .run();
+    }
+
     pub fn get_total_collateral_in_egld(
         &mut self,
         account_position: u64,

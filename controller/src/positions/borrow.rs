@@ -53,7 +53,7 @@ pub trait PositionBorrowModule:
         amount: ManagedDecimal<Self::Api, NumDecimals>,
         caller: &ManagedAddress,
         asset_config: &AssetConfig<Self::Api>,
-        account: &AccountAttributes,
+        account: &AccountAttributes<Self::Api>,
         feed: &PriceFeedShort<Self::Api>,
         cache: &mut Cache<Self>,
     ) -> AccountPosition<Self::Api> {
@@ -203,6 +203,10 @@ pub trait PositionBorrowModule:
         cache: &mut Cache<Self>,
     ) {
         if let Some(borrow_cap) = &asset_config.borrow_cap {
+            if borrow_cap == &BigUint::zero() {
+                return;
+            }
+
             let pool = cache.get_cached_pool_address(asset);
             let total_borrow = self.get_total_borrow(pool).get();
 
@@ -282,7 +286,7 @@ pub trait PositionBorrowModule:
 
         self.validate_borrow_collateral(ltv_base_amount, &egld_total_borrowed, &egld_amount);
 
-        let amount_in_usd = self.get_token_usd_value(&egld_amount, &cache.egld_price_feed);
+        let amount_in_usd = self.get_egld_usd_value(&egld_amount, &cache.egld_price_feed);
 
         (amount_in_usd, asset_data_feed, amount)
     }
@@ -299,7 +303,7 @@ pub trait PositionBorrowModule:
         &self,
         asset_config: &AssetConfig<Self::Api>,
         borrow_token_id: &EgldOrEsdtTokenIdentifier,
-        nft_attributes: &AccountAttributes,
+        nft_attributes: &AccountAttributes<Self::Api>,
         borrow_positions: &ManagedVec<AccountPosition<Self::Api>>,
         cache: &mut Cache<Self>,
     ) {
@@ -374,7 +378,7 @@ pub trait PositionBorrowModule:
         account_nonce: u64,
         caller: &ManagedAddress,
         borrowed_token: &EgldOrEsdtTokenPayment<Self::Api>,
-        account_attributes: &AccountAttributes,
+        account_attributes: &AccountAttributes<Self::Api>,
         e_mode: &Option<EModeCategory<Self::Api>>,
         collaterals: &ManagedVec<AccountPosition<Self::Api>>,
         borrows: &mut ManagedVec<AccountPosition<Self::Api>>,

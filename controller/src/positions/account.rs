@@ -26,9 +26,10 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
         &self,
         caller: &ManagedAddress,
         is_isolated: bool,
-        is_vault: bool,
+        is_vault_position: bool,
         e_mode_category: OptionalValue<u8>,
-    ) -> (EsdtTokenPayment, AccountAttributes) {
+        isolated_token: Option<EgldOrEsdtTokenIdentifier>,
+    ) -> (EsdtTokenPayment, AccountAttributes<Self::Api>) {
         let attributes = AccountAttributes {
             is_isolated_position: is_isolated,
             e_mode_category_id: if is_isolated {
@@ -36,22 +37,29 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
             } else {
                 e_mode_category.into_option().unwrap_or(0)
             },
-            is_vault_position: is_vault,
+            is_vault_position,
+            isolated_token: if is_isolated {
+                ManagedOption::from(isolated_token)
+            } else {
+                ManagedOption::none()
+            },
         };
 
-        let nft_token_payment = self.account_token().nft_create_named::<AccountAttributes>(
-            BigUint::from(1u64),
-            &ManagedBuffer::from("Lending Account"),
-            &attributes,
-        );
+        let nft_token_payment = self
+            .account_token()
+            .nft_create::<AccountAttributes<Self::Api>>(BigUint::from(1u64), &attributes);
 
         let _ = self
             .tx()
             .typed(system_proxy::UserBuiltinProxy)
-            .nft_add_multiple_uri(
+            .esdt_metadata_recreate(
                 self.account_token().get_token_id_ref(),
                 nft_token_payment.token_nonce,
-                &ManagedVec::from_single_item(sc_format!(
+                sc_format!("Lending Account #{}", nft_token_payment.token_nonce),
+                0u64,
+                ManagedBuffer::new(),
+                &attributes,
+                ManagedVec::from_single_item(sc_format!(
                     "{}/{}",
                     BASE_NFT_URI,
                     nft_token_payment.token_nonce
@@ -88,13 +96,19 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
         is_vault: bool,
         e_mode_category: OptionalValue<u8>,
         existing_account: Option<EsdtTokenPayment<Self::Api>>,
-        maybe_attributes: Option<AccountAttributes>,
-    ) -> (u64, AccountAttributes) {
+        maybe_attributes: Option<AccountAttributes<Self::Api>>,
+        mayne_isolated_token: Option<EgldOrEsdtTokenIdentifier>,
+    ) -> (u64, AccountAttributes<Self::Api>) {
         if let Some(account) = existing_account {
             (account.token_nonce, maybe_attributes.unwrap())
         } else {
-            let (payment, account_attributes) =
-                self.create_account_nft(caller, is_isolated, is_vault, e_mode_category);
+            let (payment, account_attributes) = self.create_account_nft(
+                caller,
+                is_isolated,
+                is_vault,
+                e_mode_category,
+                mayne_isolated_token,
+            );
             (payment.token_nonce, account_attributes)
         }
     }
@@ -108,14 +122,17 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
     ///
     /// # Returns
     /// - `AccountAttributes` containing position details.
-    fn nft_attributes(&self, account_payment: &EsdtTokenPayment<Self::Api>) -> AccountAttributes {
+    fn nft_attributes(
+        &self,
+        account_payment: &EsdtTokenPayment<Self::Api>,
+    ) -> AccountAttributes<Self::Api> {
         let data = self.blockchain().get_esdt_token_data(
             &self.blockchain().get_sc_address(),
             &account_payment.token_identifier,
             account_payment.token_nonce,
         );
 
-        data.decode_attributes::<AccountAttributes>()
+        data.decode_attributes::<AccountAttributes<Self::Api>>()
     }
 
     /// Ensures an account nonce is active in the market.
@@ -142,7 +159,7 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
     ) -> (
         EsdtTokenPayment<Self::Api>,
         ManagedAddress,
-        AccountAttributes,
+        AccountAttributes<Self::Api>,
     ) {
         let account_payment = self.call_value().single_esdt().clone();
         let caller = self.blockchain().get_caller();
@@ -178,7 +195,11 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
     /// # Arguments
     /// - `account_attributes`: Account attributes.
     /// - `is_vault`: Operation vault flag.
-    fn validate_vault_consistency(&self, account_attributes: &AccountAttributes, is_vault: bool) {
+    fn validate_vault_consistency(
+        &self,
+        account_attributes: &AccountAttributes<Self::Api>,
+        is_vault: bool,
+    ) {
         if account_attributes.is_vault() || is_vault {
             require!(
                 account_attributes.is_vault() == is_vault,

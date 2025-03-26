@@ -124,6 +124,10 @@ pub trait LendingUtilsModule:
                     amount_in_usd
                 } else {
                     debt.clone()
+                };
+                // If dust remains under 1$ globally just erase the tracker
+                if debt.into_raw_units() < self.wad().into_raw_units() {
+                    *debt = self.wad_zero();
                 }
             });
         }

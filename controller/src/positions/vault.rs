@@ -19,7 +19,7 @@ pub trait PositionVaultModule:
     + account::PositionAccountModule
 {
     /// Validates vault account and checks vault state.
-    fn validate_vault_account(&self, account_attributes: &AccountAttributes, expect_vault: bool) {
+    fn validate_vault_account(&self, account_attributes: &AccountAttributes<Self::Api>, expect_vault: bool) {
         match expect_vault {
             true => require!(account_attributes.is_vault(), ERROR_VAULT_ALREADY_ENABLED),
             false => require!(!account_attributes.is_vault(), ERROR_VAULT_ALREADY_DISABLED),
@@ -32,7 +32,7 @@ pub trait PositionVaultModule:
         account_nonce: u64,
         enable: bool,
         cache: &mut Cache<Self>,
-        account_attributes: &AccountAttributes,
+        account_attributes: &AccountAttributes<Self::Api>,
         caller: &ManagedAddress<Self::Api>,
     ) {
         let deposit_positions = self.deposit_positions(account_nonce);
@@ -70,7 +70,7 @@ pub trait PositionVaultModule:
         feed: &PriceFeedShort<Self::Api>,
         account_nonce: u64,
         caller: &ManagedAddress<Self::Api>,
-        account_attributes: &AccountAttributes,
+        account_attributes: &AccountAttributes<Self::Api>,
     ) {
         let controller_sc = self.blockchain().get_sc_address();
         self.update_position(&pool_address, dp, OptionalValue::Some(feed.price.clone()));
@@ -119,7 +119,7 @@ pub trait PositionVaultModule:
         feed: &PriceFeedShort<Self::Api>,
         account_nonce: u64,
         caller: &ManagedAddress<Self::Api>,
-        account_attributes: &AccountAttributes,
+        account_attributes: &AccountAttributes<Self::Api>,
     ) {
         let old_amount = dp.principal_amount.clone();
 
@@ -152,7 +152,7 @@ pub trait PositionVaultModule:
     fn update_account_attributes(
         &self,
         account_nonce: u64,
-        account_attributes: &AccountAttributes,
+        account_attributes: &AccountAttributes<Self::Api>,
     ) {
         self.account_token()
             .nft_update_attributes(account_nonce, account_attributes);

@@ -243,13 +243,14 @@ impl EModeAssetConfig {
 /// the e-mode category, and whether it is a vault.
 #[type_abi]
 #[derive(NestedEncode, NestedDecode, TopEncode, TopDecode, Clone)]
-pub struct AccountAttributes {
+pub struct AccountAttributes<M: ManagedTypeApi> {
     pub is_isolated_position: bool,
     pub e_mode_category_id: u8,
     pub is_vault_position: bool,
+    pub isolated_token: ManagedOption<M, EgldOrEsdtTokenIdentifier<M>>,
 }
 
-impl AccountAttributes {
+impl<M: ManagedTypeApi> AccountAttributes<M> {
     pub fn is_vault(&self) -> bool {
         self.is_vault_position
     }
@@ -264,6 +265,10 @@ impl AccountAttributes {
 
     pub fn is_isolated(&self) -> bool {
         self.is_isolated_position
+    }
+
+    pub fn get_isolated_token(&self) -> EgldOrEsdtTokenIdentifier<M> {
+        self.isolated_token.clone().into_option().unwrap()
     }
 }
 

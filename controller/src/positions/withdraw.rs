@@ -42,7 +42,7 @@ pub trait PositionWithdrawModule:
         is_liquidation: bool,
         liquidation_fee: Option<ManagedDecimal<Self::Api, NumDecimals>>,
         cache: &mut Cache<Self>,
-        position_attributes: &AccountAttributes,
+        position_attributes: &AccountAttributes<Self::Api>,
         is_swap: bool,
     ) -> AccountPosition<Self::Api> {
         let (token_id, _, requested_amount) = withdraw_payment.into_tuple();
@@ -76,12 +76,12 @@ pub trait PositionWithdrawModule:
             );
         };
 
-        self.emit_withdrawal_event(
+        self.update_position_event(
             &amount,
             &deposit_position,
-            &feed,
-            caller,
-            position_attributes,
+            OptionalValue::Some(feed.price.clone()),
+            OptionalValue::Some(caller),
+            OptionalValue::Some(position_attributes),
         );
 
         self.update_deposit_position_storage(account_nonce, &token_id, &deposit_position);
@@ -289,32 +289,6 @@ pub trait PositionWithdrawModule:
             .egld_or_single_esdt(token_id, 0, fee.into_raw_units())
             .returns(ReturnsResult)
             .sync_call();
-    }
-
-    /// Emits an event for a withdrawal operation.
-    /// Logs withdrawal details for transparency.
-    ///
-    /// # Arguments
-    /// - `amount`: Withdrawn amount.
-    /// - `position`: Updated position.
-    /// - `feed`: Price data for the token.
-    /// - `caller`: Withdrawer's address.
-    /// - `position_attributes`: NFT attributes.
-    fn emit_withdrawal_event(
-        &self,
-        amount: &ManagedDecimal<Self::Api, NumDecimals>,
-        position: &AccountPosition<Self::Api>,
-        feed: &PriceFeedShort<Self::Api>,
-        caller: &ManagedAddress,
-        position_attributes: &AccountAttributes,
-    ) {
-        self.update_position_event(
-            amount,
-            position,
-            OptionalValue::Some(feed.price.clone()),
-            OptionalValue::Some(caller),
-            OptionalValue::Some(position_attributes),
-        );
     }
 
     /// Updates or removes a deposit position in storage.

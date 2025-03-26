@@ -259,6 +259,7 @@ pub trait UtilsModule:
             &cache.revenue,
             &cache.pool_asset,
             asset_price,
+            &cache.bad_debt,
         );
     }
 

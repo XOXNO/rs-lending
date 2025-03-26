@@ -217,7 +217,7 @@ fn test_borrow_asset_as_isolated_debt_celling_case_with_debt_interest() {
     state.repay_asset(
         &borrower,
         &USDC_TOKEN,
-        BigUint::from(100u64), // $100 borrow
+        BigUint::from(90u64), // $100 borrow
         2,
         USDC_DECIMALS,
     );
@@ -292,7 +292,7 @@ fn test_borrow_asset_as_isolated_debt_celling_liquidation_debt_paid() {
     state.liquidate_account(
         &liquidator,
         &USDC_TOKEN,
-        BigUint::from(2500u64),
+        BigUint::from(2300u64),
         2,
         USDC_DECIMALS,
     );
@@ -306,6 +306,12 @@ fn test_borrow_asset_as_isolated_debt_celling_liquidation_debt_paid() {
     println!("total_collateral: {:?}", total_collateral);
     // // Higher due to interest that was paid and not counted as repaid principal asset global debt
     assert!(borrow_amount < borrow_amount_first);
+    state.clean_bad_debt(2);
+    let borrow_amount = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
+    println!("borrow_amount: {:?}", borrow_amount);
+    assert_eq!(borrow_amount, ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS))
+
+    
 }
 
 #[test]

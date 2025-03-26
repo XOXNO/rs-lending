@@ -82,7 +82,7 @@ pub trait PositionUpdateModule:
         account_nonce: u64,
         cache: &mut Cache<Self>,
         should_fetch_price: bool,
-        account_attributes: &AccountAttributes,
+        account_attributes: &AccountAttributes<Self::Api>,
     ) -> ManagedVec<AccountPosition<Self::Api>> {
         let deposit_positions_map = self.deposit_positions(account_nonce);
         let mut updated_positions = ManagedVec::new();

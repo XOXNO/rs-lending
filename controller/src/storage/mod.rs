@@ -29,7 +29,7 @@ pub trait Storage {
     /// This storage mapper maps each minted NFT to account attributes, useful for retrieving attributes without having the NFT in hand.
     #[view(getAccountAttributes)]
     #[storage_mapper("account_attributes")]
-    fn account_attributes(&self, nonce: u64) -> SingleValueMapper<AccountAttributes>;
+    fn account_attributes(&self, nonce: u64) -> SingleValueMapper<AccountAttributes<Self::Api>>;
 
     /// Get the deposit positions
     /// This storage mapper maps each deposit position to an account nonce, holding a list of assets and their corresponding structs.

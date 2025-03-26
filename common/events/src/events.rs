@@ -96,6 +96,7 @@ pub trait EventsModule {
         revenue: &ManagedDecimal<Self::Api, NumDecimals>,
         base_asset: &EgldOrEsdtTokenIdentifier,
         asset_price: &ManagedDecimal<Self::Api, NumDecimals>,
+        bad_debt: &ManagedDecimal<Self::Api, NumDecimals>,
     ) {
         self._emit_update_market_state_event(
             timestamp,
@@ -107,6 +108,7 @@ pub trait EventsModule {
             revenue,
             base_asset,
             asset_price,
+            bad_debt,
         );
     }
 
@@ -137,6 +139,7 @@ pub trait EventsModule {
         #[indexed] revenue: &ManagedDecimal<Self::Api, NumDecimals>,
         #[indexed] base_asset: &EgldOrEsdtTokenIdentifier,
         #[indexed] asset_price: &ManagedDecimal<Self::Api, NumDecimals>,
+        #[indexed] bad_debt: &ManagedDecimal<Self::Api, NumDecimals>,
     );
 
     /// Emits an event to update an account's position.
@@ -160,7 +163,7 @@ pub trait EventsModule {
         #[indexed] position: &AccountPosition<Self::Api>,
         #[indexed] asset_price: OptionalValue<ManagedDecimal<Self::Api, NumDecimals>>,
         #[indexed] caller: OptionalValue<&ManagedAddress>, // When is none, then the position is updated by the protocol and the amount is the interest, either for borrow or supply
-        #[indexed] account_attributes: OptionalValue<&AccountAttributes>,
+        #[indexed] account_attributes: OptionalValue<&AccountAttributes<Self::Api>>,
     );
 
     /// Emits an event to update the debt ceiling for an asset.
@@ -233,5 +236,21 @@ pub trait EventsModule {
         #[indexed] asset: &EgldOrEsdtTokenIdentifier,
         #[indexed] config: &EModeAssetConfig,
         #[indexed] category_id: u8,
+    );
+
+    /// Emits an event to check if bad debt is after liquidation.
+    ///
+    /// # Parameters
+    /// - `total_borrow`: The total borrow amount.
+    /// - `total_collateral`: The total collateral amount.
+    ///
+    /// # Returns
+    /// - Nothing.
+    #[event("emit_trigger_clean_bad_debt")]
+    fn emit_trigger_clean_bad_debt(
+        &self,
+        #[indexed] account_nonce: u64,
+        #[indexed] total_borrow_usd: &ManagedDecimal<Self::Api, NumDecimals>,
+        #[indexed] total_collateral_usd: &ManagedDecimal<Self::Api, NumDecimals>,
     );
 }

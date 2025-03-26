@@ -40,7 +40,7 @@ pub trait PositionRepayModule:
         caller: &ManagedAddress,
         mut borrow_position: AccountPosition<Self::Api>,
         feed: &PriceFeedShort<Self::Api>,
-        position_attributes: &AccountAttributes,
+        position_attributes: &AccountAttributes<Self::Api>,
         cache: &mut Cache<Self>,
     ) {
         let pool_address = cache.get_cached_pool_address(repay_token_id);
@@ -76,17 +76,14 @@ pub trait PositionRepayModule:
     /// - `position_attributes`: NFT attributes.
     fn update_isolated_debt_after_repayment(
         &self,
-        account_nonce: u64,
         position: &mut AccountPosition<Self::Api>,
         feed: &PriceFeedShort<Self::Api>,
         repay_amount: &ManagedDecimal<Self::Api, NumDecimals>,
         cache: &mut Cache<Self>,
-        position_attributes: &AccountAttributes,
+        position_attributes: &AccountAttributes<Self::Api>,
     ) {
         if position_attributes.is_isolated() {
-            let collaterals_map = self.deposit_positions(account_nonce);
-            let (collateral_token_id, _) = collaterals_map.iter().next().unwrap();
-            let asset_address = self.pools_map(&position.asset_id).get();
+            let asset_address = cache.get_cached_pool_address(&position.asset_id);
             self.update_position(
                 &asset_address,
                 position,
@@ -94,8 +91,30 @@ pub trait PositionRepayModule:
             );
             let principal_amount = self.calculate_principal_repayment(position, feed, repay_amount);
             let debt_usd_amount =
-                self.get_token_usd_value(&principal_amount, &cache.egld_price_feed);
-            self.adjust_isolated_debt_usd(&collateral_token_id, debt_usd_amount, false);
+                self.get_egld_usd_value(&principal_amount, &cache.egld_price_feed);
+            self.adjust_isolated_debt_usd(
+                &position_attributes.get_isolated_token(),
+                debt_usd_amount,
+                false,
+            );
+        }
+    }
+
+    fn clear_position_isolated_debt(
+        &self,
+        position: &mut AccountPosition<Self::Api>,
+        feed: &PriceFeedShort<Self::Api>,
+        position_attributes: &AccountAttributes<Self::Api>,
+        cache: &mut Cache<Self>,
+    ) {
+        if position_attributes.is_isolated() {
+            let egld_amount = self.get_token_egld_value(&position.get_total_amount(), &feed.price);
+            let debt_usd_amount = self.get_egld_usd_value(&egld_amount, &cache.egld_price_feed);
+            self.adjust_isolated_debt_usd(
+                &position_attributes.get_isolated_token(),
+                debt_usd_amount,
+                false,
+            );
         }
     }
 
@@ -120,12 +139,11 @@ pub trait PositionRepayModule:
         repay_amount_in_egld: ManagedDecimal<Self::Api, NumDecimals>,
         feed: &PriceFeedShort<Self::Api>,
         cache: &mut Cache<Self>,
-        position_attributes: &AccountAttributes,
+        position_attributes: &AccountAttributes<Self::Api>,
     ) {
         let mut borrow_position =
             self.validate_borrow_position_existence(account_nonce, repay_token_id);
         self.update_isolated_debt_after_repayment(
-            account_nonce,
             &mut borrow_position,
             feed,
             &repay_amount_in_egld,

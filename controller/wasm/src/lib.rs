@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           64
+// Endpoints:                           65
 // Async Callback:                       1
-// Total number of exported functions:  67
+// Total number of exported functions:  68
 
 #![no_std]
 
@@ -30,6 +30,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         toggleVault => toggle_vault
         updateAccountThreshold => update_account_threshold
         updateIndexes => update_indexes
+        cleanBadDebt => clean_bad_debt
         createLiquidityPool => create_liquidity_pool
         upgradeLiquidityPool => upgrade_liquidity_pool
         claimRevenue => claim_revenue

@@ -310,6 +310,26 @@ where
             .original_result()
     }
 
+    /// Cleans bad debt from an account. 
+    ///  
+    /// It seizes all remaining collateral + interest and adds all remaining debt as bad debt, 
+    /// then cleans isolated debt if any. 
+    /// In case of a vault, it toggles the account to non-vault to move funds to the shared liquidity pool. 
+    /// # Arguments 
+    /// - `account_nonce`: NFT nonce of the account to clean. 
+    pub fn clean_bad_debt<
+        Arg0: ProxyArg<u64>,
+    >(
+        self,
+        account_nonce: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("cleanBadDebt")
+            .argument(&account_nonce)
+            .original_result()
+    }
+
     /// Creates a new liquidity pool for an asset with specified parameters. 
     /// Initializes the pool and configures lending/borrowing settings. 
     ///  
@@ -985,7 +1005,7 @@ where
     >(
         self,
         nonce: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::AccountAttributes> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::AccountAttributes<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getAccountAttributes")
@@ -1463,18 +1483,16 @@ where
         Arg1: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg2: ProxyArg<BigUint<Env::Api>>,
         Arg3: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-        Arg4: ProxyArg<ManagedBuffer<Env::Api>>,
-        Arg5: ProxyArg<OptionalValue<ManagedVec<Env::Api, AggregatorStep<Env::Api>>>>,
-        Arg6: ProxyArg<OptionalValue<ManagedVec<Env::Api, TokenAmount<Env::Api>>>>,
+        Arg4: ProxyArg<OptionalValue<ManagedVec<Env::Api, AggregatorStep<Env::Api>>>>,
+        Arg5: ProxyArg<OptionalValue<ManagedVec<Env::Api, TokenAmount<Env::Api>>>>,
     >(
         self,
         e_mode_category: Arg0,
         collateral_token: Arg1,
         final_collateral_amount: Arg2,
         debt_token: Arg3,
-        mode: Arg4,
-        steps: Arg5,
-        limits: Arg6,
+        steps: Arg4,
+        limits: Arg5,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("multiply")
@@ -1482,7 +1500,6 @@ where
             .argument(&collateral_token)
             .argument(&final_collateral_amount)
             .argument(&debt_token)
-            .argument(&mode)
             .argument(&steps)
             .argument(&limits)
             .original_result()

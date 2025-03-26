@@ -197,7 +197,7 @@ fn test_vault_liquidation() {
     state.liquidate_account(
         &liquidator,
         &USDC_TOKEN,
-        BigUint::from(2000u64),
+        BigUint::from(4000u64),
         1,
         USDC_DECIMALS,
     );
@@ -210,6 +210,7 @@ fn test_vault_liquidation() {
     let debt = state.get_total_borrow_in_egld(1);
     println!("vault_supplied: {:?}", vault_supplied);
     println!("debt: {:?}", debt);
+    assert!(debt > ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS));
     assert!(
         vault_supplied
             < ManagedDecimal::from_raw_units(
@@ -217,6 +218,10 @@ fn test_vault_liquidation() {
                 EGLD_DECIMALS
             )
     );
+    state.clean_bad_debt(1);  
+    let debt = state.get_total_borrow_in_egld(1);
+    println!("debt: {:?}", debt);
+    assert!(debt == ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS));
 }
 
 #[test]

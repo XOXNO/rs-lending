@@ -100,6 +100,10 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
         borrow_rate: ManagedDecimal<Self::Api, NumDecimals>,
         reserve_factor: ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        if utilization == self.ray_zero() {
+            return self.ray_zero();
+        }
+
         let rate = self.mul_half_up(
             &self.mul_half_up(&utilization, &borrow_rate, RAY_PRECISION),
             &self.bps().sub(reserve_factor),

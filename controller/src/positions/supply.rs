@@ -41,7 +41,7 @@ pub trait PositionDepositModule:
         &self,
         caller: &ManagedAddress,
         account_nonce: u64,
-        position_attributes: AccountAttributes,
+        position_attributes: AccountAttributes<Self::Api>,
         deposit_payments: &ManagedVec<EgldOrEsdtTokenPayment>,
         cache: &mut Cache<Self>,
     ) {
@@ -70,7 +70,6 @@ pub trait PositionDepositModule:
             );
 
             self.validate_isolated_collateral(
-                account_nonce,
                 &deposit_payment.token_identifier,
                 &asset_info,
                 &position_attributes,
@@ -145,7 +144,7 @@ pub trait PositionDepositModule:
         collateral: &EgldOrEsdtTokenPayment<Self::Api>,
         asset_info: &AssetConfig<Self::Api>,
         caller: &ManagedAddress,
-        attributes: &AccountAttributes,
+        attributes: &AccountAttributes<Self::Api>,
         cache: &mut Cache<Self>,
     ) -> AccountPosition<Self::Api> {
         let feed = self.get_token_price(&collateral.token_identifier, cache);
@@ -178,6 +177,7 @@ pub trait PositionDepositModule:
                 &collateral.amount,
                 &collateral.token_identifier,
                 &feed,
+                cache,
             );
         }
 
@@ -210,12 +210,11 @@ pub trait PositionDepositModule:
         amount: &BigUint,
         token_id: &EgldOrEsdtTokenIdentifier,
         feed: &PriceFeedShort<Self::Api>,
+        cache: &mut Cache<Self>,
     ) {
-        let pool_address = self.get_pool_address(token_id);
-
         *position = self
             .tx()
-            .to(pool_address)
+            .to(cache.get_cached_pool_address(token_id))
             .typed(proxy_pool::LiquidityPoolProxy)
             .supply(position.clone(), feed.price.clone())
             .egld_or_single_esdt(token_id, 0, amount)
@@ -239,7 +238,7 @@ pub trait PositionDepositModule:
         ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
         Option<EsdtTokenPayment<Self::Api>>,
         ManagedAddress,
-        Option<AccountAttributes>,
+        Option<AccountAttributes<Self::Api>>,
     ) {
         let caller = self.blockchain().get_caller();
         let payments = self.call_value().all_transfers();
@@ -284,19 +283,17 @@ pub trait PositionDepositModule:
     /// - `position_attributes`: NFT attributes.
     fn validate_isolated_collateral(
         &self,
-        account_nonce: u64,
         token_id: &EgldOrEsdtTokenIdentifier,
         asset_info: &AssetConfig<Self::Api>,
-        position_attributes: &AccountAttributes,
+        position_attributes: &AccountAttributes<Self::Api>,
     ) {
-        if !asset_info.is_isolated() && !position_attributes.is_isolated() {
-            return;
-        }
-
-        let deposit_positions = self.deposit_positions(account_nonce);
-        if !deposit_positions.is_empty() {
-            let (first_token_id, _) = deposit_positions.iter().next().unwrap();
-            require!(&first_token_id == token_id, ERROR_MIX_ISOLATED_COLLATERAL);
+        let is_isolated = asset_info.is_isolated() || position_attributes.is_isolated();
+        if is_isolated {
+            require!(
+                asset_info.is_isolated() == position_attributes.is_isolated()
+                    && position_attributes.get_isolated_token() == *token_id,
+                ERROR_MIX_ISOLATED_COLLATERAL
+            );
         }
     }
 
@@ -331,6 +328,10 @@ pub trait PositionDepositModule:
         cache: &mut Cache<Self>,
     ) {
         if let Some(supply_cap) = &asset_info.supply_cap {
+            if supply_cap == &BigUint::zero() {
+                return;
+            }
+
             let pool_address = cache.get_cached_pool_address(&deposit_payment.token_identifier);
             let mut total_supplied = self.get_total_supply(pool_address).get();
 

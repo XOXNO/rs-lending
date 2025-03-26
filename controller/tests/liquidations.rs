@@ -280,6 +280,20 @@ fn test_liquidation_bad_debt_multi_asset() {
     println!("Total EGLD Deposite {:?}", collateral);
     println!("Total EGLD Weighted {:?}", collateral_weighted);
     println!("Health Factor {:?}", health_factor);
+    // Has bad debt
+    assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
+    state.clean_bad_debt(2);
+    let borrowed_after = state.get_total_borrow_in_egld(2);
+    let collateral_after = state.get_total_collateral_in_egld(2);
+    let collateral_weighted = state.get_liquidation_collateral_available(2);
+    let health_factor = state.get_account_health_factor(2);
+    println!("Total EGLD Borrowed {:?}", borrowed_after);
+    println!("Total EGLD Deposite {:?}", collateral_after);
+    println!("Total EGLD Weighted {:?}", collateral_weighted);
+    println!("Health Factor {:?}", health_factor);
+    assert!(borrowed_after == ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
+    assert!(collateral_after == ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
+    assert!(collateral_weighted == ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
 }
 
 #[test]

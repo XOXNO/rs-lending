@@ -120,6 +120,11 @@ pub trait Controller:
             e_mode_category,
             maybe_account,
             maybe_attributes,
+            if first_asset_info.is_isolated() {
+                Some(first_collateral.token_identifier.clone())
+            } else {
+                None
+            },
         );
 
         self.validate_vault_consistency(&account_attributes, is_vault);
@@ -401,5 +406,40 @@ pub trait Controller:
         for asset_id in assets {
             self.update_asset_index(&asset_id, &mut cache);
         }
+    }
+
+    /// Cleans bad debt from an account.
+    ///
+    /// It seizes all remaining collateral + interest and adds all remaining debt as bad debt,
+    /// then cleans isolated debt if any.
+    /// In case of a vault, it toggles the account to non-vault to move funds to the shared liquidity pool.
+    /// # Arguments
+    /// - `account_nonce`: NFT nonce of the account to clean.
+    #[endpoint(cleanBadDebt)]
+    fn clean_bad_debt(&self, account_nonce: u64) {
+        let mut cache = Cache::new(self);
+        self.require_active_account(account_nonce);
+
+        let account_attributes = self.account_attributes(account_nonce).get();
+
+        let collaterals = self.sync_deposit_positions_interest(
+            account_nonce,
+            &mut cache,
+            true,
+            &account_attributes,
+        );
+
+        let (borrow_positions, _) =
+            self.sync_borrow_positions_interest(account_nonce, &mut cache, true, false);
+
+        let (_, total_collateral, _) = self.calculate_collateral_values(&collaterals, &mut cache);
+        let total_borrow = self.calculate_total_borrow_in_egld(&borrow_positions, &mut cache);
+
+        let can_clean_bad_debt =
+            self.can_clean_bad_debt_positions(&mut cache, &total_borrow, &total_collateral);
+
+        require!(can_clean_bad_debt, ERROR_CANNOT_CLEAN_BAD_DEBT);
+
+        self.perform_bad_debt_cleanup(account_nonce, &mut cache);
     }
 }

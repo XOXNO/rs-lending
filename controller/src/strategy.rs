@@ -61,8 +61,13 @@ pub trait SnapModule:
         let collateral_price_feed = self.get_token_price(collateral_token, &mut cache);
         let debt_price_feed = self.get_token_price(debt_token, &mut cache);
 
-        let (account, nft_attributes) =
-            self.create_account_nft(&caller, false, false, OptionalValue::Some(e_mode_category));
+        let (account, nft_attributes) = self.create_account_nft(
+            &caller,
+            collateral_config.is_isolated(),
+            false,
+            OptionalValue::Some(e_mode_category),
+            Some(collateral_token.clone()),
+        );
 
         let e_mode_id = nft_attributes.get_emode_id();
         // Validate e-mode constraints first

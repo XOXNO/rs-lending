@@ -1,7 +1,7 @@
 use common_constants::{BPS_PRECISION, RAY_PRECISION, WAD_PRECISION};
 use common_structs::{AccountAttributes, AccountPosition, PriceFeedShort};
 
-use crate::{cache::Cache, helpers, oracle, storage, utils, validation};
+use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validation};
 use common_errors::ERROR_HEALTH_FACTOR;
 
 use super::{account, borrow, emode, repay, update, vault, withdraw};
@@ -43,7 +43,7 @@ pub trait PositionLiquidationModule:
         debt_payments: &ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
         caller: &ManagedAddress,
         cache: &mut Cache<Self>,
-        account_attributes: &AccountAttributes,
+        account_attributes: &AccountAttributes<Self::Api>,
     ) -> (
         ManagedVec<MultiValue2<EgldOrEsdtTokenPayment, ManagedDecimal<Self::Api, NumDecimals>>>,
         ManagedVec<
@@ -73,18 +73,20 @@ pub trait PositionLiquidationModule:
         let (proportional_weighted, bonus_weighted) =
             self.calculate_seizure_proportions(&total_collateral, &deposit_positions, cache);
         let borrowed_egld = self.calculate_total_borrow_in_egld(&borrow_positions, cache);
+
         let health_factor =
             self.validate_liquidation_health_factor(&liquidation_collateral, &borrowed_egld);
 
-        let (max_debt_to_repay, bonus_rate) = self.calculate_liquidation_amounts(
-            &borrowed_egld,
-            &total_collateral,
-            &liquidation_collateral,
-            &proportional_weighted,
-            &bonus_weighted,
-            &health_factor,
-            OptionalValue::Some(debt_payment_in_egld.clone()),
-        );
+        let (max_debt_to_repay, max_collateral_seized, bonus_rate) = self
+            .calculate_liquidation_amounts(
+                &borrowed_egld,
+                &total_collateral,
+                &liquidation_collateral,
+                &proportional_weighted,
+                &bonus_weighted,
+                &health_factor,
+                OptionalValue::Some(debt_payment_in_egld.clone()),
+            );
 
         if debt_payment_in_egld > max_debt_to_repay {
             self.process_excess_payment(
@@ -107,6 +109,15 @@ pub trait PositionLiquidationModule:
             &max_debt_to_repay,
             &bonus_rate,
             cache,
+        );
+
+        self.check_bad_debt_after_liquidation(
+            cache,
+            account_nonce,
+            &borrowed_egld,
+            &max_debt_to_repay,
+            &total_collateral,
+            &max_collateral_seized,
         );
 
         (seized_collaterals, repaid_tokens)
@@ -397,7 +408,7 @@ pub trait PositionLiquidationModule:
     /// - `debt_payment`: Optional debt payment in EGLD.
     ///
     /// # Returns
-    /// - Tuple of (max debt to repay, bonus rate).
+    /// - Tuple of (max debt to repay,max_seized_collateral, bonus rate).
     fn calculate_liquidation_amounts(
         &self,
         total_debt_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -408,6 +419,7 @@ pub trait PositionLiquidationModule:
         health_factor: &ManagedDecimal<Self::Api, NumDecimals>,
         debt_payment: OptionalValue<ManagedDecimal<Self::Api, NumDecimals>>,
     ) -> (
+        ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
@@ -422,16 +434,25 @@ pub trait PositionLiquidationModule:
 
         if debt_payment.is_some() {
             let payment = debt_payment.into_option().unwrap();
-            (
-                if payment > max_repayable_debt {
-                    max_repayable_debt
-                } else {
-                    payment
-                },
-                bonus,
-            )
+            let max_debt_repay = if payment > max_repayable_debt {
+                max_repayable_debt
+            } else {
+                payment
+            };
+
+            let max_collateral_seize = self.mul_half_up(
+                &max_debt_repay,
+                &(bonus.clone() + self.bps()),
+                WAD_PRECISION,
+            );
+            (max_debt_repay, max_collateral_seize, bonus)
         } else {
-            (max_repayable_debt, bonus)
+            let max_collateral_seize = self.mul_half_up(
+                &max_repayable_debt,
+                &(bonus.clone() + self.bps()),
+                WAD_PRECISION,
+            );
+            (max_repayable_debt, max_collateral_seize, bonus)
         }
     }
 
@@ -513,5 +534,162 @@ pub trait PositionLiquidationModule:
         let position = borrows.get(index).clone();
 
         position
+    }
+
+    /// Checks if dust cleanup is needed immediately after liquidation and performs it if necessary.
+    ///
+    /// Uses values already calculated during the liquidation process to determine:
+    /// 1. Remaining debt after liquidation
+    /// 2. Remaining collateral after liquidation
+    /// 3. Whether thresholds for dust cleanup are met
+    ///
+    /// # Arguments
+    /// - `account_nonce`: Position NFT nonce
+    /// - `borrowed_egld`: Total borrowed value before liquidation
+    /// - `max_debt_repaid`: Amount of debt repaid during liquidation
+    /// - `total_collateral`: Total collateral value before liquidation
+    /// - `seized_collateral_egld`: Amount of collateral seized during liquidation
+    /// - `cache`: Mutable storage cache
+    /// - `account_attributes`: Account attributes
+    fn check_bad_debt_after_liquidation(
+        &self,
+        cache: &mut Cache<Self>,
+        account_nonce: u64,
+        borrowed_egld: &ManagedDecimal<Self::Api, NumDecimals>,
+        max_debt_repaid: &ManagedDecimal<Self::Api, NumDecimals>,
+        total_collateral: &ManagedDecimal<Self::Api, NumDecimals>,
+        seized_collateral_egld: &ManagedDecimal<Self::Api, NumDecimals>,
+    ) {
+        // Calculate remaining debt and collateral after liquidation
+        let remaining_debt_egld = if borrowed_egld > max_debt_repaid {
+            borrowed_egld.clone() - max_debt_repaid.clone()
+        } else {
+            self.wad_zero() // All debt repaid
+        };
+
+        let remaining_collateral_egld = if total_collateral > seized_collateral_egld {
+            total_collateral.clone() - seized_collateral_egld.clone()
+        } else {
+            self.wad_zero() // All collateral seized
+        };
+
+        let can_clean_bad_debt = self.can_clean_bad_debt_positions(
+            cache,
+            &remaining_debt_egld,
+            &remaining_collateral_egld,
+        );
+
+        if can_clean_bad_debt {
+            self.emit_trigger_clean_bad_debt(
+                account_nonce,
+                &remaining_debt_egld,
+                &remaining_collateral_egld,
+            );
+        }
+    }
+
+    /// Checks if dust cleanup is needed immediately after liquidation and performs it if necessary.
+    ///
+    /// Uses values already calculated during the liquidation process to determine:
+    /// 1. Remaining debt after liquidation
+    /// 2. Remaining collateral after liquidation
+    /// 3. Whether thresholds for dust cleanup are met
+    ///
+    fn can_clean_bad_debt_positions(
+        &self,
+        cache: &mut Cache<Self>,
+        total_borrow: &ManagedDecimal<Self::Api, NumDecimals>,
+        total_collateral: &ManagedDecimal<Self::Api, NumDecimals>,
+    ) -> bool {
+        let total_usd_debt = self.get_egld_usd_value(&total_borrow, &cache.egld_price_feed);
+        let total_usd_collateral =
+            self.get_egld_usd_value(&total_collateral, &cache.egld_price_feed);
+
+        // 5 USD
+        let min_collateral_threshold = self.mul_half_up(
+            &self.wad(),
+            &self.to_decimal(BigUint::from(5u64), 0),
+            WAD_PRECISION,
+        );
+
+        let has_bad_debt = total_usd_debt > total_usd_collateral;
+        let has_collateral_under_min_threshold = total_usd_collateral <= min_collateral_threshold;
+        let has_bad_debt_above_min_threshold = total_usd_debt >= min_collateral_threshold;
+
+        has_bad_debt && has_collateral_under_min_threshold && has_bad_debt_above_min_threshold
+    }
+
+    /// Executes dust cleanup by seizing all remaining collateral and adding bad debt
+    /// to the respective liquidity pools.
+    ///
+    /// # Arguments
+    /// - `account_nonce`: Position NFT nonce
+    /// - `cache`: Mutable storage cache
+    fn perform_bad_debt_cleanup(&self, account_nonce: u64, cache: &mut Cache<Self>) {
+        let caller = self.blockchain().get_caller();
+        let mut account_attributes = self.account_attributes(account_nonce).get();
+        // If the account is a vault, toggle it to non-vault to move funds to the shared liquidity pool
+        if account_attributes.is_vault() {
+            account_attributes.is_vault_position = false;
+
+            self.process_vault_toggle(account_nonce, false, cache, &account_attributes, &caller);
+
+            self.update_account_attributes(account_nonce, &account_attributes);
+        }
+
+        // Add all remaining debt as bad debt, clean isolated debt if any
+        let borrow_positions = self.borrow_positions(account_nonce);
+        for (token_id, mut position) in borrow_positions.iter() {
+            let feed = self.get_token_price(&token_id, cache);
+            let pool_address = cache.get_cached_pool_address(&token_id);
+            if account_attributes.is_isolated() {
+                self.clear_position_isolated_debt(&mut position, &feed, &account_attributes, cache);
+            }
+
+            // Call the add_bad_debt function on the liquidity pool
+            let updated_position = self
+                .tx()
+                .to(pool_address)
+                .typed(proxy_pool::LiquidityPoolProxy)
+                .add_bad_debt(position.clone(), feed.price.clone())
+                .returns(ReturnsResult)
+                .sync_call();
+
+            self.update_position_event(
+                &position.zero_decimal(),
+                &updated_position,
+                OptionalValue::Some(feed.price.clone()),
+                OptionalValue::Some(&caller),
+                OptionalValue::Some(&account_attributes),
+            );
+        }
+
+        // Seize all remaining collateral + interest
+        let deposit_positions = self.deposit_positions(account_nonce);
+        for (token_id, position) in deposit_positions.iter() {
+            let feed = self.get_token_price(&token_id, cache);
+            let pool_address = cache.get_cached_pool_address(&token_id);
+            // Call the seize_dust_collateral function on the liquidity pool
+            let updated_position = self
+                .tx()
+                .to(pool_address)
+                .typed(proxy_pool::LiquidityPoolProxy)
+                .seize_dust_collateral(position.clone(), feed.price.clone())
+                .returns(ReturnsResult)
+                .sync_call();
+
+            self.update_position_event(
+                &position.zero_decimal(),
+                &updated_position,
+                OptionalValue::Some(feed.price.clone()),
+                OptionalValue::Some(&caller),
+                OptionalValue::Some(&account_attributes),
+            );
+        }
+
+        self.borrow_positions(account_nonce).clear();
+        self.deposit_positions(account_nonce).clear();
+        self.account_positions().swap_remove(&account_nonce);
+        self.account_attributes(account_nonce).clear();
     }
 }
