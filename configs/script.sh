@@ -253,7 +253,7 @@ build_market_args() {
     args+=("$(get_config_value "$market_name" "can_be_collateral")")
     args+=("$(get_config_value "$market_name" "can_be_borrowed")")
     args+=("$(get_config_value "$market_name" "is_isolated")")
-    args+=("$(get_config_value "$market_name" "debt_ceiling_usd")")
+    args+=("$(to_decimals "$(get_config_value "$market_name" "debt_ceiling_usd")" "18")")
     args+=("$(get_config_value "$market_name" "flash_loan_fee")")
     args+=("$(get_config_value "$market_name" "is_siloed")")
     args+=("$(get_config_value "$market_name" "flashloan_enabled")")
