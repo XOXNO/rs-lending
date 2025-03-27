@@ -73,7 +73,8 @@ pub trait StrategiesModule:
         quote_token: &EgldOrEsdtTokenIdentifier,
         base_token_amount: BigUint,
         quote_token_amount: BigUint,
-    ) -> (EgldOrEsdtTokenIdentifier, BigUint) {
+        lp_token: &EgldOrEsdtTokenIdentifier,
+    ) -> EgldOrEsdtTokenPayment {
         let mut payments = ManagedVec::new();
 
         payments.push(EsdtTokenPayment::new(
@@ -87,25 +88,35 @@ pub trait StrategiesModule:
             quote_token_amount,
         ));
 
-        let (lp_received, first, second) = self
+        let back_transfers = self
             .tx()
             .to(sc_address)
             .typed(proxy_xexchange_pair::PairProxy)
             .add_liquidity(BigUint::from(1u32), BigUint::from(1u32))
             .multi_esdt(payments)
-            .returns(ReturnsResult)
-            .sync_call()
-            .into_tuple();
+            .returns(ReturnsBackTransfersReset)
+            .sync_call();
 
         let caller = self.blockchain().get_caller();
+        if back_transfers.total_egld_amount > 0 {
+            self.tx()
+                .to(&caller)
+                .egld(back_transfers.total_egld_amount)
+                .transfer_if_not_empty();
+        }
+        let mut lp_received = EgldOrEsdtTokenPayment::new(lp_token.clone(), 0, BigUint::from(0u32));
+        for esdt in &back_transfers.esdt_payments {
+            if esdt.token_identifier == *lp_token {
+                lp_received.amount += &esdt.amount;
+            } else {
+                self.tx()
+                    .to(&caller)
+                    .esdt(esdt.clone())
+                    .transfer_if_not_empty();
+            }
+        }
 
-        self.tx().to(&caller).esdt(first).transfer_if_not_empty();
-        self.tx().to(&caller).esdt(second).transfer_if_not_empty();
-
-        (
-            EgldOrEsdtTokenIdentifier::esdt(lp_received.token_identifier.clone()),
-            lp_received.amount,
-        )
+        lp_received
     }
 
     // Always the collateral token is the LSD token while debt token is the root main token of the LSD: such as xEGLD with EGLD or LXOXNO with XOXNO
@@ -253,20 +264,19 @@ pub trait StrategiesModule:
         };
 
         // Create LP token with the amounts we have
-        let lp_amount = self.create_lp_token(
+        let lp_received = self.create_lp_token(
             &to_provider.oracle_contract_address,
             base_token,
             quote_token,
             base_amount,
             quote_amount,
+            to_token,
         );
 
-        let result = EgldOrEsdtTokenPayment::new(lp_amount.0, 0, lp_amount.1);
+        require!(lp_received.amount > 0, ERROR_ZERO_AMOUNT);
+        require!(lp_received.token_identifier == *to_token, ERROR_WRONG_TOKEN);
 
-        require!(result.amount > 0, ERROR_ZERO_AMOUNT);
-        require!(result.token_identifier == *to_token, ERROR_WRONG_TOKEN);
-
-        result
+        lp_received
     }
 
     fn convert_token_from_to(

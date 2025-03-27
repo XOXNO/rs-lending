@@ -696,6 +696,8 @@ edit_asset_config() {
     
     local -a args=()
     
+    local oracle_decimals=$(get_config_value "$market_name" "oracle_decimals")
+
     # Token identifier
     args+=("str:$(get_config_value "$market_name" "token_id")")
     
@@ -707,7 +709,7 @@ edit_asset_config() {
     
     # Flags
     args+=("$(get_config_value "$market_name" "is_isolated")")
-    args+=("$(get_config_value "$market_name" "debt_ceiling_usd")")
+    args+=("$(to_decimals "$(get_config_value "$market_name" "debt_ceiling_usd")" "18")")
     args+=("$(get_config_value "$market_name" "is_siloed")")
     args+=("$(get_config_value "$market_name" "flashloan_enabled")")
     args+=("$(get_config_value "$market_name" "flash_loan_fee")")
@@ -716,8 +718,8 @@ edit_asset_config() {
     args+=("$(get_config_value "$market_name" "can_borrow_in_isolation")")
     
     # Caps
-    args+=("$(get_config_value "$market_name" "borrow_cap")")
-    args+=("$(get_config_value "$market_name" "supply_cap")")
+    args+=("$(to_decimals "$(get_config_value "$market_name" "borrow_cap")" "$oracle_decimals")")
+    args+=("$(to_decimals "$(get_config_value "$market_name" "supply_cap")" "$oracle_decimals")")
     
     echo "${args[@]}"
     

@@ -40,6 +40,7 @@ pub trait SnapModule:
         collateral_token: &EgldOrEsdtTokenIdentifier,
         final_collateral_amount: BigUint,
         debt_token: &EgldOrEsdtTokenIdentifier,
+        mode: ManagedBuffer,
         steps: OptionalValue<ManagedVec<AggregatorStep<Self::Api>>>,
         limits: OptionalValue<ManagedVec<TokenAmount<Self::Api>>>,
     ) {
@@ -372,9 +373,9 @@ pub trait SnapModule:
     #[endpoint(swapDebt)]
     fn swap_debt(
         &self,
-        from_token: &EgldOrEsdtTokenIdentifier,
+        from_token: &EgldOrEsdtTokenIdentifier, // egld
         to_amount: BigUint,
-        to_token: &EgldOrEsdtTokenIdentifier,
+        to_token: &EgldOrEsdtTokenIdentifier, // xegl
         steps: OptionalValue<ManagedVec<AggregatorStep<Self::Api>>>,
         limits: OptionalValue<ManagedVec<TokenAmount<Self::Api>>>,
     ) {
