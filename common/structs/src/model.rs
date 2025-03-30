@@ -118,8 +118,19 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
         self.principal_amount.clone() + self.interest_accrued.clone()
     }
 
-    pub fn make_amount_decimal(&self, amount: BigUint<M>) -> ManagedDecimal<M, NumDecimals> {
-        ManagedDecimal::from_raw_units(amount, self.principal_amount.scale())
+    pub fn cap_amount(
+        &self,
+        amount: ManagedDecimal<M, NumDecimals>,
+    ) -> ManagedDecimal<M, NumDecimals> {
+        if amount > self.get_total_amount() {
+            self.get_total_amount()
+        } else {
+            amount
+        }
+    }
+
+    pub fn make_amount_decimal(&self, amount: &BigUint<M>) -> ManagedDecimal<M, NumDecimals> {
+        ManagedDecimal::from_raw_units(amount.clone(), self.principal_amount.scale())
     }
 
     pub fn zero_decimal(&self) -> ManagedDecimal<M, NumDecimals> {

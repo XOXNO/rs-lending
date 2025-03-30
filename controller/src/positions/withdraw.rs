@@ -50,7 +50,7 @@ pub trait PositionWithdrawModule:
         let pool_address = cache.get_cached_pool_address(&token_id);
 
         let mut deposit_position = self.get_deposit_position(account_nonce, &token_id);
-        let amount = self.cap_withdraw_amount(&deposit_position, requested_amount);
+        let amount = self.cap_withdraw_amount(&deposit_position, &requested_amount);
 
         if position_attributes.is_vault() {
             self.process_vault_withdrawal(
@@ -233,7 +233,7 @@ pub trait PositionWithdrawModule:
     fn cap_withdraw_amount(
         &self,
         deposit_position: &AccountPosition<Self::Api>,
-        requested_amount: BigUint,
+        requested_amount: &BigUint<Self::Api>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let requested_amount_dec = deposit_position.make_amount_decimal(requested_amount);
         let total_amount = deposit_position.get_total_amount();

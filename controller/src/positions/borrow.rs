@@ -29,6 +29,58 @@ pub trait PositionBorrowModule:
     + common_math::SharedMathModule
     + emode::EModeModule
 {
+    fn handle_create_borrow_strategy(
+        &self,
+        account_nonce: u64,
+        new_debt_token: &EgldOrEsdtTokenIdentifier,
+        new_debt_amount_raw: &BigUint,
+        debt_config: &AssetConfig<Self::Api>,
+        caller: &ManagedAddress,
+        account_attributes: &AccountAttributes<Self::Api>,
+        cache: &mut Cache<Self>,
+    ) -> AccountPosition<Self::Api> {
+        // Start the actual strategy once validation is done
+        let to_debt_feed = self.get_token_price(new_debt_token, cache);
+
+        let mut borrow_position =
+            self.get_or_create_borrow_position(account_nonce, debt_config, new_debt_token);
+
+        let new_debt_amount = borrow_position.make_amount_decimal(new_debt_amount_raw);
+
+        self.validate_borrow_cap(&debt_config, &new_debt_amount, &new_debt_token, cache);
+
+        self.handle_isolated_debt(cache, &new_debt_amount, account_attributes, &to_debt_feed);
+
+        let flash_fee = new_debt_amount.clone() * debt_config.flashloan_fee.clone() / self.bps();
+
+        let pool_address = cache.get_cached_pool_address(&borrow_position.asset_id);
+
+        // Create the internal flash loan, taking the new debt amount and flash fee added as interest
+        borrow_position = self
+            .tx()
+            .to(pool_address)
+            .typed(proxy_pool::LiquidityPoolProxy)
+            .create_strategy(
+                borrow_position,
+                new_debt_amount.clone(),
+                flash_fee.clone(),
+                to_debt_feed.price.clone(),
+            )
+            .returns(ReturnsResult)
+            .sync_call();
+
+        self.update_position_event(
+            &new_debt_amount,
+            &borrow_position,
+            OptionalValue::Some(to_debt_feed.price),
+            OptionalValue::Some(&caller),
+            OptionalValue::Some(&account_attributes),
+        );
+
+        self.store_borrow_position(account_nonce, new_debt_token, &borrow_position);
+
+        borrow_position
+    }
     /// Manages a borrow operation, updating positions and handling isolated debt.
     /// Orchestrates borrowing logic with validations and storage updates.
     ///
@@ -135,23 +187,25 @@ pub trait PositionBorrowModule:
     /// - `amount_in_usd`: USD value of the borrow.
     fn handle_isolated_debt(
         &self,
-        collaterals: &ManagedVec<AccountPosition<Self::Api>>,
         cache: &mut Cache<Self>,
-        amount_in_usd: ManagedDecimal<Self::Api, NumDecimals>,
-        is_isolated: bool,
+        amount: &ManagedDecimal<Self::Api, NumDecimals>,
+        account_attributes: &AccountAttributes<Self::Api>,
+        feed: &PriceFeedShort<Self::Api>,
     ) {
-        if !is_isolated {
+        if !account_attributes.is_isolated() {
             return;
         }
+        let egld_amount = self.get_token_egld_value(amount, &feed.price);
+        let amount_in_usd = self.get_egld_usd_value(&egld_amount, &cache.egld_price_feed);
 
-        let collateral_token_id = &collaterals.get(0).asset_id;
-        let collateral_config = cache.get_cached_asset_info(collateral_token_id);
+        let isolated_token = account_attributes.get_isolated_token();
+        let collateral_config = cache.get_cached_asset_info(&isolated_token);
         self.validate_isolated_debt_ceiling(
             &collateral_config,
-            collateral_token_id,
+            &isolated_token,
             amount_in_usd.clone(),
         );
-        self.adjust_isolated_debt_usd(collateral_token_id, amount_in_usd, true);
+        self.adjust_isolated_debt_usd(&isolated_token, amount_in_usd, true);
     }
 
     /// Retrieves or creates a borrow position for a token.
@@ -268,27 +322,15 @@ pub trait PositionBorrowModule:
     fn validate_and_get_borrow_amounts(
         &self,
         ltv_base_amount: &ManagedDecimal<Self::Api, NumDecimals>,
-        borrow_token_id: &EgldOrEsdtTokenIdentifier,
-        amount_raw: &BigUint,
+        amount: &ManagedDecimal<Self::Api, NumDecimals>,
         borrow_positions: &ManagedVec<AccountPosition<Self::Api>>,
+        feed: &PriceFeedShort<Self::Api>,
         cache: &mut Cache<Self>,
-    ) -> (
-        ManagedDecimal<Self::Api, NumDecimals>,
-        PriceFeedShort<Self::Api>,
-        ManagedDecimal<Self::Api, NumDecimals>,
     ) {
-        let asset_data_feed = self.get_token_price(borrow_token_id, cache);
-        let amount = self.to_decimal(amount_raw.clone(), asset_data_feed.asset_decimals);
-
-        let egld_amount = self.get_token_egld_value(&amount, &asset_data_feed.price);
-
+        let egld_amount = self.get_token_egld_value(&amount, &feed.price);
         let egld_total_borrowed = self.calculate_total_borrow_in_egld(borrow_positions, cache);
 
         self.validate_borrow_collateral(ltv_base_amount, &egld_total_borrowed, &egld_amount);
-
-        let amount_in_usd = self.get_egld_usd_value(&egld_amount, &cache.egld_price_feed);
-
-        (amount_in_usd, asset_data_feed, amount)
     }
 
     /// Validates an asset's borrowability under position constraints.
@@ -380,7 +422,6 @@ pub trait PositionBorrowModule:
         borrowed_token: &EgldOrEsdtTokenPayment<Self::Api>,
         account_attributes: &AccountAttributes<Self::Api>,
         e_mode: &Option<EModeCategory<Self::Api>>,
-        collaterals: &ManagedVec<AccountPosition<Self::Api>>,
         borrows: &mut ManagedVec<AccountPosition<Self::Api>>,
         borrow_index_mapper: &mut ManagedMapEncoded<
             Self::Api,
@@ -395,6 +436,7 @@ pub trait PositionBorrowModule:
 
         // Get and validate asset configuration
         let mut asset_config = cache.get_cached_asset_info(&borrowed_token.token_identifier);
+        let feed = self.get_token_price(&borrowed_token.token_identifier, cache);
 
         self.validate_borrow_asset(
             &asset_config,
@@ -414,34 +456,24 @@ pub trait PositionBorrowModule:
 
         require!(asset_config.can_borrow(), ERROR_ASSET_NOT_BORROWABLE);
 
+        let amount = self.to_decimal(borrowed_token.amount.clone(), feed.asset_decimals);
         // Validate borrow amounts and caps
-        let (borrow_amount_usd, feed, borrow_amount_dec) = self.validate_and_get_borrow_amounts(
-            ltv_collateral,
-            &borrowed_token.token_identifier,
-            &borrowed_token.amount,
-            borrows,
-            cache,
-        );
+        self.validate_and_get_borrow_amounts(ltv_collateral, &amount, borrows, &feed, cache);
 
         self.validate_borrow_cap(
             &asset_config,
-            &borrow_amount_dec,
+            &amount,
             &borrowed_token.token_identifier,
             cache,
         );
 
-        self.handle_isolated_debt(
-            collaterals,
-            cache,
-            borrow_amount_usd,
-            account_attributes.is_isolated(),
-        );
+        self.handle_isolated_debt(cache, &amount, account_attributes, &feed);
 
         // Handle the borrow position
         let updated_position = self.handle_borrow_position(
             account_nonce,
             &borrowed_token.token_identifier,
-            borrow_amount_dec.clone(),
+            amount,
             caller,
             &asset_config,
             account_attributes,

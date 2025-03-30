@@ -221,7 +221,6 @@ pub trait Controller:
                 &borrowed_token,
                 &account_attributes,
                 &e_mode,
-                &collaterals,
                 &mut borrows,
                 &mut borrow_index_mapper,
                 is_bulk_borrow,
@@ -248,6 +247,7 @@ pub trait Controller:
             let feed = self.get_token_price(&payment.token_identifier, &mut cache);
             let payment_decimal = self.to_decimal(payment.amount.clone(), feed.asset_decimals);
             let egld_value = self.get_token_egld_value(&payment_decimal, &feed.price);
+
             self.process_repayment(
                 account_nonce,
                 &payment.token_identifier,

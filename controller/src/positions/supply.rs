@@ -167,7 +167,7 @@ pub trait PositionDepositModule:
             position.liquidation_fees = asset_info.liquidation_fees.clone();
         }
 
-        let amount_decimal = position.make_amount_decimal(collateral.amount.clone());
+        let amount_decimal = position.make_amount_decimal(&collateral.amount);
         if attributes.is_vault() {
             self.update_vault_supplied_amount(&collateral.token_identifier, &amount_decimal, true);
             position.principal_amount += &amount_decimal;
