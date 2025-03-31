@@ -12,7 +12,7 @@ use common_errors::{
     ERROR_INSUFFICIENT_COLLATERAL,
 };
 
-use super::{account, emode};
+use super::{account, emode, update};
 
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
@@ -26,6 +26,7 @@ pub trait PositionBorrowModule:
     + utils::LendingUtilsModule
     + helpers::math::MathsModule
     + account::PositionAccountModule
+    + update::PositionUpdateModule
     + common_math::SharedMathModule
     + emode::EModeModule
 {
@@ -34,13 +35,24 @@ pub trait PositionBorrowModule:
         account_nonce: u64,
         new_debt_token: &EgldOrEsdtTokenIdentifier,
         new_debt_amount_raw: &BigUint,
-        debt_config: &AssetConfig<Self::Api>,
+        debt_config: &mut AssetConfig<Self::Api>,
         caller: &ManagedAddress,
         account_attributes: &AccountAttributes<Self::Api>,
         cache: &mut Cache<Self>,
     ) -> AccountPosition<Self::Api> {
-        // Start the actual strategy once validation is done
-        let to_debt_feed = self.get_token_price(new_debt_token, cache);
+        self.require_asset_supported(new_debt_token);
+
+        let e_mode = self.get_e_mode_category(account_attributes.e_mode_category_id);
+        self.ensure_e_mode_not_deprecated(&e_mode);
+        let e_mode_id = account_attributes.get_emode_id();
+        // Validate e-mode constraints first
+        let debt_emode_config = self.get_token_e_mode_config(e_mode_id, new_debt_token);
+        self.ensure_e_mode_compatible_with_asset(&debt_config, e_mode_id);
+        // Update asset config if NFT has active e-mode
+        self.apply_e_mode_to_asset_config(debt_config, &e_mode, debt_emode_config);
+        require!(debt_config.can_borrow(), ERROR_ASSET_NOT_BORROWABLE);
+
+        let (borrows, _) = self.sync_borrow_positions_interest(account_nonce, cache, false, false);
 
         let mut borrow_position =
             self.get_or_create_borrow_position(account_nonce, debt_config, new_debt_token);
@@ -49,11 +61,20 @@ pub trait PositionBorrowModule:
 
         self.validate_borrow_cap(&debt_config, &new_debt_amount, &new_debt_token, cache);
 
-        self.handle_isolated_debt(cache, &new_debt_amount, account_attributes, &to_debt_feed);
+        let feed = self.get_token_price(new_debt_token, cache);
+        self.handle_isolated_debt(cache, &new_debt_amount, account_attributes, &feed);
 
         let flash_fee = new_debt_amount.clone() * debt_config.flashloan_fee.clone() / self.bps();
 
         let pool_address = cache.get_cached_pool_address(&borrow_position.asset_id);
+
+        self.validate_borrow_asset(
+            &debt_config,
+            &new_debt_token,
+            account_attributes,
+            &borrows,
+            cache,
+        );
 
         // Create the internal flash loan, taking the new debt amount and flash fee added as interest
         borrow_position = self
@@ -64,7 +85,7 @@ pub trait PositionBorrowModule:
                 borrow_position,
                 new_debt_amount.clone(),
                 flash_fee.clone(),
-                to_debt_feed.price.clone(),
+                feed.price.clone(),
             )
             .returns(ReturnsResult)
             .sync_call();
@@ -72,7 +93,7 @@ pub trait PositionBorrowModule:
         self.update_position_event(
             &new_debt_amount,
             &borrow_position,
-            OptionalValue::Some(to_debt_feed.price),
+            OptionalValue::Some(feed.price),
             OptionalValue::Some(&caller),
             OptionalValue::Some(&account_attributes),
         );

@@ -162,3 +162,7 @@ pub static ERROR_INITIAL_COLLATERAL_OVER_FINAL_COLLATERAL: &[u8] =
     b"Initial collateral is over the final collateral amount";
 
 pub static ERROR_CANNOT_CLEAN_BAD_DEBT: &[u8] = b"Cannot clean bad debt.";
+
+pub static ERROR_ASSETS_ARE_THE_SAME: &[u8] = b"Assets are the same.";
+
+pub static ERROR_INVALID_PAYMENTS: &[u8] = b"Invalid payments.";

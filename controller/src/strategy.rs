@@ -1,8 +1,8 @@
 multiversx_sc::imports!();
 
 use common_errors::{
-    ERROR_INITIAL_COLLATERAL_OVER_FINAL_COLLATERAL, ERROR_MULTIPLY_STRATEGY_REQUIRES_FLASH_LOAN,
-    ERROR_SWAP_DEBT_NOT_SUPPORTED,
+    ERROR_ASSETS_ARE_THE_SAME, ERROR_INITIAL_COLLATERAL_OVER_FINAL_COLLATERAL,
+    ERROR_INVALID_PAYMENTS, ERROR_SWAP_DEBT_NOT_SUPPORTED,
 };
 use common_events::AccountAttributes;
 
@@ -10,8 +10,7 @@ use crate::{
     cache::Cache,
     helpers, oracle, positions,
     proxy_ashswap::{AggregatorStep, TokenAmount},
-    proxy_pool, storage, utils, validation, ERROR_ASSET_NOT_BORROWABLE,
-    ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL, ERROR_SWAP_COLLATERAL_NOT_SUPPORTED,
+    storage, utils, validation, ERROR_SWAP_COLLATERAL_NOT_SUPPORTED,
 };
 
 #[multiversx_sc::module]
@@ -31,6 +30,7 @@ pub trait SnapModule:
     + positions::repay::PositionRepayModule
     + positions::vault::PositionVaultModule
     + positions::emode::EModeModule
+    + positions::update::PositionUpdateModule
 {
     #[payable]
     #[endpoint]
@@ -46,221 +46,155 @@ pub trait SnapModule:
         limits: OptionalValue<ManagedVec<TokenAmount<Self::Api>>>,
     ) {
         let mut cache = Cache::new(self);
-        let payment = self.call_value().egld_or_single_esdt();
-        let caller = self.blockchain().get_caller();
-        let e_mode = self.get_e_mode_category(e_mode_category);
-        self.ensure_e_mode_not_deprecated(&e_mode);
+        require!(collateral_token != debt_token, ERROR_ASSETS_ARE_THE_SAME);
+        // Get payments, account, caller and attributes
+        let (payments, maybe_account, caller, maybe_attributes) =
+            self.validate_supply_payment(true);
 
-        let debt_market_sc = self.require_asset_supported(debt_token);
+        require!(payments.len() == 1, ERROR_INVALID_PAYMENTS);
 
-        let collateral_oracle = self.token_oracle(collateral_token).get();
-        let debt_oracle = self.token_oracle(debt_token).get();
-        let payment_oracle = self.token_oracle(&payment.token_identifier).get();
+        let existing_position = maybe_account.is_some();
 
-        let mut collateral_config = cache.get_cached_asset_info(collateral_token);
-        let mut debt_config = cache.get_cached_asset_info(debt_token);
+        let initial_payment = payments.get(0);
+        self.validate_payment(&initial_payment);
 
-        let collateral_price_feed = self.get_token_price(collateral_token, &mut cache);
-        let debt_price_feed = self.get_token_price(debt_token, &mut cache);
+        let collateral_config = cache.get_cached_asset_info(collateral_token);
 
-        let (account, nft_attributes) = self.create_account_nft(
+        let (account_nonce, nft_attributes) = self.get_or_create_account(
             &caller,
             collateral_config.is_isolated(),
             false,
             OptionalValue::Some(e_mode_category),
-            Some(collateral_token.clone()),
-        );
-
-        let e_mode_id = nft_attributes.get_emode_id();
-        // Validate e-mode constraints first
-        let collateral_emode_config = self.get_token_e_mode_config(e_mode_id, &collateral_token);
-        let debt_emode_config = self.get_token_e_mode_config(e_mode_id, &debt_token);
-
-        self.ensure_e_mode_compatible_with_asset(&collateral_config, e_mode_id);
-        self.ensure_e_mode_compatible_with_asset(&debt_config, e_mode_id);
-
-        // Update asset config if NFT has active e-mode
-        self.apply_e_mode_to_asset_config(&mut collateral_config, &e_mode, collateral_emode_config);
-        self.apply_e_mode_to_asset_config(&mut debt_config, &e_mode, debt_emode_config);
-
-        require!(
-            collateral_config.can_supply(),
-            ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL
-        );
-
-        require!(debt_config.can_borrow(), ERROR_ASSET_NOT_BORROWABLE);
-
-        // Check if payment token matches debt token - potential optimization path
-        let is_payment_same_as_debt = payment.token_identifier == *debt_token;
-
-        // Handle initial collateral conversion
-        let initial_collateral = if is_payment_same_as_debt && collateral_token != debt_token {
-            // Don't convert payment to collateral yet, we'll handle it with the flash loan together
-            EgldOrEsdtTokenPayment::new(
-                collateral_token.clone(),
-                0,
-                BigUint::zero(), // Temporarily zero, will be added later
-            )
-        } else {
-            // Standard path - convert payment to collateral token
-            self.process_payment_to_collateral(
-                &payment,
-                &payment_oracle,
-                collateral_token,
-                &collateral_oracle,
-                &caller,
-                steps.clone().into_option(),
-                limits.clone().into_option(),
-            )
-        };
-
-        require!(
-            initial_collateral.amount <= final_collateral_amount || is_payment_same_as_debt,
-            ERROR_INITIAL_COLLATERAL_OVER_FINAL_COLLATERAL
-        );
-
-        // Calculate how much additional collateral we need
-        let initial_collateral_amount_dec =
-            if is_payment_same_as_debt && collateral_token != debt_token {
-                self.to_decimal(BigUint::zero(), collateral_price_feed.asset_decimals)
+            maybe_account,
+            maybe_attributes,
+            if collateral_config.is_isolated() {
+                Some(collateral_token.clone())
             } else {
-                self.to_decimal(
-                    initial_collateral.amount.clone(),
-                    collateral_price_feed.asset_decimals,
-                )
-            };
+                None
+            },
+        );
 
-        let final_collateral_amount_dec = self.to_decimal(
+        let collateral_oracle = cache.get_cached_oracle(collateral_token);
+
+        let collateral_price_feed = self.get_token_price(collateral_token, &mut cache);
+        let debt_price_feed = self.get_token_price(debt_token, &mut cache);
+        let debt_oracle = cache.get_cached_oracle(debt_token);
+        // Check if payment token matches debt token - potential optimization path
+        let is_payment_same_as_debt = initial_payment.token_identifier == *debt_token;
+        let is_payment_as_collateral = initial_payment.token_identifier == *collateral_token;
+        let mut total_collateral_needed_to_buy = self.to_decimal(
             final_collateral_amount,
             collateral_price_feed.asset_decimals,
         );
+        let mut collateral_to_be_supplied =
+            self.to_decimal(BigUint::zero(), collateral_price_feed.asset_decimals);
+        let mut debt_to_be_swapped =
+            self.to_decimal(BigUint::zero(), debt_price_feed.asset_decimals);
 
-        let initial_egld_collateral =
-            self.get_token_egld_value(&initial_collateral_amount_dec, &collateral_price_feed.price);
-        let final_egld_collateral =
-            self.get_token_egld_value(&final_collateral_amount_dec, &collateral_price_feed.price);
+        if is_payment_as_collateral {
+            let collateral_received = self.to_decimal(
+                initial_payment.amount.clone(),
+                collateral_price_feed.asset_decimals,
+            );
 
-        let required_collateral = final_egld_collateral - initial_egld_collateral;
-
-        // Convert the required collateral value to debt token amount
-        let total_debt_token_needed =
-            self.convert_egld_to_tokens(&required_collateral, &debt_price_feed);
-
-        // Account for the initial payment if it's the same as the debt token
-        let debt_amount_to_flash_loan = if is_payment_same_as_debt && collateral_token != debt_token
-        {
-            // Convert payment amount to decimal format for proper comparison
-            let payment_amount_dec =
-                self.to_decimal(payment.amount.clone(), debt_price_feed.asset_decimals);
-
-            // If payment already exceeds what we need, we don't need to flash loan anything
-            if payment_amount_dec >= total_debt_token_needed {
-                self.to_decimal(BigUint::zero(), debt_price_feed.asset_decimals)
-            } else {
-                // Otherwise, flash loan only the difference needed
-                total_debt_token_needed - payment_amount_dec
-            }
+            total_collateral_needed_to_buy -= &collateral_received;
+            collateral_to_be_supplied += &collateral_received
+        } else if is_payment_same_as_debt {
+            let debt_amount_received = self.to_decimal(
+                initial_payment.amount.clone(),
+                debt_price_feed.asset_decimals,
+            );
+            debt_to_be_swapped += &debt_amount_received;
         } else {
-            // Standard path - we need to flash loan the full amount
-            total_debt_token_needed
-        };
+            //Swap token
+            let payment_oracle = cache.get_cached_oracle(&initial_payment.token_identifier);
+            let received = self.convert_token_from_to(
+                &collateral_oracle,
+                collateral_token,
+                &initial_payment.token_identifier,
+                &initial_payment.amount,
+                &payment_oracle,
+                &caller,
+                steps.clone().into_option(),
+                limits.clone().into_option(),
+            );
+            let collateral_received =
+                self.to_decimal(received.amount, collateral_price_feed.asset_decimals);
 
-        let flash_fee =
-            debt_amount_to_flash_loan.clone() * debt_config.flashloan_fee.clone() / self.bps();
+            total_collateral_needed_to_buy -= &collateral_received;
+            collateral_to_be_supplied += &collateral_received;
+        }
 
-        self.validate_borrow_cap(
-            &debt_config,
-            &debt_amount_to_flash_loan,
-            debt_token,
-            &mut cache,
+        if existing_position {
+            self.sync_deposit_positions_interest(
+                account_nonce,
+                &mut cache,
+                true,
+                &nft_attributes,
+                false,
+            );
+
+            let supply_position = self.get_or_create_deposit_position(
+                account_nonce,
+                &collateral_config,
+                collateral_token,
+            );
+
+            require!(
+                supply_position.get_total_amount() < total_collateral_needed_to_buy,
+                ERROR_INITIAL_COLLATERAL_OVER_FINAL_COLLATERAL,
+            );
+
+            total_collateral_needed_to_buy -= &supply_position.get_total_amount();
+        }
+
+        let egld_equivalent_of_collateral = self.get_token_egld_value(
+            &total_collateral_needed_to_buy,
+            &collateral_price_feed.price,
         );
-
-        let mut borrow_position =
-            self.get_or_create_borrow_position(account.token_nonce, &debt_config, debt_token);
-
-        // Skip flash loan if amount is zero (payment was sufficient)
-        let needs_flash_loan = debt_amount_to_flash_loan
-            > self.to_decimal(BigUint::zero(), debt_price_feed.asset_decimals);
-
-        // For multiply strategy, we always require a flash loan component
+        let equivalent_debt_of_collateral_needed =
+            self.convert_egld_to_tokens(&egld_equivalent_of_collateral, &debt_price_feed);
+        // In case we have debt to be swapped, we deduct it from the equivalent debt of collateral needed since was paid by the user in the initial payment
         require!(
-            needs_flash_loan,
-            ERROR_MULTIPLY_STRATEGY_REQUIRES_FLASH_LOAN
+            debt_to_be_swapped < equivalent_debt_of_collateral_needed,
+            ERROR_INITIAL_COLLATERAL_OVER_FINAL_COLLATERAL
         );
+        let debt_token_to_flash = equivalent_debt_of_collateral_needed.clone() - debt_to_be_swapped;
+        let mut debt_config = cache.get_cached_asset_info(debt_token);
 
-        // Flash loan is always needed at this point
-        borrow_position = self
-            .tx()
-            .to(debt_market_sc)
-            .typed(proxy_pool::LiquidityPoolProxy)
-            .create_strategy(
-                borrow_position,
-                debt_amount_to_flash_loan.clone(),
-                flash_fee.clone(),
-                debt_price_feed.price.clone(),
-            )
-            .returns(ReturnsResult)
-            .sync_call();
-
-        let mut borrow_positions = self.borrow_positions(account.token_nonce);
-
-        self.update_position_event(
-            &debt_amount_to_flash_loan,
-            &borrow_position,
-            OptionalValue::Some(debt_price_feed.price),
-            OptionalValue::Some(&caller),
-            OptionalValue::Some(&nft_attributes),
-        );
-
-        borrow_positions.insert(debt_token.clone(), borrow_position);
-
-        // OPTIMIZATION POINT: Handle case where payment token is same as debt token
-        let final_collateral = if is_payment_same_as_debt && collateral_token != debt_token {
-            // Combine initial payment with flash loaned amount (if any) for a single conversion
-            let combined_debt_amount = if needs_flash_loan {
-                payment.amount.clone() + debt_amount_to_flash_loan.into_raw_units().clone()
-            } else {
-                // If we didn't need to flash loan, just use the payment amount
-                payment.amount.clone()
-            };
-
-            // Convert the combined amount in one operation to reduce swaps
-            self.convert_token_from_to(
-                &collateral_oracle,
-                collateral_token,
-                debt_token,
-                &combined_debt_amount,
-                &debt_oracle,
-                &caller,
-                steps.into_option(),
-                limits.into_option(),
-            )
-        } else {
-            // Standard path - just convert flash loaned amount
-            self.process_flash_loan_to_collateral(
-                &debt_token,
-                debt_amount_to_flash_loan.into_raw_units(),
-                collateral_token,
-                &initial_collateral.amount,
-                &collateral_oracle,
-                &debt_oracle,
-                &caller,
-                steps.into_option(),
-                limits.into_option(),
-            )
-        };
-
-        self.update_deposit_position(
-            account.token_nonce,
-            &final_collateral,
-            &collateral_config,
+        self.handle_create_borrow_strategy(
+            account_nonce,
+            debt_token,
+            debt_token_to_flash.into_raw_units(),
+            &mut debt_config,
             &caller,
             &nft_attributes,
             &mut cache,
         );
 
+        let mut final_collateral = self.convert_token_from_to(
+            &collateral_oracle,
+            collateral_token,
+            debt_token,
+            &equivalent_debt_of_collateral_needed.into_raw_units(),
+            &debt_oracle,
+            &caller,
+            steps.into_option(),
+            limits.into_option(),
+        );
+
+        final_collateral.amount += collateral_to_be_supplied.into_raw_units();
+
+        self.process_deposit(
+            &caller,
+            account_nonce,
+            nft_attributes,
+            &ManagedVec::from_single_item(final_collateral),
+            &mut cache,
+        );
+
         // Validate health factor after looping was created to verify integrity of healthy
-        self.validate_is_healthy(account.token_nonce, &mut cache, None);
+        self.validate_is_healthy(account_nonce, &mut cache, None);
     }
 
     /// Swaps debt token
@@ -308,30 +242,11 @@ pub trait SnapModule:
             ERROR_SWAP_DEBT_NOT_SUPPORTED
         );
 
-        // Validate e-mode constraints first
-        let e_mode = self.get_e_mode_category(account_attributes.get_emode_id());
-        self.ensure_e_mode_not_deprecated(&e_mode);
-
-        // Apply e-mode configuration
-        let asset_emode_config =
-            self.get_token_e_mode_config(account_attributes.get_emode_id(), &new_debt_token);
-        self.ensure_e_mode_compatible_with_asset(&debt_config, account_attributes.get_emode_id());
-        self.apply_e_mode_to_asset_config(&mut debt_config, &e_mode, asset_emode_config);
-
-        require!(debt_config.can_borrow(), ERROR_ASSET_NOT_BORROWABLE);
-
-        if account_attributes.is_isolated() {
-            require!(
-                debt_config.can_borrow_in_isolation(),
-                ERROR_SWAP_DEBT_NOT_SUPPORTED
-            );
-        }
-
         self.handle_create_borrow_strategy(
             account.token_nonce,
             new_debt_token,
             new_debt_amount_raw,
-            &debt_config,
+            &mut debt_config,
             &caller,
             &account_attributes,
             &mut cache,

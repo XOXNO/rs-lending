@@ -83,6 +83,7 @@ pub trait PositionUpdateModule:
         cache: &mut Cache<Self>,
         should_fetch_price: bool,
         account_attributes: &AccountAttributes<Self::Api>,
+        should_create_array: bool,
     ) -> ManagedVec<AccountPosition<Self::Api>> {
         let deposit_positions_map = self.deposit_positions(account_nonce);
         let mut updated_positions = ManagedVec::new();
@@ -106,7 +107,9 @@ pub trait PositionUpdateModule:
                 self.store_updated_position(account_nonce, &deposit_position);
             }
 
-            updated_positions.push(deposit_position.clone());
+            if should_create_array {
+                updated_positions.push(deposit_position.clone());
+            }
         }
 
         updated_positions

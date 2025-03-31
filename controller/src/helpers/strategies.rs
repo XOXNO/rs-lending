@@ -119,55 +119,6 @@ pub trait StrategiesModule:
         lp_received
     }
 
-    // Always the collateral token is the LSD token while debt token is the root main token of the LSD: such as xEGLD with EGLD or LXOXNO with XOXNO
-    fn process_payment_to_collateral(
-        &self,
-        payment: &EgldOrEsdtTokenPayment,
-        oracle_payment: &OracleProvider<Self::Api>,
-        wanted_collateral: &EgldOrEsdtTokenIdentifier,
-        oracle_collateral: &OracleProvider<Self::Api>,
-        caller: &ManagedAddress,
-        steps: Option<ManagedVec<AggregatorStep<Self::Api>>>,
-        limits: Option<ManagedVec<TokenAmount<Self::Api>>>,
-    ) -> EgldOrEsdtTokenPayment {
-        self.convert_token_from_to(
-            oracle_collateral,
-            wanted_collateral,
-            &payment.token_identifier,
-            &payment.amount,
-            oracle_payment,
-            caller,
-            steps,
-            limits,
-        )
-    }
-
-    fn process_flash_loan_to_collateral(
-        &self,
-        from_token: &EgldOrEsdtTokenIdentifier,
-        from_amount: &BigUint,
-        to_token: &EgldOrEsdtTokenIdentifier,
-        init_collateral_amount: &BigUint,
-        to_provider: &OracleProvider<Self::Api>,
-        from_provider: &OracleProvider<Self::Api>,
-        caller: &ManagedAddress,
-        steps: Option<ManagedVec<AggregatorStep<Self::Api>>>,
-        limits: Option<ManagedVec<TokenAmount<Self::Api>>>,
-    ) -> EgldOrEsdtTokenPayment {
-        let mut extra_collateral = self.convert_token_from_to(
-            to_provider,
-            to_token,
-            from_token,
-            from_amount,
-            from_provider,
-            caller,
-            steps,
-            limits,
-        );
-        extra_collateral.amount += init_collateral_amount;
-        extra_collateral
-    }
-
     fn get_wegld_token_id(&self) -> ManagedBuffer {
         ManagedBuffer::from(WEGLD_TICKER)
     }

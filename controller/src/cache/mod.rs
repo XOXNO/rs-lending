@@ -1,3 +1,4 @@
+use common_events::OracleProvider;
 use common_structs::{AssetConfig, PriceFeedShort};
 
 multiversx_sc::imports!();
@@ -14,6 +15,8 @@ where
         ManagedMapEncoded<C::Api, EgldOrEsdtTokenIdentifier<C::Api>, AssetConfig<C::Api>>,
     pub asset_pools:
         ManagedMapEncoded<C::Api, EgldOrEsdtTokenIdentifier<C::Api>, ManagedAddress<C::Api>>,
+    pub asset_oracles:
+        ManagedMapEncoded<C::Api, EgldOrEsdtTokenIdentifier<C::Api>, OracleProvider<C::Api>>,
     pub egld_price_feed: ManagedDecimal<C::Api, NumDecimals>,
     pub price_aggregator_sc: ManagedAddress<C::Api>,
     pub allow_unsafe_price: bool,
@@ -42,6 +45,11 @@ where
                 EgldOrEsdtTokenIdentifier<C::Api>,
                 ManagedAddress<C::Api>,
             >::new(),
+            asset_oracles: ManagedMapEncoded::<
+                C::Api,
+                EgldOrEsdtTokenIdentifier<C::Api>,
+                OracleProvider<C::Api>,
+            >::new(),
             egld_price_feed: sc_ref
                 .get_aggregator_price_feed(&EgldOrEsdtTokenIdentifier::egld(), &price_aggregator),
             price_aggregator_sc: price_aggregator,
@@ -67,6 +75,19 @@ where
         }
         let new = self._sc_ref.asset_config(&token_id).get();
         self.asset_configs.put(token_id, &new);
+        new
+    }
+
+    pub fn get_cached_oracle(
+        &mut self,
+        token_id: &EgldOrEsdtTokenIdentifier<C::Api>,
+    ) -> OracleProvider<C::Api> {
+        let existing = self.asset_oracles.contains(token_id);
+        if existing {
+            return self.asset_oracles.get(token_id);
+        }
+        let new = self._sc_ref.token_oracle(&token_id).get();
+        self.asset_oracles.put(token_id, &new);
         new
     }
 

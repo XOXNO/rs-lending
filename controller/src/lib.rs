@@ -196,6 +196,7 @@ pub trait Controller:
             &mut cache,
             false,
             &account_attributes,
+            true,
         );
 
         let (_, _, ltv_collateral) = self.calculate_collateral_values(&collaterals, &mut cache);
@@ -338,6 +339,7 @@ pub trait Controller:
             &mut cache,
             true,
             &account_attributes,
+            true,
         );
 
         let (borrows, _) =
@@ -427,6 +429,7 @@ pub trait Controller:
             &mut cache,
             true,
             &account_attributes,
+            true,
         );
 
         let (borrow_positions, _) =

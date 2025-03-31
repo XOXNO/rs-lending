@@ -1134,6 +1134,7 @@ impl LendingPoolTestState {
                     &mut cache,
                     true,
                     &account_attributes,
+                    true,
                 );
             });
     }

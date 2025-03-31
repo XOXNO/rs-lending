@@ -2,7 +2,7 @@ use common_structs::{AccountAttributes, AccountPosition, PriceFeedShort};
 
 use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validation};
 
-use super::{account, borrow, emode};
+use super::{account, borrow, emode, update};
 
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
@@ -17,6 +17,7 @@ pub trait PositionRepayModule:
     + helpers::math::MathsModule
     + account::PositionAccountModule
     + borrow::PositionBorrowModule
+    + update::PositionUpdateModule
     + common_math::SharedMathModule
     + emode::EModeModule
 {
@@ -143,6 +144,7 @@ pub trait PositionRepayModule:
     ) {
         let mut borrow_position =
             self.validate_borrow_position_existence(account_nonce, repay_token_id);
+
         self.update_isolated_debt_after_repayment(
             &mut borrow_position,
             feed,
