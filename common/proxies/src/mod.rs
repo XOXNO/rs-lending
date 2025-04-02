@@ -1,3 +1,4 @@
+#![no_std]
 pub mod proxy_accumulator;
 pub mod proxy_ashswap;
 pub mod proxy_legld;

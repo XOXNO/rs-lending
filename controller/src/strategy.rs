@@ -8,7 +8,8 @@ use common_events::AccountAttributes;
 
 use crate::{
     cache::Cache,
-    helpers, oracle, positions,
+    helpers::{self, strategies::ArdaSwapArgs},
+    oracle, positions,
     proxy_ashswap::{AggregatorStep, TokenAmount},
     storage, utils, validation, ERROR_SWAP_COLLATERAL_NOT_SUPPORTED,
 };
@@ -41,7 +42,7 @@ pub trait SnapModule:
         collateral_token: &EgldOrEsdtTokenIdentifier,
         final_collateral_amount: BigUint,
         debt_token: &EgldOrEsdtTokenIdentifier,
-        mode: ManagedBuffer,
+        _mode: ManagedBuffer,
         steps: OptionalValue<ManagedVec<AggregatorStep<Self::Api>>>,
         limits: OptionalValue<ManagedVec<TokenAmount<Self::Api>>>,
     ) {
@@ -49,7 +50,7 @@ pub trait SnapModule:
         require!(collateral_token != debt_token, ERROR_ASSETS_ARE_THE_SAME);
         // Get payments, account, caller and attributes
         let (payments, maybe_account, caller, maybe_attributes) =
-            self.validate_supply_payment(true);
+            self.validate_supply_payment(false);
 
         require!(payments.len() == 1, ERROR_INVALID_PAYMENTS);
 
@@ -293,8 +294,7 @@ pub trait SnapModule:
         current_collateral: &EgldOrEsdtTokenIdentifier,
         from_amount: BigUint,
         new_collateral: &EgldOrEsdtTokenIdentifier,
-        steps: OptionalValue<ManagedVec<AggregatorStep<Self::Api>>>,
-        limits: OptionalValue<ManagedVec<TokenAmount<Self::Api>>>,
+        steps: OptionalValue<ArdaSwapArgs<Self::Api>>,
     ) {
         let mut cache = Cache::new(self);
         let (mut payments, maybe_account, caller, maybe_attributes) =
@@ -314,12 +314,11 @@ pub trait SnapModule:
             ERROR_SWAP_COLLATERAL_NOT_SUPPORTED
         );
 
-        let received = self.common_swap_collateral(
+        let received = self.common_swap_collateral_arda(
             current_collateral,
             &from_amount,
             new_collateral,
             steps,
-            limits,
             account.token_nonce,
             &caller,
             &account_attributes,
@@ -339,6 +338,61 @@ pub trait SnapModule:
         // Make sure that after the swap the position is not becoming eligible for liquidation due to slippage
         self.validate_is_healthy(account.token_nonce, &mut cache, None);
     }
+
+    // #[payable]
+    // #[allow_multiple_var_args]
+    // #[endpoint(swapCollateral)]
+    // fn swap_collateral(
+    //     &self,
+    //     current_collateral: &EgldOrEsdtTokenIdentifier,
+    //     from_amount: BigUint,
+    //     new_collateral: &EgldOrEsdtTokenIdentifier,
+    //     steps: OptionalValue<ManagedVec<AggregatorStep<Self::Api>>>,
+    //     limits: OptionalValue<ManagedVec<TokenAmount<Self::Api>>>,
+    // ) {
+    //     let mut cache = Cache::new(self);
+    //     let (mut payments, maybe_account, caller, maybe_attributes) =
+    //         self.validate_supply_payment(true);
+    //     let account = maybe_account.unwrap();
+    //     let account_attributes = maybe_attributes.unwrap();
+
+    //     require!(
+    //         !account_attributes.is_isolated(),
+    //         ERROR_SWAP_COLLATERAL_NOT_SUPPORTED
+    //     );
+
+    //     let asset_info = cache.get_cached_asset_info(new_collateral);
+
+    //     require!(
+    //         !asset_info.is_isolated(),
+    //         ERROR_SWAP_COLLATERAL_NOT_SUPPORTED
+    //     );
+
+    //     let received = self.common_swap_collateral(
+    //         current_collateral,
+    //         &from_amount,
+    //         new_collateral,
+    //         steps,
+    //         limits,
+    //         account.token_nonce,
+    //         &caller,
+    //         &account_attributes,
+    //         &mut cache,
+    //     );
+
+    //     payments.push(received);
+
+    //     self.process_deposit(
+    //         &caller,
+    //         account.token_nonce,
+    //         account_attributes,
+    //         &payments,
+    //         &mut cache,
+    //     );
+
+    //     // Make sure that after the swap the position is not becoming eligible for liquidation due to slippage
+    //     self.validate_is_healthy(account.token_nonce, &mut cache, None);
+    // }
 
     /// Repays debt using collateral assets
     ///
@@ -408,6 +462,74 @@ pub trait SnapModule:
 
         // Make sure that after the swap the position is not becoming eligible for liquidation due to slippage
         self.validate_is_healthy(account.token_nonce, &mut cache, None);
+    }
+
+    fn common_swap_collateral_arda(
+        &self,
+        from_token: &EgldOrEsdtTokenIdentifier,
+        from_amount: &BigUint,
+        to_token: &EgldOrEsdtTokenIdentifier,
+        steps: OptionalValue<ArdaSwapArgs<Self::Api>>,
+        account_nonce: u64,
+        caller: &ManagedAddress,
+        account_attributes: &AccountAttributes<Self::Api>,
+        cache: &mut Cache<Self>,
+    ) -> EgldOrEsdtTokenPayment<Self::Api> {
+        // Retrieve deposit position for the given token
+        let deposit_positions = self.deposit_positions(account_nonce);
+        let maybe_deposit_position = deposit_positions.get(from_token);
+
+        require!(
+            maybe_deposit_position.is_some(),
+            "Token {} is not available for this account",
+            from_token
+        );
+
+        let mut deposit_position = maybe_deposit_position.unwrap();
+
+        if !account_attributes.is_vault() {
+            // Required to be in sync with the global index for accurate swaps to avoid extra interest during withdraw
+            self.update_position(
+                &cache.get_cached_pool_address(&deposit_position.asset_id),
+                &mut deposit_position,
+                OptionalValue::Some(self.get_token_price(&from_token, cache).price),
+            );
+
+            self.update_deposit_position_storage(account_nonce, from_token, &mut deposit_position);
+        }
+
+        let mut amount_to_swap = deposit_position.make_amount_decimal(from_amount);
+
+        // Cap the withdrawal amount to the available balance with interest
+        amount_to_swap = deposit_position.cap_amount(amount_to_swap);
+
+        let controller = self.blockchain().get_sc_address();
+        let withdraw_payment = EgldOrEsdtTokenPayment::new(
+            from_token.clone(),
+            0,
+            amount_to_swap.into_raw_units().clone(),
+        );
+
+        self.process_withdrawal(
+            account_nonce,
+            withdraw_payment,
+            &controller,
+            false,
+            None,
+            cache,
+            &account_attributes,
+            true,
+        );
+
+        let received = self.convert_token_from_to_arda(
+            &to_token,
+            &from_token,
+            &amount_to_swap.into_raw_units(),
+            &caller,
+            steps.into_option(),
+        );
+
+        received
     }
 
     fn common_swap_collateral(

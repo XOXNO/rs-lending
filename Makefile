@@ -6,7 +6,7 @@ POSITIONAL_MARKET_ACTIONS := createMarket createOracle upgradeMarket editAssetCo
 POSITIONAL_ID_ACTIONS := addEModeCategory
 POSITIONAL_ID_ASSET_ACTIONS := addAssetToEMode
 POSITIONAL_ORACLE_ACTIONS := addOracles
-POSITIONAL_ADDRESS_ACTIONS := verifyMarket
+POSITIONAL_ADDRESS_ACTIONS := verifyMarket setAshSwap
 SIMPLE_ACTIONS := deployPriceAggregator upgradePriceAggregator pauseAggregator unpauseAggregator \
                   deployTemplateMarket upgradeTemplateMarket \
                   deployController upgradeController \
@@ -73,6 +73,11 @@ help:
 		echo "    $$action <address1> [address2] [address3] ..."; \
 	done
 	@echo ""
+	@echo "  Commands with address:"
+	@for action in $(POSITIONAL_ADDRESS_ACTIONS); do \
+		echo "    $$action <address>"; \
+	done
+	@echo ""
 	@echo "Examples:"
 	@echo "  make devnet deployPriceAggregator"
 	@echo "  make devnet deployTemplateMarket"
@@ -81,6 +86,7 @@ help:
 	@echo "  make devnet addEModeCategory 1"
 	@echo "  make devnet addAssetToEMode 1 USDC"
 	@echo "  make devnet show EGLD"
+	@echo "  make devnet setAshSwap erd1..."
 
 # Define the networks as targets that accept a second argument
 $(NETWORKS):
@@ -304,4 +310,22 @@ mainnet-verify-market:
 	NETWORK=mainnet ./configs/script.sh verifyMarket $(ADDRESS)
 
 mainnet-verify-price-aggregator:
-	NETWORK=mainnet ./configs/script.sh verifyPriceAggregator 
+	NETWORK=mainnet ./configs/script.sh verifyPriceAggregator
+
+# Add new targets for setAshSwap - devnet
+devnet-setAshSwap:
+	@if [ -z "$(ADDRESS)" ]; then \
+		echo "Error: AshSwap address is required"; \
+		echo "Usage: make devnet-setAshSwap ADDRESS=<ash_swap_address>"; \
+		exit 1; \
+	fi
+	NETWORK=devnet ./configs/script.sh setAshSwap $(ADDRESS)
+
+# Add new targets for setAshSwap - mainnet
+mainnet-setAshSwap:
+	@if [ -z "$(ADDRESS)" ]; then \
+		echo "Error: AshSwap address is required"; \
+		echo "Usage: make mainnet-setAshSwap ADDRESS=<ash_swap_address>"; \
+		exit 1; \
+	fi
+	NETWORK=mainnet ./configs/script.sh setAshSwap $(ADDRESS) 

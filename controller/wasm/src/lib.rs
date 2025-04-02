@@ -82,8 +82,8 @@ multiversx_sc_wasm_adapter::endpoints! {
         getTokenPriceUSD => get_usd_price
         getTokenPriceEGLD => get_egld_price
         multiply => multiply
-        swapCollateral => swap_collateral
         swapDebt => swap_debt
+        swapCollateral => swap_collateral
         repayDebtWithCollateral => repay_debt_with_collateral
     )
 }

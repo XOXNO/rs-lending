@@ -210,6 +210,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "common-proxies"
+version = "0.0.0"
+dependencies = [
+ "common-structs",
+ "multiversx-sc",
+]
+
+[[package]]
 name = "common-structs"
 version = "0.0.0"
 dependencies = [
@@ -260,6 +268,7 @@ dependencies = [
  "common-errors",
  "common-events",
  "common-math",
+ "common-proxies",
  "common-structs",
  "flash-mock",
  "hex",

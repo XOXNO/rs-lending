@@ -429,7 +429,7 @@ deploy_controller() {
 }
 
 upgrade_controller() {
-    mxpy contract upgrade ${ADDRESS} --bytecode=${PROJECT_CONTROLLER} --recall-nonce \
+    mxpy --verbose contract upgrade ${ADDRESS} --bytecode=${PROJECT_CONTROLLER} --recall-nonce \
     --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
     --gas-limit=550000000 \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
@@ -755,6 +755,24 @@ claim_revenue() {
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 
+# Function to set AshSwap address
+set_ash_swap() {
+    local ash_swap_address=$1
+    
+    if [ -z "$ash_swap_address" ]; then
+        echo "Error: AshSwap address is required"
+        echo "Usage: setAshSwap <address>"
+        exit 1
+    fi
+    
+    echo "Setting AshSwap address to ${ash_swap_address}..."
+    
+    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=20000000 \
+    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    --function="setAshSwap" --arguments ${ash_swap_address} \
+    --proxy=${PROXY} --chain=${CHAIN_ID} --send
+}
+
 # Main CLI interface
 case "$1" in
     "deployMarketTemplate")
@@ -906,6 +924,14 @@ case "$1" in
     "verifyPriceAggregator")
         verifyPriceAggregatorContract
         ;;
+    "setAshSwap")
+        if [ -z "$2" ]; then
+            echo "Please specify an AshSwap address"
+            echo "Usage: setAshSwap <address>"
+            exit 1
+        fi
+        set_ash_swap "$2"
+        ;;
     *)
         echo "Usage: $0 COMMAND [ARGS]"
         echo ""
@@ -927,6 +953,7 @@ case "$1" in
         echo "  setDecimals MARKET             - Set decimals for market in price aggregator"
         echo "  networks                       - List available networks"
         echo "  claimRevenue                   - Claim revenue from all markets"
+        echo "  setAshSwap ADDRESS             - Set the AshSwap aggregator address"
         echo ""
         echo "Price Aggregator Commands:"
         echo "  deployPriceAggregator         - Deploy the price aggregator contract"

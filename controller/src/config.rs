@@ -2,11 +2,11 @@ multiversx_sc::imports!();
 
 use crate::helpers;
 use crate::oracle;
-use crate::proxies::*;
 use crate::storage;
 use crate::utils;
 use common_errors::*;
 pub use common_events::*;
+pub use common_proxies::*;
 
 #[multiversx_sc::module]
 pub trait ConfigModule:

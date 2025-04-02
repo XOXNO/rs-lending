@@ -8,7 +8,6 @@ pub mod config;
 pub mod helpers;
 pub mod oracle;
 pub mod positions;
-pub mod proxies;
 pub mod router;
 pub mod storage;
 pub mod strategy;
@@ -19,7 +18,7 @@ pub mod views;
 use cache::Cache;
 pub use common_errors::*;
 pub use common_structs::*;
-pub use proxies::*;
+pub use common_proxies::*;
 
 #[multiversx_sc::contract]
 pub trait Controller:

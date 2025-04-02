@@ -15,7 +15,9 @@ use price_aggregator::{
 use crate::{
     cache::Cache,
     helpers,
-    proxies::{proxy_legld, proxy_lxoxno, proxy_xegld},
+    proxy_legld,
+    proxy_lxoxno,
+    proxy_xegld,
     proxy_onedex::{self, State as StateOnedex},
     proxy_price_aggregator::PriceFeed,
     proxy_xexchange_pair::State as StateXExchange,

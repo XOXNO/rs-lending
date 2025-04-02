@@ -360,7 +360,7 @@ pub trait LiquidityModule:
             .raw_call(endpoint)
             .arguments_raw(arguments)
             .egld_or_single_esdt(&asset, 0, amount.into_raw_units())
-            .returns(ReturnsBackTransfers)
+            .returns(ReturnsBackTransfersReset)
             .sync_call();
 
         let mut post_flash_loan_cache = Cache::new(self);
