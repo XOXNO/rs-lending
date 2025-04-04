@@ -176,7 +176,6 @@ pub trait MathsModule: common_math::SharedMathModule {
         min_bonus: &ManagedDecimal<Self::Api, NumDecimals>,
         max_bonus: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-
         let k = self.to_decimal_bps(BigUint::from(K_SCALLING_FACTOR));
         // Calculate the health factor gap: (target_hf - current_hf) / target_hf
         let gap = self.div_half_up(
