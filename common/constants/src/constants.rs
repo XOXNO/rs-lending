@@ -29,6 +29,7 @@ pub const RAY_PRECISION: usize = 27;
 /// Basis points for 1 EGLD which is the base price for all assets or 1 USD
 pub const WAD: u128 = 1_000_000_000_000_000_000; // Represents 1 EGLD OR 1 USD
 pub const WAD_PRECISION: usize = 18;
+pub const WAD_HALF_PRECISION: usize = 9;
 
 pub const BPS: usize = 10_000; // 100%
 pub const BPS_PRECISION: usize = 4;

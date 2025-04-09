@@ -1,15 +1,13 @@
 multiversx_sc::imports!();
 
 use common_errors::{
-    ERROR_ASSETS_ARE_THE_SAME, ERROR_INITIAL_COLLATERAL_OVER_FINAL_COLLATERAL,
-    ERROR_INVALID_PAYMENTS, ERROR_SWAP_DEBT_NOT_SUPPORTED,
+    ERROR_ASSETS_ARE_THE_SAME, ERROR_INVALID_PAYMENTS, ERROR_SWAP_DEBT_NOT_SUPPORTED,
 };
 use common_events::AccountAttributes;
 
 use crate::{
-    cache::Cache,
-    helpers::{self, strategies::ArdaSwapArgs},
-    oracle, positions, storage, utils, validation, ERROR_SWAP_COLLATERAL_NOT_SUPPORTED,
+    cache::Cache, helpers, oracle, positions, storage, utils, validation,
+    ERROR_SWAP_COLLATERAL_NOT_SUPPORTED,
 };
 
 #[multiversx_sc::module]
@@ -21,7 +19,7 @@ pub trait SnapModule:
     + utils::LendingUtilsModule
     + common_events::EventsModule
     + common_math::SharedMathModule
-    + helpers::strategies::StrategiesModule
+    + helpers::swaps::SwapsModule
     + positions::account::PositionAccountModule
     + positions::supply::PositionDepositModule
     + positions::borrow::PositionBorrowModule
@@ -33,16 +31,15 @@ pub trait SnapModule:
 {
     #[payable]
     #[endpoint]
-    #[allow_multiple_var_args]
     fn multiply(
         &self,
         e_mode_category: u8,
         collateral_token: &EgldOrEsdtTokenIdentifier,
-        final_collateral_amount: BigUint,
+        debt_to_flash_loan: BigUint,
         debt_token: &EgldOrEsdtTokenIdentifier,
         _mode: ManagedBuffer,
-        steps: ArdaSwapArgs<Self::Api>,
-        steps_payment: OptionalValue<ArdaSwapArgs<Self::Api>>,
+        steps: ManagedArgBuffer<Self::Api>,
+        steps_payment: OptionalValue<ManagedArgBuffer<Self::Api>>,
     ) {
         let mut cache = Cache::new(self);
         require!(collateral_token != debt_token, ERROR_ASSETS_ARE_THE_SAME);
@@ -51,8 +48,6 @@ pub trait SnapModule:
             self.validate_supply_payment(false);
 
         require!(payments.len() == 1, ERROR_INVALID_PAYMENTS);
-
-        let existing_position = maybe_account.is_some();
 
         let initial_payment = payments.get(0);
         self.validate_payment(&initial_payment);
@@ -78,14 +73,11 @@ pub trait SnapModule:
         // Check if payment token matches debt token - potential optimization path
         let is_payment_same_as_debt = initial_payment.token_identifier == *debt_token;
         let is_payment_as_collateral = initial_payment.token_identifier == *collateral_token;
-        let mut total_collateral_needed_to_buy = self.to_decimal(
-            final_collateral_amount,
-            collateral_price_feed.asset_decimals,
-        );
+
         let mut collateral_to_be_supplied =
             self.to_decimal(BigUint::zero(), collateral_price_feed.asset_decimals);
         let mut debt_to_be_swapped =
-            self.to_decimal(BigUint::zero(), debt_price_feed.asset_decimals);
+            self.to_decimal(debt_to_flash_loan.clone(), debt_price_feed.asset_decimals);
 
         if is_payment_as_collateral {
             let collateral_received = self.to_decimal(
@@ -93,7 +85,6 @@ pub trait SnapModule:
                 collateral_price_feed.asset_decimals,
             );
 
-            total_collateral_needed_to_buy -= &collateral_received;
             collateral_to_be_supplied += &collateral_received
         } else if is_payment_same_as_debt {
             let debt_amount_received = self.to_decimal(
@@ -114,51 +105,15 @@ pub trait SnapModule:
             let collateral_received =
                 self.to_decimal(received.amount, collateral_price_feed.asset_decimals);
 
-            total_collateral_needed_to_buy -= &collateral_received;
             collateral_to_be_supplied += &collateral_received;
         }
 
-        if existing_position {
-            self.sync_deposit_positions_interest(
-                account_nonce,
-                &mut cache,
-                true,
-                &nft_attributes,
-                false,
-            );
-
-            let supply_position = self.get_or_create_deposit_position(
-                account_nonce,
-                &collateral_config,
-                collateral_token,
-            );
-
-            require!(
-                supply_position.get_total_amount() < total_collateral_needed_to_buy,
-                ERROR_INITIAL_COLLATERAL_OVER_FINAL_COLLATERAL,
-            );
-
-            total_collateral_needed_to_buy -= &supply_position.get_total_amount();
-        }
-
-        let egld_equivalent_of_collateral = self.get_token_egld_value(
-            &total_collateral_needed_to_buy,
-            &collateral_price_feed.price,
-        );
-        let equivalent_debt_of_collateral_needed =
-            self.convert_egld_to_tokens(&egld_equivalent_of_collateral, &debt_price_feed);
-        // In case we have debt to be swapped, we deduct it from the equivalent debt of collateral needed since was paid by the user in the initial payment
-        require!(
-            debt_to_be_swapped < equivalent_debt_of_collateral_needed,
-            ERROR_INITIAL_COLLATERAL_OVER_FINAL_COLLATERAL
-        );
-        let debt_token_to_flash = equivalent_debt_of_collateral_needed.clone() - debt_to_be_swapped;
         let mut debt_config = cache.get_cached_asset_info(debt_token);
 
         self.handle_create_borrow_strategy(
             account_nonce,
             debt_token,
-            debt_token_to_flash.into_raw_units(),
+            &debt_to_flash_loan,
             &mut debt_config,
             &caller,
             &nft_attributes,
@@ -168,7 +123,7 @@ pub trait SnapModule:
         let mut final_collateral = self.convert_token_from_to(
             collateral_token,
             debt_token,
-            &equivalent_debt_of_collateral_needed.into_raw_units(),
+            &debt_to_be_swapped.into_raw_units(),
             &caller,
             steps,
         );
@@ -200,14 +155,13 @@ pub trait SnapModule:
     /// * `new_debt_token` - The new debt token
     /// * `steps` - Optional swap steps for token conversion
     #[payable]
-    #[allow_multiple_var_args]
     #[endpoint(swapDebt)]
     fn swap_debt(
         &self,
         exisiting_debt_token: &EgldOrEsdtTokenIdentifier,
         new_debt_amount_raw: &BigUint,
         new_debt_token: &EgldOrEsdtTokenIdentifier,
-        steps: ArdaSwapArgs<Self::Api>,
+        steps: ManagedArgBuffer<Self::Api>,
     ) {
         require!(
             exisiting_debt_token != new_debt_token,
@@ -274,18 +228,18 @@ pub trait SnapModule:
     }
 
     #[payable]
-    #[allow_multiple_var_args]
     #[endpoint(swapCollateral)]
     fn swap_collateral(
         &self,
         current_collateral: &EgldOrEsdtTokenIdentifier,
         from_amount: BigUint,
         new_collateral: &EgldOrEsdtTokenIdentifier,
-        steps: ArdaSwapArgs<Self::Api>,
+        steps: ManagedArgBuffer<Self::Api>,
     ) {
         let mut cache = Cache::new(self);
         let (mut payments, maybe_account, caller, maybe_attributes) =
             self.validate_supply_payment(true);
+
         let account = maybe_account.unwrap();
         let account_attributes = maybe_attributes.unwrap();
 
@@ -301,7 +255,7 @@ pub trait SnapModule:
             ERROR_SWAP_COLLATERAL_NOT_SUPPORTED
         );
 
-        let received = self.common_swap_collateral_arda(
+        let received = self.common_swap_collateral(
             current_collateral,
             &from_amount,
             new_collateral,
@@ -344,14 +298,13 @@ pub trait SnapModule:
     /// * Success if debt is repaid and position remains healthy
     /// * Error if any requirements are not met
     #[payable]
-    #[allow_multiple_var_args]
     #[endpoint(repayDebtWithCollateral)]
     fn repay_debt_with_collateral(
         &self,
         from_token: &EgldOrEsdtTokenIdentifier,
         from_amount: &BigUint,
         to_token: &EgldOrEsdtTokenIdentifier,
-        steps: ArdaSwapArgs<Self::Api>,
+        steps: OptionalValue<ManagedArgBuffer<Self::Api>>,
     ) {
         let mut cache = Cache::new(self);
         let (mut payments, maybe_account, caller, maybe_attributes) =
@@ -359,11 +312,11 @@ pub trait SnapModule:
         let account = maybe_account.unwrap();
         let account_attributes = maybe_attributes.unwrap();
 
-        let received = self.common_swap_collateral_arda(
+        let received = self.common_swap_collateral(
             from_token,
             from_amount,
             to_token,
-            steps,
+            steps.into_option().unwrap_or(ManagedArgBuffer::new()),
             account.token_nonce,
             &caller,
             &account_attributes,
@@ -394,12 +347,12 @@ pub trait SnapModule:
         self.validate_is_healthy(account.token_nonce, &mut cache, None);
     }
 
-    fn common_swap_collateral_arda(
+    fn common_swap_collateral(
         &self,
         from_token: &EgldOrEsdtTokenIdentifier,
         from_amount: &BigUint,
         to_token: &EgldOrEsdtTokenIdentifier,
-        steps: ArdaSwapArgs<Self::Api>,
+        steps: ManagedArgBuffer<Self::Api>,
         account_nonce: u64,
         caller: &ManagedAddress,
         account_attributes: &AccountAttributes<Self::Api>,

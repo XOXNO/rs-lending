@@ -1,28 +1,12 @@
 use crate::{oracle, storage};
-use common_events::TokenOutData;
-use common_structs::{FeeMoment, FeeToken, SwapStep, TokenInData};
 
 use super::math;
 
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
-pub struct MathHelpers;
-
-#[type_abi]
-#[derive(TopDecode, NestedDecode)]
-pub struct ArdaSwapArgs<M: ManagedTypeApi> {
-    pub token_in_data: TokenInData<M>,
-    pub swap_path_a: ManagedVec<M, SwapStep<M>>,
-    pub swap_path_b: ManagedVec<M, SwapStep<M>>,
-    pub token_out_data: TokenOutData<M>,
-    pub min_amount_out: BigUint<M>,
-    pub fee_moment: FeeMoment,
-    pub fee_token: FeeToken,
-}
-
 #[multiversx_sc::module]
-pub trait StrategiesModule:
+pub trait SwapsModule:
     oracle::OracleModule + storage::Storage + math::MathsModule + common_math::SharedMathModule
 {
     fn convert_token_from_to(
@@ -31,12 +15,12 @@ pub trait StrategiesModule:
         from_token: &EgldOrEsdtTokenIdentifier,
         from_amount: &BigUint,
         caller: &ManagedAddress,
-        steps: ArdaSwapArgs<Self::Api>,
+        args: ManagedArgBuffer<Self::Api>,
     ) -> EgldOrEsdtTokenPayment {
         if to_token == from_token {
             return EgldOrEsdtTokenPayment::new(to_token.clone(), 0, from_amount.clone());
         }
-        self.swap_tokens(to_token, from_token, from_amount, caller, steps)
+        self.swap_tokens(to_token, from_token, from_amount, caller, args)
     }
 
     fn swap_tokens(
@@ -45,20 +29,13 @@ pub trait StrategiesModule:
         from_token: &EgldOrEsdtTokenIdentifier,
         from_amount: &BigUint,
         caller: &ManagedAddress,
-        args: ArdaSwapArgs<Self::Api>,
+        args: ManagedArgBuffer<Self::Api>,
     ) -> EgldOrEsdtTokenPayment {
-        // Set up the aggregator contract call
         let back_transfers = self
-            .arda_price_proxy(self.aggregator().get())
-            .swap(
-                args.token_in_data.clone(),
-                args.swap_path_a.clone(),
-                args.swap_path_b.clone(),
-                args.token_out_data.clone(),
-                args.min_amount_out.clone(),
-                args.fee_moment,
-                args.fee_token,
-            )
+            .tx()
+            .to(self.aggregator().get())
+            .raw_call(ManagedBuffer::new_from_bytes(b"swap"))
+            .arguments_raw(args)
             .egld_or_single_esdt(from_token, 0, from_amount)
             .returns(ReturnsBackTransfersReset)
             .sync_call();
@@ -102,29 +79,5 @@ pub trait StrategiesModule:
         }
 
         wanted_result
-    }
-
-    #[proxy]
-    fn arda_price_proxy(&self, sc_address: ManagedAddress) -> arda_price_proxy::ProxyTo<Self::Api>;
-}
-
-mod arda_price_proxy {
-    multiversx_sc::imports!();
-    use common_structs::{FeeMoment, FeeToken, SwapPath, TokenInData, TokenOutData};
-
-    #[multiversx_sc::proxy]
-    pub trait ArdaPriceContract {
-        #[payable("*")]
-        #[endpoint(swap)]
-        fn swap(
-            &self,
-            token_in_data: TokenInData<Self::Api>,
-            swap_path_a: SwapPath<Self::Api>,
-            swap_path_b: SwapPath<Self::Api>,
-            token_out_data: TokenOutData<Self::Api>,
-            min_amount_out: BigUint,
-            fee_moment: FeeMoment,
-            fee_token: FeeToken,
-        );
     }
 }

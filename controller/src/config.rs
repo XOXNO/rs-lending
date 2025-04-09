@@ -569,7 +569,7 @@ pub trait ConfigModule:
             liquidation_fees: self.to_decimal_bps(liquidation_fees),
             e_mode_enabled: old_config.e_mode_enabled,
             is_isolated_asset,
-            isolation_debt_ceiling_usd: self.to_decimal_bps(isolation_debt_ceiling_usd),
+            isolation_debt_ceiling_usd: self.to_decimal_wad(isolation_debt_ceiling_usd),
             is_siloed_borrowing,
             is_flashloanable,
             flashloan_fee: self.to_decimal_bps(flashloan_fee),

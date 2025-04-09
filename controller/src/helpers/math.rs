@@ -174,9 +174,13 @@ pub trait MathsModule: common_math::SharedMathModule {
         current_hf: &ManagedDecimal<Self::Api, NumDecimals>,
         target_hf: &ManagedDecimal<Self::Api, NumDecimals>,
         min_bonus: &ManagedDecimal<Self::Api, NumDecimals>,
-        max_bonus: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        // Capped at 15%
+        let max_bonus = self.to_decimal_bps(BigUint::from(MAX_LIQUIDATION_BONUS));
+
+        // Scaling factor of 200%
         let k = self.to_decimal_bps(BigUint::from(K_SCALLING_FACTOR));
+
         // Calculate the health factor gap: (target_hf - current_hf) / target_hf
         let gap = self.div_half_up(
             &(target_hf.clone() - current_hf.clone()),
@@ -237,7 +241,7 @@ pub trait MathsModule: common_math::SharedMathModule {
         let d = total_debt.clone().into_signed();
         let w = weighted_collateral.clone().into_signed();
 
-        // Normalize proportion_seized and liquidation_bonus to WAD
+        // Normalize proportion_seized and liquidation_bonus to WAD from BPS
         let p = proportion_seized.rescale(WAD_PRECISION);
         let b = liquidation_bonus.rescale(WAD_PRECISION);
 
@@ -257,8 +261,12 @@ pub trait MathsModule: common_math::SharedMathModule {
             &bps_plus_bonus,
             WAD_PRECISION,
         );
-        // Determine debt_to_repay, will fail if the ideal debt is negative
-        let debt_to_repay = self.get_min(&d_ideal.into_unsigned_or_fail(), &d_max);
+        // Determine debt_to_repay, will fall back to d_max if d_ideal is negative since it's not possible to be heatlhy anymore
+        let debt_to_repay = if d_ideal.sign() == Sign::Minus {
+            d_max
+        } else {
+            self.get_min(&d_ideal.into_unsigned_or_fail(), &d_max)
+        };
 
         // Compute seized_weighted
         let seized = self.mul_half_up(&p, &debt_to_repay, WAD_PRECISION);
@@ -362,10 +370,7 @@ pub trait MathsModule: common_math::SharedMathModule {
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
-        // Capped at 15%
-        let max_bonus = self.to_decimal_bps(BigUint::from(MAX_LIQUIDATION_BONUS));
-
-        let bonus = self.calculate_linear_bonus(current_hf, &target_hf, min_bonus, &max_bonus);
+        let bonus = self.calculate_linear_bonus(current_hf, &target_hf, min_bonus);
 
         self.compute_liquidation_details(
             total_collateral,

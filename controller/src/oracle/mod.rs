@@ -2,9 +2,8 @@ multiversx_sc::imports!();
 use common_constants::{
     EGLD_TICKER, PRICE_AGGREGATOR_ROUNDS_STORAGE_KEY, PRICE_AGGREGATOR_STATUS_STORAGE_KEY,
     SECONDS_PER_MINUTE, STATE_PAIR_ONEDEX_STORAGE_KEY, STATE_PAIR_STORAGE_KEY, USD_TICKER,
-    WAD_PRECISION, WEGLD_TICKER,
+    WAD_HALF_PRECISION, WAD_PRECISION, WEGLD_TICKER,
 };
-use common_events::RAY_PRECISION;
 use common_proxies::proxy_xexchange_pair;
 use common_structs::{ExchangeSource, OracleProvider, OracleType, PriceFeedShort, PricingMethod};
 use multiversx_sc::storage::StorageKey;
@@ -23,7 +22,7 @@ use crate::{
     proxy_xexchange_pair::State as StateXExchange,
     storage, ERROR_INVALID_EXCHANGE_SOURCE, ERROR_INVALID_ORACLE_TOKEN_TYPE,
     ERROR_NO_LAST_PRICE_FOUND, ERROR_ORACLE_TOKEN_NOT_FOUND, ERROR_PAIR_NOT_ACTIVE,
-    ERROR_PRICE_AGGREGATOR_NOT_SET, ERROR_UN_SAFE_PRICE_NOT_ALLOWED,
+    ERROR_PRICE_AGGREGATOR_NOT_SET,
 };
 
 #[multiversx_sc::module]
@@ -76,7 +75,7 @@ pub trait OracleModule:
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         match configs.oracle_type {
             OracleType::Derived => self._get_derived_price(configs, cache, false),
-            OracleType::Lp => self._get_safe_lp_price(configs, cache),
+            OracleType::Lp => self._get_safe_lp_price(configs, original_market_token, cache),
             OracleType::Normal => {
                 self._get_normal_price_in_egld(configs, original_market_token, cache)
             },
@@ -88,6 +87,7 @@ pub trait OracleModule:
     fn _get_safe_lp_price(
         &self,
         configs: &OracleProvider<Self::Api>,
+        token_id: &EgldOrEsdtTokenIdentifier,
         cache: &mut Cache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let (reserve_0, reserve_1, total_supply) =
@@ -141,7 +141,7 @@ pub trait OracleModule:
             &tolerances.first_upper_ratio,
             &tolerances.first_lower_ratio,
         ) {
-            safe_lp_price
+            off_chain_lp_price
         } else if self.is_within_anchor(
             &safe_lp_price,
             &off_chain_lp_price,
@@ -150,8 +150,12 @@ pub trait OracleModule:
         ) {
             avg_price
         } else {
-            require!(cache.allow_unsafe_price, ERROR_UN_SAFE_PRICE_NOT_ALLOWED);
-            off_chain_lp_price
+            require!(
+                cache.allow_unsafe_price,
+                "Price not in the safe range for {}",
+                token_id
+            );
+            avg_price
         }
     }
 
@@ -310,7 +314,13 @@ pub trait OracleModule:
         let aggregator_price =
             self._get_aggregator_price_if_applicable(configs, original_market_token, cache);
         let safe_price = self._get_safe_price_if_applicable(configs, original_market_token, cache);
-        self._calculate_final_price(aggregator_price, safe_price, configs, cache)
+        self._calculate_final_price(
+            aggregator_price,
+            safe_price,
+            configs,
+            original_market_token,
+            cache,
+        )
     }
 
     fn _get_aggregator_price_if_applicable(
@@ -350,6 +360,7 @@ pub trait OracleModule:
         aggregator_price_opt: OptionalValue<ManagedDecimal<Self::Api, NumDecimals>>,
         safe_price_opt: OptionalValue<ManagedDecimal<Self::Api, NumDecimals>>,
         configs: &OracleProvider<Self::Api>,
+        original_market_token: &EgldOrEsdtTokenIdentifier,
         cache: &mut Cache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         match (aggregator_price_opt, safe_price_opt) {
@@ -370,7 +381,11 @@ pub trait OracleModule:
                 ) {
                     (aggregator_price + safe_price) / 2
                 } else {
-                    require!(cache.allow_unsafe_price, ERROR_UN_SAFE_PRICE_NOT_ALLOWED);
+                    require!(
+                        cache.allow_unsafe_price,
+                        "Price not in the safe range for {}",
+                        original_market_token
+                    );
                     safe_price
                 }
             },
@@ -433,44 +448,69 @@ pub trait OracleModule:
     fn _get_lp_price(
         &self,
         configs: &OracleProvider<Self::Api>,
-        reserve_first: &ManagedDecimal<Self::Api, NumDecimals>,
-        reserve_first_decimals: usize,
-        reserve_second: &ManagedDecimal<Self::Api, NumDecimals>,
-        reserve_second_decimals: usize,
-        total_supply: &ManagedDecimal<Self::Api, NumDecimals>,
-        first_token_egld_value: &ManagedDecimal<Self::Api, NumDecimals>,
-        second_token_egld_value: &ManagedDecimal<Self::Api, NumDecimals>,
+        reserve_first: &ManagedDecimal<Self::Api, NumDecimals>, // Amount of Token A (scaled by WAD)
+        _reserve_first_decimals: usize,
+        reserve_second: &ManagedDecimal<Self::Api, NumDecimals>, // Amount of Token B (scaled by WAD)
+        _reserve_second_decimals: usize,
+        total_supply: &ManagedDecimal<Self::Api, NumDecimals>, // Amount of LP token (scaled by LP decimals)
+        first_token_egld_price: &ManagedDecimal<Self::Api, NumDecimals>, // Price A (EGLD/UnitA, scaled WAD)
+        second_token_egld_price: &ManagedDecimal<Self::Api, NumDecimals>, // Price B (EGLD/UnitB, scaled WAD)
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         if configs.exchange_source != ExchangeSource::XExchange {
             sc_panic!(ERROR_INVALID_EXCHANGE_SOURCE);
         }
 
-        // Calculate constant product: reserve_0 * reserve_1
-        let constant_product = self.mul_half_up(reserve_first, reserve_second, RAY_PRECISION);
+        // Ensure inputs are WAD - assuming reserve inputs and prices are already WAD based on caller
+        let price_a = first_token_egld_price;
+        let price_b = second_token_egld_price;
 
-        // Calculate price ratio: second_token_price / first_token_price
-        let price_ratio_x = self.div_half_up(
-            second_token_egld_value,
-            first_token_egld_value,
-            RAY_PRECISION,
-        );
+        // Calculate constant product using reserve amounts (scaled WAD)
+        // Result: AmountA*AmountB * WAD
+        let constant_product = self.mul_half_up(reserve_first, reserve_second, WAD_PRECISION);
 
-        // Calculate modified reserves
-        // X' = sqrt(X * Y * pB / pA)
-        let inner_x = self.mul_half_up(&constant_product, &price_ratio_x, RAY_PRECISION);
-        let x = self.to_decimal(inner_x.into_raw_units().sqrt(), reserve_first_decimals);
+        // Calculate price ratios (unitless, WAD)
+        let price_ratio_x = self.div_half_up(&price_b, &price_a, WAD_PRECISION); // pB / pA
+        let price_ratio_y = self.div_half_up(&price_a, &price_b, WAD_PRECISION); // pA / pB
 
-        // // Y' = sqrt(X * Y * pA / pB)
-        let inner_y = self.mul_half_up(&constant_product, &price_ratio_x, RAY_PRECISION);
-        let y = self.to_decimal(inner_y.into_raw_units().sqrt(), reserve_second_decimals);
+        // Calculate intermediate values for sqrt
+        // Inner = (AmountA*AmountB * WAD) * (Unitless * WAD) / WAD = AmountA*AmountB * WAD
+        let inner_x = self.mul_half_up(&constant_product, &price_ratio_x, WAD_PRECISION);
+        let inner_y = self.mul_half_up(&constant_product, &price_ratio_y, WAD_PRECISION);
 
-        // // Calculate LP token price: (X' * pA + Y' * pB) / total_supply
-        let value_first = self.mul_half_up(&x, first_token_egld_value, RAY_PRECISION);
-        let value_second = self.mul_half_up(&y, second_token_egld_value, RAY_PRECISION);
-        let lp_value_egld = value_first + value_second;
+        // --- Calculate modified reserve AMOUNT X' (x_prime) scaled WAD ---
+        // 1. Take BigUint sqrt
+        let sqrt_raw_x = inner_x.into_raw_units().sqrt(); // sqrt(AmtA*AmtB * 10^18) = sqrt(AmtA*AmtB) * 10^9
 
-        self.div_half_up(&lp_value_egld, total_supply, RAY_PRECISION)
-            .rescale(WAD_PRECISION)
+        // 2. Create decimal from sqrt_raw with 9 decimals (half WAD)
+        let sqrt_decimal_temp_x = self.to_decimal(sqrt_raw_x, WAD_HALF_PRECISION);
+
+        // 3. Create scaling factor 10^9 with 9 decimals (half WAD)
+        let ten_pow_9 = BigUint::from(10u64).pow(WAD_HALF_PRECISION as u32);
+        let sqrt_wad_factor = self.to_decimal(ten_pow_9, WAD_HALF_PRECISION);
+
+        // 4. Multiply to rescale back to WAD (18 decimals)
+        // Input scales are 9, target scale is 18.
+        let x_prime = self.mul_half_up(&sqrt_decimal_temp_x, &sqrt_wad_factor, WAD_PRECISION); // Amount Token A * WAD
+
+        // --- Calculate modified reserve AMOUNT Y' (y_prime) scaled WAD ---
+        let sqrt_raw_y = inner_y.into_raw_units().sqrt();
+        let sqrt_decimal_temp_y = self.to_decimal(sqrt_raw_y, WAD_HALF_PRECISION);
+        // Re-use sqrt_wad_factor
+        let y_prime = self.mul_half_up(&sqrt_decimal_temp_y, &sqrt_wad_factor, WAD_PRECISION); // Amount Token B * WAD
+
+        // --- Calculate total LP value in EGLD ---
+        // ValueA = (AmountA * WAD) * (PriceA * WAD) / WAD = ValueA * WAD
+        let value_a = self.mul_half_up(&x_prime, &price_a, WAD_PRECISION);
+        // ValueB = (AmountB * WAD) * (PriceB * WAD) / WAD = ValueB * WAD
+        let value_b = self.mul_half_up(&y_prime, &price_b, WAD_PRECISION);
+
+        let lp_total_value_egld = value_a + value_b; // Total Value * WAD
+
+        // --- Calculate final LP price in EGLD per LP token ---
+        // Ensure total_supply is scaled to WAD before division
+        let total_supply_wad = total_supply.rescale(WAD_PRECISION);
+        // Price = (Total Value * WAD) / (LP Supply * WAD) * WAD = Price * WAD
+        self.div_half_up(&lp_total_value_egld, &total_supply_wad, WAD_PRECISION)
     }
 
     /// Fetch price feed from aggregator, converting to decimal format.

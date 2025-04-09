@@ -102,6 +102,7 @@ pub trait PositionBorrowModule:
 
         borrow_position
     }
+    
     /// Manages a borrow operation, updating positions and handling isolated debt.
     /// Orchestrates borrowing logic with validations and storage updates.
     ///
@@ -414,7 +415,7 @@ pub trait PositionBorrowModule:
         amount_to_borrow_in_dollars: ManagedDecimal<Self::Api, NumDecimals>,
     ) {
         let current_debt = self.isolated_asset_debt_usd(token_id).get();
-        let total_debt = current_debt + amount_to_borrow_in_dollars;
+        let total_debt = current_debt + amount_to_borrow_in_dollars.clone();
 
         require!(
             total_debt <= asset_config.isolation_debt_ceiling_usd,

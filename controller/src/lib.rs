@@ -42,7 +42,7 @@ pub trait Controller:
     + strategy::SnapModule
     + helpers::math::MathsModule
     + common_math::SharedMathModule
-    + helpers::strategies::StrategiesModule
+    + helpers::swaps::SwapsModule
     + multiversx_sc_modules::default_issue_callbacks::DefaultIssueCallbacksModule
 {
     /// Initializes the lending pool contract with required addresses.
