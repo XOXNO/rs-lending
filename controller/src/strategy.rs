@@ -1,7 +1,8 @@
 multiversx_sc::imports!();
 
 use common_errors::{
-    ERROR_ASSETS_ARE_THE_SAME, ERROR_INVALID_PAYMENTS, ERROR_SWAP_DEBT_NOT_SUPPORTED,
+    ERROR_ASSETS_ARE_THE_SAME, ERROR_INVALID_PAYMENTS, ERROR_MULTIPLY_REQUIRE_EXTRA_STEPS,
+    ERROR_SWAP_DEBT_NOT_SUPPORTED,
 };
 use common_events::AccountAttributes;
 
@@ -53,6 +54,7 @@ pub trait SnapModule:
         self.validate_payment(&initial_payment);
 
         let collateral_config = cache.get_cached_asset_info(collateral_token);
+        let mut debt_config = cache.get_cached_asset_info(debt_token);
 
         let (account_nonce, nft_attributes) = self.get_or_create_account(
             &caller,
@@ -94,21 +96,20 @@ pub trait SnapModule:
             debt_to_be_swapped += &debt_amount_received;
         } else {
             //Swap token
-            require!(steps_payment.is_some(), ERROR_SWAP_DEBT_NOT_SUPPORTED);
-            let received = self.convert_token_from_to(
+            require!(steps_payment.is_some(), ERROR_MULTIPLY_REQUIRE_EXTRA_STEPS);
+            self.convert_token_from_to(
                 collateral_token,
                 &initial_payment.token_identifier,
                 &initial_payment.amount,
                 &caller,
                 steps_payment.into_option().unwrap(),
             );
-            let collateral_received =
-                self.to_decimal(received.amount, collateral_price_feed.asset_decimals);
+            // let collateral_received =
+            //     self.to_decimal(received.amount, collateral_price_feed.asset_decimals);
 
-            collateral_to_be_supplied += &collateral_received;
+            // Once Bernard mainnet protocol is live, we can uncomment this line
+            // collateral_to_be_supplied += &collateral_received;
         }
-
-        let mut debt_config = cache.get_cached_asset_info(debt_token);
 
         self.handle_create_borrow_strategy(
             account_nonce,

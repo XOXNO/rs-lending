@@ -1636,7 +1636,23 @@ pub fn set_oracle_token_data(
             OptionalValue::<usize>::None,
         )
         .run();
-
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(lending_sc)
+        .typed(proxy_lending_pool::ControllerProxy)
+        .set_token_oracle(
+            EgldOrEsdtTokenIdentifier::esdt(WEGLD_TOKEN.to_token_identifier()),
+            EGLD_DECIMALS as u8,
+            &wegld_usdc_pair_sc,
+            PricingMethod::Mix,
+            OracleType::Normal,
+            ExchangeSource::XExchange,
+            BigUint::from(MIN_FIRST_TOLERANCE),
+            BigUint::from(MIN_LAST_TOLERANCE),
+            OptionalValue::<usize>::None,
+        )
+        .run();
     world
         .tx()
         .from(OWNER_ADDRESS)

@@ -141,6 +141,8 @@ pub static ERROR_BULK_SUPPLY_NOT_SUPPORTED: &[u8] =
 
 pub static ERROR_SWAP_DEBT_NOT_SUPPORTED: &[u8] = b"Swap debt not supported.";
 
+pub static ERROR_MULTIPLY_REQUIRE_EXTRA_STEPS: &[u8] = b"Multiply requires extra steps.";
+
 pub static ERROR_INVALID_BORROW_RATE_PARAMS: &[u8] =
     b"Borrow rate parameters invalid: max_borrow_rate must be greater than base_borrow_rate.";
 pub static ERROR_INVALID_UTILIZATION_RANGE: &[u8] =
