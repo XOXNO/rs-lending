@@ -38,7 +38,7 @@ if [ "$NETWORK" = "devnet" ]; then
 else
     VERIFIER_URL="https://play-api.multiversx.com"
 fi
-DOCKER_IMAGE="multiversx/sdk-rust-contract-builder:v9.0.0"
+DOCKER_IMAGE="multiversx/sdk-rust-contract-builder:v10.0.0"
 
 # Check if market config file exists
 if [ ! -f "$MARKET_CONFIG_FILE" ]; then

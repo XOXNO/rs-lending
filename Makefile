@@ -246,7 +246,7 @@ list-networks:
 # Reproducible build target
 build:
 	rm -rf ./output-docker
-	mxpy contract reproducible-build --docker-image="multiversx/sdk-rust-contract-builder:v9.0.0"
+	mxpy contract reproducible-build --docker-image="multiversx/sdk-rust-contract-builder:v10.0.0"
 
 # Add new targets for E-Mode and asset configuration functions
 
