@@ -102,7 +102,7 @@ pub trait PositionBorrowModule:
 
         borrow_position
     }
-    
+
     /// Manages a borrow operation, updating positions and handling isolated debt.
     /// Orchestrates borrowing logic with validations and storage updates.
     ///

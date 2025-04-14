@@ -8,7 +8,8 @@ pub struct Cache<'a, C>
 where
     C: crate::oracle::OracleModule + crate::storage::Storage,
 {
-    _sc_ref: &'a C,
+    sc_ref: &'a C,
+
     pub prices_cache:
         ManagedMapEncoded<C::Api, EgldOrEsdtTokenIdentifier<C::Api>, PriceFeedShort<C::Api>>,
     pub asset_configs:
@@ -29,27 +30,11 @@ where
     pub fn new(sc_ref: &'a C) -> Self {
         let price_aggregator = sc_ref.price_aggregator_address().get();
         Cache {
-            _sc_ref: sc_ref,
-            prices_cache: ManagedMapEncoded::<
-                C::Api,
-                EgldOrEsdtTokenIdentifier<C::Api>,
-                PriceFeedShort<C::Api>,
-            >::new(),
-            asset_configs: ManagedMapEncoded::<
-                C::Api,
-                EgldOrEsdtTokenIdentifier<C::Api>,
-                AssetConfig<C::Api>,
-            >::new(),
-            asset_pools: ManagedMapEncoded::<
-                C::Api,
-                EgldOrEsdtTokenIdentifier<C::Api>,
-                ManagedAddress<C::Api>,
-            >::new(),
-            asset_oracles: ManagedMapEncoded::<
-                C::Api,
-                EgldOrEsdtTokenIdentifier<C::Api>,
-                OracleProvider<C::Api>,
-            >::new(),
+            sc_ref,
+            prices_cache: ManagedMapEncoded::new(),
+            asset_configs: ManagedMapEncoded::new(),
+            asset_pools: ManagedMapEncoded::new(),
+            asset_oracles: ManagedMapEncoded::new(),
             egld_price_feed: sc_ref
                 .get_aggregator_price_feed(&EgldOrEsdtTokenIdentifier::egld(), &price_aggregator),
             price_aggregator_sc: price_aggregator,
@@ -73,8 +58,10 @@ where
         if existing {
             return self.asset_configs.get(token_id);
         }
-        let new = self._sc_ref.asset_config(&token_id).get();
+
+        let new = self.sc_ref.asset_config(&token_id).get();
         self.asset_configs.put(token_id, &new);
+
         new
     }
 
@@ -86,8 +73,10 @@ where
         if existing {
             return self.asset_oracles.get(token_id);
         }
-        let new = self._sc_ref.token_oracle(&token_id).get();
+
+        let new = self.sc_ref.token_oracle(&token_id).get();
         self.asset_oracles.put(token_id, &new);
+
         new
     }
 
@@ -107,7 +96,8 @@ where
         if existing {
             return self.asset_pools.get(token_id);
         }
-        let address = self._sc_ref.pools_map(&token_id).get();
+
+        let address = self.sc_ref.pools_map(&token_id).get();
         self.asset_pools.put(token_id, &address);
 
         address

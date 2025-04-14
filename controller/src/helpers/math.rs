@@ -113,6 +113,7 @@ pub trait MathsModule: common_math::SharedMathModule {
         let tolerance_in_wad = (tolerance * &bps) / &bps;
         let upper = &bps + &tolerance_in_wad;
         let lower = &bps * &bps / &upper;
+
         (self.to_decimal_bps(upper), self.to_decimal_bps(lower))
     }
 
@@ -201,9 +202,7 @@ pub trait MathsModule: common_math::SharedMathModule {
         let bonus_increment = self.mul_half_up(&bonus_range, &clamped_term, RAY_PRECISION);
 
         // Final bonus: min_bonus + bonus_increment
-        let bonus = min_bonus.clone() + bonus_increment.rescale(BPS_PRECISION);
-
-        bonus
+        min_bonus.clone() + bonus_increment.rescale(BPS_PRECISION)
     }
 
     /// Computes debt repayment, bonus, and new health factor for a liquidation.
@@ -339,7 +338,7 @@ pub trait MathsModule: common_math::SharedMathModule {
             self.wad(),
         );
 
-        return (limit_debt, limit_bonus);
+        (limit_debt, limit_bonus)
     }
 
     /// Simulates a liquidation to estimate debt repayment, bonus, and new health factor.

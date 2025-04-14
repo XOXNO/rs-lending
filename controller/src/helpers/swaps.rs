@@ -20,6 +20,7 @@ pub trait SwapsModule:
         if to_token == from_token {
             return EgldOrEsdtTokenPayment::new(to_token.clone(), 0, from_amount.clone());
         }
+        
         self.swap_tokens(to_token, from_token, from_amount, caller, args)
     }
 

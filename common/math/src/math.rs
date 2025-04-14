@@ -96,38 +96,47 @@ pub trait SharedMathModule {
         ManagedDecimalSigned::from_raw_units(rounded_quotient, precision)
     }
 
+    #[inline]
     fn to_decimal_wad(self, value: BigUint) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal(value, WAD_PRECISION)
     }
 
+    #[inline]
     fn wad_zero(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal_wad(BigUint::zero())
     }
 
+    #[inline]
     fn ray_zero(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal_ray(BigUint::zero())
     }
 
+    #[inline]
     fn to_decimal_ray(self, value: BigUint) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal(value, RAY_PRECISION)
     }
 
+    #[inline]
     fn to_decimal_bps(self, value: BigUint) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal(value, BPS_PRECISION)
     }
 
+    #[inline]
     fn ray(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal(BigUint::from(RAY), RAY_PRECISION)
     }
 
+    #[inline]
     fn wad(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal(BigUint::from(WAD), WAD_PRECISION)
     }
 
+    #[inline]
     fn bps(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal(BigUint::from(BPS), BPS_PRECISION)
     }
 
+    #[inline]
     fn to_decimal(
         self,
         value: BigUint,

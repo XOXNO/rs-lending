@@ -85,6 +85,7 @@ pub trait EventsModule {
     ///
     /// # Returns
     /// - Nothing.
+    #[inline(always)]
     fn update_market_state_event(
         &self,
         timestamp: u64,

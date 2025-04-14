@@ -17,8 +17,8 @@ pub mod views;
 
 use cache::Cache;
 pub use common_errors::*;
-pub use common_structs::*;
 pub use common_proxies::*;
+pub use common_structs::*;
 
 #[multiversx_sc::contract]
 pub trait Controller:

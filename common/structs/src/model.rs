@@ -82,6 +82,7 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
     ///
     /// # Returns
     /// - `AccountPosition`: A new AccountPosition instance.
+    #[inline(always)]
     pub fn new(
         position_type: AccountPositionType,
         asset_id: EgldOrEsdtTokenIdentifier<M>,
@@ -114,6 +115,7 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
     ///
     /// # Returns
     /// - `ManagedDecimal<M, NumDecimals>`: The total amount in the position.
+    #[inline]
     pub fn get_total_amount(&self) -> ManagedDecimal<M, NumDecimals> {
         self.principal_amount.clone() + self.interest_accrued.clone()
     }
@@ -129,18 +131,22 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
         }
     }
 
+    #[inline]
     pub fn make_amount_decimal(&self, amount: &BigUint<M>) -> ManagedDecimal<M, NumDecimals> {
         ManagedDecimal::from_raw_units(amount.clone(), self.principal_amount.scale())
     }
 
+    #[inline]
     pub fn zero_decimal(&self) -> ManagedDecimal<M, NumDecimals> {
         ManagedDecimal::from_raw_units(BigUint::zero(), self.principal_amount.scale())
     }
 
+    #[inline]
     pub fn can_remove(&self) -> bool {
         self.get_total_amount().eq(&self.zero_decimal())
     }
 }
+
 /// AssetConfig defines the risk and usage configuration for an asset in the market.
 /// It includes risk parameters such as LTV, liquidation thresholds, and fees,
 /// as well as supply/borrow caps and flags for collateral usage, isolation, and flashloan support.
@@ -165,34 +171,42 @@ pub struct AssetConfig<M: ManagedTypeApi> {
 }
 
 impl<M: ManagedTypeApi> AssetConfig<M> {
+    #[inline]
     pub fn can_supply(&self) -> bool {
         self.is_collateralizable
     }
 
+    #[inline]
     pub fn can_borrow(&self) -> bool {
         self.is_borrowable
     }
 
+    #[inline]
     pub fn is_isolated(&self) -> bool {
         self.is_isolated_asset
     }
 
+    #[inline]
     pub fn is_siloed_borrowing(&self) -> bool {
         self.is_siloed_borrowing
     }
 
+    #[inline]
     pub fn has_emode(&self) -> bool {
         self.e_mode_enabled
     }
 
+    #[inline]
     pub fn can_borrow_in_isolation(&self) -> bool {
         self.isolation_borrow_enabled
     }
 
+    #[inline]
     pub fn can_flashloan(&self) -> bool {
         self.is_flashloanable
     }
 
+    #[inline]
     pub fn get_flash_loan_fee(&self) -> ManagedDecimal<M, NumDecimals> {
         self.flashloan_fee.clone()
     }
@@ -222,10 +236,12 @@ pub struct EModeCategory<M: ManagedTypeApi> {
 }
 
 impl<M: ManagedTypeApi> EModeCategory<M> {
+    #[inline]
     pub fn is_deprecated(&self) -> bool {
         self.is_deprecated
     }
 
+    #[inline]
     pub fn get_id(&self) -> u8 {
         self.category_id
     }
@@ -240,10 +256,12 @@ pub struct EModeAssetConfig {
 }
 
 impl EModeAssetConfig {
+    #[inline]
     pub fn can_borrow(&self) -> bool {
         self.is_borrowable
     }
 
+    #[inline]
     pub fn can_supply(&self) -> bool {
         self.is_collateralizable
     }
@@ -262,22 +280,27 @@ pub struct AccountAttributes<M: ManagedTypeApi> {
 }
 
 impl<M: ManagedTypeApi> AccountAttributes<M> {
+    #[inline]
     pub fn is_vault(&self) -> bool {
         self.is_vault_position
     }
 
+    #[inline]
     pub fn has_emode(&self) -> bool {
         self.e_mode_category_id > 0
     }
 
+    #[inline]
     pub fn get_emode_id(&self) -> u8 {
         self.e_mode_category_id
     }
 
+    #[inline]
     pub fn is_isolated(&self) -> bool {
         self.is_isolated_position
     }
 
+    #[inline]
     pub fn get_isolated_token(&self) -> EgldOrEsdtTokenIdentifier<M> {
         self.isolated_token.clone().into_option().unwrap()
     }
@@ -368,8 +391,6 @@ pub struct OraclePriceFluctuation<M: ManagedTypeApi> {
     pub last_lower_ratio: ManagedDecimal<M, NumDecimals>,
 }
 
-
-
 #[type_abi]
 #[derive(TopEncode)]
 pub struct SwapEvent<M: ManagedTypeApi> {
@@ -388,9 +409,7 @@ type TokenNonce = u64;
 pub type SwapPath<M> = ManagedVec<M, SwapStep<M>>;
 
 #[type_abi]
-#[derive(
-    ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode, PartialEq, Clone,
-)]
+#[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode, PartialEq, Clone)]
 pub struct SwapStep<M: ManagedTypeApi> {
     kind: SwapStepKind,
     address: ManagedAddress<M>,
@@ -398,9 +417,7 @@ pub struct SwapStep<M: ManagedTypeApi> {
 }
 
 #[type_abi]
-#[derive(
-    ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode, PartialEq, Clone,
-)]
+#[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode, PartialEq, Clone)]
 pub enum SwapStepKind {
     WrapEgld,
     UnwrapEgld,

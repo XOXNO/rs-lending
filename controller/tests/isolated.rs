@@ -309,9 +309,10 @@ fn test_borrow_asset_as_isolated_debt_celling_liquidation_debt_paid() {
     state.clean_bad_debt(2);
     let borrow_amount = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
     println!("borrow_amount: {:?}", borrow_amount);
-    assert_eq!(borrow_amount, ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS))
-
-    
+    assert_eq!(
+        borrow_amount,
+        ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS)
+    )
 }
 
 #[test]

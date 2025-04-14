@@ -19,7 +19,11 @@ pub trait PositionVaultModule:
     + account::PositionAccountModule
 {
     /// Validates vault account and checks vault state.
-    fn validate_vault_account(&self, account_attributes: &AccountAttributes<Self::Api>, expect_vault: bool) {
+    fn validate_vault_account(
+        &self,
+        account_attributes: &AccountAttributes<Self::Api>,
+        expect_vault: bool,
+    ) {
         match expect_vault {
             true => require!(account_attributes.is_vault(), ERROR_VAULT_ALREADY_ENABLED),
             false => require!(!account_attributes.is_vault(), ERROR_VAULT_ALREADY_DISABLED),

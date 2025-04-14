@@ -218,7 +218,7 @@ fn test_vault_liquidation() {
                 EGLD_DECIMALS
             )
     );
-    state.clean_bad_debt(1);  
+    state.clean_bad_debt(1);
     let debt = state.get_total_borrow_in_egld(1);
     println!("debt: {:?}", debt);
     assert!(debt == ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS));

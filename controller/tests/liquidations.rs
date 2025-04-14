@@ -293,7 +293,9 @@ fn test_liquidation_bad_debt_multi_asset() {
     println!("Health Factor {:?}", health_factor);
     assert!(borrowed_after == ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
     assert!(collateral_after == ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
-    assert!(collateral_weighted == ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
+    assert!(
+        collateral_weighted == ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS)
+    );
 }
 
 #[test]

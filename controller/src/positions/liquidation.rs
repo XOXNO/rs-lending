@@ -55,8 +55,13 @@ pub trait PositionLiquidationModule:
         >,
     ) {
         let mut refunds = ManagedVec::new();
-        let deposit_positions =
-            self.sync_deposit_positions_interest(account_nonce, cache, false, &account_attributes, true);
+        let deposit_positions = self.sync_deposit_positions_interest(
+            account_nonce,
+            cache,
+            false,
+            &account_attributes,
+            true,
+        );
         let (borrow_positions, map_debt_indexes) =
             self.sync_borrow_positions_interest(account_nonce, cache, false, true);
 
