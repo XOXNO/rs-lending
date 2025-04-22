@@ -26,7 +26,7 @@ pub trait ValidationModule:
     /// - `ERROR_ASSET_NOT_SUPPORTED`: If the asset has no liquidity pool.
     /// - `ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO`: If the amount is zero or negative.
     fn validate_payment(&self, payment: &EgldOrEsdtTokenPayment<Self::Api>) {
-        self.require_asset_supported(&payment.token_identifier);
+        let _ = self.require_asset_supported(&payment.token_identifier);
         self.require_amount_greater_than_zero(&payment.amount);
     }
 
@@ -43,6 +43,7 @@ pub trait ValidationModule:
     fn require_asset_supported(&self, asset: &EgldOrEsdtTokenIdentifier) -> ManagedAddress {
         let map = self.pools_map(asset);
         require!(!map.is_empty(), ERROR_ASSET_NOT_SUPPORTED);
+
         map.get()
     }
 
@@ -60,6 +61,7 @@ pub trait ValidationModule:
             ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO
         );
     }
+
     // --- Helper Functions ---
 
     /// Validates shard compatibility for flash loans.

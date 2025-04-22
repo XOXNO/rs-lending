@@ -30,24 +30,28 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
         e_mode_category: OptionalValue<u8>,
         isolated_token: Option<EgldOrEsdtTokenIdentifier>,
     ) -> (EsdtTokenPayment, AccountAttributes<Self::Api>) {
+        let e_mode_category_id = if is_isolated {
+            0
+        } else {
+            e_mode_category.into_option().unwrap_or(0)
+        };
+
+        let isolated_token = if is_isolated {
+            ManagedOption::from(isolated_token)
+        } else {
+            ManagedOption::none()
+        };
+
         let attributes = AccountAttributes {
             is_isolated_position: is_isolated,
-            e_mode_category_id: if is_isolated {
-                0
-            } else {
-                e_mode_category.into_option().unwrap_or(0)
-            },
+            e_mode_category_id,
             is_vault_position,
-            isolated_token: if is_isolated {
-                ManagedOption::from(isolated_token)
-            } else {
-                ManagedOption::none()
-            },
+            isolated_token,
         };
 
         let nft_token_payment = self
             .account_token()
-            .nft_create::<AccountAttributes<Self::Api>>(BigUint::from(1u64), &attributes);
+            .nft_create(BigUint::from(1u64), &attributes);
 
         let _ = self
             .tx()
@@ -66,10 +70,17 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
                 )),
             );
 
-        self.account_token()
-            .send_payment(caller, &nft_token_payment);
+        self.tx()
+            .to(caller)
+            .single_esdt(
+                &nft_token_payment.token_identifier,
+                nft_token_payment.token_nonce,
+                &nft_token_payment.amount,
+            )
+            .transfer();
 
-        self.account_positions()
+        let _ = self
+            .account_positions()
             .insert(nft_token_payment.token_nonce);
         self.account_attributes(nft_token_payment.token_nonce)
             .set(attributes.clone());
@@ -95,21 +106,22 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
         is_isolated: bool,
         is_vault: bool,
         e_mode_category: OptionalValue<u8>,
-        existing_account: Option<EsdtTokenPayment<Self::Api>>,
+        maybe_account: Option<EsdtTokenPayment<Self::Api>>,
         maybe_attributes: Option<AccountAttributes<Self::Api>>,
-        mayne_isolated_token: Option<EgldOrEsdtTokenIdentifier>,
+        maybe_isolated_token: Option<EgldOrEsdtTokenIdentifier>,
     ) -> (u64, AccountAttributes<Self::Api>) {
-        if let Some(account) = existing_account {
-            (account.token_nonce, maybe_attributes.unwrap())
-        } else {
-            let (payment, account_attributes) = self.create_account_nft(
-                caller,
-                is_isolated,
-                is_vault,
-                e_mode_category,
-                mayne_isolated_token,
-            );
-            (payment.token_nonce, account_attributes)
+        match maybe_account {
+            Some(account) => (account.token_nonce, maybe_attributes.unwrap()),
+            None => {
+                let (payment, account_attributes) = self.create_account_nft(
+                    caller,
+                    is_isolated,
+                    is_vault,
+                    e_mode_category,
+                    maybe_isolated_token,
+                );
+                (payment.token_nonce, account_attributes)
+            },
         }
     }
 
@@ -132,7 +144,7 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
             account_payment.token_nonce,
         );
 
-        data.decode_attributes::<AccountAttributes<Self::Api>>()
+        data.decode_attributes()
     }
 
     /// Ensures an account nonce is active in the market.

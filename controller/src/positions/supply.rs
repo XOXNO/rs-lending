@@ -252,8 +252,8 @@ pub trait PositionDepositModule:
             self.require_active_account(first_payment.token_nonce);
 
             let account_payment = first_payment.clone().unwrap_esdt();
-
             let account_attributes = self.nft_attributes(&account_payment);
+
             // Refund NFT
             self.tx().to(&caller).payment(&account_payment).transfer();
             (
@@ -269,6 +269,7 @@ pub trait PositionDepositModule:
                 !require_account_payment,
                 ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS
             );
+
             (payments.clone(), None, caller, None)
         }
     }
@@ -288,13 +289,15 @@ pub trait PositionDepositModule:
         position_attributes: &AccountAttributes<Self::Api>,
     ) {
         let is_isolated = asset_info.is_isolated() || position_attributes.is_isolated();
-        if is_isolated {
-            require!(
-                asset_info.is_isolated() == position_attributes.is_isolated()
-                    && position_attributes.get_isolated_token() == *token_id,
-                ERROR_MIX_ISOLATED_COLLATERAL
-            );
+        if !is_isolated {
+            return;
         }
+
+        require!(
+            asset_info.is_isolated() == position_attributes.is_isolated()
+                && position_attributes.get_isolated_token() == *token_id,
+            ERROR_MIX_ISOLATED_COLLATERAL
+        );
     }
 
     /// Retrieves total supply amount from the liquidity pool.
@@ -357,6 +360,7 @@ pub trait PositionDepositModule:
         cache: &mut Cache<Self>,
     ) {
         self.require_active_account(account_nonce);
+
         let mut deposit_positions = self.deposit_positions(account_nonce);
         let dp_option = deposit_positions.get(asset_id);
         require!(dp_option.is_some(), ERROR_POSITION_NOT_FOUND);

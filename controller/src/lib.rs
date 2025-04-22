@@ -105,13 +105,16 @@ pub trait Controller:
         let first_asset_info = cache.get_cached_asset_info(&first_collateral.token_identifier);
 
         // If the asset is isolated, we can only supply one collateral not a bulk
-        require!(
-            first_asset_info.is_isolated() && collaterals.len() == 1
-                || !first_asset_info.is_isolated(),
-            ERROR_BULK_SUPPLY_NOT_SUPPORTED
-        );
+        if first_asset_info.is_isolated() {
+            require!(collaterals.len() == 1, ERROR_BULK_SUPPLY_NOT_SUPPORTED);
+        }
 
         // Get or create account position
+        let maybe_isolated_token = if first_asset_info.is_isolated() {
+            Some(first_collateral.token_identifier.clone())
+        } else {
+            None
+        };
         let (account_nonce, account_attributes) = self.get_or_create_account(
             &caller,
             first_asset_info.is_isolated(),
@@ -119,11 +122,7 @@ pub trait Controller:
             e_mode_category,
             maybe_account,
             maybe_attributes,
-            if first_asset_info.is_isolated() {
-                Some(first_collateral.token_identifier.clone())
-            } else {
-                None
-            },
+            maybe_isolated_token,
         );
 
         self.validate_vault_consistency(&account_attributes, is_vault);
