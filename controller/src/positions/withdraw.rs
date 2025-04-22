@@ -116,20 +116,19 @@ pub trait PositionWithdrawModule:
         feed: &PriceFeedShort<Self::Api>,
         deposit_position: &mut AccountPosition<Self::Api>,
         is_swap: bool,
-    ) -> AccountPosition<Self::Api> {
+    ) {
         self.update_vault_supplied_amount(token_id, amount, false);
+
         deposit_position.principal_amount -= amount;
 
         if is_liquidation && liquidation_fee_opt.is_some() {
-            let liquidation_fee = liquidation_fee_opt.unwrap();
+            let liquidation_fee = unsafe { liquidation_fee_opt.unwrap_unchecked() };
             let amount_after_fee = amount.clone() - liquidation_fee.clone();
             self.transfer_withdrawn_assets(caller, token_id, &amount_after_fee, is_swap);
             self.transfer_liquidation_fee(pool_address, token_id, &liquidation_fee, feed);
         } else {
             self.transfer_withdrawn_assets(caller, token_id, amount, is_swap);
         }
-
-        deposit_position.clone()
     }
 
     /// Executes a market withdrawal via the liquidity pool.
@@ -306,9 +305,9 @@ pub trait PositionWithdrawModule:
     ) {
         let mut deposit_positions = self.deposit_positions(account_nonce);
         if position.can_remove() {
-            deposit_positions.remove(token_id);
+            let _ = deposit_positions.remove(token_id);
         } else {
-            deposit_positions.insert(token_id.clone(), position.clone());
+            let _ = deposit_positions.insert(token_id.clone(), position.clone());
         }
     }
 }

@@ -155,7 +155,8 @@ pub trait Controller:
         // Process each withdrawal
         for collateral in collaterals {
             self.validate_payment(&collateral);
-            self.process_withdrawal(
+
+            let _ = self.process_withdrawal(
                 account_payment.token_nonce,
                 collateral,
                 &caller,
@@ -200,7 +201,6 @@ pub trait Controller:
         let (_, _, ltv_collateral) = self.calculate_collateral_values(&collaterals, &mut cache);
 
         let is_bulk_borrow = borrowed_tokens.len() > 1;
-
         let (mut borrows, mut borrow_index_mapper) = self.sync_borrow_positions_interest(
             account_payment.token_nonce,
             &mut cache,
@@ -237,12 +237,13 @@ pub trait Controller:
     fn repay(&self, account_nonce: u64) {
         let mut cache = Cache::new(self);
         let payments = self.call_value().all_transfers();
-        let caller = self.blockchain().get_caller();
         self.require_active_account(account_nonce);
-        let account_attributes = self.account_attributes(account_nonce).get();
 
+        let account_attributes = self.account_attributes(account_nonce).get();
+        let caller = self.blockchain().get_caller();
         for payment in payments.iter() {
             self.validate_payment(&payment);
+
             let feed = self.get_token_price(&payment.token_identifier, &mut cache);
             let payment_decimal = self.to_decimal(payment.amount.clone(), feed.asset_decimals);
             let egld_value = self.get_token_egld_value(&payment_decimal, &feed.price);
@@ -330,6 +331,7 @@ pub trait Controller:
     ) -> MultiValue2<ManagedVec<AccountPosition<Self::Api>>, ManagedVec<AccountPosition<Self::Api>>>
     {
         self.require_active_account(account_nonce);
+
         let mut cache = Cache::new(self);
         let account_attributes = self.account_attributes(account_nonce).get();
         let deposits = self.sync_deposit_positions_interest(
@@ -381,6 +383,7 @@ pub trait Controller:
         account_nonces: MultiValueEncoded<u64>,
     ) {
         self.require_asset_supported(&asset_id);
+
         let mut cache = Cache::new(self);
         let mut asset_config = cache.get_cached_asset_info(&asset_id);
 
@@ -421,7 +424,6 @@ pub trait Controller:
         self.require_active_account(account_nonce);
 
         let account_attributes = self.account_attributes(account_nonce).get();
-
         let collaterals = self.sync_deposit_positions_interest(
             account_nonce,
             &mut cache,

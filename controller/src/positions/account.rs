@@ -174,17 +174,17 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
         AccountAttributes<Self::Api>,
     ) {
         let account_payment = self.call_value().single_esdt().clone();
-        let caller = self.blockchain().get_caller();
         self.require_active_account(account_payment.token_nonce);
         self.account_token()
             .require_same_token(&account_payment.token_identifier);
-        self.require_non_zero_address(&caller);
-        let account_attributes = self.nft_attributes(&account_payment);
 
+        let caller = self.blockchain().get_caller();
         if return_account {
             // Transfer the account NFT back to the caller right after validation
             self.tx().to(&caller).payment(&account_payment).transfer();
         }
+
+        let account_attributes = self.nft_attributes(&account_payment);
 
         (account_payment, caller, account_attributes)
     }

@@ -50,8 +50,8 @@ pub trait PositionDepositModule:
 
         for deposit_payment in deposit_payments {
             self.validate_payment(&deposit_payment);
-            let mut asset_info = cache.get_cached_asset_info(&deposit_payment.token_identifier);
 
+            let mut asset_info = cache.get_cached_asset_info(&deposit_payment.token_identifier);
             let asset_emode_config = self.get_token_e_mode_config(
                 position_attributes.get_emode_id(),
                 &deposit_payment.token_identifier,
@@ -61,7 +61,6 @@ pub trait PositionDepositModule:
                 &asset_info,
                 position_attributes.get_emode_id(),
             );
-
             self.apply_e_mode_to_asset_config(&mut asset_info, &e_mode, asset_emode_config);
 
             require!(
@@ -74,7 +73,6 @@ pub trait PositionDepositModule:
                 &asset_info,
                 &position_attributes,
             );
-
             self.validate_supply_cap(&asset_info, &deposit_payment, cache);
 
             self.update_deposit_position(
@@ -190,7 +188,8 @@ pub trait PositionDepositModule:
         );
 
         // Update storage with the latest position
-        self.deposit_positions(account_nonce)
+        let _ = self
+            .deposit_positions(account_nonce)
             .insert(collateral.token_identifier.clone(), position.clone());
 
         position
@@ -331,7 +330,7 @@ pub trait PositionDepositModule:
         cache: &mut Cache<Self>,
     ) {
         if let Some(supply_cap) = &asset_info.supply_cap {
-            if supply_cap == &BigUint::zero() {
+            if supply_cap == &0 {
                 return;
             }
 

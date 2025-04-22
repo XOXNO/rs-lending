@@ -61,6 +61,7 @@ pub trait PositionUpdateModule:
             }
 
             self.store_updated_position(account_nonce, &borrow_position);
+
             updated_positions.push(borrow_position.clone());
         }
 
@@ -147,12 +148,14 @@ pub trait PositionUpdateModule:
     /// - `position`: Updated position.
     fn store_updated_position(&self, account_nonce: u64, position: &AccountPosition<Self::Api>) {
         match position.position_type {
-            common_events::AccountPositionType::Deposit => {
-                self.deposit_positions(account_nonce)
+            AccountPositionType::Deposit => {
+                let _ = self
+                    .deposit_positions(account_nonce)
                     .insert(position.asset_id.clone(), position.clone());
             },
             AccountPositionType::Borrow => {
-                self.borrow_positions(account_nonce)
+                let _ = self
+                    .borrow_positions(account_nonce)
                     .insert(position.asset_id.clone(), position.clone());
             },
             AccountPositionType::None => {

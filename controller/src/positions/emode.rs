@@ -76,17 +76,20 @@ pub trait EModeModule: storage::Storage {
         if e_mode_id == 0 {
             return None;
         }
+
         let asset_e_modes = self.asset_e_modes(token_id);
         require!(
             asset_e_modes.contains(&e_mode_id),
             ERROR_EMODE_CATEGORY_NOT_FOUND
         );
+
         let e_mode_assets = self.e_mode_assets(e_mode_id);
         require!(
             e_mode_assets.contains_key(token_id),
             ERROR_EMODE_CATEGORY_NOT_FOUND
         );
-        Some(e_mode_assets.get(token_id).unwrap())
+
+        e_mode_assets.get(token_id)
     }
 
     /// Retrieves a valid e-mode category.
@@ -100,11 +103,13 @@ pub trait EModeModule: storage::Storage {
         if e_mode_id == 0 {
             return None;
         }
+
         let e_mode_categories = self.e_mode_category();
         require!(
             e_mode_categories.contains_key(&e_mode_id),
             ERROR_EMODE_CATEGORY_NOT_FOUND
         );
-        Some(e_mode_categories.get(&e_mode_id).unwrap())
+
+        e_mode_categories.get(&e_mode_id)
     }
 }

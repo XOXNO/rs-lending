@@ -278,11 +278,11 @@ pub trait ConfigModule:
     #[endpoint(setLiquidityPoolTemplate)]
     fn set_liquidity_pool_template(&self, address: ManagedAddress) {
         require!(!address.is_zero(), ERROR_INVALID_LIQUIDITY_POOL_TEMPLATE);
-
         require!(
             self.blockchain().is_smart_contract(&address),
             ERROR_INVALID_LIQUIDITY_POOL_TEMPLATE
         );
+
         self.liq_pool_template_address().set(&address);
     }
 

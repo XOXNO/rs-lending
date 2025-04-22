@@ -126,7 +126,6 @@ pub trait PositionVaultModule:
         account_attributes: &AccountAttributes<Self::Api>,
     ) {
         let old_amount = dp.principal_amount.clone();
-
         self.update_vault_supplied_amount(&dp.asset_id, &old_amount, false);
 
         dp.principal_amount = dp.zero_decimal();
@@ -183,6 +182,7 @@ pub trait PositionVaultModule:
             } else {
                 *am -= amount;
             }
+
             am.clone()
         });
         self.update_vault_supplied_amount_event(token_id, last_value);

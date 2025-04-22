@@ -479,9 +479,9 @@ pub trait PositionBorrowModule:
         require!(asset_config.can_borrow(), ERROR_ASSET_NOT_BORROWABLE);
 
         let amount = self.to_decimal(borrowed_token.amount.clone(), feed.asset_decimals);
+
         // Validate borrow amounts and caps
         self.validate_and_get_borrow_amounts(ltv_collateral, &amount, borrows, &feed, cache);
-
         self.validate_borrow_cap(
             &asset_config,
             &amount,
