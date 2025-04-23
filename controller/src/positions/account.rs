@@ -73,14 +73,7 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
                 )),
             );
 
-        self.tx()
-            .to(caller)
-            .single_esdt(
-                &nft_token_payment.token_identifier,
-                nft_token_payment.token_nonce,
-                &nft_token_payment.amount,
-            )
-            .transfer();
+        self.tx().to(caller).payment(&nft_token_payment).transfer();
 
         let _ = self
             .account_positions()
