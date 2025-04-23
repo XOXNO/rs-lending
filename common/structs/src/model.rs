@@ -41,6 +41,18 @@ pub enum AccountPositionType {
     Borrow,
 }
 
+#[type_abi]
+#[derive(
+    ManagedVecItem, NestedEncode, NestedDecode, TopEncode, TopDecode, Clone, Eq, PartialEq,
+)]
+pub enum PositionMode {
+    None,
+    Normal,
+    Multiply,
+    Long,
+    Short,
+}
+
 /// AccountPosition represents a user's position in the liquidity pool.
 /// It is part of each NFT managed by the protocol and includes details such as:
 /// - The position type (Deposit or Borrow).
@@ -276,6 +288,7 @@ pub struct AccountAttributes<M: ManagedTypeApi> {
     pub is_isolated_position: bool,
     pub e_mode_category_id: u8,
     pub is_vault_position: bool,
+    pub mode: PositionMode,
     pub isolated_token: ManagedOption<M, EgldOrEsdtTokenIdentifier<M>>,
 }
 

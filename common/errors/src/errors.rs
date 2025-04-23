@@ -168,3 +168,5 @@ pub static ERROR_CANNOT_CLEAN_BAD_DEBT: &[u8] = b"Cannot clean bad debt.";
 pub static ERROR_ASSETS_ARE_THE_SAME: &[u8] = b"Assets are the same.";
 
 pub static ERROR_INVALID_PAYMENTS: &[u8] = b"Invalid payments.";
+
+pub static ERROR_INVALID_POSITION_MODE: &[u8] = b"Invalid position mode.";

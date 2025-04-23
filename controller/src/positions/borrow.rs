@@ -47,7 +47,7 @@ pub trait PositionBorrowModule:
         let e_mode_id = account_attributes.get_emode_id();
         // Validate e-mode constraints first
         let debt_emode_config = self.get_token_e_mode_config(e_mode_id, new_debt_token);
-        self.ensure_e_mode_compatible_with_asset(&debt_config, e_mode_id);
+        self.ensure_e_mode_compatible_with_asset(debt_config, e_mode_id);
         // Update asset config if NFT has active e-mode
         self.apply_e_mode_to_asset_config(debt_config, &e_mode, debt_emode_config);
         require!(debt_config.can_borrow(), ERROR_ASSET_NOT_BORROWABLE);
@@ -59,7 +59,7 @@ pub trait PositionBorrowModule:
 
         let new_debt_amount = borrow_position.make_amount_decimal(new_debt_amount_raw);
 
-        self.validate_borrow_cap(&debt_config, &new_debt_amount, &new_debt_token, cache);
+        self.validate_borrow_cap(debt_config, &new_debt_amount, new_debt_token, cache);
 
         let feed = self.get_token_price(new_debt_token, cache);
         self.handle_isolated_debt(cache, &new_debt_amount, account_attributes, &feed);
@@ -69,8 +69,8 @@ pub trait PositionBorrowModule:
         let pool_address = cache.get_cached_pool_address(&borrow_position.asset_id);
 
         self.validate_borrow_asset(
-            &debt_config,
-            &new_debt_token,
+            debt_config,
+            new_debt_token,
             account_attributes,
             &borrows,
             cache,
@@ -94,8 +94,8 @@ pub trait PositionBorrowModule:
             &new_debt_amount,
             &borrow_position,
             OptionalValue::Some(feed.price),
-            OptionalValue::Some(&caller),
-            OptionalValue::Some(&account_attributes),
+            OptionalValue::Some(caller),
+            OptionalValue::Some(account_attributes),
         );
 
         self.store_borrow_position(account_nonce, new_debt_token, &borrow_position);
@@ -149,8 +149,8 @@ pub trait PositionBorrowModule:
             &amount,
             &borrow_position,
             OptionalValue::Some(feed.price.clone()),
-            OptionalValue::Some(&caller),
-            OptionalValue::Some(&account),
+            OptionalValue::Some(caller),
+            OptionalValue::Some(account),
         );
 
         borrow_position
@@ -349,7 +349,7 @@ pub trait PositionBorrowModule:
         feed: &PriceFeedShort<Self::Api>,
         cache: &mut Cache<Self>,
     ) {
-        let egld_amount = self.get_token_egld_value(&amount, &feed.price);
+        let egld_amount = self.get_token_egld_value(amount, &feed.price);
         let egld_total_borrowed = self.calculate_total_borrow_in_egld(borrow_positions, cache);
 
         self.validate_borrow_collateral(ltv_base_amount, &egld_total_borrowed, &egld_amount);
@@ -454,7 +454,7 @@ pub trait PositionBorrowModule:
         ltv_collateral: &ManagedDecimal<Self::Api, NumDecimals>,
     ) {
         // Basic validations
-        self.validate_payment(&borrowed_token);
+        self.validate_payment(borrowed_token);
 
         // Get and validate asset configuration
         let mut asset_config = cache.get_cached_asset_info(&borrowed_token.token_identifier);

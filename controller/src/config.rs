@@ -590,6 +590,6 @@ pub trait ConfigModule:
 
         map.set(new_config);
 
-        self.update_asset_config_event(&asset, &new_config);
+        self.update_asset_config_event(&asset, new_config);
     }
 }

@@ -71,9 +71,7 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
         };
 
         // Convert annual rate to per-second rate
-        let per_second_rate = capped_rate / sec_per_year;
-
-        per_second_rate
+        capped_rate / sec_per_year
     }
 
     /// Calculates the deposit rate based on utilization and borrow rate.
@@ -104,13 +102,11 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
             return self.ray_zero();
         }
 
-        let rate = self.mul_half_up(
+        self.mul_half_up(
             &self.mul_half_up(&utilization, &borrow_rate, RAY_PRECISION),
             &self.bps().sub(reserve_factor),
             RAY_PRECISION,
-        );
-
-        rate
+        )
     }
 
     /// Computes the interest growth factor using a Taylor series approximation.
@@ -140,7 +136,7 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
         let ray = self.ray();
 
         let exp_dec = self.to_decimal(BigUint::from(exp), 0);
-        let borrow_rate = self.calc_borrow_rate(&cache);
+        let borrow_rate = self.calc_borrow_rate(cache);
 
         let exp_minus_one = exp - 1;
         let exp_minus_two = if exp > 2 { exp - 2 } else { 0 };
@@ -181,8 +177,7 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
         let main_term = self.mul_half_up(&borrow_rate, &exp_dec, RAY_PRECISION);
 
         // Interest factor = 1 + main_term + second_term + third_term
-        let factor = ray + main_term + second_term + third_term;
-        factor
+        ray + main_term + second_term + third_term
     }
 
     /// Updates the borrow index using the provided interest factor.

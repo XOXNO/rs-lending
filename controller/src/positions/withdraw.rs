@@ -211,7 +211,7 @@ pub trait PositionWithdrawModule:
         account_nonce: u64,
         token_id: &EgldOrEsdtTokenIdentifier,
     ) -> AccountPosition<Self::Api> {
-        let maybe_deposit_position = self.deposit_positions(account_nonce).get(&token_id);
+        let maybe_deposit_position = self.deposit_positions(account_nonce).get(token_id);
         require!(
             maybe_deposit_position.is_some(),
             "Token {} is not available for this account",

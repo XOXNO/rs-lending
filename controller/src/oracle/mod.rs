@@ -46,9 +46,8 @@ pub trait OracleModule:
             };
         }
 
-        if cache.prices_cache.contains(&token_id) {
-            let feed = cache.prices_cache.get(&token_id);
-            return feed;
+        if cache.prices_cache.contains(token_id) {
+            return cache.prices_cache.get(token_id);
         }
 
         let oracle_data = self.token_oracle(token_id);
@@ -264,7 +263,7 @@ pub trait OracleModule:
             } else {
                 configs.quote_token_id.clone()
             };
-            let result = self
+            self
                 .tx()
                 .to(&configs.oracle_contract_address)
                 .typed(proxy_onedex::OneDexProxy)
@@ -275,14 +274,12 @@ pub trait OracleModule:
                     EsdtTokenPayment::new(from_identifier, 0, one_token),
                 )
                 .returns(ReturnsResult)
-                .sync_call_readonly();
-
-            result
+                .sync_call_readonly()
         } else if configs.exchange_source == ExchangeSource::XExchange {
             let pair_status = self.get_pair_state(&configs.oracle_contract_address);
             require!(pair_status == StateXExchange::Active, ERROR_PAIR_NOT_ACTIVE);
 
-            let result = self
+            self
                 .safe_price_proxy(self.safe_price_view().get())
                 .get_safe_price_by_timestamp_offset(
                     &configs.oracle_contract_address,
@@ -290,9 +287,7 @@ pub trait OracleModule:
                     EsdtTokenPayment::new(token_id.clone().unwrap_esdt(), 0, one_token),
                 )
                 .returns(ReturnsResult)
-                .sync_call_readonly();
-
-            result
+                .sync_call_readonly()
         } else {
             sc_panic!(ERROR_INVALID_EXCHANGE_SOURCE)
         };
@@ -461,8 +456,8 @@ pub trait OracleModule:
         let constant_product = self.mul_half_up(reserve_first, reserve_second, WAD_PRECISION);
 
         // Calculate price ratios (unitless, WAD)
-        let price_ratio_x = self.div_half_up(&price_b, &price_a, WAD_PRECISION); // pB / pA
-        let price_ratio_y = self.div_half_up(&price_a, &price_b, WAD_PRECISION); // pA / pB
+        let price_ratio_x = self.div_half_up(price_b, price_a, WAD_PRECISION); // pB / pA
+        let price_ratio_y = self.div_half_up(price_a, price_b, WAD_PRECISION); // pA / pB
 
         // Calculate intermediate values for sqrt
         // Inner = (AmountA*AmountB * WAD) * (Unitless * WAD) / WAD = AmountA*AmountB * WAD
@@ -492,9 +487,9 @@ pub trait OracleModule:
 
         // --- Calculate total LP value in EGLD ---
         // ValueA = (AmountA * WAD) * (PriceA * WAD) / WAD = ValueA * WAD
-        let value_a = self.mul_half_up(&x_prime, &price_a, WAD_PRECISION);
+        let value_a = self.mul_half_up(&x_prime, price_a, WAD_PRECISION);
         // ValueB = (AmountB * WAD) * (PriceB * WAD) / WAD = ValueB * WAD
-        let value_b = self.mul_half_up(&y_prime, &price_b, WAD_PRECISION);
+        let value_b = self.mul_half_up(&y_prime, price_b, WAD_PRECISION);
 
         let lp_total_value_egld = value_a + value_b; // Total Value * WAD
 

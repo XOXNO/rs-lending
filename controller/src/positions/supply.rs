@@ -256,9 +256,7 @@ pub trait PositionDepositModule:
             // Refund NFT
             self.tx().to(&caller).payment(&account_payment).transfer();
             (
-                payments
-                    .slice(1, payments.len())
-                    .unwrap_or(ManagedVec::new()),
+                payments.slice(1, payments.len()).unwrap_or_default(),
                 Some(account_payment),
                 caller,
                 Some(account_attributes),
@@ -367,7 +365,7 @@ pub trait PositionDepositModule:
         let account_attributes = self.account_attributes(account_nonce).get();
         let e_mode_category = self.get_e_mode_category(account_attributes.get_emode_id());
         let asset_emode_config =
-            self.get_token_e_mode_config(account_attributes.get_emode_id(), &asset_id);
+            self.get_token_e_mode_config(account_attributes.get_emode_id(), asset_id);
         self.apply_e_mode_to_asset_config(asset_config, &e_mode_category, asset_emode_config);
 
         let mut dp = dp_option.unwrap();

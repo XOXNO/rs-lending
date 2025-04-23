@@ -435,7 +435,7 @@ pub trait LiquidityModule:
 
         self.emit_market_update(&cache, price);
 
-        self.send_asset(&cache, &strategy_amount, &self.blockchain().get_caller());
+        self.send_asset(&cache, strategy_amount, &self.blockchain().get_caller());
 
         position
     }

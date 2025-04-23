@@ -59,7 +59,7 @@ where
             return self.asset_configs.get(token_id);
         }
 
-        let new = self.sc_ref.asset_config(&token_id).get();
+        let new = self.sc_ref.asset_config(token_id).get();
         self.asset_configs.put(token_id, &new);
 
         new
@@ -74,7 +74,7 @@ where
             return self.asset_oracles.get(token_id);
         }
 
-        let new = self.sc_ref.token_oracle(&token_id).get();
+        let new = self.sc_ref.token_oracle(token_id).get();
         self.asset_oracles.put(token_id, &new);
 
         new
@@ -97,7 +97,7 @@ where
             return self.asset_pools.get(token_id);
         }
 
-        let address = self.sc_ref.pools_map(&token_id).get();
+        let address = self.sc_ref.pools_map(token_id).get();
         self.asset_pools.put(token_id, &address);
 
         address

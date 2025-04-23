@@ -72,7 +72,7 @@ pub trait SwapsModule:
             }
         }
 
-        if refunds.len() > 0 {
+        if !refunds.is_empty() {
             self.tx()
                 .to(caller)
                 .payment(refunds)

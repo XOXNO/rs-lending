@@ -116,7 +116,7 @@ pub trait RouterModule:
             .set(self.to_decimal(BigUint::zero(), asset_decimals));
 
         require!(
-            &liquidation_threshold > &ltv,
+            liquidation_threshold > ltv,
             ERROR_INVALID_LIQUIDATION_THRESHOLD
         );
 
@@ -218,7 +218,7 @@ pub trait RouterModule:
 
         let decimals = self.token_oracle(base_asset).get().price_decimals;
 
-        let new_address = self
+        self
             .tx()
             .typed(proxy_pool::LiquidityPoolProxy)
             .init(
@@ -236,9 +236,7 @@ pub trait RouterModule:
             .from_source(self.liq_pool_template_address().get())
             .code_metadata(CodeMetadata::UPGRADEABLE | CodeMetadata::READABLE)
             .returns(ReturnsNewManagedAddress)
-            .sync_call();
-
-        new_address
+            .sync_call()
     }
 
     fn upgrade_pool(

@@ -71,7 +71,7 @@ where
             revenue: sc_ref.revenue().get(),
             timestamp: sc_ref.blockchain().get_block_timestamp(),
             pool_asset: sc_ref.pool_asset().get(),
-            params: params,
+            params,
             borrow_index: sc_ref.borrow_index().get(),
             supply_index: sc_ref.supply_index().get(),
             last_timestamp: sc_ref.last_timestamp().get(),
@@ -102,11 +102,11 @@ where
         self.sc_ref.revenue().set(&self.revenue);
         self.sc_ref.borrow_index().set(&self.borrow_index);
         self.sc_ref.supply_index().set(&self.supply_index);
-        self.sc_ref.last_timestamp().set(&self.last_timestamp);
+        self.sc_ref.last_timestamp().set(self.last_timestamp);
     }
 }
 
-impl<'a, C> Cache<'a, C>
+impl<C> Cache<'_, C>
 where
     C: crate::storage::Storage + common_math::SharedMathModule,
 {
@@ -148,13 +148,11 @@ where
         if self.supplied == self.zero {
             self.sc_ref.to_decimal_ray(BigUint::zero())
         } else {
-            let utilization_ratio = self.sc_ref.div_half_up(
+            self.sc_ref.div_half_up(
                 &self.borrowed,
                 &self.supplied,
                 common_constants::RAY_PRECISION,
-            );
-
-            utilization_ratio
+            )
         }
     }
 

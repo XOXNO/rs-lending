@@ -50,7 +50,7 @@ pub trait PositionVaultModule:
                     pool_address,
                     &feed,
                     account_nonce,
-                    &caller,
+                    caller,
                     account_attributes,
                 );
             } else {
@@ -59,7 +59,7 @@ pub trait PositionVaultModule:
                     pool_address,
                     &feed,
                     account_nonce,
-                    &caller,
+                    caller,
                     account_attributes,
                 );
             }

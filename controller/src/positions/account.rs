@@ -1,4 +1,5 @@
 use common_constants::BASE_NFT_URI;
+use common_events::PositionMode;
 use common_structs::AccountAttributes;
 
 use crate::storage;
@@ -27,6 +28,7 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
         caller: &ManagedAddress,
         is_isolated: bool,
         is_vault_position: bool,
+        mode: PositionMode,
         e_mode_category: OptionalValue<u8>,
         isolated_token: Option<EgldOrEsdtTokenIdentifier>,
     ) -> (EsdtTokenPayment, AccountAttributes<Self::Api>) {
@@ -46,6 +48,7 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
             is_isolated_position: is_isolated,
             e_mode_category_id,
             is_vault_position,
+            mode,
             isolated_token,
         };
 
@@ -105,6 +108,7 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
         caller: &ManagedAddress,
         is_isolated: bool,
         is_vault: bool,
+        mode: PositionMode,
         e_mode_category: OptionalValue<u8>,
         maybe_account: Option<EsdtTokenPayment<Self::Api>>,
         maybe_attributes: Option<AccountAttributes<Self::Api>>,
@@ -117,6 +121,7 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
                     caller,
                     is_isolated,
                     is_vault,
+                    mode,
                     e_mode_category,
                     maybe_isolated_token,
                 );

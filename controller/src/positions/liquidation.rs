@@ -59,7 +59,7 @@ pub trait PositionLiquidationModule:
             account_nonce,
             cache,
             false,
-            &account_attributes,
+            account_attributes,
             true,
         );
         let (borrow_positions, map_debt_indexes) =
@@ -346,7 +346,7 @@ pub trait PositionLiquidationModule:
 
                 refunds.push(EgldOrEsdtTokenPayment::new(
                     payment_ref.token_identifier.clone(),
-                    payment_ref.token_nonce.clone(),
+                    payment_ref.token_nonce,
                     token_excess_amount,
                 ));
 
@@ -606,9 +606,9 @@ pub trait PositionLiquidationModule:
         total_borrow: &ManagedDecimal<Self::Api, NumDecimals>,
         total_collateral: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> bool {
-        let total_usd_debt = self.get_egld_usd_value(&total_borrow, &cache.egld_price_feed);
+        let total_usd_debt = self.get_egld_usd_value(total_borrow, &cache.egld_price_feed);
         let total_usd_collateral =
-            self.get_egld_usd_value(&total_collateral, &cache.egld_price_feed);
+            self.get_egld_usd_value(total_collateral, &cache.egld_price_feed);
 
         // 5 USD
         let min_collateral_threshold = self.mul_half_up(

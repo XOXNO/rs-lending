@@ -1,10 +1,10 @@
 multiversx_sc::imports!();
 
 use common_errors::{
-    ERROR_ASSETS_ARE_THE_SAME, ERROR_INVALID_PAYMENTS, ERROR_MULTIPLY_REQUIRE_EXTRA_STEPS,
-    ERROR_SWAP_DEBT_NOT_SUPPORTED,
+    ERROR_ASSETS_ARE_THE_SAME, ERROR_INVALID_PAYMENTS, ERROR_INVALID_POSITION_MODE,
+    ERROR_MULTIPLY_REQUIRE_EXTRA_STEPS, ERROR_SWAP_DEBT_NOT_SUPPORTED,
 };
-use common_events::AccountAttributes;
+use common_events::{AccountAttributes, PositionMode};
 
 use crate::{
     cache::Cache, helpers, oracle, positions, storage, utils, validation,
@@ -38,7 +38,7 @@ pub trait SnapModule:
         collateral_token: &EgldOrEsdtTokenIdentifier,
         debt_to_flash_loan: BigUint,
         debt_token: &EgldOrEsdtTokenIdentifier,
-        _mode: ManagedBuffer,
+        mode: PositionMode,
         steps: ManagedArgBuffer<Self::Api>,
         steps_payment: OptionalValue<ManagedArgBuffer<Self::Api>>,
     ) {
@@ -48,18 +48,63 @@ pub trait SnapModule:
         let (payments, maybe_account, caller, maybe_attributes) =
             self.validate_supply_payment(false);
 
-        require!(payments.len() == 1, ERROR_INVALID_PAYMENTS);
-
-        let initial_payment = payments.get(0);
-        self.validate_payment(&initial_payment);
-
         let collateral_config = cache.get_cached_asset_info(collateral_token);
         let mut debt_config = cache.get_cached_asset_info(debt_token);
+
+        let collateral_price_feed = self.get_token_price(collateral_token, &mut cache);
+        let debt_price_feed = self.get_token_price(debt_token, &mut cache);
+
+        let mut collateral_to_be_supplied =
+            self.to_decimal(BigUint::zero(), collateral_price_feed.asset_decimals);
+        let mut debt_to_be_swapped =
+            self.to_decimal(debt_to_flash_loan.clone(), debt_price_feed.asset_decimals);
+
+        if maybe_account.is_none() {
+            // Check if payment token matches debt token - potential optimization path
+            require!(payments.len() == 1, ERROR_INVALID_PAYMENTS);
+            let initial_payment = payments.get(0);
+            self.validate_payment(&initial_payment);
+
+            let is_payment_same_as_debt = initial_payment.token_identifier == *debt_token;
+            let is_payment_as_collateral = initial_payment.token_identifier == *collateral_token;
+            if is_payment_as_collateral {
+                let collateral_received = self.to_decimal(
+                    initial_payment.amount.clone(),
+                    collateral_price_feed.asset_decimals,
+                );
+
+                collateral_to_be_supplied += &collateral_received
+            } else if is_payment_same_as_debt {
+                let debt_amount_received = self.to_decimal(
+                    initial_payment.amount.clone(),
+                    debt_price_feed.asset_decimals,
+                );
+                debt_to_be_swapped += &debt_amount_received;
+            } else {
+                //Swap token
+                require!(steps_payment.is_some(), ERROR_MULTIPLY_REQUIRE_EXTRA_STEPS);
+                self.convert_token_from_to(
+                    collateral_token,
+                    &initial_payment.token_identifier,
+                    &initial_payment.amount,
+                    &caller,
+                    steps_payment.into_option().unwrap(),
+                );
+                // let collateral_received =
+                //     self.to_decimal(received.amount, collateral_price_feed.asset_decimals);
+
+                // Once Bernard mainnet protocol is live, we can uncomment this line
+                // collateral_to_be_supplied += &collateral_received;
+            }
+        } else {
+            require!(payments.is_empty(), ERROR_INVALID_PAYMENTS);
+        }
 
         let (account_nonce, nft_attributes) = self.get_or_create_account(
             &caller,
             collateral_config.is_isolated(),
             false,
+            mode,
             OptionalValue::Some(e_mode_category),
             maybe_account,
             maybe_attributes,
@@ -70,46 +115,11 @@ pub trait SnapModule:
             },
         );
 
-        let collateral_price_feed = self.get_token_price(collateral_token, &mut cache);
-        let debt_price_feed = self.get_token_price(debt_token, &mut cache);
-        // Check if payment token matches debt token - potential optimization path
-        let is_payment_same_as_debt = initial_payment.token_identifier == *debt_token;
-        let is_payment_as_collateral = initial_payment.token_identifier == *collateral_token;
-
-        let mut collateral_to_be_supplied =
-            self.to_decimal(BigUint::zero(), collateral_price_feed.asset_decimals);
-        let mut debt_to_be_swapped =
-            self.to_decimal(debt_to_flash_loan.clone(), debt_price_feed.asset_decimals);
-
-        if is_payment_as_collateral {
-            let collateral_received = self.to_decimal(
-                initial_payment.amount.clone(),
-                collateral_price_feed.asset_decimals,
-            );
-
-            collateral_to_be_supplied += &collateral_received
-        } else if is_payment_same_as_debt {
-            let debt_amount_received = self.to_decimal(
-                initial_payment.amount.clone(),
-                debt_price_feed.asset_decimals,
-            );
-            debt_to_be_swapped += &debt_amount_received;
-        } else {
-            //Swap token
-            require!(steps_payment.is_some(), ERROR_MULTIPLY_REQUIRE_EXTRA_STEPS);
-            self.convert_token_from_to(
-                collateral_token,
-                &initial_payment.token_identifier,
-                &initial_payment.amount,
-                &caller,
-                steps_payment.into_option().unwrap(),
-            );
-            // let collateral_received =
-            //     self.to_decimal(received.amount, collateral_price_feed.asset_decimals);
-
-            // Once Bernard mainnet protocol is live, we can uncomment this line
-            // collateral_to_be_supplied += &collateral_received;
-        }
+        require!(
+            nft_attributes.mode != PositionMode::Normal
+                && nft_attributes.mode != PositionMode::None,
+            ERROR_INVALID_POSITION_MODE
+        );
 
         self.handle_create_borrow_strategy(
             account_nonce,
@@ -124,7 +134,7 @@ pub trait SnapModule:
         let mut final_collateral = self.convert_token_from_to(
             collateral_token,
             debt_token,
-            &debt_to_be_swapped.into_raw_units(),
+            debt_to_be_swapped.into_raw_units(),
             &caller,
             steps,
         );
@@ -197,7 +207,7 @@ pub trait SnapModule:
         );
 
         let received = self.swap_tokens(
-            &exisiting_debt_token,
+            exisiting_debt_token,
             new_debt_token,
             new_debt_amount_raw,
             &caller,
@@ -376,10 +386,10 @@ pub trait SnapModule:
             self.update_position(
                 &cache.get_cached_pool_address(&deposit_position.asset_id),
                 &mut deposit_position,
-                OptionalValue::Some(self.get_token_price(&from_token, cache).price),
+                OptionalValue::Some(self.get_token_price(from_token, cache).price),
             );
 
-            self.update_deposit_position_storage(account_nonce, from_token, &mut deposit_position);
+            self.update_deposit_position_storage(account_nonce, from_token, &deposit_position);
         }
 
         let mut amount_to_swap = deposit_position.make_amount_decimal(from_amount);
@@ -401,15 +411,15 @@ pub trait SnapModule:
             false,
             None,
             cache,
-            &account_attributes,
+            account_attributes,
             true,
         );
 
         let received = self.convert_token_from_to(
-            &to_token,
-            &from_token,
-            &amount_to_swap.into_raw_units(),
-            &caller,
+            to_token,
+            from_token,
+            amount_to_swap.into_raw_units(),
+            caller,
             steps,
         );
 

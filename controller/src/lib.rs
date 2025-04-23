@@ -94,7 +94,7 @@ pub trait Controller:
             self.validate_supply_payment(false);
 
         require!(
-            collaterals.len() >= 1,
+            !collaterals.is_empty(),
             ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS
         );
 
@@ -119,6 +119,7 @@ pub trait Controller:
             &caller,
             first_asset_info.is_isolated(),
             is_vault,
+            PositionMode::Normal,
             e_mode_category,
             maybe_account,
             maybe_attributes,

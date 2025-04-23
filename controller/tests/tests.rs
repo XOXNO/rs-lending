@@ -1,5 +1,6 @@
 use controller::{
-    AccountAttributes, ERROR_HEALTH_FACTOR_WITHDRAW, ERROR_INVALID_LIQUIDATION_THRESHOLD,
+    AccountAttributes, PositionMode, ERROR_HEALTH_FACTOR_WITHDRAW,
+    ERROR_INVALID_LIQUIDATION_THRESHOLD,
 };
 use multiversx_sc::types::{
     EgldOrEsdtTokenIdentifier, ManagedDecimal, ManagedOption, MultiValueEncoded,
@@ -318,6 +319,7 @@ fn test_complete_market_exit() {
                 is_isolated_position: false,
                 e_mode_category_id: 0,
                 is_vault_position: false,
+                mode: PositionMode::Normal,
                 isolated_token: ManagedOption::none(),
             },
         );
@@ -356,6 +358,7 @@ fn test_complete_market_exit() {
                 is_isolated_position: false,
                 e_mode_category_id: 0,
                 is_vault_position: false,
+                mode: PositionMode::Normal,
                 isolated_token: ManagedOption::none(),
             },
         );
