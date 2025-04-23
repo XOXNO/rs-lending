@@ -110,12 +110,12 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
         is_vault: bool,
         mode: PositionMode,
         e_mode_category: OptionalValue<u8>,
-        maybe_account: Option<EsdtTokenPayment<Self::Api>>,
-        maybe_attributes: Option<AccountAttributes<Self::Api>>,
-        maybe_isolated_token: Option<EgldOrEsdtTokenIdentifier>,
+        opt_account: Option<EsdtTokenPayment<Self::Api>>,
+        opt_attributes: Option<AccountAttributes<Self::Api>>,
+        opt_isolated_token: Option<EgldOrEsdtTokenIdentifier>,
     ) -> (u64, AccountAttributes<Self::Api>) {
-        match maybe_account {
-            Some(account) => (account.token_nonce, maybe_attributes.unwrap()),
+        match opt_account {
+            Some(account) => (account.token_nonce, opt_attributes.unwrap()),
             None => {
                 let (payment, account_attributes) = self.create_account_nft(
                     caller,
@@ -123,7 +123,7 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
                     is_vault,
                     mode,
                     e_mode_category,
-                    maybe_isolated_token,
+                    opt_isolated_token,
                 );
                 (payment.token_nonce, account_attributes)
             },

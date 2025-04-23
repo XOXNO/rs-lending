@@ -45,8 +45,7 @@ pub trait SnapModule:
         let mut cache = Cache::new(self);
         require!(collateral_token != debt_token, ERROR_ASSETS_ARE_THE_SAME);
         // Get payments, account, caller and attributes
-        let (payments, maybe_account, caller, maybe_attributes) =
-            self.validate_supply_payment(false);
+        let (payments, opt_account, caller, opt_attributes) = self.validate_supply_payment(false);
 
         let collateral_config = cache.get_cached_asset_info(collateral_token);
         let mut debt_config = cache.get_cached_asset_info(debt_token);
@@ -59,7 +58,7 @@ pub trait SnapModule:
         let mut debt_to_be_swapped =
             self.to_decimal(debt_to_flash_loan.clone(), debt_price_feed.asset_decimals);
 
-        if maybe_account.is_none() {
+        if opt_account.is_none() {
             // Check if payment token matches debt token - potential optimization path
             require!(payments.len() == 1, ERROR_INVALID_PAYMENTS);
             let initial_payment = payments.get(0);
@@ -106,8 +105,8 @@ pub trait SnapModule:
             false,
             mode,
             OptionalValue::Some(e_mode_category),
-            maybe_account,
-            maybe_attributes,
+            opt_account,
+            opt_attributes,
             if collateral_config.is_isolated() {
                 Some(collateral_token.clone())
             } else {
@@ -181,12 +180,12 @@ pub trait SnapModule:
 
         let mut cache = Cache::new(self);
         // Get payments, account, caller and attributes
-        let (mut payments, maybe_account, caller, maybe_attributes) =
+        let (mut payments, opt_account, caller, opt_attributes) =
             self.validate_supply_payment(true);
 
-        let account = maybe_account.unwrap();
+        let account = opt_account.unwrap();
 
-        let account_attributes = maybe_attributes.unwrap();
+        let account_attributes = opt_attributes.unwrap();
         let mut debt_config = cache.get_cached_asset_info(new_debt_token);
         let exisiting_debt_config = cache.get_cached_asset_info(exisiting_debt_token);
 
@@ -248,11 +247,11 @@ pub trait SnapModule:
         steps: ManagedArgBuffer<Self::Api>,
     ) {
         let mut cache = Cache::new(self);
-        let (mut payments, maybe_account, caller, maybe_attributes) =
+        let (mut payments, opt_account, caller, opt_attributes) =
             self.validate_supply_payment(true);
 
-        let account = maybe_account.unwrap();
-        let account_attributes = maybe_attributes.unwrap();
+        let account = opt_account.unwrap();
+        let account_attributes = opt_attributes.unwrap();
 
         require!(
             !account_attributes.is_isolated(),
@@ -318,10 +317,10 @@ pub trait SnapModule:
         steps: OptionalValue<ManagedArgBuffer<Self::Api>>,
     ) {
         let mut cache = Cache::new(self);
-        let (mut payments, maybe_account, caller, maybe_attributes) =
+        let (mut payments, opt_account, caller, opt_attributes) =
             self.validate_supply_payment(true);
-        let account = maybe_account.unwrap();
-        let account_attributes = maybe_attributes.unwrap();
+        let account = opt_account.unwrap();
+        let account_attributes = opt_attributes.unwrap();
 
         let received = self.common_swap_collateral(
             from_token,
@@ -371,15 +370,15 @@ pub trait SnapModule:
     ) -> EgldOrEsdtTokenPayment<Self::Api> {
         // Retrieve deposit position for the given token
         let deposit_positions = self.deposit_positions(account_nonce);
-        let maybe_deposit_position = deposit_positions.get(from_token);
+        let opt_deposit_position = deposit_positions.get(from_token);
 
         require!(
-            maybe_deposit_position.is_some(),
+            opt_deposit_position.is_some(),
             "Token {} is not available for this account",
             from_token
         );
 
-        let mut deposit_position = maybe_deposit_position.unwrap();
+        let mut deposit_position = opt_deposit_position.unwrap();
 
         if !account_attributes.is_vault() {
             // Required to be in sync with the global index for accurate swaps to avoid extra interest during withdraw

@@ -90,7 +90,7 @@ pub trait Controller:
         let mut cache = Cache::new(self);
 
         // Validate and extract payment details
-        let (collaterals, maybe_account, caller, maybe_attributes) =
+        let (collaterals, opt_account, caller, opt_attributes) =
             self.validate_supply_payment(false);
 
         require!(
@@ -110,7 +110,7 @@ pub trait Controller:
         }
 
         // Get or create account position
-        let maybe_isolated_token = if first_asset_info.is_isolated() {
+        let opt_isolated_token = if first_asset_info.is_isolated() {
             Some(first_collateral.token_identifier.clone())
         } else {
             None
@@ -121,9 +121,9 @@ pub trait Controller:
             is_vault,
             PositionMode::Normal,
             e_mode_category,
-            maybe_account,
-            maybe_attributes,
-            maybe_isolated_token,
+            opt_account,
+            opt_attributes,
+            opt_isolated_token,
         );
 
         self.validate_vault_consistency(&account_attributes, is_vault);

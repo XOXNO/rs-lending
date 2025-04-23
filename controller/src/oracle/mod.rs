@@ -263,8 +263,7 @@ pub trait OracleModule:
             } else {
                 configs.quote_token_id.clone()
             };
-            self
-                .tx()
+            self.tx()
                 .to(&configs.oracle_contract_address)
                 .typed(proxy_onedex::OneDexProxy)
                 .get_safe_price_by_timestamp_offset(
@@ -279,8 +278,7 @@ pub trait OracleModule:
             let pair_status = self.get_pair_state(&configs.oracle_contract_address);
             require!(pair_status == StateXExchange::Active, ERROR_PAIR_NOT_ACTIVE);
 
-            self
-                .safe_price_proxy(self.safe_price_view().get())
+            self.safe_price_proxy(self.safe_price_view().get())
                 .get_safe_price_by_timestamp_offset(
                     &configs.oracle_contract_address,
                     SECONDS_PER_MINUTE * 15,

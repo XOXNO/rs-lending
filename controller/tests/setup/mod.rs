@@ -937,12 +937,7 @@ impl LendingPoolTestState {
     }
 
     // Price aggregator operations
-    pub fn submit_price_denom(
-        &mut self,
-        from: &[u8],
-        price: BigUint<StaticApi>,
-        timestamp: u64,
-    ) {
+    pub fn submit_price_denom(&mut self, from: &[u8], price: BigUint<StaticApi>, timestamp: u64) {
         let oracles = vec![
             ORACLE_ADDRESS_1,
             ORACLE_ADDRESS_2,

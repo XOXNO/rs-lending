@@ -211,13 +211,13 @@ pub trait PositionWithdrawModule:
         account_nonce: u64,
         token_id: &EgldOrEsdtTokenIdentifier,
     ) -> AccountPosition<Self::Api> {
-        let maybe_deposit_position = self.deposit_positions(account_nonce).get(token_id);
+        let opt_deposit_position = self.deposit_positions(account_nonce).get(token_id);
         require!(
-            maybe_deposit_position.is_some(),
+            opt_deposit_position.is_some(),
             "Token {} is not available for this account",
             token_id
         );
-        maybe_deposit_position.unwrap()
+        opt_deposit_position.unwrap()
     }
 
     /// Calculates the actual withdrawal amount.

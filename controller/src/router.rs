@@ -218,8 +218,7 @@ pub trait RouterModule:
 
         let decimals = self.token_oracle(base_asset).get().price_decimals;
 
-        self
-            .tx()
+        self.tx()
             .typed(proxy_pool::LiquidityPoolProxy)
             .init(
                 base_asset,
