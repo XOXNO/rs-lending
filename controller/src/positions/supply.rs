@@ -327,23 +327,28 @@ pub trait PositionDepositModule:
         deposit_payment: &EgldOrEsdtTokenPayment,
         cache: &mut Cache<Self>,
     ) {
-        if let Some(supply_cap) = &asset_info.supply_cap {
-            if supply_cap == &0 {
-                return;
-            }
+        match &asset_info.supply_cap {
+            Some(supply_cap) => {
+                if supply_cap == &0 {
+                    return;
+                }
 
-            let pool_address = cache.get_cached_pool_address(&deposit_payment.token_identifier);
-            let mut total_supplied = self.get_total_supply(pool_address).get();
+                let pool_address = cache.get_cached_pool_address(&deposit_payment.token_identifier);
+                let mut total_supplied = self.get_total_supply(pool_address).get();
 
-            let vault_supplied_amount = self
-                .vault_supplied_amount(&deposit_payment.token_identifier)
-                .get();
-            total_supplied += vault_supplied_amount;
+                let vault_supplied_amount = self
+                    .vault_supplied_amount(&deposit_payment.token_identifier)
+                    .get();
+                total_supplied += vault_supplied_amount;
 
-            require!(
-                total_supplied.into_raw_units() + &deposit_payment.amount <= *supply_cap,
-                ERROR_SUPPLY_CAP
-            );
+                require!(
+                    total_supplied.into_raw_units() + &deposit_payment.amount <= *supply_cap,
+                    ERROR_SUPPLY_CAP
+                );
+            },
+            None => {
+                // No supply cap set, do nothing
+            },
         }
     }
 

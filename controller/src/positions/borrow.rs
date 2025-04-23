@@ -278,19 +278,24 @@ pub trait PositionBorrowModule:
         asset: &EgldOrEsdtTokenIdentifier,
         cache: &mut Cache<Self>,
     ) {
-        if let Some(borrow_cap) = &asset_config.borrow_cap {
-            if borrow_cap == &BigUint::zero() {
-                return;
-            }
+        match &asset_config.borrow_cap {
+            Some(borrow_cap) => {
+                if borrow_cap == &BigUint::zero() {
+                    return;
+                }
 
-            let pool = cache.get_cached_pool_address(asset);
-            let total_borrow = self.get_total_borrow(pool).get();
+                let pool = cache.get_cached_pool_address(asset);
+                let total_borrow = self.get_total_borrow(pool).get();
 
-            require!(
-                total_borrow.clone() + amount.clone()
-                    <= self.to_decimal(borrow_cap.clone(), total_borrow.scale()),
-                ERROR_BORROW_CAP
-            );
+                require!(
+                    total_borrow.clone() + amount.clone()
+                        <= self.to_decimal(borrow_cap.clone(), total_borrow.scale()),
+                    ERROR_BORROW_CAP
+                );
+            },
+            None => {
+                // No borrow cap set, do nothing
+            },
         }
     }
 

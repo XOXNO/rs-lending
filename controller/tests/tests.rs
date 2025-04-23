@@ -416,7 +416,6 @@ fn test_complete_market_exit() {
     let revenue = state.get_market_revenue(state.egld_market.clone());
     assert!(reserves >= revenue);
     // state.claim_revenue(EGLD_TOKEN);
-    return;
 }
 
 #[test]
@@ -652,9 +651,9 @@ fn test_update_asset_config_after_next_supply() {
     let position_opt = initial_position.into_iter().find_map(|data| {
         let (token, position) = data.into_tuple();
         if token == EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()) {
-            return Option::Some(position);
+            Option::Some(position)
         } else {
-            return Option::None;
+            Option::None
         }
     });
     let position = position_opt.unwrap();
@@ -693,9 +692,9 @@ fn test_update_asset_config_after_next_supply() {
     let last_position_opt = initial_position.into_iter().find_map(|data| {
         let (token, position) = data.into_tuple();
         if token == EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()) {
-            return Option::Some(position);
+            Option::Some(position)
         } else {
-            return Option::None;
+            Option::None
         }
     });
 
@@ -729,9 +728,9 @@ fn test_update_asset_config_via_endpoint_only_safe_values() {
     let position_opt = initial_position.into_iter().find_map(|data| {
         let (token, position) = data.into_tuple();
         if token == EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()) {
-            return Option::Some(position);
+            Option::Some(position)
         } else {
-            return Option::None;
+            Option::None
         }
     });
     let position = position_opt.unwrap();
@@ -769,9 +768,9 @@ fn test_update_asset_config_via_endpoint_only_safe_values() {
     let last_position_opt = initial_position.into_iter().find_map(|data| {
         let (token, position) = data.into_tuple();
         if token == EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()) {
-            return Option::Some(position);
+            Option::Some(position)
         } else {
-            return Option::None;
+            Option::None
         }
     });
 
@@ -805,9 +804,9 @@ fn test_update_asset_config_via_endpoint_only_rirsky_values() {
     let position_opt = initial_position.into_iter().find_map(|data| {
         let (token, position) = data.into_tuple();
         if token == EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()) {
-            return Option::Some(position);
+            Option::Some(position)
         } else {
-            return Option::None;
+            Option::None
         }
     });
     let position = position_opt.unwrap();
@@ -845,9 +844,9 @@ fn test_update_asset_config_via_endpoint_only_rirsky_values() {
     let last_position_opt = initial_position.into_iter().find_map(|data| {
         let (token, position) = data.into_tuple();
         if token == EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()) {
-            return Option::Some(position);
+            Option::Some(position)
         } else {
-            return Option::None;
+            Option::None
         }
     });
 
@@ -889,9 +888,9 @@ fn test_update_asset_config_via_endpoint_only_rirsky_values_with_borrows_valid()
     let position_opt = initial_position.into_iter().find_map(|data| {
         let (token, position) = data.into_tuple();
         if token == EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()) {
-            return Option::Some(position);
+            Option::Some(position)
         } else {
-            return Option::None;
+            Option::None
         }
     });
     let position = position_opt.unwrap();
@@ -929,9 +928,9 @@ fn test_update_asset_config_via_endpoint_only_rirsky_values_with_borrows_valid()
     let last_position_opt = initial_position.into_iter().find_map(|data| {
         let (token, position) = data.into_tuple();
         if token == EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()) {
-            return Option::Some(position);
+            Option::Some(position)
         } else {
-            return Option::None;
+            Option::None
         }
     });
 

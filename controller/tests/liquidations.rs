@@ -458,7 +458,7 @@ fn test_liquidation_and_left_bad_debt() {
 
     state.borrow_asset(
         &borrower,
-        USDC_TOKEN.clone(),
+        USDC_TOKEN,
         BigUint::from(2000u64),
         2,
         USDC_DECIMALS,
@@ -586,7 +586,7 @@ fn test_liquidation_partial_payment() {
 
     state.borrow_asset(
         &borrower,
-        USDC_TOKEN.clone(),
+        USDC_TOKEN,
         BigUint::from(2000u64),
         2,
         USDC_DECIMALS,

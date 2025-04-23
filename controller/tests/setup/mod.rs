@@ -78,6 +78,12 @@ pub struct LendingPoolTestState {
     pub flash_mock: ManagedAddress<StaticApi>,
 }
 
+impl Default for LendingPoolTestState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LendingPoolTestState {
     pub fn new() -> Self {
         let mut world = world();
@@ -907,7 +913,7 @@ impl LendingPoolTestState {
     }
 
     // Price aggregator operations
-    pub fn submit_price(&mut self, from: &[u8], price: u64, timestamp: u64) -> () {
+    pub fn submit_price(&mut self, from: &[u8], price: u64, timestamp: u64) {
         let oracles = vec![
             ORACLE_ADDRESS_1,
             ORACLE_ADDRESS_2,
@@ -936,7 +942,7 @@ impl LendingPoolTestState {
         from: &[u8],
         price: BigUint<StaticApi>,
         timestamp: u64,
-    ) -> () {
+    ) {
         let oracles = vec![
             ORACLE_ADDRESS_1,
             ORACLE_ADDRESS_2,
@@ -1155,7 +1161,7 @@ impl LendingPoolTestState {
             .returns(ReturnsResult)
             .run();
 
-        return query;
+        query
     }
 
     pub fn update_account_threshold(
@@ -2238,7 +2244,7 @@ pub fn submit_price(
     price_aggregator_sc: &ManagedAddress<StaticApi>,
     from: &[u8],
     price: u64,
-) -> () {
+) {
     let oracles = vec![
         ORACLE_ADDRESS_1,
         ORACLE_ADDRESS_2,
@@ -2507,7 +2513,7 @@ pub fn setup_owner(world: &mut ScenarioWorld) {
 pub fn setup_flasher(world: &mut ScenarioWorld, flash: ManagedAddress<StaticApi>) {
     world.set_esdt_balance(
         flash,
-        &EGLD_TOKEN.as_bytes(),
+        EGLD_TOKEN.as_bytes(),
         BigUint::from(100000000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
     );
 }

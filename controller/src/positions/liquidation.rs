@@ -506,7 +506,7 @@ pub trait PositionLiquidationModule:
                 remaining_excess = self.wad_zero();
             } else {
                 refunds.push(debt_payment);
-                let _ = repaid_tokens.remove(index);
+                repaid_tokens.remove(index);
                 remaining_excess -= egld_asset_amount;
             }
         }

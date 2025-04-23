@@ -50,8 +50,8 @@ pub trait ViewsModule:
         require!(!round_values.is_empty(), TOKEN_PAIR_NOT_FOUND_ERROR);
 
         let token_pair = TokenPair { from, to };
-        let feed = self.make_price_feed(token_pair, round_values.get());
-        feed
+        
+        self.make_price_feed(token_pair, round_values.get())
     }
 
     #[view(getOracles)]

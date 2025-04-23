@@ -138,7 +138,7 @@ pub trait LendingUtilsModule:
     /// Syncs interest accruals for accurate position tracking.
     ///
     /// # Arguments
-    /// - `asset_address`: Address of the asset’s liquidity pool.
+    /// - `asset_address`: Address of the asset's liquidity pool.
     /// - `position`: Mutable reference to the account position to update.
     /// - `price`: Optional current price of the asset for calculations.
     ///
@@ -237,10 +237,9 @@ pub trait LendingUtilsModule:
             self.calculate_total_borrow_in_egld(&borrow_positions.values().collect(), cache);
         let health_factor = self.compute_health_factor(&collateral, &borrowed);
 
-        let min_health_factor = if let Some(safety_factor_value) = safety_factor {
-            self.wad() + (self.wad() / safety_factor_value)
-        } else {
-            self.wad()
+        let min_health_factor = match safety_factor {
+            Some(safety_factor_value) => self.wad() + (self.wad() / safety_factor_value),
+            None => self.wad(),
         };
 
         require!(
