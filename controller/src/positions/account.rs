@@ -4,7 +4,8 @@ use common_structs::AccountAttributes;
 
 use crate::storage;
 use common_errors::{
-    ERROR_ACCOUNT_NOT_IN_THE_MARKET, ERROR_ADDRESS_IS_ZERO, ERROR_POSITION_SHOULD_BE_VAULT,
+    ERROR_ACCOUNT_ATTRIBUTES_MISMATCH, ERROR_ACCOUNT_NOT_IN_THE_MARKET, ERROR_ADDRESS_IS_ZERO,
+    ERROR_POSITION_SHOULD_BE_VAULT,
 };
 
 multiversx_sc::imports!();
@@ -150,6 +151,7 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
     ///
     /// # Arguments
     /// - `nonce`: Account nonce to verify.
+    #[inline]
     fn require_active_account(&self, nonce: u64) {
         require!(
             self.account_positions().contains(&nonce),
@@ -177,12 +179,19 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
             .require_same_token(&account_payment.token_identifier);
 
         let caller = self.blockchain().get_caller();
+
+        let account_attributes = self.nft_attributes(&account_payment);
+        let stored_attributes = self.account_attributes(account_payment.token_nonce).get();
+
+        require!(
+            account_attributes == stored_attributes,
+            ERROR_ACCOUNT_ATTRIBUTES_MISMATCH
+        );
+
         if return_account {
             // Transfer the account NFT back to the caller right after validation
             self.tx().to(&caller).payment(&account_payment).transfer();
         }
-
-        let account_attributes = self.nft_attributes(&account_payment);
 
         (account_payment, caller, account_attributes)
     }
@@ -195,6 +204,7 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
     ///
     /// # Errors
     /// - `ERROR_ADDRESS_IS_ZERO`: If the address is zero.
+    #[inline]
     fn require_non_zero_address(&self, address: &ManagedAddress) {
         require!(!address.is_zero(), ERROR_ADDRESS_IS_ZERO);
     }
@@ -205,6 +215,7 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
     /// # Arguments
     /// - `account_attributes`: Account attributes.
     /// - `is_vault`: Operation vault flag.
+    #[inline]
     fn validate_vault_consistency(
         &self,
         account_attributes: &AccountAttributes<Self::Api>,

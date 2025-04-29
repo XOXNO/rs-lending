@@ -31,6 +31,23 @@ pub trait MathsModule: common_math::SharedMathModule {
             .rescale(token_data.asset_decimals)
     }
 
+    /// Converts an EGLD amount to token units using the token's price feed data.
+    /// Normalizes EGLD values to token-specific decimals for cross-asset calculations.
+    ///
+    /// # Arguments
+    /// - `amount_in_egld`: EGLD amount to convert.
+    /// - `token_data`: Price feed data with token price and decimals.
+    ///
+    /// # Returns
+    /// - Token amount adjusted to the RAY precision.
+    fn convert_egld_to_tokens_ray(
+        &self,
+        amount_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
+        token_data: &PriceFeedShort<Self::Api>,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        self.div_half_up(amount_in_egld, &token_data.price, RAY_PRECISION)
+    }
+
     /// Computes the USD value of a token amount using its price.
     /// Used for standardizing asset values in USD for collateral and borrow calculations.
     ///

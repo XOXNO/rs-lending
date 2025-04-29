@@ -1,0 +1,355 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Cursor Rules for MultiversX Rust Smart Contracts
+
+## Project Structure
+- All smart contracts must include `#![no_std]` at the top of their main file
+- Use the `multiversx_sc::imports!()` and `multiversx_sc::derive_imports!()` macros
+- Organize code into modules for better maintainability (storage, events, errors, etc.)
+- Place contract traits in the main lib.rs file
+- Use the `#[multiversx_sc::contract]` annotation for your main contract trait
+
+## Contract Definition
+- Contract trait should inherit from module traits using `+` operator
+- Define a clear init function with the `#[init]` annotation
+- Include an `#[upgrade]` function even if empty
+- Group related functionalities into separate modules
+
+## Annotations
+- Use `#[endpoint(name)]` for public contract endpoints
+- Use `#[payable("*")]` for functions accepting any token payment
+- Use `#[payable("EGLD")]` for functions accepting only EGLD payment
+- Use `#[only_owner]` for admin-only functions
+- Use `#[view(name)]` for read-only view functions
+- Use `#[storage_mapper("key")]` for storage definitions
+
+## Storage
+- Define storage in a dedicated module with `#[multiversx_sc::module]` annotation
+- Use appropriate storage mappers:
+  - `SingleValueMapper<T>` for single values
+  - `MapMapper<K, V>` for key-value mappings
+  - `UnorderedSetMapper<T>` for sets
+  - `VecMapper<T>` for vectors
+  - `NonFungibleTokenMapper<Api>` for NFT management
+- Use descriptive storage keys in `#[storage_mapper("key")]` annotations
+
+## Errors and Events
+- Define error constants in a dedicated module or common crate
+- Use descriptive error constants with the `ERROR_` prefix
+- Use meaningful event definitions with structured data
+- Emit events for important state changes
+
+## Types and Imports
+- Use MultiversX specific types:
+  - `ManagedBuffer` for byte arrays
+  - `ManagedAddress` for addresses
+  - `BigUint` for large numbers
+  - `EgldOrEsdtTokenIdentifier` for token identifiers
+  - `EgldOrEsdtTokenPayment` for payments
+- Import common modules and types explicitly
+- Use type-safe methods for token operations
+
+## Code Style
+- Use descriptive function and variable names
+- Add comprehensive documentation with Rust doc comments
+- Follow Rust standard naming conventions (snake_case for functions and variables)
+- Group related functionality within functions
+- Validate inputs at the beginning of functions
+- Use proper error handling with require statements
+
+## Security Practices
+- Validate all inputs before processing
+- Check caller permissions when needed
+- Always validate token transfers and payments
+- Avoid unbounded loops in contract execution
+- Never trust user input without validation
+- Check balances before transfers
+- Use `self.require_*` pattern for validation checks
+
+## Testing
+- Write comprehensive unit tests
+- Set up integration tests using the MultiversX testing framework
+- Test both success and failure scenarios
+- Verify token balances after operations
+
+---
+
+# MultiversX Rust Smart Contract Development Rules (Detailed - Based on Codebase Analysis)
+
+## 1. Project Structure and Organization
+
+- **No Std Environment**: All smart contracts must use `#![no_std]` at the top of the main file.
+- **Standard Imports**: Always include these imports at the top of the main file:
+  ```rust
+  multiversx_sc::imports!();
+  multiversx_sc::derive_imports!();
+  ```
+- **Modular Architecture**: Organize code into specialized modules:
+  - `storage`: For storage definitions
+  - `events`: For event definitions
+  - `errors`: For error constants
+  - `lib.rs`: Main contract trait definition
+  - Additional feature-specific modules
+
+- **Common Modules**: Reuse common code across contracts in shared modules:
+  - `common/errors`: Error constants
+  - `common/events`: Event definitions
+  - `common/structs`: Data structures
+  - `common/constants`: Constants
+  - `common/math`: Mathematical utilities
+  - `common/proxies`: Contract interaction interfaces
+
+## 2. Contract Definition
+
+- **Contract Trait**: Define the main contract trait with the `#[multiversx_sc::contract]` annotation.
+- **Module Inheritance**: Contract should inherit from feature modules using `+` syntax:
+  ```rust
+  #[multiversx_sc::contract]
+  pub trait MyContract:
+      storage::Storage
+      + events::EventsModule
+      + utils::UtilsModule
+      + validation::ValidationModule
+  {
+      // Contract implementation
+  }
+  ```
+- **Required Functions**:
+  - `#[init]` - Contract initialization function
+  - `#[upgrade]` - Contract upgrade function (even if empty)
+
+## 3. Module Definition
+
+- **Module Trait**: Define modules with the `#[multiversx_sc::module]` annotation:
+  ```rust
+  #[multiversx_sc::module]
+  pub trait StorageModule {
+      // Storage definitions
+  }
+  ```
+- **Module Inheritance**: Modules should declare dependencies on other modules:
+  ```rust
+  #[multiversx_sc::module]
+  pub trait FeatureModule:
+      storage::Storage
+      + events::EventsModule
+  {
+      // Module implementation
+  }
+  ```
+
+## 4. Storage Definitions
+
+- **Storage Mappers**: Use appropriate storage mappers with descriptive keys:
+  ```rust
+  #[view(getPoolAsset)]
+  #[storage_mapper("pool_asset")]
+  fn pool_asset(&self) -> SingleValueMapper<EgldOrEsdtTokenIdentifier>;
+  ```
+- **Storage Mapper Types**:
+  - `SingleValueMapper<T>`: For single values
+  - `MapMapper<K, V>`: For key-value mappings
+  - `UnorderedSetMapper<T>`: For unordered sets of values
+  - `NonFungibleTokenMapper<Self::Api>`: For NFT token management
+  - `VecMapper<T>`: For ordered lists
+
+- **View Functions**: Always pair storage with `#[view(name)]` annotated functions
+
+## 5. Endpoint Definitions
+
+- **Endpoint Annotation**: Mark public endpoints with the `#[endpoint(name)]` annotation:
+  ```rust
+  #[endpoint(submitBatch)]
+  fn submit_batch(&self, submissions: MultiValueEncoded<MultiValue4<ManagedBuffer, ManagedBuffer, u64, BigUint>>) {
+      // Implementation
+  }
+  ```
+- **Payable Endpoints**: Mark endpoints accepting payments with the appropriate payable annotation:
+  ```rust
+  #[payable("*")]  // Accepts any token
+  #[endpoint(supply)]
+  fn supply(&self, args: Args) {
+      // Implementation
+  }
+
+  #[payable("EGLD")]  // Accepts only EGLD
+  #[endpoint(registerToken)]
+  fn register_token(&self, token_name: ManagedBuffer) {
+      // Implementation
+  }
+  ```
+- **Owner-Only Endpoints**: Mark owner-only endpoints with `#[only_owner]`:
+  ```rust
+  #[only_owner]
+  #[endpoint(setConfig)]
+  fn set_config(&self, config: Config<Self::Api>) {
+      // Implementation
+  }
+  ```
+
+## 6. Event Definitions
+
+- **Event Module**: Define events in a dedicated module:
+  ```rust
+  #[multiversx_sc::module]
+  pub trait EventsModule {
+      #[event("new_round")]
+      fn new_round_event(
+          &self,
+          #[indexed] from: &ManagedBuffer,
+          #[indexed] to: &ManagedBuffer,
+          #[indexed] round: u32,
+          #[indexed] data: &EventData<Self::Api>,
+      );
+  }
+  ```
+- **Indexed Parameters**: Use `#[indexed]` for parameters that should be searchable
+- **Event Emission**: Create helper functions that emit events with appropriate parameters
+
+## 7. Error Handling
+
+- **Error Constants**: Define error constants in a dedicated module with descriptive prefixes:
+  ```rust
+  pub static ERROR_INSUFFICIENT_COLLATERAL: &[u8] = b"Not enough collateral available for this loan.";
+  ```
+- **Error Checks**: Use the `require!` macro for validation:
+  ```rust
+  require!(condition, ERROR_CONSTANT);
+  ```
+- **Custom Validation Functions**: Create helper functions for common validations:
+  ```rust
+  fn validate_payment(&self, payment: &EgldOrEsdtTokenPayment<Self::Api>) {
+      require!(payment.amount > 0, ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO);
+      // Additional validations
+  }
+  ```
+
+## 8. Type Definitions
+
+- **Custom Structs**: Define structs with appropriate MultiversX annotations:
+  ```rust
+  #[type_abi]
+  #[derive(TopEncode, TopDecode, Clone)]
+  pub struct AssetConfig<M: ManagedTypeApi> {
+      pub loan_to_value: ManagedDecimal<M, NumDecimals>,
+      // Additional fields
+  }
+  ```
+- **Enums**: Define enums for type safety:
+  ```rust
+  #[type_abi]
+  #[derive(ManagedVecItem, NestedEncode, NestedDecode, TopEncode, TopDecode, Clone, Eq, PartialEq)]
+  pub enum AccountPositionType {
+      None,
+      Deposit,
+      Borrow,
+  }
+  ```
+- **Helper Methods**: Add helper methods to structs for common operations:
+  ```rust
+  impl<M: ManagedTypeApi> AssetConfig<M> {
+      #[inline]
+      pub fn can_supply(&self) -> bool {
+          self.is_collateralizable
+      }
+  }
+  ```
+
+## 9. Documentation Standards
+
+- **Function Documentation**: All public functions should have comprehensive documentation:
+  ```rust
+  /// Initializes the liquidity pool for a specific asset.
+  ///
+  /// **Purpose**: Sets up the initial state of the liquidity pool.
+  ///
+  /// **Process**:
+  /// 1. Stores the pool's asset identifier.
+  /// 2. Configures interest rate parameters.
+  ///
+  /// ### Parameters
+  /// - `asset`: The asset identifier (`EgldOrEsdtTokenIdentifier`) for the pool.
+  ///
+  /// ### Returns
+  /// - Nothing (void function).
+  ///
+  /// **Security Considerations**:
+  /// - Ensures all critical state variables are initialized.
+  #[init]
+  fn init(&self, asset: &EgldOrEsdtTokenIdentifier) {
+      // Implementation
+  }
+  ```
+- **Storage Documentation**: Document storage mappers with their purpose:
+  ```rust
+  /// Get the pool asset identifier.
+  /// This storage mapper holds the asset managed by this pool.
+  #[view(getPoolAsset)]
+  #[storage_mapper("pool_asset")]
+  fn pool_asset(&self) -> SingleValueMapper<EgldOrEsdtTokenIdentifier>;
+  ```
+
+## 10. Core Type Usage
+
+- **MultiversX Types**: Use MultiversX-specific types:
+  - `ManagedBuffer`: For byte arrays
+  - `ManagedAddress`: For addresses
+  - `EgldOrEsdtTokenIdentifier`: For token identifiers
+  - `ManagedDecimal<M, NumDecimals>`: For decimal values
+  - `BigUint`: For large integers
+
+- **Collections**:
+  - `ManagedVec`: For managed vectors
+  - `MultiValueEncoded`: For multi-value endpoint parameters
+  - `MultiValue2/3/4`: For compound return values
+
+## 11. Security Practices
+
+- **Input Validation**: Always validate inputs at the beginning of functions
+- **Authorization Checks**: Use functions like:
+  ```rust
+  self.require_not_paused();
+  self.require_is_oracle();
+  ```
+- **Amount Validation**:
+  ```rust
+  self.require_amount_greater_than_zero(&amount);
+  ```
+- **Security Checks**: Implement explicit checks before critical operations:
+  ```rust
+  self.validate_is_healthy(account_payment.token_nonce, &mut cache, None);
+  ```
+
+## 12. Advanced Patterns
+
+- **Cache Pattern**: Use a cache object for expensive operations:
+  ```rust
+  let mut cache = Cache::new(self);
+  cache.allow_unsafe_price = false;
+  ```
+- **Module Composition**: Break large features into composable modules
+- **Proxies for Contract Interaction**: Use generated proxies for type-safe contract interaction:
+  ```rust
+  self.tx()
+      .to(pool_address)
+      .typed(proxy_pool::LiquidityPoolProxy)
+      .flash_loan(/* parameters */)
+      .returns(ReturnsResult)
+      .sync_call();
+  ```
+
+## 13. Mathematical Precision
+
+- **Decimal Constants**:
+  - `RAY_PRECISION`: High precision (1e27)
+  - `WAD_PRECISION`: Standard precision (1e18)
+  - `BPS_PRECISION`: Basis points (10000)
+
+- **Decimal Conversions**: Use helper functions for consistent decimal handling:
+  ```rust
+  self.to_decimal_ray(value)
+  self.to_decimal_bps(value)
+  ```

@@ -2,9 +2,6 @@
 name = "liquidity_layer"
 
 [[proxy]]
-path = "../controller/src/proxies/proxy_pool.rs"
-
-[[proxy]]
 path = "../controller/tests/proxys/proxy_liquidity_pool.rs"
 
 [[proxy]]

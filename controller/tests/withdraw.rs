@@ -13,7 +13,7 @@ fn test_withdrawal_higher_amount() {
     let borrower = TestAddress::new("borrower");
 
     // Setup supplier account
-    state.world.current_block().block_timestamp(0);
+    state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
 
     // Initial supply
@@ -51,7 +51,7 @@ fn test_withdrawal_with_low_reserves() {
     let borrower = TestAddress::new("borrower");
 
     // Setup supplier account
-    state.world.current_block().block_timestamp(0);
+    state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
 
     // Initial supply
@@ -101,7 +101,7 @@ fn test_withdrawal_with_interest() {
     let borrower = TestAddress::new("borrower");
 
     // Setup supplier account
-    state.world.current_block().block_timestamp(0);
+    state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
 
     // Initial supply
@@ -135,10 +135,7 @@ fn test_withdrawal_with_interest() {
     );
 
     // Advance time to accumulate interest
-    state
-        .world
-        .current_block()
-        .block_timestamp(SECONDS_PER_DAY * 10); // 10 days
+    state.change_timestamp(SECONDS_PER_DAY * 10); // 10 days
 
     // Update interest before withdrawal
     state.global_sync(&supplier, 1);
@@ -148,10 +145,7 @@ fn test_withdrawal_with_interest() {
     println!("initial_collateral: {}", initial_collateral);
 
     // Advance time to accumulate interest
-    state
-        .world
-        .current_block()
-        .block_timestamp(SECONDS_PER_DAY * 20); // 20 days
+    state.change_timestamp(SECONDS_PER_DAY * 20); // 20 days
 
     // Withdraw partial amount
     state.withdraw_asset(
@@ -176,7 +170,7 @@ fn test_withdrawal_with_interest_one_user() {
     // Setup supplier account
     setup_accounts(&mut state, supplier, borrower);
 
-    state.world.current_block().block_timestamp(1740269720);
+    state.change_timestamp(1740269720);
     // Initial supply
     state.supply_asset(
         &supplier,
@@ -188,7 +182,7 @@ fn test_withdrawal_with_interest_one_user() {
         false,
     );
 
-    state.world.current_block().block_timestamp(1740269852);
+    state.change_timestamp(1740269852);
 
     state.borrow_asset(
         &supplier,
@@ -198,7 +192,7 @@ fn test_withdrawal_with_interest_one_user() {
         EGLD_DECIMALS,
     );
 
-    state.world.current_block().block_timestamp(1740275066);
+    state.change_timestamp(1740275066);
     // Update interest before withdrawal
 
     // Get initial state
@@ -221,7 +215,7 @@ fn test_withdrawal_with_interest_one_user() {
     println!("revenue: {}", revenue);
     println!("borrow_index: {}", borrow_index);
     println!("supply_index: {}", supply_index);
-    state.world.current_block().block_timestamp(1740275594);
+    state.change_timestamp(1740275594);
     let borrow_index = state.get_market_borrow_index(state.egld_market.clone());
     let supply_index = state.get_market_supply_index(state.egld_market.clone());
     println!("reserve: {}", reserve);
@@ -259,7 +253,7 @@ fn test_withdrawal_with_interest_one_user_prior_update() {
     // Setup supplier account
     setup_accounts(&mut state, supplier, borrower);
 
-    state.world.current_block().block_timestamp(1740269720);
+    state.change_timestamp(1740269720);
     // Initial supply
     state.supply_asset(
         &supplier,
@@ -271,7 +265,7 @@ fn test_withdrawal_with_interest_one_user_prior_update() {
         false,
     );
 
-    state.world.current_block().block_timestamp(1740269852);
+    state.change_timestamp(1740269852);
 
     state.global_sync(&supplier, 1);
     state.borrow_asset(
@@ -282,7 +276,7 @@ fn test_withdrawal_with_interest_one_user_prior_update() {
         EGLD_DECIMALS,
     );
 
-    state.world.current_block().block_timestamp(1740275066);
+    state.change_timestamp(1740275066);
     state.update_borrows_with_debt(&supplier, 1);
     state.global_sync(&supplier, 1);
     // Update interest before withdrawal
@@ -309,7 +303,7 @@ fn test_withdrawal_with_interest_one_user_prior_update() {
     println!("revenue: {}", revenue);
     println!("borrow_index: {}", borrow_index);
     println!("supply_index: {}", supply_index);
-    state.world.current_block().block_timestamp(1740275594);
+    state.change_timestamp(1740275594);
     state.global_sync(&supplier, 1);
     state.update_borrows_with_debt(&supplier, 1);
     let borrow_index = state.get_market_borrow_index(state.egld_market.clone());

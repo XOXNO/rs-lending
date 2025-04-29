@@ -6,8 +6,9 @@ use multiversx_sc::storage::StorageKey;
 
 use crate::{cache::Cache, helpers, oracle, positions, proxy_pool, storage, utils, validation};
 use common_errors::{
-    ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL, ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS,
-    ERROR_MIX_ISOLATED_COLLATERAL, ERROR_POSITION_NOT_FOUND, ERROR_SUPPLY_CAP,
+    ERROR_ACCOUNT_ATTRIBUTES_MISMATCH, ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL,
+    ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS, ERROR_MIX_ISOLATED_COLLATERAL,
+    ERROR_POSITION_NOT_FOUND, ERROR_SUPPLY_CAP,
 };
 
 use super::account;
@@ -252,6 +253,12 @@ pub trait PositionDepositModule:
 
             let account_payment = first_payment.clone().unwrap_esdt();
             let account_attributes = self.nft_attributes(&account_payment);
+            let stored_attributes = self.account_attributes(account_payment.token_nonce).get();
+
+            require!(
+                account_attributes == stored_attributes,
+                ERROR_ACCOUNT_ATTRIBUTES_MISMATCH
+            );
 
             // Refund NFT
             self.tx().to(&caller).payment(&account_payment).transfer();

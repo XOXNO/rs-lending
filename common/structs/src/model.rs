@@ -283,7 +283,7 @@ impl EModeAssetConfig {
 /// which represents a user's position in the protocol. These attributes include whether the position is isolated,
 /// the e-mode category, and whether it is a vault.
 #[type_abi]
-#[derive(NestedEncode, NestedDecode, TopEncode, TopDecode, Clone)]
+#[derive(NestedEncode, NestedDecode, TopEncode, TopDecode, Clone, Eq, PartialEq)]
 pub struct AccountAttributes<M: ManagedTypeApi> {
     pub is_isolated_position: bool,
     pub e_mode_category_id: u8,
@@ -383,6 +383,7 @@ pub struct OracleProvider<M: ManagedTypeApi> {
     pub exchange_source: ExchangeSource,
     pub price_decimals: usize,
     pub onedex_pair_id: usize,
+    pub max_price_stale_seconds: u64,
 }
 /// PriceFeedShort provides a compact representation of a token's price,
 /// including the price value and the number of asset_decimals used.
@@ -402,75 +403,4 @@ pub struct OraclePriceFluctuation<M: ManagedTypeApi> {
     pub first_lower_ratio: ManagedDecimal<M, NumDecimals>,
     pub last_upper_ratio: ManagedDecimal<M, NumDecimals>,
     pub last_lower_ratio: ManagedDecimal<M, NumDecimals>,
-}
-
-#[type_abi]
-#[derive(TopEncode)]
-pub struct SwapEvent<M: ManagedTypeApi> {
-    token_in_id: EgldOrEsdtTokenIdentifier<M>,
-    token_in_nonce: TokenNonce,
-    token_in_amount: BigUint<M>,
-    token_out_id: EgldOrEsdtTokenIdentifier<M>,
-    token_out_nonce: TokenNonce,
-    token_out_amount: BigUint<M>,
-    caller: ManagedAddress<M>,
-    timestamp: u64,
-}
-
-type TokenNonce = u64;
-
-pub type SwapPath<M> = ManagedVec<M, SwapStep<M>>;
-
-#[type_abi]
-#[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode, PartialEq, Clone)]
-pub struct SwapStep<M: ManagedTypeApi> {
-    kind: SwapStepKind,
-    address: ManagedAddress<M>,
-    token_out_id: EgldOrEsdtTokenIdentifier<M>,
-}
-
-#[type_abi]
-#[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode, PartialEq, Clone)]
-pub enum SwapStepKind {
-    WrapEgld,
-    UnwrapEgld,
-    XexchangePair,
-    AshSwapV1Pair,
-    AshSwapV2Pair,
-    OnedexPair,
-}
-
-#[type_abi]
-#[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, Clone)]
-pub enum TokenInData<M: ManagedTypeApi> {
-    Single,
-    XexchangeLp {
-        pair_address: ManagedAddress<M>,
-        inverse: bool,
-    },
-}
-
-#[type_abi]
-#[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, Clone)]
-pub enum TokenOutData<M: ManagedTypeApi> {
-    Single,
-    XexchangeLp {
-        pair_address: ManagedAddress<M>,
-        swap_fee_perc: u32,
-        inverse: bool,
-    },
-}
-
-#[type_abi]
-#[derive(TopEncode, TopDecode, PartialEq, NestedEncode, NestedDecode, ManagedVecItem)]
-pub enum FeeMoment {
-    BeforeSwap,
-    AfterSwap,
-}
-
-#[type_abi]
-#[derive(TopEncode, TopDecode, PartialEq, NestedEncode, NestedDecode, ManagedVecItem)]
-pub enum FeeToken {
-    A,
-    B,
 }

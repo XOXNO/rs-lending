@@ -1,0 +1,57 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# MultiversX Smart Contract Modularity and Style Rules
+
+## Project Structure and Organization
+
+- **No Std Environment**: All smart contracts must use `#![no_std]` at the top of the main file.
+- **Standard Imports**: Always include these imports at the top of the main file:
+  ```rust
+  multiversx_sc::imports!();
+  multiversx_sc::derive_imports!();
+  ```
+- **Modular Architecture**: Organize code into specialized modules for logical separation:
+  - `storage`: For storage definitions
+  - `events`: For event definitions
+  - `errors`: For error constants
+  - `lib.rs`: Main contract trait definition
+  - Feature modules (e.g., `positions`, `config`, `validation`, `utils`)
+  - `views`: For view functions separate from storage definitions.
+- **Common Crates**: Factor out reusable components (structs, errors, events, constants, math utilities, proxies) into `common/*` crates.
+
+## Contract Definition
+
+- **Contract Trait**: Define the main contract logic within a trait annotated with `#[multiversx_sc::contract]`.
+- **Module Inheritance**: The main contract trait should inherit necessary functionalities from defined modules using `+`.
+
+## Module Definition
+
+- **Module Trait**: Define modules as traits annotated with `#[multiversx_sc::module]`.
+- **Module Dependencies**: Clearly state module dependencies by inheriting from other required module traits.
+
+## Code Style
+
+- **Naming Conventions**: Follow Rust standard naming conventions:
+    - `snake_case` for functions, variables, and module names.
+    - `PascalCase` for traits, structs, and enums.
+    - `SCREAMING_SNAKE_CASE` for constants (including error messages).
+- **Descriptive Names**: Use clear and descriptive names for functions, variables, modules, and types.
+- **Function Granularity**: Keep functions focused on a single responsibility. Break down complex logic into smaller helper functions.
+- **Input Validation**: Perform input validation at the beginning of public-facing functions.
+- **Error Handling**: Use `require!` with specific error constants for clear failure modes.
+- **Comments**: Use Rust doc comments (`///`) for explaining public interfaces (traits, functions, structs, modules). Use regular comments (`//`) for implementation details where necessary, but prefer self-explanatory code.
+## Documentation Standards
+
+- **Function Documentation**: Document all public functions (`#[endpoint]`, `#[view]`, `#[init]`, `#[upgrade]`) extensively using Rust doc comments. Include:
+    - **Purpose**: What the function does.
+    - **Arguments/Parameters**: Explanation of each input.
+    - **Payment**: Specify required payments (`#[payable]`).
+    - **Returns**: Explanation of the output.
+    - **Errors**: List potential errors using `require!`.
+    - **Security Considerations**: Highlight any security implications.
+- **Storage Documentation**: Document storage mappers with their purpose using Rust doc comments.
+- **Struct/Enum Documentation**: Document custom types explaining their fields and purpose.
+- **Module Documentation**: Add module-level documentation explaining the module's responsibility.

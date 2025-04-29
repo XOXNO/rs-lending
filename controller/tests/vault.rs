@@ -189,7 +189,7 @@ fn test_vault_liquidation() {
     state.borrow_asset(&vault, USDC_TOKEN, BigUint::from(2000u64), 1, USDC_DECIMALS);
 
     // Advance time and update interest
-    state.world.current_block().block_timestamp(535000000u64);
+    state.change_timestamp(535000000u64);
     state.update_borrows_with_debt(&vault, 1);
     let health = state.get_account_health_factor(1);
     println!("health: {}", health);
@@ -442,7 +442,7 @@ fn test_enable_disable_vault_with_borrows_and_interest() {
         egld_supplied,
         ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS)
     );
-    state.world.current_block().block_timestamp(535000u64);
+    state.change_timestamp(535000u64);
     state.enable_vault(&vault, 1);
 
     let egld_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);
@@ -501,7 +501,7 @@ fn test_disable_enable_vault_with_borrows_and_interest() {
 
     state.borrow_asset(&user, EGLD_TOKEN, BigUint::from(10u64), 2, EGLD_DECIMALS);
     state.borrow_asset(&vault, USDC_TOKEN, BigUint::from(1000u64), 1, USDC_DECIMALS);
-    state.world.current_block().block_timestamp(530000u64);
+    state.change_timestamp(530000u64);
     let egld_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);
     assert!(egld_supplied == ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
     let collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
@@ -509,7 +509,7 @@ fn test_disable_enable_vault_with_borrows_and_interest() {
     state.enable_vault(&vault, 1);
     let egld_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);
     assert!(egld_supplied > ManagedDecimal::from_raw_units(BigUint::from(100u64), EGLD_DECIMALS),);
-    state.world.current_block().block_timestamp(535000u64);
+    state.change_timestamp(535000u64);
     state.disable_vault(&vault, 1);
 
     let egld_supplied = state.get_vault_supplied_amount(EGLD_TOKEN);

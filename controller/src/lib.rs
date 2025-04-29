@@ -88,7 +88,7 @@ pub trait Controller:
     #[endpoint(supply)]
     fn supply(&self, is_vault: bool, e_mode_category: OptionalValue<u8>) {
         let mut cache = Cache::new(self);
-
+        self.reentrancy_guard(cache.flash_loan_ongoing);
         // Validate and extract payment details
         let (collaterals, opt_account, caller, opt_attributes) =
             self.validate_supply_payment(false);
@@ -151,6 +151,7 @@ pub trait Controller:
         let (account_payment, caller, account_attributes) = self.validate_account(false);
 
         let mut cache = Cache::new(self);
+        self.reentrancy_guard(cache.flash_loan_ongoing);
         cache.allow_unsafe_price = false;
 
         // Process each withdrawal
@@ -186,6 +187,7 @@ pub trait Controller:
     #[endpoint(borrow)]
     fn borrow(&self, borrowed_tokens: MultiValueEncoded<EgldOrEsdtTokenPayment<Self::Api>>) {
         let mut cache = Cache::new(self);
+        self.reentrancy_guard(cache.flash_loan_ongoing);
         cache.allow_unsafe_price = false;
 
         let (account_payment, caller, account_attributes) = self.validate_account(true);
@@ -237,6 +239,7 @@ pub trait Controller:
     #[endpoint(repay)]
     fn repay(&self, account_nonce: u64) {
         let mut cache = Cache::new(self);
+        self.reentrancy_guard(cache.flash_loan_ongoing);
         let payments = self.call_value().all_transfers();
         self.require_active_account(account_nonce);
 
@@ -292,6 +295,7 @@ pub trait Controller:
         arguments: ManagedArgBuffer<Self::Api>,
     ) {
         let mut cache = Cache::new(self);
+        self.reentrancy_guard(cache.flash_loan_ongoing);
         let asset_config = cache.get_cached_asset_info(borrowed_asset_id);
         require!(asset_config.can_flashloan(), ERROR_FLASHLOAN_NOT_ENABLED);
 
@@ -302,6 +306,7 @@ pub trait Controller:
 
         let feed = self.get_token_price(borrowed_asset_id, &mut cache);
 
+        self.flash_loan_ongoing().set(true);
         self.tx()
             .to(pool_address)
             .typed(proxy_pool::LiquidityPoolProxy)
@@ -316,6 +321,8 @@ pub trait Controller:
             )
             .returns(ReturnsResult)
             .sync_call();
+
+        self.flash_loan_ongoing().set(false);
     }
 
     /// Updates account positions with the latest interest data.
@@ -334,6 +341,7 @@ pub trait Controller:
         self.require_active_account(account_nonce);
 
         let mut cache = Cache::new(self);
+        self.reentrancy_guard(cache.flash_loan_ongoing);
         let account_attributes = self.account_attributes(account_nonce).get();
         let deposits = self.sync_deposit_positions_interest(
             account_nonce,
@@ -356,6 +364,7 @@ pub trait Controller:
         self.validate_vault_account(&account_attributes, !status);
 
         let mut cache = Cache::new(self);
+        self.reentrancy_guard(cache.flash_loan_ongoing);
         account_attributes.is_vault_position = status;
 
         self.process_vault_toggle(
@@ -386,6 +395,7 @@ pub trait Controller:
         self.require_asset_supported(&asset_id);
 
         let mut cache = Cache::new(self);
+        self.reentrancy_guard(cache.flash_loan_ongoing);
         let mut asset_config = cache.get_cached_asset_info(&asset_id);
 
         for account_nonce in account_nonces {
@@ -407,6 +417,7 @@ pub trait Controller:
     #[endpoint(updateIndexes)]
     fn update_indexes(&self, assets: MultiValueEncoded<EgldOrEsdtTokenIdentifier>) {
         let mut cache = Cache::new(self);
+        self.reentrancy_guard(cache.flash_loan_ongoing);
         for asset_id in assets {
             self.update_asset_index(&asset_id, &mut cache);
         }
@@ -422,6 +433,7 @@ pub trait Controller:
     #[endpoint(cleanBadDebt)]
     fn clean_bad_debt(&self, account_nonce: u64) {
         let mut cache = Cache::new(self);
+        self.reentrancy_guard(cache.flash_loan_ongoing);
         self.require_active_account(account_nonce);
 
         let account_attributes = self.account_attributes(account_nonce).get();

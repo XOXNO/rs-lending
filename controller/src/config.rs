@@ -67,6 +67,7 @@ pub trait ConfigModule:
         source: ExchangeSource,
         first_tolerance: BigUint,
         last_tolerance: BigUint,
+        max_price_stale_seconds: u64,
         one_dex_pair_id: OptionalValue<usize>,
     ) {
         let mapper = self.token_oracle(market_token);
@@ -153,6 +154,7 @@ pub trait ConfigModule:
             pricing_method,
             tolerance,
             onedex_pair_id: one_dex_pair_id.clone().into_option().unwrap_or(0),
+            max_price_stale_seconds,
         };
 
         mapper.set(&oracle);

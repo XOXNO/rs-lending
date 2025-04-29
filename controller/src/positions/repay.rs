@@ -91,8 +91,7 @@ pub trait PositionRepayModule:
                 OptionalValue::Some(feed.price.clone()),
             );
             let principal_amount = self.calculate_principal_repayment(position, feed, repay_amount);
-            let debt_usd_amount =
-                self.get_egld_usd_value(&principal_amount, &cache.egld_price_feed);
+            let debt_usd_amount = self.get_egld_usd_value(&principal_amount, &cache.egld_usd_price);
             self.adjust_isolated_debt_usd(
                 &position_attributes.get_isolated_token(),
                 debt_usd_amount,
@@ -110,7 +109,7 @@ pub trait PositionRepayModule:
     ) {
         if position_attributes.is_isolated() {
             let egld_amount = self.get_token_egld_value(&position.get_total_amount(), &feed.price);
-            let debt_usd_amount = self.get_egld_usd_value(&egld_amount, &cache.egld_price_feed);
+            let debt_usd_amount = self.get_egld_usd_value(&egld_amount, &cache.egld_usd_price);
             self.adjust_isolated_debt_usd(
                 &position_attributes.get_isolated_token(),
                 debt_usd_amount,

@@ -13,7 +13,7 @@ fn test_repay_debt_in_full_and_extra() {
     let borrower = TestAddress::new("borrower");
 
     // Setup accounts
-    state.world.current_block().block_timestamp(0);
+    state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
 
     // Test supply
@@ -53,10 +53,7 @@ fn test_repay_debt_in_full_and_extra() {
     assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS));
     assert!(collateral > ManagedDecimal::from_raw_units(BigUint::zero(), USDC_DECIMALS));
 
-    state
-        .world
-        .current_block()
-        .block_timestamp(SECONDS_PER_DAY * 10);
+    state.change_timestamp(SECONDS_PER_DAY * 10);
     state.update_borrows_with_debt(&borrower, 2);
     let borrowed_after_10_days = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
 

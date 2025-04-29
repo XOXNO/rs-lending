@@ -31,7 +31,7 @@ pub trait ViewsModule:
         for asset in assets {
             let pool_address = self.pools_map(&asset).get();
             let feed = self.get_token_price(&asset, &mut cache);
-            let usd = self.get_egld_usd_value(&feed.price, &cache.egld_price_feed);
+            let usd = self.get_egld_usd_value(&feed.price, &cache.egld_usd_price);
 
             markets.push(AssetExtendedConfigView {
                 asset_id: asset,
@@ -224,7 +224,7 @@ pub trait ViewsModule:
         let mut cache = Cache::new(self);
         let data = self.get_token_price(token_id, &mut cache);
 
-        self.get_egld_usd_value(&data.price, &cache.egld_price_feed)
+        self.get_egld_usd_value(&data.price, &cache.egld_usd_price)
     }
 
     /// Retrieves the EGLD price of a token using oracle data.

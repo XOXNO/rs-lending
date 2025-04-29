@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           65
+// Endpoints:                           66
 // Async Callback:                       1
-// Total number of exported functions:  68
+// Total number of exported functions:  69
 
 #![no_std]
 
@@ -70,6 +70,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         getIsolatedAssetDebtUsd => isolated_asset_debt_usd
         getVaultSuppliedAmount => vault_supplied_amount
         getTokenOracle => token_oracle
+        isFlashLoanOngoing => flash_loan_ongoing
         getAllMarkets => get_all_markets
         canBeLiquidated => can_be_liquidated
         getHealthFactor => get_health_factor

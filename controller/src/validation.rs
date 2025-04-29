@@ -1,6 +1,6 @@
 multiversx_sc::imports!();
 
-use common_errors::ERROR_INVALID_SHARD;
+use common_errors::{ERROR_FLASH_LOAN_ALREADY_ONGOING, ERROR_INVALID_SHARD};
 
 use crate::{
     helpers, oracle, storage, utils, ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO,
@@ -25,6 +25,7 @@ pub trait ValidationModule:
     /// # Errors
     /// - `ERROR_ASSET_NOT_SUPPORTED`: If the asset has no liquidity pool.
     /// - `ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO`: If the amount is zero or negative.
+    #[inline]
     fn validate_payment(&self, payment: &EgldOrEsdtTokenPayment<Self::Api>) {
         let _ = self.require_asset_supported(&payment.token_identifier);
         self.require_amount_greater_than_zero(&payment.amount);
@@ -40,6 +41,7 @@ pub trait ValidationModule:
     ///
     /// # Errors
     /// - `ERROR_ASSET_NOT_SUPPORTED`: If no pool exists for the asset.
+    #[inline]
     fn require_asset_supported(&self, asset: &EgldOrEsdtTokenIdentifier) -> ManagedAddress {
         let map = self.pools_map(asset);
         require!(!map.is_empty(), ERROR_ASSET_NOT_SUPPORTED);
@@ -55,6 +57,7 @@ pub trait ValidationModule:
     ///
     /// # Errors
     /// - `ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO`: If the amount is zero or negative.
+    #[inline]
     fn require_amount_greater_than_zero(&self, amount: &BigUint) {
         require!(
             amount > &BigUint::zero(),
@@ -65,6 +68,7 @@ pub trait ValidationModule:
     // --- Helper Functions ---
 
     /// Validates shard compatibility for flash loans.
+    #[inline]
     fn validate_flash_loan_shard(&self, contract_address: &ManagedAddress) {
         let destination_shard_id = self.blockchain().get_shard_of_address(contract_address);
         let current_shard_id = self
@@ -75,5 +79,10 @@ pub trait ValidationModule:
             destination_shard_id == current_shard_id,
             ERROR_INVALID_SHARD
         );
+    }
+
+    #[inline]
+    fn reentrancy_guard(&self, flash_loan_ongoing: bool) {
+        require!(!flash_loan_ongoing, ERROR_FLASH_LOAN_ALREADY_ONGOING);
     }
 }

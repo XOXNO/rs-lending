@@ -1,3 +1,4 @@
+use common_constants::{EGLD_TICKER, SECONDS_PER_HOUR};
 use common_events::OracleProvider;
 use common_structs::{AssetConfig, PriceFeedShort};
 
@@ -18,9 +19,11 @@ where
         ManagedMapEncoded<C::Api, EgldOrEsdtTokenIdentifier<C::Api>, ManagedAddress<C::Api>>,
     pub asset_oracles:
         ManagedMapEncoded<C::Api, EgldOrEsdtTokenIdentifier<C::Api>, OracleProvider<C::Api>>,
-    pub egld_price_feed: ManagedDecimal<C::Api, NumDecimals>,
+    pub egld_usd_price: ManagedDecimal<C::Api, NumDecimals>,
     pub price_aggregator_sc: ManagedAddress<C::Api>,
+    pub egld_ticker: ManagedBuffer<C::Api>,
     pub allow_unsafe_price: bool,
+    pub flash_loan_ongoing: bool,
 }
 
 impl<'a, C> Cache<'a, C>
@@ -29,16 +32,24 @@ where
 {
     pub fn new(sc_ref: &'a C) -> Self {
         let price_aggregator = sc_ref.price_aggregator_address().get();
+        let egld_ticker = ManagedBuffer::new_from_bytes(EGLD_TICKER);
+        let egld_price_feed = sc_ref.get_aggregator_price_feed(
+            egld_ticker.clone(),
+            &price_aggregator,
+            SECONDS_PER_HOUR * 2,
+        );
+        let egld_usd_price = sc_ref.to_decimal_wad(egld_price_feed.price);
         Cache {
             sc_ref,
             prices_cache: ManagedMapEncoded::new(),
             asset_configs: ManagedMapEncoded::new(),
             asset_pools: ManagedMapEncoded::new(),
             asset_oracles: ManagedMapEncoded::new(),
-            egld_price_feed: sc_ref
-                .get_aggregator_price_feed(&EgldOrEsdtTokenIdentifier::egld(), &price_aggregator),
+            egld_usd_price,
             price_aggregator_sc: price_aggregator,
+            egld_ticker,
             allow_unsafe_price: true,
+            flash_loan_ongoing: sc_ref.flash_loan_ongoing().get(),
         }
     }
 

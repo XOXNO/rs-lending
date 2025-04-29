@@ -218,7 +218,7 @@ pub trait PositionBorrowModule:
             return;
         }
         let egld_amount = self.get_token_egld_value(amount, &feed.price);
-        let amount_in_usd = self.get_egld_usd_value(&egld_amount, &cache.egld_price_feed);
+        let amount_in_usd = self.get_egld_usd_value(&egld_amount, &cache.egld_usd_price);
 
         let isolated_token = account_attributes.get_isolated_token();
         let collateral_config = cache.get_cached_asset_info(&isolated_token);

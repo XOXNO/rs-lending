@@ -23,7 +23,7 @@ fn test_edge_case_math_rounding() {
     let borrower = TestAddress::new("borrower");
 
     // Setup accounts
-    state.world.current_block().block_timestamp(0);
+    state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
 
     // Test supply
@@ -67,7 +67,7 @@ fn test_edge_case_math_rounding() {
     println!("supply_amount: {:?}", collateral); // 100000000000000000000
     println!("utilization: {:?}", utilization);
 
-    state.world.current_block().block_timestamp(1111u64);
+    state.change_timestamp(1111u64);
     state.update_account_positions(&supplier, 1);
 
     let borrowed = state.get_borrow_amount_for_token(1, EGLD_TOKEN);
@@ -135,7 +135,7 @@ fn test_edge_case_math_rounding_no_compound() {
     let borrower = TestAddress::new("borrower");
 
     // Setup accounts
-    state.world.current_block().block_timestamp(0);
+    state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
 
     // Test supply
@@ -179,7 +179,7 @@ fn test_edge_case_math_rounding_no_compound() {
     println!("supply_amount: {:?}", collateral); // 100000000000000000000
     println!("utilization: {:?}", utilization);
 
-    state.world.current_block().block_timestamp(1111u64);
+    state.change_timestamp(1111u64);
     // state.update_account_positions(&supplier, 1);
 
     let borrowed = state.get_borrow_amount_for_token(1, EGLD_TOKEN);
@@ -303,7 +303,7 @@ fn test_complete_market_exit() {
         false,
     );
 
-    state.world.current_block().block_timestamp(8000u64);
+    state.change_timestamp(8000u64);
     state.update_borrows_with_debt(&borrower, 2);
     state.global_sync(&supplier, 1);
     state.global_sync(&OWNER_ADDRESS, 3);
@@ -335,7 +335,7 @@ fn test_complete_market_exit() {
     let custom_error_message = format!("Token not existing in the account {}", EGLD_TOKEN.as_str());
     state.get_borrow_amount_for_token_non_existing(2, EGLD_TOKEN, custom_error_message.as_bytes());
 
-    state.world.current_block().block_timestamp(1000000u64);
+    state.change_timestamp(1000000u64);
     state.update_borrows_with_debt(&borrower, 2);
     state.global_sync(&supplier, 1);
     state.global_sync(&supplier, 3);
@@ -425,7 +425,7 @@ fn test_interest_accrual() {
     let borrower = TestAddress::new("borrower");
 
     // Setup initial state
-    state.world.current_block().block_timestamp(0);
+    state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
 
     // Initial supply and borrow
@@ -466,10 +466,7 @@ fn test_interest_accrual() {
     println!("borrow_rate: {:?}", borrow_rate);
     // Simulate daily updates for a month
     // for day in 1..=SECONDS_PER_DAY {
-    state
-        .world
-        .current_block()
-        .block_timestamp(SECONDS_PER_YEAR);
+    state.change_timestamp(SECONDS_PER_YEAR);
     state.update_markets(&supplier, markets.clone());
     state.update_borrows_with_debt(&borrower, 2);
     state.global_sync(&supplier, 1);
@@ -524,7 +521,7 @@ fn test_interest_accrual_two_suppliers_at_different_times() {
     let borrower = TestAddress::new("borrower");
 
     // Setup initial state
-    state.world.current_block().block_timestamp(0);
+    state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
 
     // Initial supply and borrow
@@ -571,10 +568,7 @@ fn test_interest_accrual_two_suppliers_at_different_times() {
 
     // Simulate hourly updates for 2 years
     for day in 1..=365 * 2 {
-        state
-            .world
-            .current_block()
-            .block_timestamp(day * SECONDS_PER_DAY);
+        state.change_timestamp(day * SECONDS_PER_DAY);
     }
     state.global_sync(&borrower, 2);
     state.update_borrows_with_debt(&borrower, 2);

@@ -142,6 +142,7 @@ pub trait PositionLiquidationModule:
         caller: &ManagedAddress,
     ) {
         let mut cache = Cache::new(self);
+        self.reentrancy_guard(cache.flash_loan_ongoing);
         cache.allow_unsafe_price = false;
         self.validate_liquidation_payments(debt_payments, caller);
 
@@ -258,31 +259,36 @@ pub trait PositionLiquidationModule:
             let proportion = self.div_half_up(
                 &(asset_egld_value * self.wad()),
                 total_collateral_value,
-                WAD_PRECISION,
+                RAY_PRECISION,
             );
+
             // Seized EGLD = proportion * debt_to_be_repaid (rescaled from RAY to WAD precision)
             let seized_egld_numerator_ray =
                 self.mul_half_up(&proportion, debt_to_be_repaid, RAY_PRECISION);
-            let seized_egld = seized_egld_numerator_ray.rescale(WAD_PRECISION);
             // Convert seized EGLD to token units
-            let seized_units = self.convert_egld_to_tokens(&seized_egld, &asset_data);
+            let seized_units_ray = self.convert_egld_to_tokens_ray(&seized_egld_numerator_ray, &asset_data);
             // Apply bonus: seized_units_after_bonus = seized_units * (bps + bonus_rate) / bps
-            let bonus_bps = self.wad() + bonus_rate.clone();
-            let numerator = self.mul_half_up(&seized_units, &bonus_bps, RAY_PRECISION);
-            let seized_units_after_bonus = numerator.rescale(asset_data.asset_decimals);
+            let bonus_bps = self.bps() + bonus_rate.clone();
+            let seized_units_after_bonus_ray =
+                self.mul_half_up(&seized_units_ray, &bonus_bps, RAY_PRECISION);
 
             // Protocol fee = (bonus portion) * liquidation_fees / bps
             let protocol_fee = self
                 .mul_half_up(
-                    &(seized_units_after_bonus.clone() - seized_units.clone()),
+                    &(seized_units_after_bonus_ray.clone() - seized_units_ray.clone()),
                     &asset.liquidation_fees.clone(),
                     RAY_PRECISION,
                 )
                 .rescale(asset_data.asset_decimals);
+
             let final_amount = BigUint::min(
-                seized_units_after_bonus.into_raw_units().clone(),
+                seized_units_after_bonus_ray
+                    .rescale(asset_data.asset_decimals)
+                    .into_raw_units()
+                    .clone(),
                 total_amount.into_raw_units().clone(),
             );
+
             seized_amounts_by_collateral.push(MultiValue2::from((
                 EgldOrEsdtTokenPayment::new(asset.asset_id.clone(), 0, final_amount),
                 protocol_fee,
@@ -606,9 +612,8 @@ pub trait PositionLiquidationModule:
         total_borrow: &ManagedDecimal<Self::Api, NumDecimals>,
         total_collateral: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> bool {
-        let total_usd_debt = self.get_egld_usd_value(total_borrow, &cache.egld_price_feed);
-        let total_usd_collateral =
-            self.get_egld_usd_value(total_collateral, &cache.egld_price_feed);
+        let total_usd_debt = self.get_egld_usd_value(total_borrow, &cache.egld_usd_price);
+        let total_usd_collateral = self.get_egld_usd_value(total_collateral, &cache.egld_usd_price);
 
         // 5 USD
         let min_collateral_threshold = self.mul_half_up(

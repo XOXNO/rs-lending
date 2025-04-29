@@ -1,5 +1,5 @@
 use crate::{constants::*, proxys::*};
-use common_constants::{EGLD_TICKER, MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE};
+use common_constants::{EGLD_TICKER, MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE, SECONDS_PER_HOUR};
 
 use cache::Cache;
 
@@ -913,7 +913,7 @@ impl LendingPoolTestState {
     }
 
     // Price aggregator operations
-    pub fn submit_price(&mut self, from: &[u8], price: u64, timestamp: u64) {
+    pub fn change_price(&mut self, from: &[u8], price: u64, timestamp: u64) {
         let oracles = vec![
             ORACLE_ADDRESS_1,
             ORACLE_ADDRESS_2,
@@ -934,6 +934,19 @@ impl LendingPoolTestState {
                 )
                 .run();
         }
+    }
+
+    pub fn change_timestamp(&mut self, timestamp: u64) {
+        self.world.current_block().block_timestamp(timestamp);
+        self.change_price(EGLD_TICKER, EGLD_PRICE_IN_DOLLARS, timestamp);
+        self.change_price(SEGLD_TICKER, SEGLD_PRICE_IN_DOLLARS, timestamp);
+        self.change_price(LEGLD_TICKER, LEGLD_PRICE_IN_DOLLARS, timestamp);
+        self.change_price(USDC_TICKER, USDC_PRICE_IN_DOLLARS, timestamp);
+        self.change_price(XEGLD_TICKER, XEGLD_PRICE_IN_DOLLARS, timestamp);
+        self.change_price(ISOLATED_TICKER, ISOLATED_PRICE_IN_DOLLARS, timestamp);
+        self.change_price(SILOED_TICKER, SILOED_PRICE_IN_DOLLARS, timestamp);
+        self.change_price(CAPPED_TICKER, CAPPED_PRICE_IN_DOLLARS, timestamp);
+        self.change_price(XOXNO_TICKER, XOXNO_PRICE_IN_DOLLARS, timestamp);
     }
 
     // Price aggregator operations
@@ -1571,6 +1584,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XEGLD,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            SECONDS_PER_HOUR * 1000,
             OptionalValue::<usize>::None,
         )
         .run();
@@ -1589,6 +1603,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::LXOXNO,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            SECONDS_PER_HOUR * 1000,
             OptionalValue::<usize>::None,
         )
         .run();
@@ -1617,6 +1632,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            SECONDS_PER_HOUR * 1000,
             OptionalValue::<usize>::None,
         )
         .run();
@@ -1634,6 +1650,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            SECONDS_PER_HOUR * 1000,
             OptionalValue::<usize>::None,
         )
         .run();
@@ -1651,6 +1668,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            SECONDS_PER_HOUR * 1000,
             OptionalValue::<usize>::None,
         )
         .run();
@@ -1668,6 +1686,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            SECONDS_PER_HOUR * 1000,
             OptionalValue::<usize>::None,
         )
         .run();
@@ -1686,6 +1705,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            SECONDS_PER_HOUR * 1000,
             OptionalValue::<usize>::None,
         )
         .run();
@@ -1715,6 +1735,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            SECONDS_PER_HOUR * 1000,
             OptionalValue::<usize>::None,
         )
         .run();
@@ -1744,6 +1765,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            SECONDS_PER_HOUR * 1000,
             OptionalValue::<usize>::None,
         )
         .run();
@@ -1773,6 +1795,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            SECONDS_PER_HOUR * 1000,
             OptionalValue::<usize>::None,
         )
         .run();
@@ -1802,6 +1825,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            SECONDS_PER_HOUR * 1000,
             OptionalValue::<usize>::None,
         )
         .run();
@@ -1831,6 +1855,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            SECONDS_PER_HOUR * 1000,
             OptionalValue::<usize>::None,
         )
         .run();
@@ -1860,6 +1885,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            SECONDS_PER_HOUR * 1000,
             OptionalValue::<usize>::None,
         )
         .run();
@@ -2247,7 +2273,6 @@ pub fn submit_price(
         ORACLE_ADDRESS_4,
     ];
 
-    // world.current_block().block_timestamp(1740184106);
     for oracle in oracles {
         world
             .tx()

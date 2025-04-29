@@ -210,7 +210,8 @@ fn test_borrow_asset_as_isolated_debt_celling_case_with_debt_interest() {
 
     println!("Borrow {:?}", borrow_amount);
     assert!(borrow_amount > ManagedDecimal::from_raw_units(BigUint::zero(), ISOLATED_DECIMALS));
-    state.world.current_block().block_timestamp(SECONDS_PER_DAY);
+    state.change_timestamp(SECONDS_PER_DAY);
+
     state.update_account_positions(&borrower, 2);
     let borrow_amount = state.get_borrow_amount_for_token(2, USDC_TOKEN);
     println!("Borrow {:?}", borrow_amount);
@@ -278,10 +279,7 @@ fn test_borrow_asset_as_isolated_debt_celling_liquidation_debt_paid() {
     assert!(
         borrow_amount_first > ManagedDecimal::from_raw_units(BigUint::zero(), ISOLATED_DECIMALS)
     );
-    state
-        .world
-        .current_block()
-        .block_timestamp(SECONDS_PER_DAY * 1600);
+    state.change_timestamp(SECONDS_PER_DAY * 1600);
     state.update_borrows_with_debt(&borrower, 2);
     let total_collateral = state.get_total_collateral_in_egld(2);
     let total_debt = state.get_borrow_amount_for_token(2, USDC_TOKEN);
@@ -358,10 +356,7 @@ fn test_borrow_asset_as_isolated_debt_celling_under_repayment_only_interest() {
     assert!(
         borrow_amount_first > ManagedDecimal::from_raw_units(BigUint::zero(), ISOLATED_DECIMALS)
     );
-    state
-        .world
-        .current_block()
-        .block_timestamp(SECONDS_PER_DAY * 500);
+    state.change_timestamp(SECONDS_PER_DAY * 500);
 
     state.repay_asset(
         &borrower,

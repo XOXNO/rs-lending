@@ -21,7 +21,7 @@ fn test_basic_supply_capped_error() {
     let borrower = TestAddress::new("borrower");
 
     // Setup accounts
-    state.world.current_block().block_timestamp(0);
+    state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
     // Test supply
     state.supply_asset(
@@ -53,7 +53,7 @@ fn test_empty_supply_error() {
     let borrower = TestAddress::new("borrower");
 
     // Setup accounts
-    state.world.current_block().block_timestamp(0);
+    state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
     // Test supply
     state.empty_supply_asset_error(
@@ -71,7 +71,7 @@ fn test_basic_supply_no_assets_error() {
     let borrower = TestAddress::new("borrower");
 
     // Setup accounts
-    state.world.current_block().block_timestamp(0);
+    state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
     // Test supply
     state.supply_asset(

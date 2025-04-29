@@ -147,4 +147,9 @@ pub trait Storage {
         &self,
         asset: &EgldOrEsdtTokenIdentifier,
     ) -> SingleValueMapper<OracleProvider<Self::Api>>;
+
+    // Reentrancy guard
+    #[view(isFlashLoanOngoing)]
+    #[storage_mapper("flash_loan_ongoing")]
+    fn flash_loan_ongoing(&self) -> SingleValueMapper<bool>;
 }

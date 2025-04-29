@@ -19,7 +19,7 @@ fn test_basic_supply_and_borrow() {
     let borrower = TestAddress::new("borrower");
 
     // Setup accounts
-    state.world.current_block().block_timestamp(0);
+    state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
 
     // Test supply
@@ -67,7 +67,7 @@ fn test_basic_borrow_capped_error() {
     let borrower = TestAddress::new("borrower");
 
     // Setup accounts
-    state.world.current_block().block_timestamp(0);
+    state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
     // Test supply
     state.supply_asset(
@@ -105,7 +105,7 @@ fn test_bulk_borrow_all_new_positions() {
     let borrower = TestAddress::new("borrower");
 
     // Setup accounts
-    state.world.current_block().block_timestamp(0);
+    state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
 
     // Test supply
@@ -168,7 +168,7 @@ fn test_bulk_borrow_existing_positions() {
     let borrower = TestAddress::new("borrower");
 
     // Setup accounts
-    state.world.current_block().block_timestamp(0);
+    state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
 
     // Test supply
