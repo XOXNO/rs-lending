@@ -299,7 +299,7 @@ pub trait SnapModule:
     /// * `from_token` - The collateral token to use for repayment
     /// * `from_amount` - Amount of collateral to use
     /// * `to_token` - The debt token to repay
-    /// * `steps` - Optional swap steps for token conversion
+    /// * `close_position` - A flag to refund all collaterals when the full debt is fully repaid and burn the position NFT
     /// * `limits` - Optional price limits for the swap
     ///
     /// # Requirements
@@ -317,6 +317,7 @@ pub trait SnapModule:
         from_token: &EgldOrEsdtTokenIdentifier,
         from_amount: &BigUint,
         to_token: &EgldOrEsdtTokenIdentifier,
+        close_position: bool,
         steps: OptionalValue<ManagedArgBuffer<Self::Api>>,
     ) {
         let mut cache = Cache::new(self);
@@ -359,6 +360,36 @@ pub trait SnapModule:
 
         // Make sure that after the swap the position is not becoming eligible for liquidation due to slippage
         self.validate_is_healthy(account.token_nonce, &mut cache, None);
+        let has_no_debt = self.borrow_positions(account.token_nonce).is_empty();
+        if close_position && has_no_debt {
+            // Sync positions with interest
+            let collaterals = self.sync_deposit_positions_interest(
+                account.token_nonce,
+                &mut cache,
+                true,
+                &account_attributes,
+                true,
+            );
+
+            for collateral in collaterals {
+                let withdraw_payment = EgldOrEsdtTokenPayment::new(
+                    collateral.asset_id.clone(),
+                    0,
+                    collateral.get_total_amount().into_raw_units().clone(),
+                );
+                let _ = self.process_withdrawal(
+                    account.token_nonce,
+                    withdraw_payment,
+                    &caller,
+                    false,
+                    None,
+                    &mut cache,
+                    &account_attributes,
+                    false,
+                );
+            }
+            self.manage_account_after_withdrawal(&account, &caller);
+        }
     }
 
     fn common_swap_collateral(
