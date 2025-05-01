@@ -115,7 +115,7 @@ pub trait PositionVaultModule:
 
         self.emit_position_update_event(
             &deposit_position.zero_decimal(),
-            &deposit_position,
+            deposit_position,
             feed.price.clone(),
             caller,
             account_attributes,

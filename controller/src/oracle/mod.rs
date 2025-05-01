@@ -1,8 +1,8 @@
 multiversx_sc::imports!();
 use common_constants::{
-    PRICE_AGGREGATOR_ROUNDS_STORAGE_KEY, PRICE_AGGREGATOR_STATUS_STORAGE_KEY, SECONDS_PER_MINUTE,
-    STATE_PAIR_ONEDEX_STORAGE_KEY, STATE_PAIR_STORAGE_KEY, USD_TICKER, WAD_HALF_PRECISION,
-    WAD_PRECISION, WEGLD_TICKER,
+    PRICE_AGGREGATOR_ROUNDS_STORAGE_KEY, PRICE_AGGREGATOR_STATUS_STORAGE_KEY, RAY_PRECISION,
+    SECONDS_PER_MINUTE, STATE_PAIR_ONEDEX_STORAGE_KEY, STATE_PAIR_STORAGE_KEY, USD_TICKER,
+    WAD_HALF_PRECISION, WAD_PRECISION, WEGLD_TICKER,
 };
 use common_errors::{ERROR_PRICE_FEED_STALE, ERROR_UN_SAFE_PRICE_NOT_ALLOWED};
 use common_proxies::proxy_xexchange_pair;
@@ -396,7 +396,8 @@ pub trait OracleModule:
         let feed =
             self.get_aggregator_price_feed(ticker, &cache.price_aggregator_sc, max_seconds_stale);
         let token_usd_price = self.to_decimal_wad(feed.price);
-        self.div_half_up(&token_usd_price, &cache.egld_usd_price, WAD_PRECISION)
+        self.div_half_up(&token_usd_price, &cache.egld_usd_price, RAY_PRECISION)
+            .rescale(WAD_PRECISION)
     }
 
     fn find_token_price_in_egld_from_aggregator(

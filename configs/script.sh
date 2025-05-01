@@ -163,7 +163,7 @@ upgrade_all_markets() {
         echo "Upgrading market: $market"
         upgrade_market "$market"
         # Optionally wait a few seconds to ensure that the tx is processed before sending the next one
-        sleep 5
+        sleep 10
     done
 }
 

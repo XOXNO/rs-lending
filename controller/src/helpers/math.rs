@@ -254,56 +254,64 @@ pub trait MathsModule: common_math::SharedMathModule {
     ) {
         // Constants
         let bps = self.bps();
-        let wad = self.wad();
 
         // Convert to signed for intermediate calculations
-        let h = target_hf.clone().into_signed();
-        let d = total_debt.clone().into_signed();
-        let w = weighted_collateral.clone().into_signed();
-
-        // Normalize proportion_seized and liquidation_bonus to WAD from BPS
-        let p = proportion_seized.rescale(WAD_PRECISION);
-        let b = liquidation_bonus.rescale(WAD_PRECISION);
+        let total_debt_ray_signed = total_debt.clone().into_signed().rescale(RAY_PRECISION);
+        let total_debt_ray = total_debt.clone().rescale(RAY_PRECISION);
+        let h = target_hf.clone().into_signed().rescale(RAY_PRECISION);
+        let w = weighted_collateral
+            .clone()
+            .into_signed()
+            .rescale(RAY_PRECISION);
 
         // Compute 1 + b
-        let one_plus_b = wad.clone() + b;
+        let one_plus_bonus = self.bps() + liquidation_bonus.clone();
 
         // Compute d_ideal
-        let numerator = self.mul_half_up_signed(&h, &d, WAD_PRECISION) - w;
+        let numerator = self.mul_half_up_signed(&h, &total_debt_ray_signed, RAY_PRECISION) - w;
         let denominator = h - self
-            .mul_half_up(&p, &one_plus_b, WAD_PRECISION)
+            .mul_half_up(proportion_seized, &one_plus_bonus, RAY_PRECISION)
             .into_signed();
-        let d_ideal = self.div_half_up_signed(&numerator, &denominator, WAD_PRECISION);
+        let d_ideal = self.div_half_up_signed(&numerator, &denominator, RAY_PRECISION);
         // Compute d_max
-        let bps_plus_bonus = bps.clone() + liquidation_bonus.clone();
         let d_max = self.div_half_up(
-            &self.mul_half_up(total_collateral, &bps, WAD_PRECISION),
-            &bps_plus_bonus,
-            WAD_PRECISION,
+            &self.mul_half_up(total_collateral, &bps, RAY_PRECISION),
+            &one_plus_bonus,
+            RAY_PRECISION,
         );
         // Determine debt_to_repay, will fall back to d_max if d_ideal is negative since it's not possible to be heatlhy anymore
-        let debt_to_repay = if d_ideal.sign() == Sign::Minus {
+        let debt_to_repay_ray = if d_ideal.sign() == Sign::Minus {
             d_max
         } else {
             self.get_min(d_ideal.into_unsigned_or_fail(), d_max)
         };
 
         // Compute seized_weighted
-        let seized = self.mul_half_up(&p, &debt_to_repay, WAD_PRECISION);
-        let seized_weighted_raw = self.mul_half_up(&seized, &one_plus_b, WAD_PRECISION);
-        let seized_weighted = self.get_min(seized_weighted_raw, weighted_collateral.clone());
+        let seized = self.mul_half_up(proportion_seized, &debt_to_repay_ray, RAY_PRECISION);
+        let seized_weighted_raw = self.mul_half_up(&seized, &one_plus_bonus, RAY_PRECISION);
+        let seized_weighted = self.get_min(
+            seized_weighted_raw.rescale(WAD_PRECISION),
+            weighted_collateral.clone(),
+        );
 
         // Compute new weighted collateral and total debt
-        let new_weighted = weighted_collateral.clone() - seized_weighted;
-        let new_total_debt = if debt_to_repay >= total_debt.clone() {
-            self.wad_zero()
+        let new_weighted_wad = weighted_collateral.clone() - seized_weighted;
+        let new_total_debt_ray = if debt_to_repay_ray >= total_debt_ray {
+            self.ray_zero()
         } else {
-            total_debt.clone() - debt_to_repay.clone()
+            total_debt_ray - debt_to_repay_ray.clone()
         };
 
         // Compute new_health_factor
-        let new_health_factor = self.compute_health_factor(&new_weighted, &new_total_debt);
-        (debt_to_repay, liquidation_bonus.clone(), new_health_factor)
+        let new_health_factor = self.compute_health_factor(
+            &new_weighted_wad,
+            &new_total_debt_ray.rescale(WAD_PRECISION),
+        );
+        (
+            debt_to_repay_ray.rescale(WAD_PRECISION),
+            liquidation_bonus.clone(),
+            new_health_factor,
+        )
     }
 
     /// Estimates optimal debt repayment and bonus for liquidation.

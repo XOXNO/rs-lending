@@ -91,7 +91,7 @@ pub trait PositionRepayModule:
 
             self.emit_position_update_event(
                 &position.zero_decimal(),
-                &position,
+                position,
                 feed.price.clone(),
                 caller,
                 position_attributes,

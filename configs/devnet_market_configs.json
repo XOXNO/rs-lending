@@ -456,7 +456,7 @@
     "oracle_method": "0",
     "oracle_type": "3",
     "oracle_source": "1",
-    "oracle_decimals": "6",
+    "oracle_decimals": "18",
     "first_tolerance": "125",
     "last_tolerance": "150",
     "max_price_stale_seconds": "14400"
