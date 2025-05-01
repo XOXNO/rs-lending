@@ -33,7 +33,8 @@ pub trait PositionUpdateModule:
         &self,
         account_nonce: u64,
         cache: &mut Cache<Self>,
-        should_fetch_price: bool,
+        caller: &ManagedAddress<Self::Api>,
+        attributes: &AccountAttributes<Self::Api>,
         should_return_map: bool,
     ) -> (
         ManagedVec<AccountPosition<Self::Api>>,
@@ -46,14 +47,17 @@ pub trait PositionUpdateModule:
         for (index, token_id) in borrow_positions_map.keys().enumerate() {
             let mut borrow_position = borrow_positions_map.get(&token_id).unwrap();
             let pool_address = cache.get_cached_pool_address(&borrow_position.asset_id);
-            let price =
-                self.fetch_price_if_needed(&borrow_position.asset_id, cache, should_fetch_price);
+            let price = self.get_token_price(&borrow_position.asset_id, cache).price;
 
-            self.update_position(&pool_address, &mut borrow_position, price);
+            self.sync_position_interest(&pool_address, &mut borrow_position, &price);
 
-            if should_fetch_price {
-                self.emit_position_update_event(&borrow_position);
-            }
+            self.emit_position_update_event(
+                &borrow_position.zero_decimal(),
+                &borrow_position,
+                price,
+                caller,
+                attributes,
+            );
 
             if should_return_map {
                 let safe_index = index + 1; // Avoid zero index issues
@@ -82,7 +86,7 @@ pub trait PositionUpdateModule:
         &self,
         account_nonce: u64,
         cache: &mut Cache<Self>,
-        should_fetch_price: bool,
+        caller: &ManagedAddress<Self::Api>,
         account_attributes: &AccountAttributes<Self::Api>,
         should_create_array: bool,
     ) -> ManagedVec<AccountPosition<Self::Api>> {
@@ -93,17 +97,19 @@ pub trait PositionUpdateModule:
             if !account_attributes.is_vault() {
                 let pool_address = cache.get_cached_pool_address(&deposit_position.asset_id);
 
-                let price = self.fetch_price_if_needed(
-                    &deposit_position.asset_id,
-                    cache,
-                    should_fetch_price,
+                let price = self
+                    .get_token_price(&deposit_position.asset_id, cache)
+                    .price;
+
+                self.sync_position_interest(&pool_address, &mut deposit_position, &price);
+
+                self.emit_position_update_event(
+                    &deposit_position.zero_decimal(),
+                    &deposit_position,
+                    price,
+                    caller,
+                    account_attributes,
                 );
-
-                self.update_position(&pool_address, &mut deposit_position, price);
-
-                if should_fetch_price {
-                    self.emit_position_update_event(&deposit_position);
-                }
 
                 self.store_updated_position(account_nonce, &deposit_position);
             }
@@ -164,18 +170,62 @@ pub trait PositionUpdateModule:
         }
     }
 
+    /// Stores an updated position in storage.
+    /// Handles deposit or borrow position types.
+    ///
+    /// # Arguments
+    /// - `account_nonce`: Position NFT nonce.
+    /// - `position`: Updated position.
+    fn remove_position(&self, account_nonce: u64, position: &AccountPosition<Self::Api>) {
+        match position.position_type {
+            AccountPositionType::Deposit => {
+                let _ = self
+                    .deposit_positions(account_nonce)
+                    .remove(&position.asset_id);
+            },
+            AccountPositionType::Borrow => {
+                let _ = self
+                    .borrow_positions(account_nonce)
+                    .remove(&position.asset_id);
+            },
+            AccountPositionType::None => {
+                panic!("Position type is None");
+            },
+        }
+    }
+    /// Updates or removes a borrow position in storage.
+    /// Reflects repayment changes in storage.
+    ///
+    /// # Arguments
+    /// - `account_nonce`: Position NFT nonce.
+    /// - `position`: Updated borrow position.
+    fn update_or_remove_position(&self, account_nonce: u64, position: &AccountPosition<Self::Api>) {
+        if position.can_remove() {
+            self.remove_position(account_nonce, position);
+        } else {
+            self.store_updated_position(account_nonce, position);
+        }
+    }
+
     /// Emits an event for a position update.
     /// Logs interest accruals or changes.
     ///
     /// # Arguments
     /// - `position`: Updated position.
-    fn emit_position_update_event(&self, position: &AccountPosition<Self::Api>) {
+    fn emit_position_update_event(
+        &self,
+        amount: &ManagedDecimal<Self::Api, NumDecimals>,
+        position: &AccountPosition<Self::Api>,
+        price: ManagedDecimal<Self::Api, NumDecimals>,
+        caller: &ManagedAddress<Self::Api>,
+        attributes: &AccountAttributes<Self::Api>,
+    ) {
         self.update_position_event(
-            &position.zero_decimal(),
+            amount,
             position,
-            OptionalValue::None,
-            OptionalValue::None,
-            OptionalValue::None,
+            OptionalValue::Some(price),
+            OptionalValue::Some(caller),
+            OptionalValue::Some(attributes),
         );
     }
 }

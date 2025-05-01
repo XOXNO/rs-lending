@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           66
+// Endpoints:                           67
 // Async Callback:                       1
-// Total number of exported functions:  69
+// Total number of exported functions:  70
 
 #![no_std]
 
@@ -51,6 +51,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         editAssetConfig => edit_asset_config
         getPoolAllowed => pools_allowed
         getAccountToken => account_token
+        getLastAccountNonce => last_account_nonce
         getAccountPositions => account_positions
         getAccountAttributes => account_attributes
         getDepositPositions => deposit_positions

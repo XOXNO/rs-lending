@@ -90,12 +90,16 @@ where
     To: TxTo<Env>,
     Gas: TxGas<Env>,
 {
-    pub fn upgrade(
+    pub fn upgrade<
+        Arg0: ProxyArg<MultiValueEncoded<Env::Api, EgldOrEsdtTokenIdentifier<Env::Api>>>,
+    >(
         self,
+        _assets: Arg0,
     ) -> TxTypedUpgrade<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_upgrade()
+            .argument(&_assets)
             .original_result()
     }
 }
@@ -990,6 +994,15 @@ where
             .original_result()
     }
 
+    pub fn last_account_nonce(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, u64> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getLastAccountNonce")
+            .original_result()
+    }
+
     /// Get the account positions 
     /// This storage mapper holds a list of account positions as a set. A position represents a nonce of an account (NFT nonce). 
     pub fn account_positions(
@@ -1580,7 +1593,7 @@ where
     /// * `from_token` - The collateral token to use for repayment 
     /// * `from_amount` - Amount of collateral to use 
     /// * `to_token` - The debt token to repay 
-    /// * `steps` - Optional swap steps for token conversion 
+    /// * `close_position` - A flag to refund all collaterals when the full debt is fully repaid and burn the position NFT 
     /// * `limits` - Optional price limits for the swap 
     ///  
     /// # Requirements 
@@ -1595,19 +1608,22 @@ where
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
         Arg2: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-        Arg3: ProxyArg<OptionalValue<ManagedArgBuffer<Env::Api>>>,
+        Arg3: ProxyArg<bool>,
+        Arg4: ProxyArg<OptionalValue<ManagedArgBuffer<Env::Api>>>,
     >(
         self,
         from_token: Arg0,
         from_amount: Arg1,
         to_token: Arg2,
-        steps: Arg3,
+        close_position: Arg3,
+        steps: Arg4,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("repayDebtWithCollateral")
             .argument(&from_token)
             .argument(&from_amount)
             .argument(&to_token)
+            .argument(&close_position)
             .argument(&steps)
             .original_result()
     }

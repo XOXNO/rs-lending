@@ -19,6 +19,10 @@ pub trait Storage {
     #[storage_mapper("account_token")]
     fn account_token(&self) -> NonFungibleTokenMapper<Self::Api>;
 
+    #[view(getLastAccountNonce)]
+    #[storage_mapper("last_account_nonce")]
+    fn last_account_nonce(&self) -> SingleValueMapper<u64>;
+
     /// Get the account positions
     /// This storage mapper holds a list of account positions as a set. A position represents a nonce of an account (NFT nonce).
     #[view(getAccountPositions)]

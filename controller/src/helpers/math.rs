@@ -22,6 +22,7 @@ pub trait MathsModule: common_math::SharedMathModule {
     ///
     /// # Returns
     /// - Token amount adjusted to the token's decimal precision.
+    #[inline]
     fn convert_egld_to_tokens(
         &self,
         amount_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -40,6 +41,7 @@ pub trait MathsModule: common_math::SharedMathModule {
     ///
     /// # Returns
     /// - Token amount adjusted to the RAY precision.
+    #[inline]
     fn convert_egld_to_tokens_ray(
         &self,
         amount_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -57,6 +59,7 @@ pub trait MathsModule: common_math::SharedMathModule {
     ///
     /// # Returns
     /// - USD value in WAD precision.
+    #[inline]
     fn get_egld_usd_value(
         &self,
         amount: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -75,6 +78,7 @@ pub trait MathsModule: common_math::SharedMathModule {
     ///
     /// # Returns
     /// - EGLD value in WAD precision.
+    #[inline]
     fn get_token_egld_value(
         &self,
         amount: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -281,13 +285,13 @@ pub trait MathsModule: common_math::SharedMathModule {
         let debt_to_repay = if d_ideal.sign() == Sign::Minus {
             d_max
         } else {
-            self.get_min(&d_ideal.into_unsigned_or_fail(), &d_max)
+            self.get_min(d_ideal.into_unsigned_or_fail(), d_max)
         };
 
         // Compute seized_weighted
         let seized = self.mul_half_up(&p, &debt_to_repay, WAD_PRECISION);
         let seized_weighted_raw = self.mul_half_up(&seized, &one_plus_b, WAD_PRECISION);
-        let seized_weighted = self.get_min(&seized_weighted_raw, weighted_collateral);
+        let seized_weighted = self.get_min(seized_weighted_raw, weighted_collateral.clone());
 
         // Compute new weighted collateral and total debt
         let new_weighted = weighted_collateral.clone() - seized_weighted;

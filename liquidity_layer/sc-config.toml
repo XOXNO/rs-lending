@@ -6,3 +6,6 @@ path = "../controller/tests/proxys/proxy_liquidity_pool.rs"
 
 [[proxy]]
 path = "../proxy/liquidity_layer.rs"
+
+[[proxy]]
+path = "../common/proxies/src/proxy_pool.rs"

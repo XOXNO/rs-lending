@@ -58,12 +58,18 @@ pub trait PositionLiquidationModule:
         let deposit_positions = self.sync_deposit_positions_interest(
             account_nonce,
             cache,
-            false,
+            caller,
             account_attributes,
             true,
         );
-        let (borrow_positions, map_debt_indexes) =
-            self.sync_borrow_positions_interest(account_nonce, cache, false, true);
+
+        let (borrow_positions, map_debt_indexes) = self.sync_borrow_positions_interest(
+            account_nonce,
+            cache,
+            caller,
+            account_attributes,
+            true,
+        );
 
         let (debt_payment_in_egld, mut repaid_tokens) = self.calculate_repayment_amounts(
             debt_payments,
@@ -266,7 +272,8 @@ pub trait PositionLiquidationModule:
             let seized_egld_numerator_ray =
                 self.mul_half_up(&proportion, debt_to_be_repaid, RAY_PRECISION);
             // Convert seized EGLD to token units
-            let seized_units_ray = self.convert_egld_to_tokens_ray(&seized_egld_numerator_ray, &asset_data);
+            let seized_units_ray =
+                self.convert_egld_to_tokens_ray(&seized_egld_numerator_ray, &asset_data);
             // Apply bonus: seized_units_after_bonus = seized_units * (bps + bonus_rate) / bps
             let bonus_bps = self.bps() + bonus_rate.clone();
             let seized_units_after_bonus_ray =
@@ -665,12 +672,12 @@ pub trait PositionLiquidationModule:
                 .returns(ReturnsResult)
                 .sync_call();
 
-            self.update_position_event(
+            self.emit_position_update_event(
                 &position.zero_decimal(),
                 &updated_position,
-                OptionalValue::Some(feed.price.clone()),
-                OptionalValue::Some(&caller),
-                OptionalValue::Some(&account_attributes),
+                feed.price.clone(),
+                &caller,
+                &account_attributes,
             );
         }
 
@@ -688,12 +695,12 @@ pub trait PositionLiquidationModule:
                 .returns(ReturnsResult)
                 .sync_call();
 
-            self.update_position_event(
+            self.emit_position_update_event(
                 &position.zero_decimal(),
                 &updated_position,
-                OptionalValue::Some(feed.price.clone()),
-                OptionalValue::Some(&caller),
-                OptionalValue::Some(&account_attributes),
+                feed.price,
+                &caller,
+                &account_attributes,
             );
         }
 

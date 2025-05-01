@@ -46,7 +46,8 @@ pub trait SnapModule:
         self.reentrancy_guard(cache.flash_loan_ongoing);
         require!(collateral_token != debt_token, ERROR_ASSETS_ARE_THE_SAME);
         // Get payments, account, caller and attributes
-        let (payments, opt_account, caller, opt_attributes) = self.validate_supply_payment(false);
+        let (payments, opt_account, caller, opt_attributes) =
+            self.validate_supply_payment(false, true);
 
         let collateral_config = cache.get_cached_asset_info(collateral_token);
         let mut debt_config = cache.get_cached_asset_info(debt_token);
@@ -93,7 +94,7 @@ pub trait SnapModule:
                 // let collateral_received =
                 //     self.to_decimal(received.amount, collateral_price_feed.asset_decimals);
 
-                // Once Bernard mainnet protocol is live, we can uncomment this line
+                // TODO: Once Bernard mainnet protocol is live, we can uncomment this line
                 // collateral_to_be_supplied += &collateral_received;
             }
         } else {
@@ -183,7 +184,7 @@ pub trait SnapModule:
         self.reentrancy_guard(cache.flash_loan_ongoing);
         // Get payments, account, caller and attributes
         let (mut payments, opt_account, caller, opt_attributes) =
-            self.validate_supply_payment(true);
+            self.validate_supply_payment(true, true);
 
         let account = opt_account.unwrap();
 
@@ -251,7 +252,7 @@ pub trait SnapModule:
         let mut cache = Cache::new(self);
         self.reentrancy_guard(cache.flash_loan_ongoing);
         let (mut payments, opt_account, caller, opt_attributes) =
-            self.validate_supply_payment(true);
+            self.validate_supply_payment(true, true);
 
         let account = opt_account.unwrap();
         let account_attributes = opt_attributes.unwrap();
@@ -323,7 +324,7 @@ pub trait SnapModule:
         let mut cache = Cache::new(self);
         self.reentrancy_guard(cache.flash_loan_ongoing);
         let (mut payments, opt_account, caller, opt_attributes) =
-            self.validate_supply_payment(true);
+            self.validate_supply_payment(true, false);
         let account = opt_account.unwrap();
         let account_attributes = opt_attributes.unwrap();
 
@@ -366,7 +367,7 @@ pub trait SnapModule:
             let collaterals = self.sync_deposit_positions_interest(
                 account.token_nonce,
                 &mut cache,
-                true,
+                &caller,
                 &account_attributes,
                 true,
             );
@@ -388,8 +389,8 @@ pub trait SnapModule:
                     false,
                 );
             }
-            self.manage_account_after_withdrawal(&account, &caller);
         }
+        self.manage_account_after_withdrawal(&account, &caller);
     }
 
     fn common_swap_collateral(
@@ -417,13 +418,21 @@ pub trait SnapModule:
 
         if !account_attributes.is_vault() {
             // Required to be in sync with the global index for accurate swaps to avoid extra interest during withdraw
-            self.update_position(
+            let price = self.get_token_price(from_token, cache).price;
+            self.sync_position_interest(
                 &cache.get_cached_pool_address(&deposit_position.asset_id),
                 &mut deposit_position,
-                OptionalValue::Some(self.get_token_price(from_token, cache).price),
+                &price,
             );
 
-            self.update_deposit_position_storage(account_nonce, from_token, &deposit_position);
+            self.update_or_remove_position(account_nonce, &deposit_position);
+            self.emit_position_update_event(
+                &deposit_position.zero_decimal(),
+                &deposit_position,
+                price,
+                caller,
+                account_attributes,
+            );
         }
 
         let mut amount_to_swap = deposit_position.make_amount_decimal(from_amount);

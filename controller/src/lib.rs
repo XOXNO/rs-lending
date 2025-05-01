@@ -74,7 +74,18 @@ pub trait Controller:
     }
 
     #[upgrade]
-    fn upgrade(&self) {}
+    fn upgrade(&self, _assets: MultiValueEncoded<EgldOrEsdtTokenIdentifier>) {
+        // for asset in assets {
+        //     let current_balance = self.blockchain().get_sc_balance(&asset, 0);
+
+        //     if current_balance > BigUint::zero() {
+        //         self.tx()
+        //             .to(self.blockchain().get_caller())
+        //             .egld_or_single_esdt(&asset, 0, &current_balanclearce)
+        //             .transfer();
+        //     }
+        // }
+    }
 
     /// Supplies collateral to the lending pool.
     ///
@@ -91,7 +102,7 @@ pub trait Controller:
         self.reentrancy_guard(cache.flash_loan_ongoing);
         // Validate and extract payment details
         let (collaterals, opt_account, caller, opt_attributes) =
-            self.validate_supply_payment(false);
+            self.validate_supply_payment(false, true);
 
         require!(
             !collaterals.is_empty(),
@@ -196,7 +207,7 @@ pub trait Controller:
         let collaterals = self.sync_deposit_positions_interest(
             account_payment.token_nonce,
             &mut cache,
-            false,
+            &caller,
             &account_attributes,
             true,
         );
@@ -207,7 +218,8 @@ pub trait Controller:
         let (mut borrows, mut borrow_index_mapper) = self.sync_borrow_positions_interest(
             account_payment.token_nonce,
             &mut cache,
-            false,
+            &caller,
+            &account_attributes,
             is_bulk_borrow,
         );
 
@@ -342,17 +354,23 @@ pub trait Controller:
 
         let mut cache = Cache::new(self);
         self.reentrancy_guard(cache.flash_loan_ongoing);
+        let controller_address = self.blockchain().get_sc_address();
         let account_attributes = self.account_attributes(account_nonce).get();
         let deposits = self.sync_deposit_positions_interest(
             account_nonce,
             &mut cache,
-            true,
+            &controller_address,
             &account_attributes,
             true,
         );
 
-        let (borrows, _) =
-            self.sync_borrow_positions_interest(account_nonce, &mut cache, true, false);
+        let (borrows, _) = self.sync_borrow_positions_interest(
+            account_nonce,
+            &mut cache,
+            &controller_address,
+            &account_attributes,
+            false,
+        );
         (deposits, borrows).into()
     }
 
@@ -437,16 +455,22 @@ pub trait Controller:
         self.require_active_account(account_nonce);
 
         let account_attributes = self.account_attributes(account_nonce).get();
+        let controller_sc = self.blockchain().get_sc_address();
         let collaterals = self.sync_deposit_positions_interest(
             account_nonce,
             &mut cache,
-            true,
+            &controller_sc,
             &account_attributes,
             true,
         );
 
-        let (borrow_positions, _) =
-            self.sync_borrow_positions_interest(account_nonce, &mut cache, true, false);
+        let (borrow_positions, _) = self.sync_borrow_positions_interest(
+            account_nonce,
+            &mut cache,
+            &controller_sc,
+            &account_attributes,
+            false,
+        );
 
         let (_, total_collateral, _) = self.calculate_collateral_values(&collaterals, &mut cache);
         let total_borrow = self.calculate_total_borrow_in_egld(&borrow_positions, &mut cache);

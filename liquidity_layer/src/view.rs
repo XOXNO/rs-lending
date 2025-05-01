@@ -1,7 +1,7 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
-use crate::{cache::Cache, rates, storage};
+use crate::{rates, storage};
 
 /// The ViewModule provides read-only endpoints for retrieving key market metrics.
 #[multiversx_sc::module]
@@ -16,9 +16,16 @@ pub trait ViewModule:
     /// - `ManagedDecimal<Self::Api, NumDecimals>`: The current utilization ratio.
     #[view(getCapitalUtilisation)]
     fn get_capital_utilisation(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let cache = Cache::new(self);
+        let params = self.params().get();
+        let zero = self.to_decimal(BigUint::zero(), params.asset_decimals);
+        let supplied = self.supplied().get();
+        let borrowed = self.borrowed().get();
 
-        cache.get_utilization()
+        if supplied == zero {
+            self.to_decimal_ray(BigUint::zero())
+        } else {
+            self.div_half_up(&borrowed, &supplied, common_constants::RAY_PRECISION)
+        }
     }
 
     /// Retrieves the total capital of the pool.
@@ -29,9 +36,7 @@ pub trait ViewModule:
     /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total capital.
     #[view(getTotalCapital)]
     fn get_total_capital(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let cache = Cache::new(self);
-
-        cache.get_total_capital()
+        self.reserves().get() + self.borrowed().get()
     }
 
     /// Retrieves the current deposit rate for the pool.
@@ -42,14 +47,10 @@ pub trait ViewModule:
     /// - `ManagedDecimal<Self::Api, NumDecimals>`: The current deposit rate.
     #[view(getDepositRate)]
     fn get_deposit_rate(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let cache = Cache::new(self);
-        let borrow_rate = self.calc_borrow_rate(&cache);
-
-        self.calc_deposit_rate(
-            cache.get_utilization(),
-            borrow_rate,
-            cache.params.reserve_factor.clone(),
-        )
+        let params = self.params().get();
+        let utilization = self.get_capital_utilisation();
+        let borrow_rate = self.calc_borrow_rate(utilization.clone(), params.clone());
+        self.calc_deposit_rate(utilization, borrow_rate, params.reserve_factor.clone())
     }
 
     /// Retrieves the current borrow rate for the pool.
@@ -58,8 +59,17 @@ pub trait ViewModule:
     /// - `ManagedDecimal<Self::Api, NumDecimals>`: The current borrow rate.
     #[view(getBorrowRate)]
     fn get_borrow_rate(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let cache = Cache::new(self);
+        let params = self.params().get();
+        let utilization = self.get_capital_utilisation();
+        self.calc_borrow_rate(utilization, params)
+    }
 
-        self.calc_borrow_rate(&cache)
+    /// Retrieves the time delta since the last update.
+    ///
+    /// # Returns
+    /// - `u64`: The time delta in seconds.
+    #[view(getDeltaTime)]
+    fn get_delta_time(&self) -> u64 {
+        self.blockchain().get_block_timestamp() - self.last_timestamp().get()
     }
 }

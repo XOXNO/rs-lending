@@ -62,7 +62,7 @@ pub trait LiquidityModule:
     fn sync_position_interest(
         &self,
         mut position: AccountPosition<Self::Api>,
-        price: OptionalValue<ManagedDecimal<Self::Api, NumDecimals>>,
+        price: ManagedDecimal<Self::Api, NumDecimals>,
     ) -> AccountPosition<Self::Api> {
         let mut cache = Cache::new(self);
 
@@ -70,9 +70,8 @@ pub trait LiquidityModule:
 
         self.position_sync(&mut position, &mut cache);
 
-        if price.is_some() {
-            self.emit_market_update(&cache, &price.into_option().unwrap());
-        }
+        self.emit_market_update(&cache, &price);
+
         position
     }
 

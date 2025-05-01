@@ -91,7 +91,8 @@ pub trait UtilsModule:
         let delta = cache.timestamp - cache.last_timestamp;
 
         if delta > 0 {
-            let factor = self.growth_factor(cache, delta);
+            let borrow_rate = self.calc_borrow_rate(cache.get_utilization(), cache.params.clone());
+            let factor = self.growth_factor(borrow_rate, delta);
 
             let old_borrow_index = self.update_borrow_index(cache, factor);
 

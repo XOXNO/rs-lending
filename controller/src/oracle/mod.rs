@@ -229,6 +229,7 @@ pub trait OracleModule:
     }
 
     // --- Utility Functions ---
+    #[inline]
     fn get_pair_state(&self, pair: &ManagedAddress) -> StateXExchange {
         SingleValueMapper::<_, _, ManagedAddress>::new_from_address(
             pair.clone(),
@@ -237,6 +238,7 @@ pub trait OracleModule:
         .get()
     }
 
+    #[inline]
     fn get_pair_state_onedex(&self, pair: &ManagedAddress, pair_id: usize) -> StateOnedex {
         let mut key = StorageKey::new(STATE_PAIR_ONEDEX_STORAGE_KEY);
         key.append_item(&pair_id);
@@ -414,6 +416,7 @@ pub trait OracleModule:
         }
     }
     /// Check if price is within tolerance bounds relative to anchor price.
+    #[inline]
     fn is_within_anchor(
         &self,
         aggregator_price: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -555,6 +558,7 @@ pub trait OracleModule:
         SingleValueMapper::<_, _, ManagedAddress>::new_from_address(address.clone(), key)
     }
 
+    #[inline]
     fn get_aggregator_status(&self, address: &ManagedAddress) -> bool {
         SingleValueMapper::<_, _, ManagedAddress>::new_from_address(
             address.clone(),
@@ -563,6 +567,7 @@ pub trait OracleModule:
         .get()
     }
 
+    #[inline]
     fn make_price_feed(
         &self,
         token_pair: TokenPair<Self::Api>,

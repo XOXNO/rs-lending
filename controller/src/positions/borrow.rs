@@ -52,7 +52,13 @@ pub trait PositionBorrowModule:
         self.apply_e_mode_to_asset_config(debt_config, &e_mode, debt_emode_config);
         require!(debt_config.can_borrow(), ERROR_ASSET_NOT_BORROWABLE);
 
-        let (borrows, _) = self.sync_borrow_positions_interest(account_nonce, cache, false, false);
+        let (borrows, _) = self.sync_borrow_positions_interest(
+            account_nonce,
+            cache,
+            caller,
+            account_attributes,
+            false,
+        );
 
         let mut borrow_position =
             self.get_or_create_borrow_position(account_nonce, debt_config, new_debt_token);
@@ -90,15 +96,15 @@ pub trait PositionBorrowModule:
             .returns(ReturnsResult)
             .sync_call();
 
-        self.update_position_event(
+        self.emit_position_update_event(
             &new_debt_amount,
             &borrow_position,
-            OptionalValue::Some(feed.price),
-            OptionalValue::Some(caller),
-            OptionalValue::Some(account_attributes),
+            feed.price,
+            caller,
+            account_attributes,
         );
 
-        self.store_borrow_position(account_nonce, new_debt_token, &borrow_position);
+        self.store_updated_position(account_nonce, &borrow_position);
 
         borrow_position
     }
@@ -140,17 +146,17 @@ pub trait PositionBorrowModule:
             caller,
             amount.clone(),
             borrow_position,
-            feed.price.clone(),
+            &feed.price,
         );
 
-        self.store_borrow_position(account_nonce, borrow_token_id, &borrow_position);
+        self.store_updated_position(account_nonce, &borrow_position);
 
-        self.update_position_event(
+        self.emit_position_update_event(
             &amount,
             &borrow_position,
-            OptionalValue::Some(feed.price.clone()),
-            OptionalValue::Some(caller),
-            OptionalValue::Some(account),
+            feed.price.clone(),
+            caller,
+            account,
         );
 
         borrow_position
@@ -174,30 +180,14 @@ pub trait PositionBorrowModule:
         caller: &ManagedAddress,
         amount: ManagedDecimal<Self::Api, NumDecimals>,
         position: AccountPosition<Self::Api>,
-        price: ManagedDecimal<Self::Api, NumDecimals>,
+        price: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> AccountPosition<Self::Api> {
         self.tx()
             .to(pool_address)
             .typed(proxy_pool::LiquidityPoolProxy)
-            .borrow(caller, amount, position, price)
+            .borrow(caller, amount, position, price.clone())
             .returns(ReturnsResult)
             .sync_call()
-    }
-
-    /// Stores an updated borrow position in account storage.
-    ///
-    /// # Arguments
-    /// - `account_nonce`: Position NFT nonce.
-    /// - `borrow_token_id`: Borrowed token identifier.
-    /// - `position`: Updated borrow position.
-    fn store_borrow_position(
-        &self,
-        account_nonce: u64,
-        borrow_token_id: &EgldOrEsdtTokenIdentifier,
-        position: &AccountPosition<Self::Api>,
-    ) {
-        self.borrow_positions(account_nonce)
-            .insert(borrow_token_id.clone(), position.clone());
     }
 
     /// Manages debt tracking for isolated positions.

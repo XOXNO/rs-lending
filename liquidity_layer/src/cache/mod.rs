@@ -63,7 +63,7 @@ where
     pub fn new(sc_ref: &'a C) -> Self {
         let params = sc_ref.params().get();
         Cache {
-            zero: ManagedDecimal::from_raw_units(BigUint::zero(), params.asset_decimals),
+            zero: sc_ref.to_decimal(BigUint::zero(), params.asset_decimals),
             supplied: sc_ref.supplied().get(),
             reserves: sc_ref.reserves().get(),
             borrowed: sc_ref.borrowed().get(),

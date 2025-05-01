@@ -29,7 +29,8 @@
     "oracle_source": "1",
     "oracle_decimals": "18",
     "first_tolerance": "125",
-    "last_tolerance": "150"
+    "last_tolerance": "150",
+    "max_price_stale_seconds": "14400"
   },
   "XEGLD": {
     "token_id": "XEGLD-23b511",
@@ -61,7 +62,8 @@
     "oracle_source": "3",
     "oracle_decimals": "18",
     "first_tolerance": "125",
-    "last_tolerance": "150"
+    "last_tolerance": "150",
+    "max_price_stale_seconds": "14400"
   },
   "LEGLD": {
     "token_id": "LEGLD-e8378b",
@@ -93,7 +95,8 @@
     "oracle_source": "4",
     "oracle_decimals": "18",
     "first_tolerance": "125",
-    "last_tolerance": "150"
+    "last_tolerance": "150",
+    "max_price_stale_seconds": "14400"
   },
   "XOXNO": {
     "token_id": "XOXNO-589e09",
@@ -125,7 +128,8 @@
     "oracle_source": "1",
     "oracle_decimals": "18",
     "first_tolerance": "225",
-    "last_tolerance": "450"
+    "last_tolerance": "450",
+    "max_price_stale_seconds": "14400"
   },
   "LXOXNO": {
     "token_id": "LXOXNO-a00540",
@@ -157,7 +161,8 @@
     "oracle_source": "2",
     "oracle_decimals": "18",
     "first_tolerance": "125",
-    "last_tolerance": "150"
+    "last_tolerance": "150",
+    "max_price_stale_seconds": "14400"
   },
   "USDC": {
     "token_id": "USDC-350c4e",
@@ -189,7 +194,8 @@
     "oracle_source": "1",
     "oracle_decimals": "6",
     "first_tolerance": "125",
-    "last_tolerance": "150"
+    "last_tolerance": "150",
+    "max_price_stale_seconds": "43200"
   },
   "USDT": {
     "token_id": "USDT-58d5d0",
@@ -221,7 +227,8 @@
     "oracle_source": "1",
     "oracle_decimals": "6",
     "first_tolerance": "125",
-    "last_tolerance": "150"
+    "last_tolerance": "150",
+    "max_price_stale_seconds": "43200"
   },
   "WETH": {
     "token_id": "WETH-bbe4ab",
@@ -253,7 +260,8 @@
     "oracle_source": "1",
     "oracle_decimals": "18",
     "first_tolerance": "125",
-    "last_tolerance": "150"
+    "last_tolerance": "150",
+    "max_price_stale_seconds": "14400"
   },
   "MEX": {
     "token_id": "MEX-a659d0",
@@ -285,7 +293,8 @@
     "oracle_source": "1",
     "oracle_decimals": "18",
     "first_tolerance": "125",
-    "last_tolerance": "150"
+    "last_tolerance": "150",
+    "max_price_stale_seconds": "14400"
   },
   "UTK": {
     "token_id": "UTK-14d57d",
@@ -317,7 +326,8 @@
     "oracle_source": "1",
     "oracle_decimals": "18",
     "first_tolerance": "125",
-    "last_tolerance": "150"
+    "last_tolerance": "150",
+    "max_price_stale_seconds": "14400"
   },
   "WBTC": {
     "token_id": "WBTC-05fd5b",
@@ -349,7 +359,8 @@
     "oracle_source": "1",
     "oracle_decimals": "8",
     "first_tolerance": "125",
-    "last_tolerance": "150"
+    "last_tolerance": "150",
+    "max_price_stale_seconds": "14400"
   },
   "XOXNOWEGLD": {
     "token_id": "XOXNOWEGLD-232308",
@@ -381,7 +392,8 @@
     "oracle_source": "1",
     "oracle_decimals": "18",
     "first_tolerance": "125",
-    "last_tolerance": "150"
+    "last_tolerance": "150",
+    "max_price_stale_seconds": "14400"
   },
   "XEGLDWEGLD": {
     "token_id": "XEGLDWEGLD-cc2dd9",
@@ -413,7 +425,8 @@
     "oracle_source": "1",
     "oracle_decimals": "18",
     "first_tolerance": "125",
-    "last_tolerance": "150"
+    "last_tolerance": "150",
+    "max_price_stale_seconds": "14400"
   },
   "WEGLDUSDC": {
     "token_id": "EGLDUSDC-ac1a30",
@@ -445,7 +458,8 @@
     "oracle_source": "1",
     "oracle_decimals": "6",
     "first_tolerance": "125",
-    "last_tolerance": "150"
+    "last_tolerance": "150",
+    "max_price_stale_seconds": "14400"
   },
   "ONE": {
     "token_id": "ONE-83a7c0",
@@ -478,6 +492,7 @@
     "oracle_decimals": "18",
     "first_tolerance": "225",
     "last_tolerance": "450",
-    "pair_id": "1"
+    "pair_id": "1",
+    "max_price_stale_seconds": "14400"
   }
 }

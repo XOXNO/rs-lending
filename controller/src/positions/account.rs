@@ -53,34 +53,32 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
             isolated_token,
         };
 
-        let nft_token_payment = self
-            .account_token()
-            .nft_create(BigUint::from(1u64), &attributes);
+        let map_last_nonce = self.last_account_nonce();
+        let last_account_nonce = map_last_nonce.get();
+        let next_nonce = last_account_nonce + 1;
 
-        let _ = self
-            .tx()
-            .typed(system_proxy::UserBuiltinProxy)
-            .esdt_metadata_recreate(
-                self.account_token().get_token_id_ref(),
-                nft_token_payment.token_nonce,
-                sc_format!("Lending Account #{}", nft_token_payment.token_nonce),
-                0u64,
-                ManagedBuffer::new(),
-                &attributes,
-                ManagedVec::from_single_item(sc_format!(
-                    "{}/{}",
-                    BASE_NFT_URI,
-                    nft_token_payment.token_nonce
-                )),
-            );
+        let nft_nonce = self.send().esdt_nft_create(
+            self.account_token().get_token_id_ref(),
+            &BigUint::from(1u64),
+            &sc_format!("Lending Account #{}", next_nonce),
+            &BigUint::zero(),
+            &ManagedBuffer::new(),
+            &attributes,
+            &ManagedVec::from_single_item(sc_format!("{}/{}", BASE_NFT_URI, next_nonce)),
+        );
+
+        map_last_nonce.set(nft_nonce);
+
+        let nft_token_payment = EsdtTokenPayment::new(
+            self.account_token().get_token_id(),
+            nft_nonce,
+            BigUint::from(1u64),
+        );
 
         self.tx().to(caller).payment(&nft_token_payment).transfer();
 
-        let _ = self
-            .account_positions()
-            .insert(nft_token_payment.token_nonce);
-        self.account_attributes(nft_token_payment.token_nonce)
-            .set(attributes.clone());
+        let _ = self.account_positions().insert(nft_nonce);
+        self.account_attributes(nft_nonce).set(attributes.clone());
 
         (nft_token_payment, attributes)
     }
@@ -165,6 +163,7 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
     /// # Arguments
     /// - `position_nft_payment`: NFT payment.
     /// - `initial_caller`: Borrower's address.
+    #[inline]
     fn validate_account(
         &self,
         return_account: bool,

@@ -136,8 +136,9 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
         &self,
         amount: ManagedDecimal<M, NumDecimals>,
     ) -> ManagedDecimal<M, NumDecimals> {
-        if amount > self.get_total_amount() {
-            self.get_total_amount()
+        let total_amount = self.get_total_amount();
+        if amount > total_amount {
+            total_amount
         } else {
             amount
         }

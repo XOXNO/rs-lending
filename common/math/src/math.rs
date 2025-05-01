@@ -6,6 +6,7 @@ multiversx_sc::imports!();
 
 #[multiversx_sc::module]
 pub trait SharedMathModule {
+    #[inline]
     fn mul_half_up(
         &self,
         a: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -20,15 +21,16 @@ pub trait SharedMathModule {
         let product = scaled_a.into_raw_units() * scaled_b.into_raw_units();
 
         // Half-up rounding at precision
-        let ray = BigUint::from(10u64).pow(precision as u32);
-        let half_ray = ray.clone() / BigUint::from(2u64);
+        let scaled = BigUint::from(10u64).pow(precision as u32);
+        let half_scaled = &scaled / &BigUint::from(2u64);
 
         // Round half-up
-        let rounded_product = (product + &half_ray) / ray;
+        let rounded_product = (product + half_scaled) / scaled;
 
         self.to_decimal(rounded_product, precision)
     }
 
+    #[inline]
     fn mul_half_up_signed(
         &self,
         a: &ManagedDecimalSigned<Self::Api, NumDecimals>,
@@ -44,7 +46,7 @@ pub trait SharedMathModule {
 
         // Half-up rounding at precision
         let scaled = BigUint::from(10u64).pow(precision as u32);
-        let half_scaled = scaled.clone() / BigUint::from(2u64);
+        let half_scaled = &scaled / &BigUint::from(2u64);
 
         // Round half-up
         let rounded_product = (product + half_scaled) / scaled;
@@ -52,6 +54,7 @@ pub trait SharedMathModule {
         ManagedDecimalSigned::from_raw_units(rounded_product, precision)
     }
 
+    #[inline]
     fn div_half_up(
         &self,
         a: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -63,17 +66,18 @@ pub trait SharedMathModule {
         let scaled_b = b.rescale(precision);
 
         // Perform division in BigUint
-        let ray = BigUint::from(10u64).pow(precision as u32);
-        let numerator = scaled_a.into_raw_units() * &ray;
+        let scaled = BigUint::from(10u64).pow(precision as u32);
+        let numerator = scaled_a.into_raw_units() * &scaled;
         let denominator = scaled_b.into_raw_units();
 
         // Half-up rounding
-        let half_denominator = denominator.clone() / BigUint::from(2u64);
+        let half_denominator = denominator / &BigUint::from(2u64);
         let rounded_quotient = (numerator + half_denominator) / denominator;
 
         self.to_decimal(rounded_quotient, precision)
     }
 
+    #[inline]
     fn div_half_up_signed(
         &self,
         a: &ManagedDecimalSigned<Self::Api, NumDecimals>,
@@ -90,8 +94,8 @@ pub trait SharedMathModule {
         let denominator = scaled_b.into_raw_units();
 
         // Half-up rounding
-        let half_denominator = denominator.clone() / BigUint::from(2u64);
-        let rounded_quotient = (numerator + half_denominator) / denominator.clone();
+        let half_denominator = denominator / &BigUint::from(2u64);
+        let rounded_quotient = &(&numerator + &half_denominator) / denominator;
 
         ManagedDecimalSigned::from_raw_units(rounded_quotient, precision)
     }
@@ -147,25 +151,13 @@ pub trait SharedMathModule {
 
     fn get_min(
         self,
-        a: &ManagedDecimal<Self::Api, NumDecimals>,
-        b: &ManagedDecimal<Self::Api, NumDecimals>,
+        a: ManagedDecimal<Self::Api, NumDecimals>,
+        b: ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         if a < b {
-            a.clone()
+            a
         } else {
-            b.clone()
-        }
-    }
-
-    fn get_max(
-        self,
-        a: &ManagedDecimal<Self::Api, NumDecimals>,
-        b: &ManagedDecimal<Self::Api, NumDecimals>,
-    ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        if a > b {
-            a.clone()
-        } else {
-            b.clone()
+            b
         }
     }
 }

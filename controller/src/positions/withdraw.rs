@@ -2,7 +2,7 @@ use common_structs::{AccountAttributes, AccountPosition, PriceFeedShort};
 
 use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validation};
 
-use super::{account, vault};
+use super::{account, update, vault};
 
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
@@ -18,6 +18,7 @@ pub trait PositionWithdrawModule:
     + account::PositionAccountModule
     + common_math::SharedMathModule
     + vault::PositionVaultModule
+    + update::PositionUpdateModule
 {
     /// Processes a withdrawal from a deposit position.
     /// Handles vault or market withdrawals with validations.
@@ -76,15 +77,15 @@ pub trait PositionWithdrawModule:
             );
         };
 
-        self.update_position_event(
+        self.emit_position_update_event(
             &amount,
             &deposit_position,
-            OptionalValue::Some(feed.price.clone()),
-            OptionalValue::Some(caller),
-            OptionalValue::Some(position_attributes),
+            feed.price.clone(),
+            caller,
+            position_attributes,
         );
 
-        self.update_deposit_position_storage(account_nonce, &token_id, &deposit_position);
+        self.update_or_remove_position(account_nonce, &deposit_position);
 
         deposit_position
     }
@@ -288,26 +289,5 @@ pub trait PositionWithdrawModule:
             .egld_or_single_esdt(token_id, 0, fee.into_raw_units())
             .returns(ReturnsResult)
             .sync_call();
-    }
-
-    /// Updates or removes a deposit position in storage.
-    /// Reflects withdrawal changes in storage.
-    ///
-    /// # Arguments
-    /// - `account_nonce`: Position NFT nonce.
-    /// - `token_id`: Token identifier.
-    /// - `position`: Updated deposit position.
-    fn update_deposit_position_storage(
-        &self,
-        account_nonce: u64,
-        token_id: &EgldOrEsdtTokenIdentifier,
-        position: &AccountPosition<Self::Api>,
-    ) {
-        let mut deposit_positions = self.deposit_positions(account_nonce);
-        if position.can_remove() {
-            let _ = deposit_positions.remove(token_id);
-        } else {
-            let _ = deposit_positions.insert(token_id.clone(), position.clone());
-        }
     }
 }

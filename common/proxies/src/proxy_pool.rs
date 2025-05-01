@@ -377,7 +377,7 @@ where
     /// **Security Considerations**: Restricted to the owner (via controller contract) to ensure controlled updates. 
     pub fn sync_position_interest<
         Arg0: ProxyArg<common_structs::AccountPosition<Env::Api>>,
-        Arg1: ProxyArg<OptionalValue<ManagedDecimal<Env::Api, usize>>>,
+        Arg1: ProxyArg<ManagedDecimal<Env::Api, usize>>,
     >(
         self,
         position: Arg0,

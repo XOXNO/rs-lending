@@ -5,7 +5,7 @@ use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validatio
 use common_errors::*;
 use common_structs::{AccountAttributes, AccountPosition, PriceFeedShort};
 
-use super::account;
+use super::{account, update};
 
 #[multiversx_sc::module]
 pub trait PositionVaultModule:
@@ -17,6 +17,7 @@ pub trait PositionVaultModule:
     + helpers::math::MathsModule
     + common_math::SharedMathModule
     + account::PositionAccountModule
+    + update::PositionUpdateModule
 {
     /// Validates vault account and checks vault state.
     fn validate_vault_account(
@@ -69,7 +70,7 @@ pub trait PositionVaultModule:
     /// Enables a vault position by moving funds from the market pool.
     fn enable_vault_position(
         &self,
-        dp: &mut AccountPosition<Self::Api>,
+        deposit_position: &mut AccountPosition<Self::Api>,
         pool_address: ManagedAddress<Self::Api>,
         feed: &PriceFeedShort<Self::Api>,
         account_nonce: u64,
@@ -77,17 +78,17 @@ pub trait PositionVaultModule:
         account_attributes: &AccountAttributes<Self::Api>,
     ) {
         let controller_sc = self.blockchain().get_sc_address();
-        self.update_position(&pool_address, dp, OptionalValue::Some(feed.price.clone()));
-        let total_amount_with_interest = dp.get_total_amount();
+        self.sync_position_interest(&pool_address, deposit_position, &feed.price);
+        let total_amount_with_interest = deposit_position.get_total_amount();
 
-        *dp = self
+        *deposit_position = self
             .tx()
             .to(&pool_address)
             .typed(proxy_pool::LiquidityPoolProxy)
             .withdraw(
                 &controller_sc,
                 total_amount_with_interest.clone(),
-                dp.clone(),
+                deposit_position.clone(),
                 false,
                 None,
                 feed.price.clone(),
@@ -96,22 +97,28 @@ pub trait PositionVaultModule:
             .sync_call();
 
         // Ensure the position can be removed, means no more deposits
-        require!(dp.can_remove(), ERROR_ENABLE_VAULT_MODE_FAILED);
+        require!(
+            deposit_position.can_remove(),
+            ERROR_ENABLE_VAULT_MODE_FAILED
+        );
 
         // Re add the withdrawn amount to the principal amount only
-        self.update_vault_supplied_amount(&dp.asset_id, &total_amount_with_interest, true);
+        self.update_vault_supplied_amount(
+            &deposit_position.asset_id,
+            &total_amount_with_interest,
+            true,
+        );
 
-        dp.principal_amount += total_amount_with_interest;
+        deposit_position.principal_amount += total_amount_with_interest;
 
-        self.deposit_positions(account_nonce)
-            .insert(dp.asset_id.clone(), dp.clone());
+        self.store_updated_position(account_nonce, deposit_position);
 
-        self.update_position_event(
-            &dp.zero_decimal(),
-            dp,
-            OptionalValue::Some(feed.price.clone()),
-            OptionalValue::Some(caller),
-            OptionalValue::Some(account_attributes),
+        self.emit_position_update_event(
+            &deposit_position.zero_decimal(),
+            &deposit_position,
+            feed.price.clone(),
+            caller,
+            account_attributes,
         );
     }
 
@@ -139,15 +146,14 @@ pub trait PositionVaultModule:
             .returns(ReturnsResult)
             .sync_call();
 
-        self.deposit_positions(account_nonce)
-            .insert(dp.asset_id.clone(), dp.clone());
+        self.store_updated_position(account_nonce, dp);
 
-        self.update_position_event(
+        self.emit_position_update_event(
             &dp.zero_decimal(),
             dp,
-            OptionalValue::Some(feed.price.clone()),
-            OptionalValue::Some(caller),
-            OptionalValue::Some(account_attributes),
+            feed.price.clone(),
+            caller,
+            account_attributes,
         );
     }
 

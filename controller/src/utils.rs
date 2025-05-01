@@ -144,17 +144,17 @@ pub trait LendingUtilsModule:
     ///
     /// # Notes
     /// - Performs a synchronous call to the liquidity pool proxy.
-    fn update_position(
+    fn sync_position_interest(
         &self,
         asset_address: &ManagedAddress,
         position: &mut AccountPosition<Self::Api>,
-        price: OptionalValue<ManagedDecimal<Self::Api, NumDecimals>>,
+        price: &ManagedDecimal<Self::Api, NumDecimals>,
     ) {
         *position = self
             .tx()
             .to(asset_address)
             .typed(proxy_pool::LiquidityPoolProxy)
-            .sync_position_interest(position.clone(), price)
+            .sync_position_interest(position.clone(), price.clone())
             .returns(ReturnsResult)
             .sync_call();
     }

@@ -1,4 +1,5 @@
 use common_constants::{RAY_PRECISION, SECONDS_PER_YEAR};
+use common_events::MarketParams;
 
 use crate::{cache::Cache, storage};
 
@@ -31,9 +32,11 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
     /// - `ManagedDecimal<Self::Api, NumDecimals>`: Per-second borrow rate (RAY-based).
     ///
     /// **Security Tip**: Relies on `cache.get_utilization()`; no direct input validation.
-    fn calc_borrow_rate(&self, cache: &Cache<Self>) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let utilization = cache.get_utilization();
-        let params = cache.params.clone();
+    fn calc_borrow_rate(
+        &self,
+        utilization: ManagedDecimal<Self::Api, NumDecimals>,
+        params: MarketParams<Self::Api>,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let sec_per_year = self.to_decimal(BigUint::from(SECONDS_PER_YEAR), 0);
 
         let annual_rate = if utilization < params.mid_utilization {
@@ -130,13 +133,12 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
     /// **Security Tip**: Returns 1 (RAY) if `exp == 0` to avoid unnecessary computation.
     fn growth_factor(
         &self,
-        cache: &mut Cache<Self>,
+        borrow_rate: ManagedDecimal<Self::Api, NumDecimals>,
         exp: u64,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let ray = self.ray();
 
         let exp_dec = self.to_decimal(BigUint::from(exp), 0);
-        let borrow_rate = self.calc_borrow_rate(cache);
 
         let exp_minus_one = exp - 1;
         let exp_minus_two = if exp > 2 { exp - 2 } else { 0 };

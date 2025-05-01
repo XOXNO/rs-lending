@@ -4,14 +4,14 @@ use common_structs::{
 };
 use multiversx_sc::storage::StorageKey;
 
-use crate::{cache::Cache, helpers, oracle, positions, proxy_pool, storage, utils, validation};
+use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validation};
 use common_errors::{
     ERROR_ACCOUNT_ATTRIBUTES_MISMATCH, ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL,
     ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS, ERROR_MIX_ISOLATED_COLLATERAL,
     ERROR_POSITION_NOT_FOUND, ERROR_SUPPLY_CAP,
 };
 
-use super::account;
+use super::{account, emode, update, vault};
 
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
@@ -25,9 +25,10 @@ pub trait PositionDepositModule:
     + utils::LendingUtilsModule
     + helpers::math::MathsModule
     + account::PositionAccountModule
-    + positions::emode::EModeModule
+    + emode::EModeModule
     + common_math::SharedMathModule
-    + positions::vault::PositionVaultModule
+    + vault::PositionVaultModule
+    + update::PositionUpdateModule
 {
     /// Processes a deposit operation for a user's position.
     /// Handles validations, e-mode, and updates for deposits.
@@ -180,18 +181,16 @@ pub trait PositionDepositModule:
             );
         }
 
-        self.update_position_event(
+        self.emit_position_update_event(
             &amount_decimal,
             &position,
-            OptionalValue::Some(feed.price.clone()),
-            OptionalValue::Some(caller),
-            OptionalValue::Some(attributes),
+            feed.price.clone(),
+            caller,
+            attributes,
         );
 
         // Update storage with the latest position
-        let _ = self
-            .deposit_positions(account_nonce)
-            .insert(collateral.token_identifier.clone(), position.clone());
+        self.store_updated_position(account_nonce, &position);
 
         position
     }
@@ -234,6 +233,7 @@ pub trait PositionDepositModule:
     fn validate_supply_payment(
         &self,
         require_account_payment: bool,
+        return_nft: bool,
     ) -> (
         ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
         Option<EsdtTokenPayment<Self::Api>>,
@@ -260,8 +260,11 @@ pub trait PositionDepositModule:
                 ERROR_ACCOUNT_ATTRIBUTES_MISMATCH
             );
 
-            // Refund NFT
-            self.tx().to(&caller).payment(&account_payment).transfer();
+            if return_nft {
+                // Refund NFT
+                self.tx().to(&caller).payment(&account_payment).transfer();
+            }
+
             (
                 payments.slice(1, payments.len()).unwrap_or_default(),
                 Some(account_payment),
@@ -369,8 +372,8 @@ pub trait PositionDepositModule:
         cache: &mut Cache<Self>,
     ) {
         self.require_active_account(account_nonce);
-
-        let mut deposit_positions = self.deposit_positions(account_nonce);
+        let controller_sc = self.blockchain().get_sc_address();
+        let deposit_positions = self.deposit_positions(account_nonce);
         let dp_option = deposit_positions.get(asset_id);
         require!(dp_option.is_some(), ERROR_POSITION_NOT_FOUND);
 
@@ -400,7 +403,7 @@ pub trait PositionDepositModule:
             }
         }
 
-        deposit_positions.insert(dp.asset_id.clone(), dp.clone());
+        self.store_updated_position(account_nonce, &dp);
 
         if has_risks {
             self.validate_is_healthy(
@@ -410,12 +413,12 @@ pub trait PositionDepositModule:
             );
         }
 
-        self.update_position_event(
+        self.emit_position_update_event(
             &dp.zero_decimal(),
             &dp,
-            OptionalValue::None,
-            OptionalValue::None,
-            OptionalValue::None,
+            self.get_token_price(asset_id, cache).price,
+            &controller_sc,
+            &account_attributes,
         );
     }
 }

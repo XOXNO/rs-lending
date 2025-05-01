@@ -54,15 +54,15 @@ pub trait PositionRepayModule:
             .returns(ReturnsResult)
             .sync_call();
 
-        self.update_position_event(
+        self.emit_position_update_event(
             repay_amount,
             &borrow_position,
-            OptionalValue::Some(feed.price.clone()),
-            OptionalValue::Some(caller),
-            OptionalValue::Some(position_attributes),
+            feed.price.clone(),
+            caller,
+            position_attributes,
         );
 
-        self.update_borrow_position_storage(account_nonce, repay_token_id, &borrow_position);
+        self.update_or_remove_position(account_nonce, &borrow_position);
     }
 
     /// Updates isolated debt tracking post-repayment.
@@ -82,14 +82,21 @@ pub trait PositionRepayModule:
         repay_amount: &ManagedDecimal<Self::Api, NumDecimals>,
         cache: &mut Cache<Self>,
         position_attributes: &AccountAttributes<Self::Api>,
+        caller: &ManagedAddress,
     ) {
         if position_attributes.is_isolated() {
             let asset_address = cache.get_cached_pool_address(&position.asset_id);
-            self.update_position(
-                &asset_address,
-                position,
-                OptionalValue::Some(feed.price.clone()),
+            // Sync interest before calculating principal repayment for accuracy
+            self.sync_position_interest(&asset_address, position, &feed.price);
+
+            self.emit_position_update_event(
+                &position.zero_decimal(),
+                &position,
+                feed.price.clone(),
+                caller,
+                position_attributes,
             );
+
             let principal_amount = self.calculate_principal_repayment(position, feed, repay_amount);
             let debt_usd_amount = self.get_egld_usd_value(&principal_amount, &cache.egld_usd_price);
             self.adjust_isolated_debt_usd(
@@ -150,7 +157,9 @@ pub trait PositionRepayModule:
             &repay_amount_in_egld,
             cache,
             position_attributes,
+            caller,
         );
+
         self.process_repayment_through_pool(
             account_nonce,
             repay_token_id,
@@ -214,27 +223,6 @@ pub trait PositionRepayModule:
             principal
         } else {
             diff
-        }
-    }
-
-    /// Updates or removes a borrow position in storage.
-    /// Reflects repayment changes in storage.
-    ///
-    /// # Arguments
-    /// - `account_nonce`: Position NFT nonce.
-    /// - `token_id`: Borrowed token identifier.
-    /// - `position`: Updated borrow position.
-    fn update_borrow_position_storage(
-        &self,
-        account_nonce: u64,
-        token_id: &EgldOrEsdtTokenIdentifier,
-        position: &AccountPosition<Self::Api>,
-    ) {
-        let mut borrow_positions = self.borrow_positions(account_nonce);
-        if position.can_remove() {
-            borrow_positions.remove(token_id);
-        } else {
-            borrow_positions.insert(token_id.clone(), position.clone());
         }
     }
 }

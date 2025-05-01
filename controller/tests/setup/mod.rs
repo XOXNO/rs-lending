@@ -7,8 +7,8 @@ use multiversx_sc::{
     imports::{MultiValue2, OptionalValue},
     types::{
         BigUint, EgldOrEsdtTokenPayment, ManagedAddress, ManagedArgBuffer, ManagedBuffer,
-        ManagedDecimal, MultiValueEncoded, NumDecimals, ReturnsNewManagedAddress, ReturnsResult,
-        TestTokenIdentifier,
+        ManagedDecimal, ManagedOption, MultiValueEncoded, NumDecimals, ReturnsNewManagedAddress,
+        ReturnsResult, TestTokenIdentifier,
     },
 };
 use multiversx_sc_scenario::{
@@ -1131,7 +1131,19 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .whitebox(controller::contract_obj, |sc| {
                 let mut cache = Cache::new(&sc);
-                sc.sync_borrow_positions_interest(account_position, &mut cache, true, false);
+                sc.sync_borrow_positions_interest(
+                    account_position,
+                    &mut cache,
+                    &from.to_managed_address(),
+                    &AccountAttributes {
+                        is_isolated_position: false,
+                        is_vault_position: false,
+                        mode: PositionMode::Normal,
+                        isolated_token: ManagedOption::none(),
+                        e_mode_category_id: 0,
+                    },
+                    false,
+                );
             });
     }
 
@@ -1146,7 +1158,7 @@ impl LendingPoolTestState {
                 sc.sync_deposit_positions_interest(
                     account_position,
                     &mut cache,
-                    true,
+                    &from.to_managed_address(),
                     &account_attributes,
                     true,
                 );
