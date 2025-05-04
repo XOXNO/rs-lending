@@ -122,16 +122,13 @@ where
     /// # Payment 
     /// - Accepts minimum 1 payment: optional account NFT and bulk collateral tokens. 
     pub fn supply<
-        Arg0: ProxyArg<bool>,
-        Arg1: ProxyArg<OptionalValue<u8>>,
+        Arg0: ProxyArg<OptionalValue<u8>>,
     >(
         self,
-        is_vault: Arg0,
-        e_mode_category: Arg1,
+        e_mode_category: Arg0,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("supply")
-            .argument(&is_vault)
             .argument(&e_mode_category)
             .original_result()
     }
@@ -236,39 +233,6 @@ where
             .argument(&contract_address)
             .argument(&endpoint)
             .argument(&arguments)
-            .original_result()
-    }
-
-    /// Updates account positions with the latest interest data. 
-    ///  
-    /// # Arguments 
-    /// - `account_nonce`: NFT nonce of the account to sync. 
-    ///  
-    /// # Returns 
-    /// - `MultiValue2<ManagedVec<AccountPosition>, ManagedVec<AccountPosition>>`: Updated deposit and borrow positions. 
-    pub fn update_account_positions<
-        Arg0: ProxyArg<u64>,
-    >(
-        self,
-        account_nonce: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValue2<ManagedVec<Env::Api, common_structs::AccountPosition<Env::Api>>, ManagedVec<Env::Api, common_structs::AccountPosition<Env::Api>>>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("updateAccountPositions")
-            .argument(&account_nonce)
-            .original_result()
-    }
-
-    /// Disables vault mode for an account, moving funds to the market pool. 
-    pub fn toggle_vault<
-        Arg0: ProxyArg<bool>,
-    >(
-        self,
-        status: Arg0,
-    ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
-        self.wrapped_tx
-            .raw_call("toggleVault")
-            .argument(&status)
             .original_result()
     }
 

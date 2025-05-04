@@ -5,7 +5,6 @@ use common_structs::AccountAttributes;
 use crate::storage;
 use common_errors::{
     ERROR_ACCOUNT_ATTRIBUTES_MISMATCH, ERROR_ACCOUNT_NOT_IN_THE_MARKET, ERROR_ADDRESS_IS_ZERO,
-    ERROR_POSITION_SHOULD_BE_VAULT,
 };
 
 multiversx_sc::imports!();
@@ -28,7 +27,6 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
         &self,
         caller: &ManagedAddress,
         is_isolated: bool,
-        is_vault_position: bool,
         mode: PositionMode,
         e_mode_category: OptionalValue<u8>,
         isolated_token: Option<EgldOrEsdtTokenIdentifier>,
@@ -48,7 +46,6 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
         let attributes = AccountAttributes {
             is_isolated_position: is_isolated,
             e_mode_category_id,
-            is_vault_position,
             mode,
             isolated_token,
         };
@@ -99,7 +96,6 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
         &self,
         caller: &ManagedAddress,
         is_isolated: bool,
-        is_vault: bool,
         mode: PositionMode,
         e_mode_category: OptionalValue<u8>,
         opt_account: Option<EsdtTokenPayment<Self::Api>>,
@@ -112,7 +108,6 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
                 let (payment, account_attributes) = self.create_account_nft(
                     caller,
                     is_isolated,
-                    is_vault,
                     mode,
                     e_mode_category,
                     opt_isolated_token,
@@ -206,25 +201,5 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
     #[inline]
     fn require_non_zero_address(&self, address: &ManagedAddress) {
         require!(!address.is_zero(), ERROR_ADDRESS_IS_ZERO);
-    }
-
-    /// Validates consistency between position and operation vault status.
-    /// Ensures correct interest accrual behavior.
-    ///
-    /// # Arguments
-    /// - `account_attributes`: Account attributes.
-    /// - `is_vault`: Operation vault flag.
-    #[inline]
-    fn validate_vault_consistency(
-        &self,
-        account_attributes: &AccountAttributes<Self::Api>,
-        is_vault: bool,
-    ) {
-        if account_attributes.is_vault() || is_vault {
-            require!(
-                account_attributes.is_vault() == is_vault,
-                ERROR_POSITION_SHOULD_BE_VAULT
-            );
-        }
     }
 }

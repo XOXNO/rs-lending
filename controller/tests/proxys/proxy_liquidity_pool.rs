@@ -207,21 +207,6 @@ where
             .original_result()
     }
 
-    /// Retrieves the current reserves available in the pool. 
-    ///  
-    /// Reserves represent tokens held in the pool that are available for borrowing or withdrawal. 
-    ///  
-    /// # Returns 
-    /// - `BigUint`: The current reserves. 
-    pub fn reserves(
-        self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getReserves")
-            .original_result()
-    }
-
     /// Retrieves the total amount supplied to the pool. 
     ///  
     /// # Returns 
@@ -350,43 +335,10 @@ where
     >(
         self,
         price: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::MarketIndex<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("updateIndexes")
-            .argument(&price)
-            .original_result()
-    }
-
-    /// Synchronizes a user's account position with accrued interest since the last update. 
-    ///  
-    /// **Purpose**: Ensures a user's deposit or borrow position reflects the latest interest accrued, typically called before operations like repayments or withdrawals. 
-    ///  
-    /// **Process**: 
-    /// 1. Creates a `Cache` and updates global indexes via `global_sync`. 
-    /// 2. Updates the position with accrued interest using `position_sync`. 
-    /// 3. If a price is provided, emits a market state event. 
-    ///  
-    /// # Arguments 
-    /// - `position`: The user's account position to update (`AccountPosition<Self::Api>`). 
-    /// - `price`: Optional asset price for emitting a market update (`OptionalValue<ManagedDecimal<Self::Api, NumDecimals>>`). 
-    ///  
-    /// # Returns 
-    /// - `AccountPosition<Self::Api>`: The updated position with accrued interest applied. 
-    ///  
-    /// **Security Considerations**: Restricted to the owner (via controller contract) to ensure controlled updates. 
-    pub fn sync_position_interest<
-        Arg0: ProxyArg<common_structs::AccountPosition<Env::Api>>,
-        Arg1: ProxyArg<ManagedDecimal<Env::Api, usize>>,
-    >(
-        self,
-        position: Arg0,
-        price: Arg1,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::AccountPosition<Env::Api>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("updatePositionInterest")
-            .argument(&position)
             .argument(&price)
             .original_result()
     }
@@ -797,18 +749,12 @@ where
             .original_result()
     }
 
-    /// Retrieves the total capital of the pool. 
-    ///  
-    /// Total capital is defined as the sum of reserves and borrowed tokens. 
-    ///  
-    /// # Returns 
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total capital. 
-    pub fn get_total_capital(
+    pub fn get_reserves(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getTotalCapital")
+            .raw_call("getReserves")
             .original_result()
     }
 
@@ -837,6 +783,19 @@ where
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getBorrowRate")
+            .original_result()
+    }
+
+    /// Retrieves the time delta since the last update. 
+    ///  
+    /// # Returns 
+    /// - `u64`: The time delta in seconds. 
+    pub fn get_delta_time(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, u64> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getDeltaTime")
             .original_result()
     }
 }

@@ -1,4 +1,5 @@
 use controller::{ERROR_HEALTH_FACTOR_WITHDRAW, ERROR_INSUFFICIENT_LIQUIDITY};
+use multiversx_sc::types::{EgldOrEsdtTokenIdentifier, MultiValueEncoded};
 use multiversx_sc_scenario::imports::{BigUint, OptionalValue, TestAddress};
 pub mod constants;
 pub mod proxys;
@@ -138,7 +139,7 @@ fn test_withdrawal_with_interest() {
     state.change_timestamp(SECONDS_PER_DAY * 10); // 10 days
 
     // Update interest before withdrawal
-    state.global_sync(&supplier, 1);
+    // state.global_sync(&supplier, 1);
 
     // Get initial state
     let initial_collateral = state.get_collateral_amount_for_token(1, USDC_TOKEN);
@@ -222,7 +223,7 @@ fn test_withdrawal_with_interest_one_user() {
     println!("revenue: {}", revenue);
     println!("borrow_index: {}", borrow_index);
     println!("supply_index: {}", supply_index);
-    state.global_sync(&supplier, 1);
+    // state.global_sync(&supplier, 1);
     // Get initial state
     let final_collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
     println!("collate: {}", final_collateral);
@@ -252,6 +253,8 @@ fn test_withdrawal_with_interest_one_user_prior_update() {
 
     // Setup supplier account
     setup_accounts(&mut state, supplier, borrower);
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
 
     state.change_timestamp(1740269720);
     // Initial supply
@@ -266,7 +269,7 @@ fn test_withdrawal_with_interest_one_user_prior_update() {
     );
 
     state.change_timestamp(1740269852);
-    state.update_account_positions(&supplier, 1);
+    state.update_markets(&supplier, markets.clone());
     state.borrow_asset(
         &supplier,
         EGLD_TOKEN,
@@ -276,7 +279,7 @@ fn test_withdrawal_with_interest_one_user_prior_update() {
     );
 
     state.change_timestamp(1740275066);
-    state.update_account_positions(&supplier, 1);
+    state.update_markets(&supplier, markets.clone());
     // Update interest before withdrawal
 
     // Get initial state
@@ -293,7 +296,7 @@ fn test_withdrawal_with_interest_one_user_prior_update() {
         initial_borrow.into_raw_units().clone(),
         1,
     );
-    state.update_account_positions(&supplier, 1);
+    state.update_markets(&supplier, markets.clone());
     let reserve = state.get_market_reserves(state.egld_market.clone());
     let revenue = state.get_market_revenue(state.egld_market.clone());
     let borrow_index = state.get_market_borrow_index(state.egld_market.clone());
@@ -307,7 +310,7 @@ fn test_withdrawal_with_interest_one_user_prior_update() {
     println!("borrow_index: {}", borrow_index);
     println!("supply_index: {}", supply_index);
     state.change_timestamp(1740275594);
-    state.update_account_positions(&supplier, 1);
+    state.update_markets(&supplier, markets.clone());
     let reserve = state.get_market_reserves(state.egld_market.clone());
     let revenue = state.get_market_revenue(state.egld_market.clone());
     let borrow_index = state.get_market_borrow_index(state.egld_market.clone());
@@ -316,7 +319,7 @@ fn test_withdrawal_with_interest_one_user_prior_update() {
     println!("revenue: {}", revenue);
     println!("borrow_index: {}", borrow_index);
     println!("supply_index: {}", supply_index);
-    state.update_account_positions(&supplier, 1);
+    state.update_markets(&supplier, markets.clone());
     // Get initial state
     let final_collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
     println!("final_collateral:   {}", final_collateral);

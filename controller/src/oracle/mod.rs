@@ -5,7 +5,8 @@ use common_constants::{
     WAD_HALF_PRECISION, WAD_PRECISION, WEGLD_TICKER,
 };
 use common_errors::{ERROR_PRICE_FEED_STALE, ERROR_UN_SAFE_PRICE_NOT_ALLOWED};
-use common_proxies::proxy_xexchange_pair;
+use common_events::MarketIndex;
+use common_proxies::{proxy_pool, proxy_xexchange_pair};
 use common_structs::{ExchangeSource, OracleProvider, OracleType, PriceFeedShort, PricingMethod};
 use multiversx_sc::storage::StorageKey;
 
@@ -30,6 +31,21 @@ use crate::{
 pub trait OracleModule:
     storage::Storage + helpers::math::MathsModule + common_math::SharedMathModule
 {
+    /// Updates the interest index for a specific asset.
+    fn update_asset_index(
+        &self,
+        asset_id: &EgldOrEsdtTokenIdentifier<Self::Api>,
+        cache: &mut Cache<Self>,
+    ) -> MarketIndex<Self::Api> {
+        let pool_address = cache.get_cached_pool_address(asset_id);
+        let asset_price = self.get_token_price(asset_id, cache);
+        self.tx()
+            .to(pool_address)
+            .typed(proxy_pool::LiquidityPoolProxy)
+            .update_indexes(asset_price.price)
+            .returns(ReturnsResult)
+            .sync_call()
+    }
     /// Get token price data
     /// Retrieves price data with caching; handles EGLD/WEGLD cases early and errors if token is not found.
     fn get_token_price(

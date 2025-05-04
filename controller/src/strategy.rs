@@ -104,7 +104,6 @@ pub trait SnapModule:
         let (account_nonce, nft_attributes) = self.get_or_create_account(
             &caller,
             collateral_config.is_isolated(),
-            false,
             mode,
             OptionalValue::Some(e_mode_category),
             opt_account,
@@ -271,7 +270,7 @@ pub trait SnapModule:
 
         let received = self.common_swap_collateral(
             current_collateral,
-            &from_amount,
+            from_amount,
             new_collateral,
             steps,
             account.token_nonce,
@@ -316,7 +315,7 @@ pub trait SnapModule:
     fn repay_debt_with_collateral(
         &self,
         from_token: &EgldOrEsdtTokenIdentifier,
-        from_amount: &BigUint,
+        from_amount: BigUint,
         to_token: &EgldOrEsdtTokenIdentifier,
         close_position: bool,
         steps: OptionalValue<ManagedArgBuffer<Self::Api>>,
@@ -364,29 +363,31 @@ pub trait SnapModule:
         let has_no_debt = self.borrow_positions(account.token_nonce).is_empty();
         if close_position && has_no_debt {
             // Sync positions with interest
-            let collaterals = self.sync_deposit_positions_interest(
-                account.token_nonce,
-                &mut cache,
-                &caller,
-                &account_attributes,
-                true,
-            );
+            let collaterals =
+                self.sync_deposit_positions_interest(account.token_nonce, &mut cache, true);
 
             for collateral in collaterals {
+                let feed = self.get_token_price(&collateral.asset_id, &mut cache);
                 let withdraw_payment = EgldOrEsdtTokenPayment::new(
                     collateral.asset_id.clone(),
                     0,
-                    collateral.get_total_amount().into_raw_units().clone(),
+                    self.get_total_amount(&collateral, &feed, &mut cache)
+                        .into_raw_units()
+                        .clone(),
                 );
+
+                let mut deposit_position =
+                    self.get_deposit_position(account.token_nonce, &collateral.asset_id);
+
                 let _ = self.process_withdrawal(
                     account.token_nonce,
-                    withdraw_payment,
+                    withdraw_payment.amount,
                     &caller,
                     false,
                     None,
                     &mut cache,
                     &account_attributes,
-                    false,
+                    &mut deposit_position,
                 );
             }
         }
@@ -396,7 +397,7 @@ pub trait SnapModule:
     fn common_swap_collateral(
         &self,
         from_token: &EgldOrEsdtTokenIdentifier,
-        from_amount: &BigUint,
+        from_amount: BigUint,
         to_token: &EgldOrEsdtTokenIdentifier,
         steps: ManagedArgBuffer<Self::Api>,
         account_nonce: u64,
@@ -404,64 +405,25 @@ pub trait SnapModule:
         account_attributes: &AccountAttributes<Self::Api>,
         cache: &mut Cache<Self>,
     ) -> EgldOrEsdtTokenPayment<Self::Api> {
-        // Retrieve deposit position for the given token
-        let deposit_positions = self.deposit_positions(account_nonce);
-        let opt_deposit_position = deposit_positions.get(from_token);
-
-        require!(
-            opt_deposit_position.is_some(),
-            "Token {} is not available for this account",
-            from_token
-        );
-
-        let mut deposit_position = opt_deposit_position.unwrap();
-
-        if !account_attributes.is_vault() {
-            // Required to be in sync with the global index for accurate swaps to avoid extra interest during withdraw
-            let price = self.get_token_price(from_token, cache).price;
-            self.sync_position_interest(
-                &cache.get_cached_pool_address(&deposit_position.asset_id),
-                &mut deposit_position,
-                &price,
-            );
-
-            self.update_or_remove_position(account_nonce, &deposit_position);
-            self.emit_position_update_event(
-                &deposit_position.zero_decimal(),
-                &deposit_position,
-                price,
-                caller,
-                account_attributes,
-            );
-        }
-
-        let mut amount_to_swap = deposit_position.make_amount_decimal(from_amount);
-
-        // Cap the withdrawal amount to the available balance with interest
-        amount_to_swap = deposit_position.cap_amount(amount_to_swap);
-
         let controller = self.blockchain().get_sc_address();
-        let withdraw_payment = EgldOrEsdtTokenPayment::new(
-            from_token.clone(),
-            0,
-            amount_to_swap.into_raw_units().clone(),
-        );
 
-        self.process_withdrawal(
+        let mut deposit_position = self.get_deposit_position(account_nonce, &from_token);
+
+        let withdraw_payment = self.process_withdrawal(
             account_nonce,
-            withdraw_payment,
+            from_amount,
             &controller,
             false,
             None,
             cache,
             account_attributes,
-            true,
+            &mut deposit_position,
         );
 
         let received = self.convert_token_from_to(
             to_token,
             from_token,
-            amount_to_swap.into_raw_units(),
+            &withdraw_payment.amount,
             caller,
             steps,
         );

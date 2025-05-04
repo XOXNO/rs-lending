@@ -1,5 +1,5 @@
 use common_constants::{EGLD_TICKER, SECONDS_PER_HOUR};
-use common_events::OracleProvider;
+use common_events::{MarketIndex, OracleProvider};
 use common_structs::{AssetConfig, PriceFeedShort};
 
 multiversx_sc::imports!();
@@ -7,7 +7,7 @@ multiversx_sc::derive_imports!();
 
 pub struct Cache<'a, C>
 where
-    C: crate::oracle::OracleModule + crate::storage::Storage,
+    C: crate::oracle::OracleModule + crate::storage::Storage
 {
     sc_ref: &'a C,
 
@@ -19,6 +19,8 @@ where
         ManagedMapEncoded<C::Api, EgldOrEsdtTokenIdentifier<C::Api>, ManagedAddress<C::Api>>,
     pub asset_oracles:
         ManagedMapEncoded<C::Api, EgldOrEsdtTokenIdentifier<C::Api>, OracleProvider<C::Api>>,
+    pub market_indexes:
+        ManagedMapEncoded<C::Api, EgldOrEsdtTokenIdentifier<C::Api>, MarketIndex<C::Api>>,
     pub egld_usd_price: ManagedDecimal<C::Api, NumDecimals>,
     pub price_aggregator_sc: ManagedAddress<C::Api>,
     pub egld_ticker: ManagedBuffer<C::Api>,
@@ -28,7 +30,7 @@ where
 
 impl<'a, C> Cache<'a, C>
 where
-    C: crate::oracle::OracleModule + crate::storage::Storage,
+    C: crate::oracle::OracleModule + crate::storage::Storage
 {
     pub fn new(sc_ref: &'a C) -> Self {
         let price_aggregator = sc_ref.price_aggregator_address().get();
@@ -45,6 +47,7 @@ where
             asset_configs: ManagedMapEncoded::new(),
             asset_pools: ManagedMapEncoded::new(),
             asset_oracles: ManagedMapEncoded::new(),
+            market_indexes: ManagedMapEncoded::new(),
             egld_usd_price,
             price_aggregator_sc: price_aggregator,
             egld_ticker,
@@ -72,6 +75,21 @@ where
 
         let new = self.sc_ref.asset_config(token_id).get();
         self.asset_configs.put(token_id, &new);
+
+        new
+    }
+
+    pub fn get_cached_market_index(
+        &mut self,
+        token_id: &EgldOrEsdtTokenIdentifier<C::Api>,
+    ) -> MarketIndex<C::Api> {
+        let existing = self.market_indexes.contains(token_id);
+        if existing {
+            return self.market_indexes.get(token_id);
+        }
+
+        let new = self.sc_ref.update_asset_index(token_id, self);
+        self.market_indexes.put(token_id, &new);
 
         new
     }

@@ -15,16 +15,6 @@ pub trait Storage {
     #[storage_mapper("pool_asset")]
     fn pool_asset(&self) -> SingleValueMapper<EgldOrEsdtTokenIdentifier>;
 
-    /// Retrieves the current reserves available in the pool.
-    ///
-    /// Reserves represent tokens held in the pool that are available for borrowing or withdrawal.
-    ///
-    /// # Returns
-    /// - `BigUint`: The current reserves.
-    #[view(getReserves)]
-    #[storage_mapper("reserves")]
-    fn reserves(&self) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
-
     /// Retrieves the total amount supplied to the pool.
     ///
     /// # Returns

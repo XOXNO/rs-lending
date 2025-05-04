@@ -1,5 +1,5 @@
 use common_constants::{RAY_PRECISION, SECONDS_PER_YEAR};
-use common_events::{AccountPosition, AccountPositionType, MarketParams};
+use common_events::MarketParams;
 
 use crate::{cache::Cache, storage};
 
@@ -29,7 +29,7 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
     /// - `cache`: Reference to the pool state (`Cache<Self>`), providing utilization and parameters.
     ///
     /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: Per-year borrow rate (RAY-based).
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: Per-second borrow rate (RAY-based).
     ///
     /// **Security Tip**: Relies on `cache.get_utilization()`; no direct input validation.
     fn calc_borrow_rate(
@@ -284,9 +284,12 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
         old_borrow_index: ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         // Calculate the actual accrued interest correctly using calc_interest (returns asset decimals)
-        let accrued_interest_asset_decimals =
-            self.calc_interest(&cache.borrowed, &cache.borrow_index, &old_borrow_index);
+        let old_total_debt = self.mul_half_up(&cache.borrowed, &old_borrow_index, RAY_PRECISION);
+        let new_total_debt = self.mul_half_up(&cache.borrowed, &cache.borrow_index, RAY_PRECISION);
 
+        let accrued_interest_ray = new_total_debt.sub(old_total_debt);
+        let accrued_interest_asset_decimals =
+            accrued_interest_ray.rescale(cache.params.asset_decimals);
         // If the accrued interest is less than the bad debt, we can collect the entire accrued interest
         if accrued_interest_asset_decimals.le(&cache.bad_debt) {
             // Use asset decimal version for subtracting from bad_debt storage
@@ -305,6 +308,7 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
             );
             // Update revenue and reserves storage with fee scaled to asset decimals
             let protocol_fee_asset_decimals = protocol_fee.rescale(cache.params.asset_decimals);
+
             cache.revenue += &protocol_fee_asset_decimals;
 
             // Return net rewards (interest after bad debt and fee) in RAY precision
@@ -338,85 +342,10 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
             let borrow_factor = self.calculate_compounded_interest(borrow_rate.clone(), delta);
             let old_borrow_index = self.update_borrow_index(cache, borrow_factor.clone());
             let supplier_rewards = self.calc_supplier_rewards(cache, old_borrow_index.clone());
+
             self.update_supply_index(cache, supplier_rewards);
-            // Update the last used timestamp
+
             cache.last_timestamp = cache.timestamp;
-        }
-    }
-
-    /// Calculates accrued interest for a position since its last update.
-    ///
-    /// **Scope**: Computes interest accrued on a principal amount based on the change in market index since the last recorded index.
-    ///
-    /// **Goal**: Provide an accurate interest calculation for updating positions or determining rewards/debts.
-    ///
-    /// **Formula**:
-    /// - `interest = amount * (current_index / account_position_index - 1)`
-    /// - Result is rescaled to match `amount`'s asset_decimals.
-    ///
-    /// # Arguments
-    /// - `amount`: Principal amount (`ManagedDecimal<Self::Api, NumDecimals>`).
-    /// - `current_index`: Latest market index (`ManagedDecimal<Self::Api, NumDecimals>`).
-    /// - `account_position_index`: Position's last recorded index (`ManagedDecimal<Self::Api, NumDecimals>`).
-    ///
-    /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: Accrued interest since the last update.
-    ///
-    /// **Security Tip**: No division-by-zero risk if `account_position_index` is non-zero, ensured by upstream position initialization.
-    fn calc_interest(
-        &self,
-        amount: &ManagedDecimal<Self::Api, NumDecimals>, // Amount of the asset
-        current_index: &ManagedDecimal<Self::Api, NumDecimals>, // Market index
-        account_position_index: &ManagedDecimal<Self::Api, NumDecimals>, // Account position index
-    ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        if current_index == account_position_index {
-            return self.to_decimal(BigUint::zero(), amount.scale());
-        }
-        let amount_ray = amount.rescale(RAY_PRECISION);
-        let numerator = self.mul_half_up(&amount_ray, current_index, RAY_PRECISION);
-        let new_amount = self.div_half_up(&numerator, account_position_index, RAY_PRECISION);
-
-        new_amount.sub(amount_ray).rescale(amount.scale())
-    }
-
-    /// Updates an account position with accrued interest based on current market indexes.
-    ///
-    /// **Scope**: Adjusts a user's deposit or borrow position by calculating and adding accrued interest,
-    /// updating timestamps and indexes accordingly.
-    ///
-    /// **Goal**: Ensure a position reflects the latest interest accrued, handling edge cases like zero amounts.
-    ///
-    /// **Process**:
-    /// - Selects supply or borrow index based on position type.
-    /// - For zero-amount positions, resets timestamp and index.
-    /// - For non-zero amounts, calculates and adds interest.
-    ///
-    /// # Arguments
-    /// - `position`: Mutable reference to the account position (`AccountPosition<Self::Api>`).
-    /// - `cache`: Mutable reference to the pool state (`Cache<Self>`).
-    ///
-    /// **Security Tip**: Handles zero amounts safely by resetting state, protected by caller ensuring valid position type.
-    fn position_sync(&self, position: &mut AccountPosition<Self::Api>, cache: &mut Cache<Self>) {
-        let is_supply = position.position_type == AccountPositionType::Deposit;
-        let index = if is_supply {
-            cache.supply_index.clone()
-        } else {
-            cache.borrow_index.clone()
-        };
-
-        if position.get_total_amount().eq(&cache.zero) {
-            position.last_update_timestamp = cache.timestamp;
-            position.market_index = index;
-            return;
-        }
-
-        let interest =
-            self.calc_interest(&position.get_total_amount(), &index, &position.market_index);
-
-        if interest.gt(&cache.zero) {
-            position.interest_accrued += interest;
-            position.last_update_timestamp = cache.timestamp;
-            position.market_index = index;
         }
     }
 }

@@ -33,8 +33,6 @@ pub trait PositionUpdateModule:
         &self,
         account_nonce: u64,
         cache: &mut Cache<Self>,
-        caller: &ManagedAddress<Self::Api>,
-        attributes: &AccountAttributes<Self::Api>,
         should_return_map: bool,
     ) -> (
         ManagedVec<AccountPosition<Self::Api>>,
@@ -44,29 +42,15 @@ pub trait PositionUpdateModule:
         let mut updated_positions = ManagedVec::new();
         let mut position_index_map = ManagedMapEncoded::new();
 
-        for (index, token_id) in borrow_positions_map.keys().enumerate() {
-            let mut borrow_position = borrow_positions_map.get(&token_id).unwrap();
-            let pool_address = cache.get_cached_pool_address(&borrow_position.asset_id);
-            let price = self.get_token_price(&borrow_position.asset_id, cache).price;
-
-            self.sync_position_interest(&pool_address, &mut borrow_position, &price);
-
-            self.emit_position_update_event(
-                &borrow_position.zero_decimal(),
-                &borrow_position,
-                price,
-                caller,
-                attributes,
-            );
+        for (index, asset_id) in borrow_positions_map.keys().enumerate() {
+            let _ = cache.get_cached_market_index(&asset_id);
 
             if should_return_map {
                 let safe_index = index + 1; // Avoid zero index issues
-                position_index_map.put(&borrow_position.asset_id, &safe_index);
+                position_index_map.put(&asset_id, &safe_index);
             }
 
-            self.store_updated_position(account_nonce, &borrow_position);
-
-            updated_positions.push(borrow_position.clone());
+            updated_positions.push(borrow_positions_map.get(&asset_id).unwrap());
         }
 
         (updated_positions, position_index_map)
@@ -86,36 +70,16 @@ pub trait PositionUpdateModule:
         &self,
         account_nonce: u64,
         cache: &mut Cache<Self>,
-        caller: &ManagedAddress<Self::Api>,
-        account_attributes: &AccountAttributes<Self::Api>,
         should_create_array: bool,
     ) -> ManagedVec<AccountPosition<Self::Api>> {
         let deposit_positions_map = self.deposit_positions(account_nonce);
         let mut updated_positions = ManagedVec::new();
 
-        for mut deposit_position in deposit_positions_map.values() {
-            if !account_attributes.is_vault() {
-                let pool_address = cache.get_cached_pool_address(&deposit_position.asset_id);
-
-                let price = self
-                    .get_token_price(&deposit_position.asset_id, cache)
-                    .price;
-
-                self.sync_position_interest(&pool_address, &mut deposit_position, &price);
-
-                self.emit_position_update_event(
-                    &deposit_position.zero_decimal(),
-                    &deposit_position,
-                    price,
-                    caller,
-                    account_attributes,
-                );
-
-                self.store_updated_position(account_nonce, &deposit_position);
-            }
+        for asset_id in deposit_positions_map.keys() {
+            let _ = cache.get_cached_market_index(&asset_id);
 
             if should_create_array {
-                updated_positions.push(deposit_position.clone());
+                updated_positions.push(deposit_positions_map.get(&asset_id).unwrap());
             }
         }
 

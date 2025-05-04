@@ -97,7 +97,7 @@ pub trait Controller:
     /// - Accepts minimum 1 payment: optional account NFT and bulk collateral tokens.
     #[payable]
     #[endpoint(supply)]
-    fn supply(&self, is_vault: bool, e_mode_category: OptionalValue<u8>) {
+    fn supply(&self, e_mode_category: OptionalValue<u8>) {
         let mut cache = Cache::new(self);
         self.reentrancy_guard(cache.flash_loan_ongoing);
         // Validate and extract payment details
@@ -129,15 +129,12 @@ pub trait Controller:
         let (account_nonce, account_attributes) = self.get_or_create_account(
             &caller,
             first_asset_info.is_isolated(),
-            is_vault,
             PositionMode::Normal,
             e_mode_category,
             opt_account,
             opt_attributes,
             opt_isolated_token,
         );
-
-        self.validate_vault_consistency(&account_attributes, is_vault);
 
         // Process the deposit
         self.process_deposit(
@@ -168,16 +165,18 @@ pub trait Controller:
         // Process each withdrawal
         for collateral in collaterals {
             self.validate_payment(&collateral);
-
+            let mut deposit_position = self
+                .get_deposit_position(account_payment.token_nonce, &collateral.token_identifier);
+            
             let _ = self.process_withdrawal(
                 account_payment.token_nonce,
-                collateral,
+                collateral.amount,
                 &caller,
                 false,
                 None,
                 &mut cache,
                 &account_attributes,
-                false,
+                &mut deposit_position,
             );
         }
 
@@ -204,13 +203,8 @@ pub trait Controller:
         let (account_payment, caller, account_attributes) = self.validate_account(true);
 
         // Sync positions with interest
-        let collaterals = self.sync_deposit_positions_interest(
-            account_payment.token_nonce,
-            &mut cache,
-            &caller,
-            &account_attributes,
-            true,
-        );
+        let collaterals =
+            self.sync_deposit_positions_interest(account_payment.token_nonce, &mut cache, true);
 
         let (_, _, ltv_collateral) = self.calculate_collateral_values(&collaterals, &mut cache);
 
@@ -218,8 +212,6 @@ pub trait Controller:
         let (mut borrows, mut borrow_index_mapper) = self.sync_borrow_positions_interest(
             account_payment.token_nonce,
             &mut cache,
-            &caller,
-            &account_attributes,
             is_bulk_borrow,
         );
 
@@ -337,66 +329,6 @@ pub trait Controller:
         self.flash_loan_ongoing().set(false);
     }
 
-    /// Updates account positions with the latest interest data.
-    ///
-    /// # Arguments
-    /// - `account_nonce`: NFT nonce of the account to sync.
-    ///
-    /// # Returns
-    /// - `MultiValue2<ManagedVec<AccountPosition>, ManagedVec<AccountPosition>>`: Updated deposit and borrow positions.
-    #[endpoint(updateAccountPositions)]
-    fn update_account_positions(
-        &self,
-        account_nonce: u64,
-    ) -> MultiValue2<ManagedVec<AccountPosition<Self::Api>>, ManagedVec<AccountPosition<Self::Api>>>
-    {
-        self.require_active_account(account_nonce);
-
-        let mut cache = Cache::new(self);
-        self.reentrancy_guard(cache.flash_loan_ongoing);
-        let controller_address = self.blockchain().get_sc_address();
-        let account_attributes = self.account_attributes(account_nonce).get();
-        let deposits = self.sync_deposit_positions_interest(
-            account_nonce,
-            &mut cache,
-            &controller_address,
-            &account_attributes,
-            true,
-        );
-
-        let (borrows, _) = self.sync_borrow_positions_interest(
-            account_nonce,
-            &mut cache,
-            &controller_address,
-            &account_attributes,
-            false,
-        );
-        (deposits, borrows).into()
-    }
-
-    /// Disables vault mode for an account, moving funds to the market pool.
-    #[payable]
-    #[endpoint(toggleVault)]
-    fn toggle_vault(&self, status: bool) {
-        let (account_payment, caller, mut account_attributes) = self.validate_account(false);
-        self.validate_vault_account(&account_attributes, !status);
-
-        let mut cache = Cache::new(self);
-        self.reentrancy_guard(cache.flash_loan_ongoing);
-        account_attributes.is_vault_position = status;
-
-        self.process_vault_toggle(
-            account_payment.token_nonce,
-            status,
-            &mut cache,
-            &account_attributes,
-            &caller,
-        );
-
-        self.update_account_attributes(account_payment.token_nonce, &account_attributes);
-        self.tx().to(caller).payment(&account_payment).transfer();
-    }
-
     /// Updates LTV or liquidation threshold for account positions of a specific asset.
     ///
     /// # Arguments
@@ -454,23 +386,10 @@ pub trait Controller:
         self.reentrancy_guard(cache.flash_loan_ongoing);
         self.require_active_account(account_nonce);
 
-        let account_attributes = self.account_attributes(account_nonce).get();
-        let controller_sc = self.blockchain().get_sc_address();
-        let collaterals = self.sync_deposit_positions_interest(
-            account_nonce,
-            &mut cache,
-            &controller_sc,
-            &account_attributes,
-            true,
-        );
+        let collaterals = self.sync_deposit_positions_interest(account_nonce, &mut cache, true);
 
-        let (borrow_positions, _) = self.sync_borrow_positions_interest(
-            account_nonce,
-            &mut cache,
-            &controller_sc,
-            &account_attributes,
-            false,
-        );
+        let (borrow_positions, _) =
+            self.sync_borrow_positions_interest(account_nonce, &mut cache, false);
 
         let (_, total_collateral, _) = self.calculate_collateral_values(&collaterals, &mut cache);
         let total_borrow = self.calculate_total_borrow_in_egld(&borrow_positions, &mut cache);

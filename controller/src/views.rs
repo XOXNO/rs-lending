@@ -90,8 +90,10 @@ pub trait ViewsModule:
         account_nonce: u64,
         token_id: &EgldOrEsdtTokenIdentifier,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        let mut cache = Cache::new(self);
+        let feed = self.get_token_price(token_id, &mut cache);
         match self.deposit_positions(account_nonce).get(token_id) {
-            Some(dp) => dp.get_total_amount(),
+            Some(dp) => self.get_total_amount(&dp, &feed, &mut cache),
             None => sc_panic!("Token not existing in the account {}", token_id),
         }
     }
@@ -114,8 +116,11 @@ pub trait ViewsModule:
         account_nonce: u64,
         token_id: &EgldOrEsdtTokenIdentifier,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        let mut cache = Cache::new(self);
+        cache.allow_unsafe_price = false;
+        let feed = self.get_token_price(token_id, &mut cache);
         match self.borrow_positions(account_nonce).get(token_id) {
-            Some(bp) => bp.get_total_amount(),
+            Some(bp) => self.get_total_amount(&bp, &feed, &mut cache),
             None => sc_panic!("Token not existing in the account {}", token_id),
         }
     }
@@ -158,7 +163,8 @@ pub trait ViewsModule:
 
         deposit_positions.values().fold(self.wad_zero(), |acc, dp| {
             let feed = self.get_token_price(&dp.asset_id, &mut cache);
-            acc + self.get_token_egld_value(&dp.get_total_amount(), &feed.price)
+            acc + self
+                .get_token_egld_value(&self.get_total_amount(&dp, &feed, &mut cache), &feed.price)
         })
     }
 

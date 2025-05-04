@@ -1,5 +1,5 @@
 use controller::ERROR_INSUFFICIENT_COLLATERAL;
-use multiversx_sc::types::ManagedDecimal;
+use multiversx_sc::types::{EgldOrEsdtTokenIdentifier, ManagedDecimal, MultiValueEncoded};
 use multiversx_sc_scenario::imports::{BigUint, OptionalValue, TestAddress};
 pub mod constants;
 pub mod proxys;
@@ -85,7 +85,10 @@ fn test_liquidation() {
     assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
     assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
     state.change_timestamp(SECONDS_PER_DAY * 500);
-    state.update_account_positions(&borrower, 2);
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
+    state.update_markets(&borrower, markets.clone());
     let health_factor = state.get_account_health_factor(2);
     println!("Health Factor {:?}", health_factor);
 
@@ -213,7 +216,10 @@ fn test_liquidation_bad_debt_multi_asset() {
     assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
     assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
     state.change_timestamp(SECONDS_PER_DAY * 1000);
-    state.update_account_positions(&borrower, 2);
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
+    state.update_markets(&borrower, markets.clone());
     let borrowed = state.get_total_borrow_in_egld(2);
     let borrowed_egld = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
     let collateral = state.get_total_collateral_in_egld(2);
@@ -353,7 +359,9 @@ fn test_liquidation_single_position() {
     assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
 
     state.change_timestamp(SECONDS_PER_YEAR + SECONDS_PER_DAY * 1500);
-    state.update_account_positions(&borrower, 2);
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
+    state.update_markets(&borrower, markets.clone());
     let borrowed_egld = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
     let borrowed = state.get_total_borrow_in_egld(2);
     let collateral = state.get_total_collateral_in_egld(2);
@@ -456,8 +464,9 @@ fn test_liquidation_and_left_bad_debt() {
     );
 
     state.change_timestamp(590000000u64);
-    state.update_borrows_with_debt(&borrower, 2);
-    state.global_sync(&supplier, 2);
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
+    state.update_markets(&supplier, markets.clone());
     let health = state.get_account_health_factor(2);
     let borrow_amount_in_egld = state.get_total_borrow_in_egld(2);
     let collateral_in_egld = state.get_total_collateral_in_egld(2);
@@ -485,7 +494,7 @@ fn test_liquidation_and_left_bad_debt() {
     println!("borrow_amount_in_egld: {:?}", borrow_amount_in_egld);
     assert!(borrow_amount_in_egld > ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS));
     assert!(
-        collateral_in_egld < ManagedDecimal::from_raw_units(BigUint::from(WAD/2), EGLD_DECIMALS)
+        collateral_in_egld < ManagedDecimal::from_raw_units(BigUint::from(WAD / 2), EGLD_DECIMALS)
     );
 
     // Repay the bad debt, usually the protocol will do this
@@ -592,7 +601,10 @@ fn test_liquidation_partial_payment() {
     println!("collateral_in_dollars: {:?}", collateral_in_dollars);
 
     state.change_timestamp(600000000u64);
-    state.update_borrows_with_debt(&borrower, 2);
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
+    state.update_markets(&borrower, markets.clone());
     println!("borrow_amount_in_dollars: {:?}", borrow_amount_in_dollars);
     let health = state.get_account_health_factor(2);
     println!("health: {}", health);

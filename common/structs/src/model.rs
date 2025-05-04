@@ -64,8 +64,7 @@ pub enum PositionMode {
 pub struct AccountPosition<M: ManagedTypeApi> {
     pub position_type: AccountPositionType,
     pub asset_id: EgldOrEsdtTokenIdentifier<M>,
-    pub principal_amount: ManagedDecimal<M, NumDecimals>,
-    pub interest_accrued: ManagedDecimal<M, NumDecimals>,
+    pub scaled_amount: ManagedDecimal<M, NumDecimals>,
     pub account_nonce: u64,
     pub last_update_timestamp: u64,
     pub market_index: ManagedDecimal<M, NumDecimals>,
@@ -98,8 +97,7 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
     pub fn new(
         position_type: AccountPositionType,
         asset_id: EgldOrEsdtTokenIdentifier<M>,
-        principal_amount: ManagedDecimal<M, NumDecimals>,
-        interest_accrued: ManagedDecimal<M, NumDecimals>,
+        scaled_amount: ManagedDecimal<M, NumDecimals>,
         account_nonce: u64,
         last_update_timestamp: u64,
         market_index: ManagedDecimal<M, NumDecimals>,
@@ -111,8 +109,7 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
         AccountPosition {
             position_type,
             asset_id,
-            principal_amount,
-            interest_accrued,
+            scaled_amount,
             account_nonce,
             last_update_timestamp,
             market_index,
@@ -123,40 +120,23 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
         }
     }
 
-    /// Returns the total position amount by summing the principal and the accrued interest.
-    ///
-    /// # Returns
-    /// - `ManagedDecimal<M, NumDecimals>`: The total amount in the position.
     #[inline]
-    pub fn get_total_amount(&self) -> ManagedDecimal<M, NumDecimals> {
-        self.principal_amount.clone() + self.interest_accrued.clone()
-    }
-
-    pub fn cap_amount(
+    pub fn make_amount_decimal(
         &self,
-        amount: ManagedDecimal<M, NumDecimals>,
+        amount: &BigUint<M>,
+        scale: usize,
     ) -> ManagedDecimal<M, NumDecimals> {
-        let total_amount = self.get_total_amount();
-        if amount > total_amount {
-            total_amount
-        } else {
-            amount
-        }
-    }
-
-    #[inline]
-    pub fn make_amount_decimal(&self, amount: &BigUint<M>) -> ManagedDecimal<M, NumDecimals> {
-        ManagedDecimal::from_raw_units(amount.clone(), self.principal_amount.scale())
+        ManagedDecimal::from_raw_units(amount.clone(), scale)
     }
 
     #[inline]
     pub fn zero_decimal(&self) -> ManagedDecimal<M, NumDecimals> {
-        ManagedDecimal::from_raw_units(BigUint::zero(), self.principal_amount.scale())
+        ManagedDecimal::from_raw_units(BigUint::zero(), self.scaled_amount.scale())
     }
 
     #[inline]
     pub fn can_remove(&self) -> bool {
-        self.get_total_amount().eq(&self.zero_decimal())
+        self.scaled_amount.into_raw_units().eq(&BigUint::zero())
     }
 }
 
@@ -288,17 +268,11 @@ impl EModeAssetConfig {
 pub struct AccountAttributes<M: ManagedTypeApi> {
     pub is_isolated_position: bool,
     pub e_mode_category_id: u8,
-    pub is_vault_position: bool,
     pub mode: PositionMode,
     pub isolated_token: ManagedOption<M, EgldOrEsdtTokenIdentifier<M>>,
 }
 
 impl<M: ManagedTypeApi> AccountAttributes<M> {
-    #[inline]
-    pub fn is_vault(&self) -> bool {
-        self.is_vault_position
-    }
-
     #[inline]
     pub fn has_emode(&self) -> bool {
         self.e_mode_category_id > 0
@@ -404,4 +378,12 @@ pub struct OraclePriceFluctuation<M: ManagedTypeApi> {
     pub first_lower_ratio: ManagedDecimal<M, NumDecimals>,
     pub last_upper_ratio: ManagedDecimal<M, NumDecimals>,
     pub last_lower_ratio: ManagedDecimal<M, NumDecimals>,
+}
+
+/// MarketIndex represents the interest index for a market.
+#[type_abi]
+#[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode)]
+pub struct MarketIndex<M: ManagedTypeApi> {
+    pub borrow_index: ManagedDecimal<M, NumDecimals>,
+    pub supply_index: ManagedDecimal<M, NumDecimals>,
 }

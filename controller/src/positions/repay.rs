@@ -77,28 +77,12 @@ pub trait PositionRepayModule:
     /// - `position_attributes`: NFT attributes.
     fn update_isolated_debt_after_repayment(
         &self,
-        position: &mut AccountPosition<Self::Api>,
-        feed: &PriceFeedShort<Self::Api>,
         repay_amount: &ManagedDecimal<Self::Api, NumDecimals>,
         cache: &mut Cache<Self>,
         position_attributes: &AccountAttributes<Self::Api>,
-        caller: &ManagedAddress,
     ) {
         if position_attributes.is_isolated() {
-            let asset_address = cache.get_cached_pool_address(&position.asset_id);
-            // Sync interest before calculating principal repayment for accuracy
-            self.sync_position_interest(&asset_address, position, &feed.price);
-
-            self.emit_position_update_event(
-                &position.zero_decimal(),
-                position,
-                feed.price.clone(),
-                caller,
-                position_attributes,
-            );
-
-            let principal_amount = self.calculate_principal_repayment(position, feed, repay_amount);
-            let debt_usd_amount = self.get_egld_usd_value(&principal_amount, &cache.egld_usd_price);
+            let debt_usd_amount = self.get_egld_usd_value(&repay_amount, &cache.egld_usd_price);
             self.adjust_isolated_debt_usd(
                 &position_attributes.get_isolated_token(),
                 debt_usd_amount,
@@ -115,7 +99,8 @@ pub trait PositionRepayModule:
         cache: &mut Cache<Self>,
     ) {
         if position_attributes.is_isolated() {
-            let egld_amount = self.get_token_egld_value(&position.get_total_amount(), &feed.price);
+            let egld_amount = self
+                .get_token_egld_value(&self.get_total_amount(position, feed, cache), &feed.price);
             let debt_usd_amount = self.get_egld_usd_value(&egld_amount, &cache.egld_usd_price);
             self.adjust_isolated_debt_usd(
                 &position_attributes.get_isolated_token(),
@@ -148,16 +133,13 @@ pub trait PositionRepayModule:
         cache: &mut Cache<Self>,
         position_attributes: &AccountAttributes<Self::Api>,
     ) {
-        let mut borrow_position =
+        let borrow_position =
             self.validate_borrow_position_existence(account_nonce, repay_token_id);
 
         self.update_isolated_debt_after_repayment(
-            &mut borrow_position,
-            feed,
             &repay_amount_in_egld,
             cache,
             position_attributes,
-            caller,
         );
 
         self.process_repayment_through_pool(
@@ -193,36 +175,5 @@ pub trait PositionRepayModule:
             token_id
         );
         position.unwrap()
-    }
-
-    /// Calculates the principal repaid from a repayment.
-    /// Separates principal from interest in repayment.
-    ///
-    /// # Arguments
-    /// - `borrow_position`: Position being repaid.
-    /// - `feed`: Price data for the token.
-    /// - `amount_to_repay_in_egld`: Repayment amount in EGLD.
-    ///
-    /// # Returns
-    /// - Principal amount repaid in EGLD.
-    fn calculate_principal_repayment(
-        &self,
-        borrow_position: &AccountPosition<Self::Api>,
-        feed: &PriceFeedShort<Self::Api>,
-        amount_to_repay_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
-    ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let interest = self.get_token_egld_value(&borrow_position.interest_accrued, &feed.price);
-        let principal = self.get_token_egld_value(&borrow_position.principal_amount, &feed.price);
-
-        if amount_to_repay_in_egld <= &interest {
-            return self.wad_zero();
-        }
-
-        let diff = amount_to_repay_in_egld.clone() - interest;
-        if diff > principal {
-            principal
-        } else {
-            diff
-        }
     }
 }

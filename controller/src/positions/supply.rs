@@ -108,12 +108,10 @@ pub trait PositionDepositModule:
         self.deposit_positions(account_nonce)
             .get(token_id)
             .unwrap_or_else(|| {
-                let data = self.token_oracle(token_id).get();
                 AccountPosition::new(
                     AccountPositionType::Deposit,
                     token_id.clone(),
-                    self.to_decimal(BigUint::zero(), data.price_decimals),
-                    self.to_decimal(BigUint::zero(), data.price_decimals),
+                    self.ray_zero(),
                     account_nonce,
                     self.blockchain().get_block_timestamp(),
                     self.ray(),
@@ -167,19 +165,15 @@ pub trait PositionDepositModule:
             position.liquidation_fees = asset_info.liquidation_fees.clone();
         }
 
-        let amount_decimal = position.make_amount_decimal(&collateral.amount);
-        if attributes.is_vault() {
-            self.update_vault_supplied_amount(&collateral.token_identifier, &amount_decimal, true);
-            position.principal_amount += &amount_decimal;
-        } else {
-            self.update_market_position(
-                &mut position,
-                &collateral.amount,
-                &collateral.token_identifier,
-                &feed,
-                cache,
-            );
-        }
+        let amount_decimal = position.make_amount_decimal(&collateral.amount, feed.asset_decimals);
+
+        self.update_market_position(
+            &mut position,
+            &collateral.amount,
+            &collateral.token_identifier,
+            &feed,
+            cache,
+        );
 
         self.emit_position_update_event(
             &amount_decimal,

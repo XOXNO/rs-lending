@@ -20,8 +20,6 @@ where
     sc_ref: &'a C,
     /// The amount of the asset supplied by lenders.
     pub supplied: ManagedDecimal<C::Api, NumDecimals>,
-    /// The amount of the asset held as reserves (includes protocol revenue).
-    pub reserves: ManagedDecimal<C::Api, NumDecimals>,
     /// The amount of the asset currently borrowed.
     pub borrowed: ManagedDecimal<C::Api, NumDecimals>,
     /// The amount of the asset pending to be collected as bad debt.
@@ -66,7 +64,6 @@ where
         Cache {
             zero: sc_ref.to_decimal(BigUint::zero(), params.asset_decimals),
             supplied: sc_ref.supplied().get(),
-            reserves: sc_ref.reserves().get(),
             borrowed: sc_ref.borrowed().get(),
             bad_debt: sc_ref.bad_debt().get(),
             revenue: sc_ref.revenue().get(),
@@ -97,7 +94,6 @@ where
     fn drop(&mut self) {
         // commit changes to storage for the mutable fields
         self.sc_ref.supplied().set(&self.supplied);
-        self.sc_ref.reserves().set(&self.reserves);
         self.sc_ref.borrowed().set(&self.borrowed);
         self.sc_ref.bad_debt().set(&self.bad_debt);
         self.sc_ref.revenue().set(&self.revenue);
@@ -160,24 +156,6 @@ where
         }
     }
 
-    /// Computes the total capital of the pool (reserves + borrowed).
-    ///
-    /// **Scope**: Calculates the total assets either reserved or lent out.
-    ///
-    /// **Goal**: Provide insight into the pool’s active capital for auditing and analytics.
-    ///
-    /// **Formula**:
-    /// - `total_capital = reserves + borrowed`.
-    ///
-    /// # Returns
-    /// - `ManagedDecimal<C::Api, NumDecimals>`: Total capital in pool asset_decimals.
-    ///
-    pub fn get_total_capital(&self) -> ManagedDecimal<C::Api, NumDecimals> {
-        let reserve_amount = self.reserves.clone();
-        let borrowed = self.borrowed.clone();
-
-        reserve_amount + borrowed
-    }
 
     /// Computes the effective reserves available (reserves minus protocol revenue).
     ///
@@ -194,11 +172,8 @@ where
     ///
     /// **Security Tip**: Prevents underflow by returning 0 if `revenue` exceeds `reserves`.
     pub fn get_reserves(&self) -> ManagedDecimal<C::Api, NumDecimals> {
-        if self.reserves >= self.revenue {
-            self.reserves.clone() - self.revenue.clone()
-        } else {
-            ManagedDecimal::from_raw_units(BigUint::zero(), self.params.asset_decimals)
-        }
+        let current_pool_balance = self.sc_ref.blockchain().get_sc_balance(&self.pool_asset, 0);
+        self.get_decimal_value(&current_pool_balance)
     }
 
     /// Checks if the pool has sufficient effective reserves for a given amount.
@@ -231,27 +206,6 @@ where
         self.supplied >= *amount
     }
 
-    /// Returns the available protocol revenue (minimum of revenue and reserves).
-    ///
-    /// **Scope**: Calculates the realizable revenue the protocol can claim.
-    ///
-    /// **Goal**: Ensure revenue withdrawals don’t exceed available reserves.
-    ///
-    /// **Formula**:
-    /// - `available_revenue = min(revenue, reserves)`.
-    ///
-    /// # Returns
-    /// - `ManagedDecimal<C::Api, NumDecimals>`: Available revenue in pool asset_decimals.
-    pub fn available_revenue(&self) -> ManagedDecimal<C::Api, NumDecimals> {
-        ManagedDecimal::from_raw_units(
-            BigUint::min(
-                self.revenue.into_raw_units().clone(),
-                self.reserves.into_raw_units().clone(),
-            ),
-            self.params.asset_decimals,
-        )
-    }
-
     /// Checks if the given asset matches the pool’s asset.
     ///
     /// **Scope**: Validates asset compatibility for pool operations.
@@ -265,5 +219,45 @@ where
     /// - `bool`: True if `pool_asset == asset`, false otherwise.
     pub fn is_same_asset(&self, asset: &EgldOrEsdtTokenIdentifier<C::Api>) -> bool {
         self.pool_asset == *asset
+    }
+
+    pub fn get_scaled_supply_amount(
+        &self,
+        amount: &ManagedDecimal<C::Api, NumDecimals>,
+    ) -> ManagedDecimal<C::Api, NumDecimals> {
+        let scaled_amount = self
+            .sc_ref
+            .div_half_up(amount, &self.supply_index, RAY_PRECISION);
+        scaled_amount
+    }
+
+    pub fn get_scaled_borrow_amount(
+        &self,
+        amount: &ManagedDecimal<C::Api, NumDecimals>,
+    ) -> ManagedDecimal<C::Api, NumDecimals> {
+        let scaled_amount = self
+            .sc_ref
+            .div_half_up(amount, &self.borrow_index, RAY_PRECISION);
+        scaled_amount
+    }
+
+    pub fn get_original_supply_amount(
+        &self,
+        scaled_amount: &ManagedDecimal<C::Api, NumDecimals>,
+    ) -> ManagedDecimal<C::Api, NumDecimals> {
+        let original_amount =
+            self.sc_ref
+                .mul_half_up(scaled_amount, &self.supply_index, RAY_PRECISION);
+        original_amount.rescale(self.params.asset_decimals)
+    }
+
+    pub fn get_original_borrow_amount(
+        &self,
+        scaled_amount: &ManagedDecimal<C::Api, NumDecimals>,
+    ) -> ManagedDecimal<C::Api, NumDecimals> {
+        let original_amount =
+            self.sc_ref
+                .mul_half_up(scaled_amount, &self.borrow_index, RAY_PRECISION);
+        original_amount.rescale(self.params.asset_decimals)
     }
 }

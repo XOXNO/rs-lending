@@ -32,47 +32,20 @@ pub trait LiquidityModule:
     /// **Security Considerations**: Restricted to the owner (via controller contract) to ensure controlled updates.
     #[only_owner]
     #[endpoint(updateIndexes)]
-    fn update_indexes(&self, price: &ManagedDecimal<Self::Api, NumDecimals>) {
+    fn update_indexes(
+        &self,
+        price: &ManagedDecimal<Self::Api, NumDecimals>,
+    ) -> MarketIndex<Self::Api> {
         let mut cache = Cache::new(self);
 
         self.global_sync(&mut cache);
 
         self.emit_market_update(&cache, price);
-    }
 
-    /// Synchronizes a user's account position with accrued interest since the last update.
-    ///
-    /// **Purpose**: Ensures a user's deposit or borrow position reflects the latest interest accrued, typically called before operations like repayments or withdrawals.
-    ///
-    /// **Process**:
-    /// 1. Creates a `Cache` and updates global indexes via `global_sync`.
-    /// 2. Updates the position with accrued interest using `position_sync`.
-    /// 3. If a price is provided, emits a market state event.
-    ///
-    /// # Arguments
-    /// - `position`: The user's account position to update (`AccountPosition<Self::Api>`).
-    /// - `price`: Optional asset price for emitting a market update (`OptionalValue<ManagedDecimal<Self::Api, NumDecimals>>`).
-    ///
-    /// # Returns
-    /// - `AccountPosition<Self::Api>`: The updated position with accrued interest applied.
-    ///
-    /// **Security Considerations**: Restricted to the owner (via controller contract) to ensure controlled updates.
-    #[only_owner]
-    #[endpoint(updatePositionInterest)]
-    fn sync_position_interest(
-        &self,
-        mut position: AccountPosition<Self::Api>,
-        price: ManagedDecimal<Self::Api, NumDecimals>,
-    ) -> AccountPosition<Self::Api> {
-        let mut cache = Cache::new(self);
-
-        self.global_sync(&mut cache);
-
-        self.position_sync(&mut position, &mut cache);
-
-        self.emit_market_update(&cache, &price);
-
-        position
+        MarketIndex {
+            borrow_index: cache.borrow_index.clone(),
+            supply_index: cache.supply_index.clone(),
+        }
     }
 
     /// Supplies assets to the lending pool, increasing reserves and the supplier's position.
@@ -109,12 +82,11 @@ pub trait LiquidityModule:
 
         self.global_sync(&mut cache);
 
-        self.position_sync(&mut position, &mut cache);
-
-        position.principal_amount += &amount;
-
-        cache.reserves += &amount;
-        cache.supplied += amount;
+        let scaled_amount = cache.get_scaled_supply_amount(&amount);
+        position.scaled_amount += &scaled_amount;
+        position.last_update_timestamp = cache.timestamp;
+        position.market_index = cache.supply_index.clone();
+        cache.supplied += scaled_amount;
 
         self.emit_market_update(&cache, price);
 
@@ -155,16 +127,16 @@ pub trait LiquidityModule:
         let mut cache = Cache::new(self);
 
         self.global_sync(&mut cache);
-        self.position_sync(&mut position, &mut cache);
 
         require!(cache.is_same_asset(&position.asset_id), ERROR_INVALID_ASSET);
-
-        position.principal_amount += amount;
-
         require!(cache.has_reserves(amount), ERROR_INSUFFICIENT_LIQUIDITY);
 
-        cache.borrowed += amount;
-        cache.reserves -= amount;
+        let scaled_amount = cache.get_scaled_borrow_amount(&amount);
+        position.scaled_amount += &scaled_amount;
+        position.last_update_timestamp = cache.timestamp;
+        position.market_index = cache.borrow_index.clone();
+
+        cache.borrowed += scaled_amount;
 
         self.send_asset(&cache, amount, initial_caller);
 
@@ -203,7 +175,7 @@ pub trait LiquidityModule:
     fn withdraw(
         &self,
         initial_caller: &ManagedAddress,
-        mut amount: ManagedDecimal<Self::Api, NumDecimals>,
+        amount: ManagedDecimal<Self::Api, NumDecimals>,
         mut position: AccountPosition<Self::Api>,
         is_liquidation: bool,
         protocol_fee_opt: Option<ManagedDecimal<Self::Api, NumDecimals>>,
@@ -212,34 +184,56 @@ pub trait LiquidityModule:
         let mut cache = Cache::new(self);
 
         self.global_sync(&mut cache);
-        self.position_sync(&mut position, &mut cache);
 
-        self.cap_withdrawal_amount(&mut amount, &position);
         require!(cache.is_same_asset(&position.asset_id), ERROR_INVALID_ASSET);
 
-        // Calculate the withdrawal amount as well the principal and interest to be subtracted from the position and the reserves
-        let (principal, interest, to_withdraw) = self.calc_withdrawal_amounts(
-            &amount,
-            &position,
-            &mut cache,
-            is_liquidation,
-            protocol_fee_opt,
-        );
+        // 1. Calculate the actual current supply based on the position's scaled amount and current index
+        let current_supply_actual = cache.get_original_supply_amount(&position.scaled_amount);
 
+        let (scaled_withdrawal_amount_gross, amount_to_withdraw_gross) =
+            // 2. Check if the requested amount covers the full current supply
+            if amount >= current_supply_actual {
+                // Full withdrawal: Use the entire scaled amount of the position
+                // The actual amount to withdraw is the calculated current supply
+                (position.scaled_amount.clone(), current_supply_actual)
+            } else {
+                // Partial withdrawal: Calculate the scaled amount equivalent to the requested amount
+                // The actual amount to withdraw is the requested amount
+                let requested_scaled = cache.get_scaled_supply_amount(&amount);
+                (requested_scaled, amount.clone())
+            };
+
+        // 3. Calculate net amount to transfer after potential liquidation fees
+        let mut amount_to_transfer_net = amount_to_withdraw_gross.clone();
+
+        if is_liquidation && protocol_fee_opt.is_some() {
+            let protocol_fees_actual = unsafe { protocol_fee_opt.unwrap_unchecked() };
+            require!(
+                amount_to_withdraw_gross >= protocol_fees_actual,
+                "Withdraw amount less than liquidation fee"
+            );
+
+            cache.revenue += &protocol_fees_actual;
+
+            amount_to_transfer_net = amount_to_withdraw_gross - protocol_fees_actual;
+        }
+
+        // 4. Check for sufficient reserves
         require!(
-            cache.has_reserves(&to_withdraw),
+            cache.has_reserves(&amount_to_transfer_net),
             ERROR_INSUFFICIENT_LIQUIDITY
         );
-        require!(cache.has_supplied(&principal), ERROR_INSUFFICIENT_LIQUIDITY);
 
-        cache.reserves -= &to_withdraw;
-        cache.supplied -= &principal;
+        // 5. Update pool and position state by subtracting the determined scaled amount
+        cache.supplied -= &scaled_withdrawal_amount_gross;
+        position.scaled_amount -= &scaled_withdrawal_amount_gross;
+        position.last_update_timestamp = cache.timestamp;
+        position.market_index = cache.supply_index.clone();
 
-        position.principal_amount -= &principal;
-        position.interest_accrued -= &interest;
+        // 6. Send the net amount
+        self.send_asset(&cache, &amount_to_transfer_net, initial_caller);
 
-        self.send_asset(&cache, &to_withdraw, initial_caller);
-
+        // 7. Emit event and return position
         self.emit_market_update(&cache, price);
         position
     }
@@ -275,28 +269,37 @@ pub trait LiquidityModule:
         price: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> AccountPosition<Self::Api> {
         let mut cache = Cache::new(self);
-        let amount = self.get_payment_amount(&cache);
-
-        self.global_sync(&mut cache);
-        self.position_sync(&mut position, &mut cache);
+        // 1. Get the payment amount sent by the user
+        let payment_amount = self.get_payment_amount(&cache);
+        self.global_sync(&mut cache); // 2. Update indexes
 
         require!(cache.is_same_asset(&position.asset_id), ERROR_INVALID_ASSET);
+        // 3. Calculate the current actual debt based on the position's scaled amount and current index
+        let current_debt_actual = cache.get_original_borrow_amount(&position.scaled_amount);
+        let (amount_to_repay_scaled, over_paid_amount) =
+            // 4. Check if the payment covers the full current debt
+            if payment_amount >= current_debt_actual {
+                // Full repayment: Subtract the entire scaled debt from the position
+                // Calculate overpayment based on the difference between payment and actual debt
+                let over_paid = payment_amount - current_debt_actual;
+                (position.scaled_amount.clone(), over_paid)
+            } else {
+                // Partial repayment: Calculate the scaled amount equivalent to the payment
+                // Subtract this scaled payment amount from the position
+                let payment_scaled = cache.get_scaled_borrow_amount(&payment_amount);
+                (payment_scaled, position.zero_decimal()) // No overpayment
+            };
 
-        let (principal, interest, over) = self.split_repay(&amount, &position, &mut cache);
+        // 5. Subtract the determined scaled repayment amount from the position's scaled amount
 
-        // Update the position:
-        // - Reduce principal by the repaid principal.
-        // - Reduce accumulated interest by the repaid interest.
-        position.principal_amount -= &principal;
-        position.interest_accrued -= &interest;
+        position.scaled_amount -= &amount_to_repay_scaled;
+        position.last_update_timestamp = cache.timestamp;
+        position.market_index = cache.borrow_index.clone();
 
-        // Update protocol bookkeeping:
-        // - The net borrowed amount decreases only by the principal repaid.
-        // - The reserves increase by the entire amount repaid (principal + interest).
-        cache.borrowed -= &principal;
-        cache.reserves += &(principal + interest);
-
-        self.send_asset(&cache, &over, &initial_caller);
+        // 6. Subtract the same scaled amount from the total pool borrowed
+        cache.borrowed -= &amount_to_repay_scaled;
+        // 7. Send back any overpaid amount
+        self.send_asset(&cache, &over_paid_amount, &initial_caller);
 
         self.emit_market_update(&cache, price);
 
@@ -344,12 +347,12 @@ pub trait LiquidityModule:
         require!(cache.is_same_asset(borrowed_token), ERROR_INVALID_ASSET);
         require!(cache.has_reserves(amount), ERROR_FLASHLOAN_RESERVE_ASSET);
 
-        cache.reserves -= amount;
-
         // Calculate flash loan min repayment amount
-        let required_repayment = self
-            .mul_half_up(amount, &(self.bps() + fees.clone()), RAY_PRECISION)
-            .rescale(cache.params.asset_decimals);
+        let required_repayment = self.mul_half_up(
+            amount,
+            &(self.bps() + fees.clone()),
+            cache.params.asset_decimals,
+        );
 
         let asset = cache.pool_asset.clone();
         // Prevent re entry attacks with loop flash loans
@@ -372,11 +375,9 @@ pub trait LiquidityModule:
             &required_repayment,
         );
 
-        post_flash_loan_cache.reserves += amount;
         let protocol_fee = repayment - amount.clone();
 
         post_flash_loan_cache.revenue += &protocol_fee;
-        post_flash_loan_cache.reserves += &protocol_fee;
 
         self.emit_market_update(&post_flash_loan_cache, price);
     }
@@ -415,8 +416,6 @@ pub trait LiquidityModule:
 
         self.global_sync(&mut cache);
 
-        self.position_sync(&mut position, &mut cache);
-
         require!(cache.is_same_asset(&position.asset_id), ERROR_INVALID_ASSET);
 
         require!(
@@ -424,12 +423,15 @@ pub trait LiquidityModule:
             ERROR_INSUFFICIENT_LIQUIDITY
         );
 
-        position.principal_amount += strategy_amount;
-        position.interest_accrued += strategy_fee;
+        let effective_initial_debt = strategy_amount.clone() + strategy_fee.clone();
 
-        cache.reserves -= strategy_amount;
+        let scaled_amount_to_add = cache.get_scaled_borrow_amount(&effective_initial_debt);
 
-        cache.borrowed += strategy_amount;
+        position.scaled_amount += &scaled_amount_to_add;
+        position.last_update_timestamp = cache.timestamp;
+        position.market_index = cache.borrow_index.clone();
+
+        cache.borrowed += scaled_amount_to_add;
 
         cache.revenue += strategy_fee;
 
@@ -468,7 +470,6 @@ pub trait LiquidityModule:
             let remaining_amount = amount - cache.bad_debt.clone();
             cache.bad_debt = cache.zero.clone();
             cache.revenue += &remaining_amount;
-            cache.reserves += &remaining_amount;
         }
 
         self.emit_market_update(&cache, price);
@@ -504,16 +505,17 @@ pub trait LiquidityModule:
 
         self.global_sync(&mut cache);
 
-        self.position_sync(&mut position, &mut cache);
-
         require!(cache.is_same_asset(&position.asset_id), ERROR_INVALID_ASSET);
 
-        cache.bad_debt += position.get_total_amount();
+        let current_debt_actual = cache.get_original_borrow_amount(&position.scaled_amount);
 
-        cache.borrowed -= position.principal_amount;
+        cache.bad_debt += &current_debt_actual;
 
-        position.principal_amount = cache.zero.clone();
-        position.interest_accrued = cache.zero.clone();
+        cache.borrowed -= &position.scaled_amount;
+
+        position.scaled_amount = self.ray_zero();
+        position.last_update_timestamp = cache.timestamp;
+        position.market_index = cache.borrow_index.clone();
 
         self.emit_market_update(&cache, price);
 
@@ -547,33 +549,23 @@ pub trait LiquidityModule:
 
         self.global_sync(&mut cache);
 
-        self.position_sync(&mut position, &mut cache);
-
         require!(cache.is_same_asset(&position.asset_id), ERROR_INVALID_ASSET);
 
-        if position.get_total_amount() <= cache.bad_debt {
-            cache.bad_debt -= position.get_total_amount();
+        let current_dust_actual = cache.get_original_supply_amount(&position.scaled_amount);
+
+        if current_dust_actual <= cache.bad_debt {
+            cache.bad_debt -= &current_dust_actual;
         } else {
-            let remaining_amount = position.get_total_amount() - cache.bad_debt.clone();
+            let remaining_amount_actual = current_dust_actual - cache.bad_debt.clone();
             cache.bad_debt = cache.zero.clone();
-            cache.revenue += &remaining_amount;
-
-            require!(
-                cache.has_supplied(&position.principal_amount),
-                ERROR_INSUFFICIENT_LIQUIDITY
-            );
-
-            // If the remaining amount is greater than the principal amount, we subtract the principal amount
-            // Otherwise, we subtract the remaining amount
-            cache.supplied -= if remaining_amount > position.principal_amount {
-                position.principal_amount
-            } else {
-                remaining_amount
-            };
+            cache.revenue += &remaining_amount_actual;
         }
 
-        position.principal_amount = cache.zero.clone();
-        position.interest_accrued = cache.zero.clone();
+        cache.supplied -= &position.scaled_amount;
+
+        position.scaled_amount = self.ray_zero();
+        position.last_update_timestamp = cache.timestamp;
+        position.market_index = cache.supply_index.clone();
 
         self.emit_market_update(&cache, price);
 
@@ -606,24 +598,11 @@ pub trait LiquidityModule:
         let mut cache = Cache::new(self);
 
         self.global_sync(&mut cache);
-
-        let revenue = if cache.borrowed == cache.zero && cache.supplied == cache.zero {
-            let amount = self.blockchain().get_sc_balance(&cache.pool_asset, 0);
-
-            cache.revenue = cache.zero.clone();
-            cache.reserves = cache.zero.clone();
-
-            cache.get_decimal_value(&amount)
-        } else {
-            let revenue = cache.available_revenue();
-            cache.revenue -= &revenue;
-            cache.reserves -= &revenue;
-
-            revenue
-        };
+        cache.has_reserves(&cache.revenue);
 
         let controller = self.blockchain().get_caller();
-        let payment = self.send_asset(&cache, &revenue, &controller);
+        let payment = self.send_asset(&cache, &cache.revenue, &controller);
+        cache.revenue = cache.zero.clone();
 
         self.emit_market_update(&cache, price);
 

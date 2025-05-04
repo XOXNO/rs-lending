@@ -1,4 +1,5 @@
 use common_constants::TOTAL_BORROWED_AMOUNT_STORAGE_KEY;
+use common_events::RAY_PRECISION;
 use common_structs::{
     AccountAttributes, AccountPosition, AccountPositionType, AssetConfig, EModeCategory,
     PriceFeedShort,
@@ -34,7 +35,7 @@ pub trait PositionBorrowModule:
         &self,
         account_nonce: u64,
         new_debt_token: &EgldOrEsdtTokenIdentifier,
-        new_debt_amount_raw: &BigUint,
+        amount_raw: &BigUint,
         debt_config: &mut AssetConfig<Self::Api>,
         caller: &ManagedAddress,
         account_attributes: &AccountAttributes<Self::Api>,
@@ -52,25 +53,19 @@ pub trait PositionBorrowModule:
         self.apply_e_mode_to_asset_config(debt_config, &e_mode, debt_emode_config);
         require!(debt_config.can_borrow(), ERROR_ASSET_NOT_BORROWABLE);
 
-        let (borrows, _) = self.sync_borrow_positions_interest(
-            account_nonce,
-            cache,
-            caller,
-            account_attributes,
-            false,
-        );
+        let (borrows, _) = self.sync_borrow_positions_interest(account_nonce, cache, false);
 
         let mut borrow_position =
             self.get_or_create_borrow_position(account_nonce, debt_config, new_debt_token);
 
-        let new_debt_amount = borrow_position.make_amount_decimal(new_debt_amount_raw);
-
-        self.validate_borrow_cap(debt_config, &new_debt_amount, new_debt_token, cache);
-
         let feed = self.get_token_price(new_debt_token, cache);
-        self.handle_isolated_debt(cache, &new_debt_amount, account_attributes, &feed);
+        let amount = borrow_position.make_amount_decimal(amount_raw, feed.asset_decimals);
 
-        let flash_fee = new_debt_amount.clone() * debt_config.flashloan_fee.clone() / self.bps();
+        self.validate_borrow_cap(debt_config, &amount, new_debt_token, cache);
+
+        self.handle_isolated_debt(cache, &amount, account_attributes, &feed);
+
+        let flash_fee = amount.clone() * debt_config.flashloan_fee.clone() / self.bps();
 
         let pool_address = cache.get_cached_pool_address(&borrow_position.asset_id);
 
@@ -89,7 +84,7 @@ pub trait PositionBorrowModule:
             .typed(proxy_pool::LiquidityPoolProxy)
             .create_strategy(
                 borrow_position,
-                new_debt_amount.clone(),
+                amount.clone(),
                 flash_fee.clone(),
                 feed.price.clone(),
             )
@@ -97,7 +92,7 @@ pub trait PositionBorrowModule:
             .sync_call();
 
         self.emit_position_update_event(
-            &new_debt_amount,
+            &amount,
             &borrow_position,
             feed.price,
             caller,
@@ -238,12 +233,10 @@ pub trait PositionBorrowModule:
     ) -> AccountPosition<Self::Api> {
         let borrow_positions = self.borrow_positions(account_nonce);
         borrow_positions.get(token_id).unwrap_or_else(|| {
-            let price_data = self.token_oracle(token_id).get();
             AccountPosition::new(
                 AccountPositionType::Borrow,
                 token_id.clone(),
-                self.to_decimal(BigUint::zero(), price_data.price_decimals),
-                self.to_decimal(BigUint::zero(), price_data.price_decimals),
+                self.ray_zero(),
                 account_nonce,
                 self.blockchain().get_block_timestamp(),
                 self.ray(),
@@ -275,11 +268,15 @@ pub trait PositionBorrowModule:
                 }
 
                 let pool = cache.get_cached_pool_address(asset);
-                let total_borrow = self.get_total_borrow(pool).get();
+                let total_borrow_scaled = self.get_total_borrow(pool).get();
+                let index = cache.get_cached_market_index(&asset);
+                let borrowed_amount = self
+                    .mul_half_up(&total_borrow_scaled, &index.borrow_index, RAY_PRECISION)
+                    .rescale(amount.scale());
 
                 require!(
-                    total_borrow.clone() + amount.clone()
-                        <= self.to_decimal(borrow_cap.clone(), total_borrow.scale()),
+                    borrowed_amount.clone() + amount.clone()
+                        <= self.to_decimal(borrow_cap.clone(), borrowed_amount.scale()),
                     ERROR_BORROW_CAP
                 );
             },

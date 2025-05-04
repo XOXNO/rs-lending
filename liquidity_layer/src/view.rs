@@ -31,15 +31,12 @@ pub trait ViewModule:
         }
     }
 
-    /// Retrieves the total capital of the pool.
-    ///
-    /// Total capital is defined as the sum of reserves and borrowed tokens.
-    ///
-    /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total capital.
-    #[view(getTotalCapital)]
-    fn get_total_capital(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
-        self.reserves().get() + self.borrowed().get()
+    #[view(getReserves)]
+    fn get_reserves(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
+        let pool_balance = self
+            .blockchain()
+            .get_sc_balance(&self.pool_asset().get(), 0);
+        self.to_decimal(pool_balance, self.params().get().asset_decimals)
     }
 
     /// Retrieves the current deposit rate for the pool.

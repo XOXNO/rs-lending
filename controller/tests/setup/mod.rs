@@ -1,14 +1,12 @@
 use crate::{constants::*, proxys::*};
 use common_constants::{EGLD_TICKER, MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE, SECONDS_PER_HOUR};
 
-use cache::Cache;
-
 use multiversx_sc::{
     imports::{MultiValue2, OptionalValue},
     types::{
         BigUint, EgldOrEsdtTokenPayment, ManagedAddress, ManagedArgBuffer, ManagedBuffer,
-        ManagedDecimal, ManagedOption, MultiValueEncoded, NumDecimals, ReturnsNewManagedAddress,
-        ReturnsResult, TestTokenIdentifier,
+        ManagedDecimal, MultiValueEncoded, NumDecimals, ReturnsNewManagedAddress, ReturnsResult,
+        TestTokenIdentifier,
     },
 };
 use multiversx_sc_scenario::{
@@ -24,7 +22,7 @@ use rs_liquid_xoxno::{config::ConfigModule as XoxnoConfigModule, rs_xoxno_proxy}
 use std::ops::Mul;
 use storage::Storage;
 
-use controller::{positions::update::PositionUpdateModule, *};
+use controller::*;
 use multiversx_sc::types::{
     EgldOrEsdtTokenIdentifier, EsdtLocalRole, EsdtTokenPayment, ManagedVec, TestEsdtTransfer,
 };
@@ -284,78 +282,6 @@ impl LendingPoolTestState {
             .run();
     }
 
-    pub fn enable_vault(&mut self, from: &TestAddress, account_nonce: u64) {
-        self.world
-            .tx()
-            .from(from.to_managed_address())
-            .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::ControllerProxy)
-            .toggle_vault(true)
-            .single_esdt(
-                &ACCOUNT_TOKEN.to_token_identifier(),
-                account_nonce,
-                &BigUint::from(1u32),
-            )
-            .run();
-    }
-
-    pub fn enable_vault_error(
-        &mut self,
-        from: &TestAddress,
-        account_nonce: u64,
-        error_message: &[u8],
-    ) {
-        self.world
-            .tx()
-            .from(from.to_managed_address())
-            .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::ControllerProxy)
-            .toggle_vault(true)
-            .single_esdt(
-                &ACCOUNT_TOKEN.to_token_identifier(),
-                account_nonce,
-                &BigUint::from(1u32),
-            )
-            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
-            .run();
-    }
-
-    pub fn disable_vault(&mut self, from: &TestAddress, account_nonce: u64) {
-        self.world
-            .tx()
-            .from(from.to_managed_address())
-            .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::ControllerProxy)
-            .toggle_vault(false)
-            .single_esdt(
-                &ACCOUNT_TOKEN.to_token_identifier(),
-                account_nonce,
-                &BigUint::from(1u32),
-            )
-            .run();
-    }
-
-    pub fn disable_vault_error(
-        &mut self,
-        from: &TestAddress,
-        account_nonce: u64,
-        error_message: &[u8],
-    ) {
-        self.world
-            .tx()
-            .from(from.to_managed_address())
-            .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::ControllerProxy)
-            .toggle_vault(false)
-            .single_esdt(
-                &ACCOUNT_TOKEN.to_token_identifier(),
-                account_nonce,
-                &BigUint::from(1u32),
-            )
-            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
-            .run();
-    }
-
     pub fn get_usd_price_error(&mut self, token_id: TestTokenIdentifier, error_message: &[u8]) {
         self.world
             .query()
@@ -449,7 +375,7 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .supply(is_vault, e_mode_category)
+            .supply(e_mode_category)
             .multi_esdt(vec)
             .run();
     }
@@ -487,7 +413,7 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .supply(is_vault, e_mode_category)
+            .supply(e_mode_category)
             .multi_esdt(vec)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
@@ -517,7 +443,7 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .supply(is_vault, e_mode_category)
+            .supply(e_mode_category)
             .multi_esdt(vec)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
@@ -548,7 +474,7 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .supply(is_vault, e_mode_category)
+            .supply(e_mode_category)
             .multi_esdt(vec)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
@@ -566,7 +492,7 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .supply(is_vault, e_mode_category)
+            .supply(e_mode_category)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
     }
@@ -614,7 +540,7 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .supply(is_vault, e_mode_category)
+            .supply(e_mode_category)
             .multi_esdt(vec)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
@@ -1078,7 +1004,7 @@ impl LendingPoolTestState {
             .query()
             .to(market_address)
             .typed(proxy_liquidity_pool::LiquidityPoolProxy)
-            .reserves()
+            .get_reserves()
             .returns(ReturnsResult)
             .run();
 
@@ -1143,60 +1069,6 @@ impl LendingPoolTestState {
         supply_rate
     }
 
-    pub fn get_market_total_capital(
-        &mut self,
-        market_address: ManagedAddress<StaticApi>,
-    ) -> ManagedDecimal<StaticApi, usize> {
-        self.world
-            .query()
-            .to(market_address)
-            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
-            .get_total_capital()
-            .returns(ReturnsResult)
-            .run()
-    }
-
-    pub fn update_borrows_with_debt(&mut self, from: &TestAddress, account_position: u64) {
-        self.world
-            .tx()
-            .from(from.to_managed_address())
-            .to(self.lending_sc.clone())
-            .whitebox(controller::contract_obj, |sc| {
-                let mut cache = Cache::new(&sc);
-                sc.sync_borrow_positions_interest(
-                    account_position,
-                    &mut cache,
-                    &from.to_managed_address(),
-                    &AccountAttributes {
-                        is_isolated_position: false,
-                        is_vault_position: false,
-                        mode: PositionMode::Normal,
-                        isolated_token: ManagedOption::none(),
-                        e_mode_category_id: 0,
-                    },
-                    false,
-                );
-            });
-    }
-
-    pub fn global_sync(&mut self, from: &TestAddress, account_position: u64) {
-        self.world
-            .tx()
-            .from(from.to_managed_address())
-            .to(self.lending_sc.clone())
-            .whitebox(controller::contract_obj, |sc| {
-                let mut cache = Cache::new(&sc);
-                let account_attributes = sc.account_attributes(account_position).get();
-                sc.sync_deposit_positions_interest(
-                    account_position,
-                    &mut cache,
-                    &from.to_managed_address(),
-                    &account_attributes,
-                    true,
-                );
-            });
-    }
-
     pub fn deposit_positions(
         &mut self,
         nonce: u64,
@@ -1252,16 +1124,6 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .update_indexes(markets)
-            .run();
-    }
-
-    pub fn update_account_positions(&mut self, from: &TestAddress, account_position: u64) {
-        self.world
-            .tx()
-            .from(from.to_managed_address())
-            .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::ControllerProxy)
-            .update_account_positions(account_position)
             .run();
     }
 

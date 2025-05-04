@@ -1,5 +1,5 @@
 use common_constants::{BPS_PRECISION, RAY_PRECISION, WAD_PRECISION};
-use common_structs::{AccountAttributes, AccountPosition, PriceFeedShort};
+use common_structs::{AccountPosition, PriceFeedShort};
 
 use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validation};
 use common_errors::ERROR_HEALTH_FACTOR;
@@ -43,7 +43,6 @@ pub trait PositionLiquidationModule:
         debt_payments: &ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
         caller: &ManagedAddress,
         cache: &mut Cache<Self>,
-        account_attributes: &AccountAttributes<Self::Api>,
     ) -> (
         ManagedVec<MultiValue2<EgldOrEsdtTokenPayment, ManagedDecimal<Self::Api, NumDecimals>>>,
         ManagedVec<
@@ -55,21 +54,10 @@ pub trait PositionLiquidationModule:
         >,
     ) {
         let mut refunds = ManagedVec::new();
-        let deposit_positions = self.sync_deposit_positions_interest(
-            account_nonce,
-            cache,
-            caller,
-            account_attributes,
-            true,
-        );
+        let deposit_positions = self.sync_deposit_positions_interest(account_nonce, cache, true);
 
-        let (borrow_positions, map_debt_indexes) = self.sync_borrow_positions_interest(
-            account_nonce,
-            cache,
-            caller,
-            account_attributes,
-            true,
-        );
+        let (borrow_positions, map_debt_indexes) =
+            self.sync_borrow_positions_interest(account_nonce, cache, true);
 
         let (debt_payment_in_egld, mut repaid_tokens) = self.calculate_repayment_amounts(
             debt_payments,
@@ -156,13 +144,8 @@ pub trait PositionLiquidationModule:
 
         let account_attributes = self.account_attributes(account_nonce).get();
 
-        let (seized_collaterals, repaid_tokens) = self.execute_liquidation(
-            account_nonce,
-            debt_payments,
-            caller,
-            &mut cache,
-            &account_attributes,
-        );
+        let (seized_collaterals, repaid_tokens) =
+            self.execute_liquidation(account_nonce, debt_payments, caller, &mut cache);
 
         for debt_payment_data in repaid_tokens {
             let (debt_payment, debt_egld_value, debt_price_feed) = debt_payment_data.into_tuple();
@@ -180,15 +163,17 @@ pub trait PositionLiquidationModule:
 
         for collateral_data in seized_collaterals {
             let (seized_collateral, protocol_fee) = collateral_data.into_tuple();
-            self.process_withdrawal(
+            let mut deposit_position =
+                self.get_deposit_position(account_nonce, &seized_collateral.token_identifier);
+            let _ = self.process_withdrawal(
                 account_nonce,
-                seized_collateral,
+                seized_collateral.amount,
                 caller,
                 true,
                 Some(protocol_fee),
                 &mut cache,
                 &account_attributes,
-                false,
+                &mut deposit_position,
             );
         }
     }
@@ -256,9 +241,9 @@ pub trait PositionLiquidationModule:
     {
         let mut seized_amounts_by_collateral = ManagedVec::new();
 
-        for asset in deposit_positions {
-            let total_amount = asset.get_total_amount();
-            let asset_data = self.get_token_price(&asset.asset_id, cache);
+        for position in deposit_positions {
+            let asset_data = self.get_token_price(&position.asset_id, cache);
+            let total_amount = self.get_total_amount(&position, &asset_data, cache);
             let asset_egld_value = self.get_token_egld_value(&total_amount, &asset_data.price);
 
             // Proportion = (asset_egld_value * WAD) / total_collateral_value
@@ -283,7 +268,7 @@ pub trait PositionLiquidationModule:
             let protocol_fee = self
                 .mul_half_up(
                     &(seized_units_after_bonus_ray.clone() - seized_units_ray.clone()),
-                    &asset.liquidation_fees.clone(),
+                    &position.liquidation_fees.clone(),
                     RAY_PRECISION,
                 )
                 .rescale(asset_data.asset_decimals);
@@ -297,7 +282,7 @@ pub trait PositionLiquidationModule:
             );
 
             seized_amounts_by_collateral.push(MultiValue2::from((
-                EgldOrEsdtTokenPayment::new(asset.asset_id.clone(), 0, final_amount),
+                EgldOrEsdtTokenPayment::new(position.asset_id.clone(), 0, final_amount),
                 protocol_fee,
             )));
         }
@@ -347,8 +332,11 @@ pub trait PositionLiquidationModule:
 
             let token_egld_amount = self.get_token_egld_value(&amount_dec, &token_feed.price);
 
-            let borrowed_egld_amount =
-                self.get_token_egld_value(&original_borrow.get_total_amount(), &token_feed.price);
+            let borrowed_egld_amount = self.get_token_egld_value(
+                &self.get_total_amount(&original_borrow, &token_feed, cache),
+                &token_feed.price,
+            );
+
             let mut payment = payment_ref.clone();
             if token_egld_amount > borrowed_egld_amount {
                 let egld_excess = token_egld_amount - borrowed_egld_amount.clone();
@@ -398,7 +386,8 @@ pub trait PositionLiquidationModule:
 
         for dp in positions {
             let feed = self.get_token_price(&dp.asset_id, cache);
-            let collateral_in_egld = self.get_token_egld_value(&dp.get_total_amount(), &feed.price);
+            let collateral_in_egld =
+                self.get_token_egld_value(&self.get_total_amount(&dp, &feed, cache), &feed.price);
             let fraction = self
                 .div_half_up(&collateral_in_egld, total_collateral_in_egld, RAY_PRECISION)
                 .rescale(BPS_PRECISION);
@@ -644,15 +633,7 @@ pub trait PositionLiquidationModule:
     /// - `cache`: Mutable storage cache
     fn perform_bad_debt_cleanup(&self, account_nonce: u64, cache: &mut Cache<Self>) {
         let caller = self.blockchain().get_caller();
-        let mut account_attributes = self.account_attributes(account_nonce).get();
-        // If the account is a vault, toggle it to non-vault to move funds to the shared liquidity pool
-        if account_attributes.is_vault() {
-            account_attributes.is_vault_position = false;
-
-            self.process_vault_toggle(account_nonce, false, cache, &account_attributes, &caller);
-
-            self.update_account_attributes(account_nonce, &account_attributes);
-        }
+        let account_attributes = self.account_attributes(account_nonce).get();
 
         // Add all remaining debt as bad debt, clean isolated debt if any
         let borrow_positions = self.borrow_positions(account_nonce);
