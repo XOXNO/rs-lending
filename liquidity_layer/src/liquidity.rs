@@ -131,7 +131,7 @@ pub trait LiquidityModule:
         require!(cache.is_same_asset(&position.asset_id), ERROR_INVALID_ASSET);
         require!(cache.has_reserves(amount), ERROR_INSUFFICIENT_LIQUIDITY);
 
-        let scaled_amount = cache.get_scaled_borrow_amount(&amount);
+        let scaled_amount = cache.get_scaled_borrow_amount(amount);
         position.scaled_amount += &scaled_amount;
         position.last_update_timestamp = cache.timestamp;
         position.market_index = cache.borrow_index.clone();

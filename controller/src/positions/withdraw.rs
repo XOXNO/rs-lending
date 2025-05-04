@@ -71,7 +71,7 @@ pub trait PositionWithdrawModule:
             position_attributes,
         );
 
-        self.update_or_remove_position(account_nonce, &deposit_position);
+        self.update_or_remove_position(account_nonce, deposit_position);
 
         payment
     }

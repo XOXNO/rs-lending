@@ -82,7 +82,7 @@ pub trait PositionRepayModule:
         position_attributes: &AccountAttributes<Self::Api>,
     ) {
         if position_attributes.is_isolated() {
-            let debt_usd_amount = self.get_egld_usd_value(&repay_amount, &cache.egld_usd_price);
+            let debt_usd_amount = self.get_egld_usd_value(repay_amount, &cache.egld_usd_price);
             self.adjust_isolated_debt_usd(
                 &position_attributes.get_isolated_token(),
                 debt_usd_amount,

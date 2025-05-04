@@ -225,20 +225,20 @@ where
         &self,
         amount: &ManagedDecimal<C::Api, NumDecimals>,
     ) -> ManagedDecimal<C::Api, NumDecimals> {
-        let scaled_amount = self
+        
+        self
             .sc_ref
-            .div_half_up(amount, &self.supply_index, RAY_PRECISION);
-        scaled_amount
+            .div_half_up(amount, &self.supply_index, RAY_PRECISION)
     }
 
     pub fn get_scaled_borrow_amount(
         &self,
         amount: &ManagedDecimal<C::Api, NumDecimals>,
     ) -> ManagedDecimal<C::Api, NumDecimals> {
-        let scaled_amount = self
+        
+        self
             .sc_ref
-            .div_half_up(amount, &self.borrow_index, RAY_PRECISION);
-        scaled_amount
+            .div_half_up(amount, &self.borrow_index, RAY_PRECISION)
     }
 
     pub fn get_original_supply_amount(

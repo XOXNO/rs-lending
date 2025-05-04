@@ -269,7 +269,7 @@ pub trait PositionBorrowModule:
 
                 let pool = cache.get_cached_pool_address(asset);
                 let total_borrow_scaled = self.get_total_borrow(pool).get();
-                let index = cache.get_cached_market_index(&asset);
+                let index = cache.get_cached_market_index(asset);
                 let borrowed_amount = self
                     .mul_half_up(&total_borrow_scaled, &index.borrow_index, RAY_PRECISION)
                     .rescale(amount.scale());

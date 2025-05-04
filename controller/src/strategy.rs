@@ -407,7 +407,7 @@ pub trait SnapModule:
     ) -> EgldOrEsdtTokenPayment<Self::Api> {
         let controller = self.blockchain().get_sc_address();
 
-        let mut deposit_position = self.get_deposit_position(account_nonce, &from_token);
+        let mut deposit_position = self.get_deposit_position(account_nonce, from_token);
 
         let withdraw_payment = self.process_withdrawal(
             account_nonce,
@@ -420,14 +420,14 @@ pub trait SnapModule:
             &mut deposit_position,
         );
 
-        let received = self.convert_token_from_to(
+        
+
+        self.convert_token_from_to(
             to_token,
             from_token,
             &withdraw_payment.amount,
             caller,
             steps,
-        );
-
-        received
+        )
     }
 }
