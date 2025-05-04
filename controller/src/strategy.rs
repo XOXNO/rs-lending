@@ -420,8 +420,6 @@ pub trait SnapModule:
             &mut deposit_position,
         );
 
-        
-
         self.convert_token_from_to(
             to_token,
             from_token,

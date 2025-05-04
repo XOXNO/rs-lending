@@ -84,7 +84,7 @@ fn test_edge_case_math_rounding() {
     println!("supply_amount: {:?}", collateral); // 100013309281138473374
     println!("revenue_value: {:?}", revenue); //      5703977630774302
     println!("utilization: {:?}", utilization);
- 
+
     assert_eq!(
         reserves,
         ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS)
@@ -121,7 +121,10 @@ fn test_edge_case_math_rounding() {
     println!("borrow_amount: {:?}", borrowed); // 100019013258769247676
     assert!(reserves >= revenue);
     let diff = reserves - revenue;
-    assert_eq!(diff, ManagedDecimal::from_raw_units(BigUint::from(1u64), EGLD_DECIMALS));
+    assert_eq!(
+        diff,
+        ManagedDecimal::from_raw_units(BigUint::from(1u64), EGLD_DECIMALS)
+    );
 }
 
 #[test]
@@ -380,7 +383,7 @@ fn test_complete_market_exit() {
     );
 
     let custom_error_message = format!("Token not existing in the account {}", EGLD_TOKEN.as_str());
-  
+
     state.get_collateral_amount_for_token_non_existing(
         1,
         EGLD_TOKEN,

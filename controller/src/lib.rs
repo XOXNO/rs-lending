@@ -167,7 +167,7 @@ pub trait Controller:
             self.validate_payment(&collateral);
             let mut deposit_position = self
                 .get_deposit_position(account_payment.token_nonce, &collateral.token_identifier);
-            
+
             let _ = self.process_withdrawal(
                 account_payment.token_nonce,
                 collateral.amount,

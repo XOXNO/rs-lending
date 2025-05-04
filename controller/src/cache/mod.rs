@@ -7,7 +7,7 @@ multiversx_sc::derive_imports!();
 
 pub struct Cache<'a, C>
 where
-    C: crate::oracle::OracleModule + crate::storage::Storage
+    C: crate::oracle::OracleModule + crate::storage::Storage,
 {
     sc_ref: &'a C,
 
@@ -30,7 +30,7 @@ where
 
 impl<'a, C> Cache<'a, C>
 where
-    C: crate::oracle::OracleModule + crate::storage::Storage
+    C: crate::oracle::OracleModule + crate::storage::Storage,
 {
     pub fn new(sc_ref: &'a C) -> Self {
         let price_aggregator = sc_ref.price_aggregator_address().get();

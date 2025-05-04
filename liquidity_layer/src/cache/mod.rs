@@ -156,7 +156,6 @@ where
         }
     }
 
-
     /// Computes the effective reserves available (reserves minus protocol revenue).
     ///
     /// **Scope**: Determines the usable reserve amount after accounting for protocol fees.
@@ -225,9 +224,7 @@ where
         &self,
         amount: &ManagedDecimal<C::Api, NumDecimals>,
     ) -> ManagedDecimal<C::Api, NumDecimals> {
-        
-        self
-            .sc_ref
+        self.sc_ref
             .div_half_up(amount, &self.supply_index, RAY_PRECISION)
     }
 
@@ -235,9 +232,7 @@ where
         &self,
         amount: &ManagedDecimal<C::Api, NumDecimals>,
     ) -> ManagedDecimal<C::Api, NumDecimals> {
-        
-        self
-            .sc_ref
+        self.sc_ref
             .div_half_up(amount, &self.borrow_index, RAY_PRECISION)
     }
 

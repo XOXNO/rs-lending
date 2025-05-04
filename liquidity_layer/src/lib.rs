@@ -106,11 +106,9 @@ pub trait LiquidityPool:
         self.borrow_index().set(self.ray());
         self.supply_index().set(self.ray());
 
-        self.supplied()
-            .set(self.ray_zero());
+        self.supplied().set(self.ray_zero());
 
-        self.borrowed()
-            .set(self.ray_zero());
+        self.borrowed().set(self.ray_zero());
 
         self.revenue()
             .set(self.to_decimal(BigUint::zero(), asset_decimals));

@@ -96,7 +96,7 @@ fn test_leave_dust_in_market() {
     let mut markets = MultiValueEncoded::new();
     markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
     // Simulate hourly updates for 2 years
-    for day in 1..=100{
+    for day in 1..=100 {
         state.change_timestamp(day * SECONDS_PER_DAY);
         state.update_markets(&OWNER_ADDRESS, markets.clone());
     }
