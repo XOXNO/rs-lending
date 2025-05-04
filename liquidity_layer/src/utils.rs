@@ -3,7 +3,6 @@ multiversx_sc::derive_imports!();
 
 use crate::{cache::Cache, rates, storage, view};
 
-use common_constants::RAY_PRECISION;
 use common_errors::{ERROR_INVALID_ASSET, ERROR_INVALID_FLASHLOAN_REPAYMENT};
 use common_structs::*;
 
@@ -17,171 +16,6 @@ pub trait UtilsModule:
     + view::ViewModule
     + common_math::SharedMathModule
 {
-    /// Calculates supplier rewards by deducting protocol fees from accrued interest.
-    ///
-    /// **Scope**: This function computes the rewards suppliers earn from interest paid by borrowers,
-    /// after the protocol takes its share (reserve factor). It’s used during index updates to distribute profits.
-    ///
-    /// **Goal**: Ensure suppliers receive their fair share of interest while updating protocol revenue.
-    ///
-    /// **Formula**:
-    /// - Accrued interest = `borrowed * (borrow_index / old_borrow_index - 1)`
-    /// - Rewards = `accrued_interest * (1 - reserve_factor)`
-    ///
-    /// # Arguments
-    /// - `cache`: Mutable reference to the pool state (`Cache<Self>`), containing borrow amounts, indexes, and params.
-    /// - `old_borrow_index`: The borrow index before the current update (`ManagedDecimal<Self::Api, NumDecimals>`).
-    ///
-    /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: Net rewards for suppliers after protocol fees.
-    ///
-    /// **Security Tip**: No direct `require!` checks here; relies on upstream validation of `cache` state (e.g., in `global_sync`).
-    fn calc_supplier_rewards(
-        &self,
-        cache: &mut Cache<Self>,
-        old_borrow_index: ManagedDecimal<Self::Api, NumDecimals>,
-    ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        // 1. Calculate new borrowed amount
-        let accrued_interest =
-            self.calc_interest(&cache.borrowed, &cache.borrow_index, &old_borrow_index);
-
-        // If the accrued interest is less than the bad debt, we can collect the entire accrued interest
-        if accrued_interest.le(&cache.bad_debt) {
-            cache.bad_debt -= &accrued_interest;
-            self.to_decimal(BigUint::zero(), cache.params.asset_decimals)
-        } else {
-            // If the accrued interest is greater than the bad debt, we clear the bad debt and calculate the protocol's share and the suppliers' share
-            let left_accrued_interest = accrued_interest - cache.bad_debt.clone();
-            cache.bad_debt = self.to_decimal(BigUint::zero(), cache.params.asset_decimals);
-            // 2. Calculate protocol's share
-            let protocol_fee = self
-                .mul_half_up(
-                    &left_accrued_interest,
-                    &cache.params.reserve_factor,
-                    RAY_PRECISION,
-                )
-                .rescale(cache.params.asset_decimals);
-            // 3. Update reserves
-            cache.revenue += &protocol_fee;
-
-            // 4. Return suppliers' share
-            left_accrued_interest - protocol_fee
-        }
-    }
-
-    /// Updates both borrow and supply indexes based on elapsed time since the last update.
-    ///
-    /// **Scope**: Synchronizes the global state of the pool by recalculating borrow and supply indexes,
-    /// factoring in interest growth over time and distributing rewards.
-    ///
-    /// **Goal**: Keep the pool’s financial state current, ensuring accurate interest accrual and reward distribution.
-    ///
-    /// **Process**:
-    /// 1. Computes time delta since last update.
-    /// 2. Updates borrow index using growth factor.
-    /// 3. Calculates supplier rewards.
-    /// 4. Updates supply index with rewards.
-    /// 5. Refreshes last update timestamp.
-    ///
-    /// # Arguments
-    /// - `cache`: Mutable reference to the pool state (`Cache<Self>`), holding timestamps and indexes.
-    ///
-    /// **Security Tip**: Skips updates if `delta == 0`, preventing redundant computation. Protected by caller ensuring valid `cache`.
-    fn global_sync(&self, cache: &mut Cache<Self>) {
-        let delta = cache.timestamp - cache.last_timestamp;
-
-        if delta > 0 {
-            let borrow_rate = self.calc_borrow_rate(cache.get_utilization(), cache.params.clone());
-            let factor = self.growth_factor(borrow_rate, delta);
-
-            let old_borrow_index = self.update_borrow_index(cache, factor);
-
-            let rewards = self.calc_supplier_rewards(cache, old_borrow_index);
-
-            self.update_supply_index(rewards, cache);
-
-            // Update the last used timestamp
-            cache.last_timestamp = cache.timestamp;
-        }
-    }
-
-    /// Calculates accrued interest for a position since its last update.
-    ///
-    /// **Scope**: Computes interest accrued on a principal amount based on the change in market index since the last recorded index.
-    ///
-    /// **Goal**: Provide an accurate interest calculation for updating positions or determining rewards/debts.
-    ///
-    /// **Formula**:
-    /// - `interest = amount * (current_index / account_position_index - 1)`
-    /// - Result is rescaled to match `amount`’s asset_decimals.
-    ///
-    /// # Arguments
-    /// - `amount`: Principal amount (`ManagedDecimal<Self::Api, NumDecimals>`).
-    /// - `current_index`: Latest market index (`ManagedDecimal<Self::Api, NumDecimals>`).
-    /// - `account_position_index`: Position’s last recorded index (`ManagedDecimal<Self::Api, NumDecimals>`).
-    ///
-    /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: Accrued interest since the last update.
-    ///
-    /// **Security Tip**: No division-by-zero risk if `account_position_index` is non-zero, ensured by upstream position initialization.
-    fn calc_interest(
-        &self,
-        amount: &ManagedDecimal<Self::Api, NumDecimals>, // Amount of the asset
-        current_index: &ManagedDecimal<Self::Api, NumDecimals>, // Market index
-        account_position_index: &ManagedDecimal<Self::Api, NumDecimals>, // Account position index
-    ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        if current_index == account_position_index {
-            return self.to_decimal(BigUint::zero(), amount.scale());
-        }
-
-        let numerator = self.mul_half_up(amount, current_index, RAY_PRECISION);
-        let new_amount = self
-            .div_half_up(&numerator, account_position_index, RAY_PRECISION)
-            .rescale(amount.scale());
-
-        new_amount.sub(amount.clone())
-    }
-
-    /// Updates an account position with accrued interest based on current market indexes.
-    ///
-    /// **Scope**: Adjusts a user’s deposit or borrow position by calculating and adding accrued interest,
-    /// updating timestamps and indexes accordingly.
-    ///
-    /// **Goal**: Ensure a position reflects the latest interest accrued, handling edge cases like zero amounts.
-    ///
-    /// **Process**:
-    /// - Selects supply or borrow index based on position type.
-    /// - For zero-amount positions, resets timestamp and index.
-    /// - For non-zero amounts, calculates and adds interest.
-    ///
-    /// # Arguments
-    /// - `position`: Mutable reference to the account position (`AccountPosition<Self::Api>`).
-    /// - `cache`: Mutable reference to the pool state (`Cache<Self>`).
-    ///
-    /// **Security Tip**: Handles zero amounts safely by resetting state, protected by caller ensuring valid position type.
-    fn position_sync(&self, position: &mut AccountPosition<Self::Api>, cache: &mut Cache<Self>) {
-        let is_supply = position.position_type == AccountPositionType::Deposit;
-        let index = if is_supply {
-            cache.supply_index.clone()
-        } else {
-            cache.borrow_index.clone()
-        };
-
-        if position.get_total_amount().eq(&cache.zero) {
-            position.last_update_timestamp = cache.timestamp;
-            position.market_index = index.clone();
-            return;
-        }
-        let interest =
-            self.calc_interest(&position.get_total_amount(), &index, &position.market_index);
-
-        if interest.gt(&cache.zero) {
-            position.interest_accrued += &interest;
-            position.last_update_timestamp = cache.timestamp;
-            position.market_index = index.clone();
-        }
-    }
-
     /// Splits a repayment into principal, interest, and overpayment components.
     ///
     /// **Scope**: Determines how a repayment amount is allocated to clear interest and principal,
@@ -298,7 +132,7 @@ pub trait UtilsModule:
 
     /// Retrieves and validates the payment amount from a transaction.
     ///
-    /// **Scope**: Extracts the payment amount (EGLD or ESDT) and ensures it matches the pool’s asset.
+    /// **Scope**: Extracts the payment amount (EGLD or ESDT) and ensures it matches the pool's asset.
     ///
     /// **Goal**: Validate incoming payments to prevent asset mismatches during operations like deposits or repayments.
     ///
@@ -317,7 +151,7 @@ pub trait UtilsModule:
         cache.get_decimal_value(&amount)
     }
 
-    /// Caps a withdrawal amount to prevent exceeding the position’s total.
+    /// Caps a withdrawal amount to prevent exceeding the position's total.
     ///
     /// **Scope**: Limits the amount a user can withdraw to their available balance.
     ///
@@ -374,9 +208,8 @@ pub trait UtilsModule:
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
-        let extra = self.calc_interest(amount, &cache.supply_index, &position.market_index);
         let (principal, interest, _) = self.split_repay(amount, position, cache);
-        let mut to_withdraw = amount.clone() + extra;
+        let mut to_withdraw = amount.clone();
         if is_liquidation && protocol_fee_opt.is_some() {
             let protocol_fees = protocol_fee_opt.unwrap();
             cache.revenue += &protocol_fees;
@@ -390,7 +223,7 @@ pub trait UtilsModule:
     ///
     /// **Scope**: Checks that a flash loan repayment matches the pool asset and exceeds the required amount.
     ///
-    /// **Goal**: Secure the flash loan process by enforcing repayment conditions, protecting the pool’s funds.
+    /// **Goal**: Secure the flash loan process by enforcing repayment conditions, protecting the pool's funds.
     ///
     /// **Process**:
     /// - Extracts repayment amount (EGLD or ESDT).

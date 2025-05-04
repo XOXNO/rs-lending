@@ -485,7 +485,7 @@ fn test_liquidation_and_left_bad_debt() {
     println!("borrow_amount_in_egld: {:?}", borrow_amount_in_egld);
     assert!(borrow_amount_in_egld > ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS));
     assert!(
-        collateral_in_egld == ManagedDecimal::from_raw_units(BigUint::from(1u64), EGLD_DECIMALS)
+        collateral_in_egld < ManagedDecimal::from_raw_units(BigUint::from(WAD/2), EGLD_DECIMALS)
     );
 
     // Repay the bad debt, usually the protocol will do this

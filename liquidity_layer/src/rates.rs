@@ -1,5 +1,5 @@
 use common_constants::{RAY_PRECISION, SECONDS_PER_YEAR};
-use common_events::MarketParams;
+use common_events::{AccountPosition, AccountPositionType, MarketParams};
 
 use crate::{cache::Cache, storage};
 
@@ -29,7 +29,7 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
     /// - `cache`: Reference to the pool state (`Cache<Self>`), providing utilization and parameters.
     ///
     /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: Per-second borrow rate (RAY-based).
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: Per-year borrow rate (RAY-based).
     ///
     /// **Security Tip**: Relies on `cache.get_utilization()`; no direct input validation.
     fn calc_borrow_rate(
@@ -37,8 +37,6 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
         utilization: ManagedDecimal<Self::Api, NumDecimals>,
         params: MarketParams<Self::Api>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let sec_per_year = self.to_decimal(BigUint::from(SECONDS_PER_YEAR), 0);
-
         let annual_rate = if utilization < params.mid_utilization {
             // Region 1: utilization < mid_utilization
             let utilization_ratio = utilization.mul(params.slope1).div(params.mid_utilization);
@@ -74,12 +72,16 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
         };
 
         // Convert annual rate to per-second rate
-        capped_rate / sec_per_year
+        self.div_half_up(
+            &capped_rate,
+            &self.to_decimal(BigUint::from(SECONDS_PER_YEAR), 0),
+            RAY_PRECISION,
+        )
     }
 
     /// Calculates the deposit rate based on utilization and borrow rate.
     ///
-    /// **Scope**: Computes the rate suppliers earn from borrowers’ interest payments.
+    /// **Scope**: Computes the rate suppliers earn from borrowers' interest payments.
     ///
     /// **Goal**: Ensure suppliers receive a fair share of interest after protocol fees.
     ///
@@ -112,6 +114,24 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
         )
     }
 
+    /// @dev Function to calculate the interest accumulated using a linear interest rate formula
+    /// @param rate The interest rate, in ray
+    /// @param last_update_timestamp The timestamp of the last update of the interest
+    /// @return The interest rate linearly accumulated during the timeDelta, in ray
+    fn calculate_linear_interest(
+        &self,
+        rate: ManagedDecimal<Self::Api, NumDecimals>,
+        time_passed: u64,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        let factor = self.mul_half_up(
+            &rate,
+            &self.to_decimal(BigUint::from(time_passed), 0),
+            RAY_PRECISION,
+        );
+
+        self.ray() + factor
+    }
+
     /// Computes the interest growth factor using a Taylor series approximation.
     ///
     /// **Scope**: Approximates compounded interest over time for index updates.
@@ -124,62 +144,52 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
     /// - Suitable for small `t`; precision decreases for large intervals.
     ///
     /// # Arguments
-    /// - `cache`: Mutable reference to pool state (`Cache<Self>`), used for borrow rate.
+    /// - `borrow_rate`: Current borrow rate (`ManagedDecimal<Self::Api, NumDecimals>`).
     /// - `exp`: Time elapsed in seconds (`u64`). Always higher than 0.
     ///
     /// # Returns
     /// - `ManagedDecimal<Self::Api, NumDecimals>`: Interest factor (RAY-based).
     ///
     /// **Security Tip**: Returns 1 (RAY) if `exp == 0` to avoid unnecessary computation.
-    fn growth_factor(
+    fn calculate_compounded_interest(
         &self,
-        borrow_rate: ManagedDecimal<Self::Api, NumDecimals>,
+        rate: ManagedDecimal<Self::Api, NumDecimals>,
         exp: u64,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        // Use Taylor expansion e^x = 1 + x + x^2/2! + x^3/3! + x^4/4! + x^5/5! + ...
+        // where x = borrow_rate * exp
+
         let ray = self.ray();
+
+        if exp == 0 {
+            return ray;
+        }
 
         let exp_dec = self.to_decimal(BigUint::from(exp), 0);
 
-        let exp_minus_one = exp - 1;
-        let exp_minus_two = if exp > 2 { exp - 2 } else { 0 };
-        let exp_minus_one_dec = self.to_decimal(BigUint::from(exp_minus_one), 0);
-        let exp_minus_two_dec = self.to_decimal(BigUint::from(exp_minus_two), 0);
+        // x = rate * time_delta
+        let x = self.mul_half_up(&rate, &exp_dec, RAY_PRECISION);
 
-        // Base powers using per-second rate
-        let base_power_two = self.mul_half_up(&borrow_rate, &borrow_rate, RAY_PRECISION);
-        let base_power_three = self.mul_half_up(&base_power_two, &borrow_rate, RAY_PRECISION);
+        // Higher powers of x
+        let x_sq = self.mul_half_up(&x, &x, RAY_PRECISION);
+        let x_cub = self.mul_half_up(&x_sq, &x, RAY_PRECISION);
+        let x_pow4 = self.mul_half_up(&x_cub, &x, RAY_PRECISION);
+        let x_pow5 = self.mul_half_up(&x_pow4, &x, RAY_PRECISION);
 
-        // Second term: (exp * (exp - 1) * base_power_two) / 2
-        let second_term = self.div_half_up(
-            &self.mul_half_up(
-                &self.mul_half_up(&exp_dec, &exp_minus_one_dec, RAY_PRECISION),
-                &base_power_two,
-                RAY_PRECISION,
-            ),
-            &self.to_decimal(BigUint::from(2u64), 0),
-            RAY_PRECISION,
-        );
+        // Denominators for factorials
+        let factor_2 = self.to_decimal(BigUint::from(2u64), 0);
+        let factor_6 = self.to_decimal(BigUint::from(6u64), 0);
+        let factor_24 = self.to_decimal(BigUint::from(24u64), 0);
+        let factor_120 = self.to_decimal(BigUint::from(120u64), 0);
 
-        // Third term: (exp * (exp - 1) * (exp - 2) * base_power_three) / 6
-        let third_term = self.div_half_up(
-            &self.mul_half_up(
-                &self.mul_half_up(
-                    &self.mul_half_up(&exp_dec, &exp_minus_one_dec, RAY_PRECISION),
-                    &exp_minus_two_dec,
-                    RAY_PRECISION,
-                ),
-                &base_power_three,
-                RAY_PRECISION,
-            ),
-            &self.to_decimal(BigUint::from(6u64), 0),
-            RAY_PRECISION,
-        );
+        // Calculate terms: x^n / n!
+        let term2 = self.div_half_up(&x_sq, &factor_2, RAY_PRECISION);
+        let term3 = self.div_half_up(&x_cub, &factor_6, RAY_PRECISION);
+        let term4 = self.div_half_up(&x_pow4, &factor_24, RAY_PRECISION);
+        let term5 = self.div_half_up(&x_pow5, &factor_120, RAY_PRECISION);
 
-        // Main term: per_second_rate * exp
-        let main_term = self.mul_half_up(&borrow_rate, &exp_dec, RAY_PRECISION);
-
-        // Interest factor = 1 + main_term + second_term + third_term
-        ray + main_term + second_term + third_term
+        // Sum terms: 1 + x + x^2/2 + x^3/6 + x^4/24 + x^5/120
+        ray + x + term2 + term3 + term4 + term5
     }
 
     /// Updates the borrow index using the provided interest factor.
@@ -214,7 +224,7 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
     ///
     /// **Scope**: Adjusts the supply index to distribute rewards to suppliers.
     ///
-    /// **Goal**: Ensure suppliers’ yields reflect their share of interest earned.
+    /// **Goal**: Ensure suppliers' yields reflect their share of interest earned.
     ///
     /// **Formula**:
     /// - `rewards_ratio = rewards_increase / supplied`.
@@ -228,16 +238,185 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
     /// **Security Tip**: Skips update if `supplied == 0` to avoid division-by-zero.
     fn update_supply_index(
         &self,
-        rewards_increase: ManagedDecimal<Self::Api, NumDecimals>,
         cache: &mut Cache<Self>,
-    ) {
-        if cache.supplied != cache.zero && rewards_increase != cache.zero {
-            let rewards_ratio = self.div_half_up(&rewards_increase, &cache.supplied, RAY_PRECISION);
+        rewards_increase: ManagedDecimal<Self::Api, NumDecimals>,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        let old_supply_index = cache.supply_index.clone();
+        if cache.supplied != cache.zero {
+            let total_supplied_with_interest =
+                self.mul_half_up(&cache.supplied, &cache.supply_index, RAY_PRECISION);
+            let rewards_ratio = self.div_half_up(
+                &rewards_increase,
+                &total_supplied_with_interest,
+                RAY_PRECISION,
+            );
 
             let rewards_factor = self.ray() + rewards_ratio;
 
             cache.supply_index =
                 self.mul_half_up(&cache.supply_index, &rewards_factor, RAY_PRECISION);
+        }
+        old_supply_index
+    }
+
+    /// Calculates supplier rewards by deducting protocol fees from accrued interest.
+    ///
+    /// **Scope**: This function computes the rewards suppliers earn from interest paid by borrowers,
+    /// after the protocol takes its share (reserve factor). It's used during index updates to distribute profits.
+    ///
+    /// **Goal**: Ensure suppliers receive their fair share of interest while updating protocol revenue.
+    ///
+    /// **Formula**:
+    /// - Accrued interest = `borrowed * (borrow_index / old_borrow_index - 1)`
+    /// - Rewards = `accrued_interest * (1 - reserve_factor)`
+    ///
+    /// # Arguments
+    /// - `cache`: Mutable reference to the pool state (`Cache<Self>`), containing borrow amounts, indexes, and params.
+    /// - `old_borrow_index`: The borrow index before the current update (`ManagedDecimal<Self::Api, NumDecimals>`).
+    ///
+    /// # Returns
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: Net rewards for suppliers after protocol fees.
+    ///
+    /// **Security Tip**: No direct `require!` checks here; relies on upstream validation of `cache` state (e.g., in `global_sync`).
+    fn calc_supplier_rewards(
+        &self,
+        cache: &mut Cache<Self>,
+        old_borrow_index: ManagedDecimal<Self::Api, NumDecimals>,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        // Calculate the actual accrued interest correctly using calc_interest (returns asset decimals)
+        let accrued_interest_asset_decimals =
+            self.calc_interest(&cache.borrowed, &cache.borrow_index, &old_borrow_index);
+
+        // If the accrued interest is less than the bad debt, we can collect the entire accrued interest
+        if accrued_interest_asset_decimals.le(&cache.bad_debt) {
+            // Use asset decimal version for subtracting from bad_debt storage
+            cache.bad_debt -= &accrued_interest_asset_decimals;
+            self.ray_zero()
+        } else {
+            // If the accrued interest is greater than the bad debt, we clear the bad debt and calculate the protocol's share and the suppliers' share
+            let left_interest_after_bad_debt =
+                accrued_interest_asset_decimals - cache.bad_debt.clone();
+            cache.bad_debt = self.to_decimal(BigUint::zero(), cache.params.asset_decimals);
+
+            let protocol_fee = self.mul_half_up(
+                &left_interest_after_bad_debt,
+                &cache.params.reserve_factor, // Ensure reserve_factor is RAY scaled
+                RAY_PRECISION,
+            );
+            // Update revenue and reserves storage with fee scaled to asset decimals
+            let protocol_fee_asset_decimals = protocol_fee.rescale(cache.params.asset_decimals);
+            cache.revenue += &protocol_fee_asset_decimals;
+
+            // Return net rewards (interest after bad debt and fee) in RAY precision
+            left_interest_after_bad_debt.rescale(RAY_PRECISION) - protocol_fee
+        }
+    }
+
+    /// Updates both borrow and supply indexes based on elapsed time since the last update.
+    ///
+    /// **Scope**: Synchronizes the global state of the pool by recalculating borrow and supply indexes,
+    /// factoring in interest growth over time and distributing rewards.
+    ///
+    /// **Goal**: Keep the pool's financial state current, ensuring accurate interest accrual and reward distribution.
+    ///
+    /// **Process**:
+    /// 1. Computes time delta since last update.
+    /// 2. Updates borrow index using growth factor.
+    /// 3. Calculates supplier rewards.
+    /// 4. Updates supply index with rewards.
+    /// 5. Refreshes last update timestamp.
+    ///
+    /// # Arguments
+    /// - `cache`: Mutable reference to the pool state (`Cache<Self>`), holding timestamps and indexes.
+    ///
+    /// **Security Tip**: Skips updates if `delta == 0`, preventing redundant computation. Protected by caller ensuring valid `cache`.
+    fn global_sync(&self, cache: &mut Cache<Self>) {
+        let delta = cache.timestamp - cache.last_timestamp;
+
+        if delta > 0 {
+            let borrow_rate = self.calc_borrow_rate(cache.get_utilization(), cache.params.clone());
+            let borrow_factor = self.calculate_compounded_interest(borrow_rate.clone(), delta);
+            let old_borrow_index = self.update_borrow_index(cache, borrow_factor.clone());
+            let supplier_rewards = self.calc_supplier_rewards(cache, old_borrow_index.clone());
+            self.update_supply_index(cache, supplier_rewards);
+            // Update the last used timestamp
+            cache.last_timestamp = cache.timestamp;
+        }
+    }
+
+    /// Calculates accrued interest for a position since its last update.
+    ///
+    /// **Scope**: Computes interest accrued on a principal amount based on the change in market index since the last recorded index.
+    ///
+    /// **Goal**: Provide an accurate interest calculation for updating positions or determining rewards/debts.
+    ///
+    /// **Formula**:
+    /// - `interest = amount * (current_index / account_position_index - 1)`
+    /// - Result is rescaled to match `amount`'s asset_decimals.
+    ///
+    /// # Arguments
+    /// - `amount`: Principal amount (`ManagedDecimal<Self::Api, NumDecimals>`).
+    /// - `current_index`: Latest market index (`ManagedDecimal<Self::Api, NumDecimals>`).
+    /// - `account_position_index`: Position's last recorded index (`ManagedDecimal<Self::Api, NumDecimals>`).
+    ///
+    /// # Returns
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: Accrued interest since the last update.
+    ///
+    /// **Security Tip**: No division-by-zero risk if `account_position_index` is non-zero, ensured by upstream position initialization.
+    fn calc_interest(
+        &self,
+        amount: &ManagedDecimal<Self::Api, NumDecimals>, // Amount of the asset
+        current_index: &ManagedDecimal<Self::Api, NumDecimals>, // Market index
+        account_position_index: &ManagedDecimal<Self::Api, NumDecimals>, // Account position index
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        if current_index == account_position_index {
+            return self.to_decimal(BigUint::zero(), amount.scale());
+        }
+        let amount_ray = amount.rescale(RAY_PRECISION);
+        let numerator = self.mul_half_up(&amount_ray, current_index, RAY_PRECISION);
+        let new_amount = self.div_half_up(&numerator, account_position_index, RAY_PRECISION);
+
+        new_amount.sub(amount_ray).rescale(amount.scale())
+    }
+
+    /// Updates an account position with accrued interest based on current market indexes.
+    ///
+    /// **Scope**: Adjusts a user's deposit or borrow position by calculating and adding accrued interest,
+    /// updating timestamps and indexes accordingly.
+    ///
+    /// **Goal**: Ensure a position reflects the latest interest accrued, handling edge cases like zero amounts.
+    ///
+    /// **Process**:
+    /// - Selects supply or borrow index based on position type.
+    /// - For zero-amount positions, resets timestamp and index.
+    /// - For non-zero amounts, calculates and adds interest.
+    ///
+    /// # Arguments
+    /// - `position`: Mutable reference to the account position (`AccountPosition<Self::Api>`).
+    /// - `cache`: Mutable reference to the pool state (`Cache<Self>`).
+    ///
+    /// **Security Tip**: Handles zero amounts safely by resetting state, protected by caller ensuring valid position type.
+    fn position_sync(&self, position: &mut AccountPosition<Self::Api>, cache: &mut Cache<Self>) {
+        let is_supply = position.position_type == AccountPositionType::Deposit;
+        let index = if is_supply {
+            cache.supply_index.clone()
+        } else {
+            cache.borrow_index.clone()
+        };
+
+        if position.get_total_amount().eq(&cache.zero) {
+            position.last_update_timestamp = cache.timestamp;
+            position.market_index = index;
+            return;
+        }
+
+        let interest =
+            self.calc_interest(&position.get_total_amount(), &index, &position.market_index);
+
+        if interest.gt(&cache.zero) {
+            position.interest_accrued += interest;
+            position.last_update_timestamp = cache.timestamp;
+            position.market_index = index;
         }
     }
 }

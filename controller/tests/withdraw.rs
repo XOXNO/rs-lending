@@ -266,8 +266,7 @@ fn test_withdrawal_with_interest_one_user_prior_update() {
     );
 
     state.change_timestamp(1740269852);
-
-    state.global_sync(&supplier, 1);
+    state.update_account_positions(&supplier, 1);
     state.borrow_asset(
         &supplier,
         EGLD_TOKEN,
@@ -277,8 +276,7 @@ fn test_withdrawal_with_interest_one_user_prior_update() {
     );
 
     state.change_timestamp(1740275066);
-    state.update_borrows_with_debt(&supplier, 1);
-    state.global_sync(&supplier, 1);
+    state.update_account_positions(&supplier, 1);
     // Update interest before withdrawal
 
     // Get initial state
@@ -287,14 +285,29 @@ fn test_withdrawal_with_interest_one_user_prior_update() {
     println!("initial_collateral: {}", initial_collateral);
     println!("initial_borrow: {}", initial_borrow);
 
+    let total_debt = state.get_market_total_debt(state.egld_market.clone());
+    println!("total_debt: {}", total_debt);
     state.repay_asset_deno(
         &supplier,
         &EGLD_TOKEN,
-        BigUint::from(72721215451172815256u128),
+        initial_borrow.into_raw_units().clone(),
         1,
     );
-    state.global_sync(&supplier, 1);
-    state.update_borrows_with_debt(&supplier, 1);
+    state.update_account_positions(&supplier, 1);
+    let reserve = state.get_market_reserves(state.egld_market.clone());
+    let revenue = state.get_market_revenue(state.egld_market.clone());
+    let borrow_index = state.get_market_borrow_index(state.egld_market.clone());
+    let supply_index = state.get_market_supply_index(state.egld_market.clone());
+    println!("reserve: {}", reserve);
+    println!("revenue: {}", revenue);
+    let total_debt = state.get_market_total_debt(state.egld_market.clone());
+    println!("total_debt: {}", total_debt);
+    let total_deposit = state.get_market_total_deposit(state.egld_market.clone());
+    println!("total_deposit: {}", total_deposit);
+    println!("borrow_index: {}", borrow_index);
+    println!("supply_index: {}", supply_index);
+    state.change_timestamp(1740275594);
+    state.update_account_positions(&supplier, 1);
     let reserve = state.get_market_reserves(state.egld_market.clone());
     let revenue = state.get_market_revenue(state.egld_market.clone());
     let borrow_index = state.get_market_borrow_index(state.egld_market.clone());
@@ -303,17 +316,7 @@ fn test_withdrawal_with_interest_one_user_prior_update() {
     println!("revenue: {}", revenue);
     println!("borrow_index: {}", borrow_index);
     println!("supply_index: {}", supply_index);
-    state.change_timestamp(1740275594);
-    state.global_sync(&supplier, 1);
-    state.update_borrows_with_debt(&supplier, 1);
-    let borrow_index = state.get_market_borrow_index(state.egld_market.clone());
-    let supply_index = state.get_market_supply_index(state.egld_market.clone());
-    println!("reserve: {}", reserve);
-    println!("revenue: {}", revenue);
-    println!("borrow_index: {}", borrow_index);
-    println!("supply_index: {}", supply_index);
-    state.global_sync(&supplier, 1);
-    state.update_borrows_with_debt(&supplier, 1);
+    state.update_account_positions(&supplier, 1);
     // Get initial state
     let final_collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
     println!("final_collateral:   {}", final_collateral);

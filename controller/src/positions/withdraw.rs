@@ -51,12 +51,12 @@ pub trait PositionWithdrawModule:
         let pool_address = cache.get_cached_pool_address(&token_id);
 
         let mut deposit_position = self.get_deposit_position(account_nonce, &token_id);
-        let amount = self.cap_withdraw_amount(&deposit_position, &requested_amount);
+        let amount = deposit_position.make_amount_decimal(&requested_amount);
 
         if position_attributes.is_vault() {
             self.process_vault_withdrawal(
                 &token_id,
-                &amount,
+                &deposit_position.cap_amount(amount.clone()),
                 is_liquidation,
                 liquidation_fee,
                 caller,
@@ -66,6 +66,7 @@ pub trait PositionWithdrawModule:
                 is_swap,
             );
         } else {
+            // The amount cap happens in the liquidity pool to account for the interest accrued after sync
             self.process_market_withdrawal(
                 pool_address,
                 caller,
@@ -219,29 +220,6 @@ pub trait PositionWithdrawModule:
             token_id
         );
         opt_deposit_position.unwrap()
-    }
-
-    /// Calculates the actual withdrawal amount.
-    /// Caps withdrawal at available balance.
-    ///
-    /// # Arguments
-    /// - `deposit_position`: Current deposit position.
-    /// - `requested_amount`: Requested withdrawal amount.
-    ///
-    /// # Returns
-    /// - Actual withdrawal amount in decimal format.
-    fn cap_withdraw_amount(
-        &self,
-        deposit_position: &AccountPosition<Self::Api>,
-        requested_amount: &BigUint<Self::Api>,
-    ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let requested_amount_dec = deposit_position.make_amount_decimal(requested_amount);
-        let total_amount = deposit_position.get_total_amount();
-        if requested_amount_dec > total_amount {
-            total_amount
-        } else {
-            requested_amount_dec
-        }
     }
 
     /// Transfers withdrawn assets to the caller.

@@ -212,6 +212,7 @@ pub trait LiquidityModule:
         let mut cache = Cache::new(self);
 
         self.global_sync(&mut cache);
+        self.position_sync(&mut position, &mut cache);
 
         self.cap_withdrawal_amount(&mut amount, &position);
         require!(cache.is_same_asset(&position.asset_id), ERROR_INVALID_ASSET);

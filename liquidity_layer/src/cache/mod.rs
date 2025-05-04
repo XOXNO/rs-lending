@@ -1,3 +1,4 @@
+use common_constants::RAY_PRECISION;
 use common_structs::MarketParams;
 
 multiversx_sc::imports!();
@@ -148,11 +149,14 @@ where
         if self.supplied == self.zero {
             self.sc_ref.to_decimal_ray(BigUint::zero())
         } else {
-            self.sc_ref.div_half_up(
-                &self.borrowed,
-                &self.supplied,
-                common_constants::RAY_PRECISION,
-            )
+            let total_borrowed =
+                self.sc_ref
+                    .mul_half_up(&self.borrowed, &self.borrow_index, RAY_PRECISION);
+            let total_supplied =
+                self.sc_ref
+                    .mul_half_up(&self.supplied, &self.supply_index, RAY_PRECISION);
+            self.sc_ref
+                .div_half_up(&total_borrowed, &total_supplied, RAY_PRECISION)
         }
     }
 

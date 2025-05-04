@@ -1,6 +1,8 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
+use common_events::RAY_PRECISION;
+
 use crate::{rates, storage};
 
 /// The ViewModule provides read-only endpoints for retrieving key market metrics.
@@ -20,11 +22,12 @@ pub trait ViewModule:
         let zero = self.to_decimal(BigUint::zero(), params.asset_decimals);
         let supplied = self.supplied().get();
         let borrowed = self.borrowed().get();
-
+        let total_borrower = self.mul_half_up(&borrowed, &self.borrow_index().get(), RAY_PRECISION);
+        let total_supplied = self.mul_half_up(&supplied, &self.supply_index().get(), RAY_PRECISION);
         if supplied == zero {
-            self.to_decimal_ray(BigUint::zero())
+            self.ray_zero()
         } else {
-            self.div_half_up(&borrowed, &supplied, common_constants::RAY_PRECISION)
+            self.div_half_up(&total_borrower, &total_supplied, RAY_PRECISION)
         }
     }
 

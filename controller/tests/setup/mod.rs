@@ -1005,6 +1005,38 @@ impl LendingPoolTestState {
         revenue
     }
 
+    pub fn get_market_total_debt(
+        &mut self,
+        market_address: ManagedAddress<StaticApi>,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        let borrowed = self
+            .world
+            .query()
+            .to(market_address)
+            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
+            .borrowed()
+            .returns(ReturnsResult)
+            .run();
+
+        borrowed
+    }
+
+    pub fn get_market_total_deposit(
+        &mut self,
+        market_address: ManagedAddress<StaticApi>,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        let supplied = self
+            .world
+            .query()
+            .to(market_address)
+            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
+            .supplied()
+            .returns(ReturnsResult)
+            .run();
+
+        supplied
+    }
+
     pub fn get_market_borrow_index(
         &mut self,
         market_address: ManagedAddress<StaticApi>,
