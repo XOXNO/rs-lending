@@ -230,8 +230,6 @@ fn test_withdrawal_with_interest_one_user() {
     println!("reserve: {}", reserve);
     println!("revenue: {}", revenue);
 
-    let diff = final_collateral.clone() + revenue.clone() - reserve;
-    println!("diff:    {}", diff);
     // Withdraw partial amount
     state.withdraw_asset_den(
         &supplier,
@@ -243,6 +241,8 @@ fn test_withdrawal_with_interest_one_user() {
     let revenue = state.get_market_revenue(state.egld_market.clone());
     println!("reserve: {}", reserve);
     println!("revenue: {}", revenue);
+    let diff =  reserve - revenue.clone();
+    println!("diff:    {}", diff);
 }
 
 #[test]
@@ -288,8 +288,6 @@ fn test_withdrawal_with_interest_one_user_prior_update() {
     println!("initial_collateral: {}", initial_collateral);
     println!("initial_borrow: {}", initial_borrow);
 
-    let total_debt = state.get_market_total_debt(state.egld_market.clone());
-    println!("total_debt: {}", total_debt);
     state.repay_asset_deno(
         &supplier,
         &EGLD_TOKEN,
@@ -303,8 +301,6 @@ fn test_withdrawal_with_interest_one_user_prior_update() {
     let supply_index = state.get_market_supply_index(state.egld_market.clone());
     println!("reserve: {}", reserve);
     println!("revenue: {}", revenue);
-    let total_debt = state.get_market_total_debt(state.egld_market.clone());
-    println!("total_debt: {}", total_debt);
     let total_deposit = state.get_market_total_deposit(state.egld_market.clone());
     println!("total_deposit: {}", total_deposit);
     println!("borrow_index: {}", borrow_index);
@@ -323,7 +319,7 @@ fn test_withdrawal_with_interest_one_user_prior_update() {
     // Get initial state
     let final_collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
     println!("final_collateral:   {}", final_collateral);
-    let diff = revenue.clone() - (reserve - final_collateral.clone());
+    let diff = (reserve - final_collateral.clone())- revenue.clone() ;
     println!("diff: {}", diff);
     println!("revenue: {}", revenue);
     // Withdraw partial amount

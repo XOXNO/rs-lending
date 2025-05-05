@@ -79,8 +79,8 @@ pub trait ViewModule:
     #[view(getProtocolRevenue)]
     fn get_protocol_revenue(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
         let revenue_scaled = self.revenue().get();
-        let revenue_actual = revenue_scaled.rescale(self.params().get().asset_decimals);
-        revenue_actual
+        
+        revenue_scaled.rescale(self.params().get().asset_decimals)
     }
 
     /// Retrieves the total amount supplied to the pool.
@@ -90,10 +90,10 @@ pub trait ViewModule:
     #[view(getSuppliedAmount)]
     fn get_supplied_amount(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
         let supplied_scaled = self.supplied().get();
-        let supplied_actual = self
+        
+        self
             .mul_half_up(&supplied_scaled, &self.supply_index().get(), RAY_PRECISION)
-            .rescale(self.params().get().asset_decimals);
-        supplied_actual
+            .rescale(self.params().get().asset_decimals)
     }
 
     /// Retrieves the total amount borrowed from the pool.
@@ -103,9 +103,9 @@ pub trait ViewModule:
     #[view(getBorrowedAmount)]
     fn get_borrowed_amount(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
         let borrowed_scaled = self.borrowed().get();
-        let borrowed_actual = self
+        
+        self
             .mul_half_up(&borrowed_scaled, &self.borrow_index().get(), RAY_PRECISION)
-            .rescale(self.params().get().asset_decimals);
-        borrowed_actual
+            .rescale(self.params().get().asset_decimals)
     }
 }

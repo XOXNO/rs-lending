@@ -239,7 +239,7 @@ fn simulate_many_users_random_actions() {
 
         // 2. Choose User
         let user_index = rng.random_range(0..all_users.len());
-        let user_addr = all_users[user_index].clone();
+        let user_addr = all_users[user_index];
         let is_borrower = borrowers.contains(&user_addr);
 
         // 3. Choose Action
@@ -455,8 +455,8 @@ fn simulate_many_users_random_actions() {
     println!("Final market update at time {}", final_timestamp);
 
     for user_addr in &all_users {
-        if user_nonces.contains(&user_addr) {
-            let nonce = user_nonces.get(&user_addr);
+        if user_nonces.contains(user_addr) {
+            let nonce = user_nonces.get(user_addr);
             println!("Settling user {:?} (Nonce {})", user_addr, nonce);
 
             // Repay all debt if borrower
@@ -486,7 +486,7 @@ fn simulate_many_users_random_actions() {
                     nonce,
                 ); // Withdraw full amount + 1 wei
 
-                user_nonces.remove(&user_addr);
+                user_nonces.remove(user_addr);
             }
         }
     }
