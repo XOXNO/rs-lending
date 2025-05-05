@@ -176,3 +176,5 @@ pub static ERROR_PRICE_FEED_STALE: &[u8] = b"Price feed is stale.";
 pub static ERROR_FLASH_LOAN_ALREADY_ONGOING: &[u8] = b"Flash loan already ongoing.";
 
 pub static ERROR_ACCOUNT_ATTRIBUTES_MISMATCH: &[u8] = b"Account attributes mismatch.";
+
+pub static ERROR_WITHDRAW_TOKEN_RECEIVED: &[u8] = b"Wrong token received during withdraw.";

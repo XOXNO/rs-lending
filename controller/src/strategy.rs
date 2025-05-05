@@ -26,7 +26,7 @@ pub trait SnapModule:
     + positions::borrow::PositionBorrowModule
     + positions::withdraw::PositionWithdrawModule
     + positions::repay::PositionRepayModule
-    + positions::vault::PositionVaultModule
+    // + positions::vault::PositionVaultModule
     + positions::emode::EModeModule
     + positions::update::PositionUpdateModule
 {
@@ -368,12 +368,11 @@ pub trait SnapModule:
 
             for collateral in collaterals {
                 let feed = self.get_token_price(&collateral.asset_id, &mut cache);
+                let amount = self.get_total_amount(&collateral, &feed, &mut cache);
                 let withdraw_payment = EgldOrEsdtTokenPayment::new(
                     collateral.asset_id.clone(),
                     0,
-                    self.get_total_amount(&collateral, &feed, &mut cache)
-                        .into_raw_units()
-                        .clone(),
+                    amount.into_raw_units().clone(),
                 );
 
                 let mut deposit_position =

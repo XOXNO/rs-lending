@@ -79,17 +79,14 @@ pub trait LendingUtilsModule:
 
         for position in positions {
             let feed = self.get_token_price(&position.asset_id, cache);
-            let collateral_in_egld = self
-                .get_token_egld_value(&self.get_total_amount(&position, &feed, cache), &feed.price);
+            let amount = self.get_total_amount(&position, &feed, cache);
+            let amount_egld = self.get_token_egld_value(&amount, &feed.price);
 
-            total_collateral += &collateral_in_egld;
-            weighted_collateral += self.mul_half_up(
-                &collateral_in_egld,
-                &position.liquidation_threshold,
-                WAD_PRECISION,
-            );
+            total_collateral += &amount_egld;
+            weighted_collateral +=
+                self.mul_half_up(&amount_egld, &position.liquidation_threshold, WAD_PRECISION);
             ltv_collateral +=
-                self.mul_half_up(&collateral_in_egld, &position.loan_to_value, WAD_PRECISION);
+                self.mul_half_up(&amount_egld, &position.loan_to_value, WAD_PRECISION);
         }
 
         (weighted_collateral, total_collateral, ltv_collateral)
@@ -111,8 +108,8 @@ pub trait LendingUtilsModule:
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         positions.iter().fold(self.wad_zero(), |acc, position| {
             let feed = self.get_token_price(&position.asset_id, cache);
-            acc + self
-                .get_token_egld_value(&self.get_total_amount(&position, &feed, cache), &feed.price)
+            let amount = self.get_total_amount(&position, &feed, cache);
+            acc + self.get_token_egld_value(&amount, &feed.price)
         })
     }
 
@@ -154,14 +151,6 @@ pub trait LendingUtilsModule:
             });
         }
         self.update_debt_ceiling_event(asset_id, debt_mapper.get());
-    }
-
-    /// Validates the endpoint for flash loans.
-    fn validate_flash_loan_endpoint(&self, endpoint: &ManagedBuffer<Self::Api>) {
-        require!(
-            !self.blockchain().is_builtin_function(endpoint) && !endpoint.is_empty(),
-            ERROR_INVALID_ENDPOINT
-        );
     }
 
     /// Updates bulk borrow positions in the borrow list.

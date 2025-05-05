@@ -99,8 +99,8 @@ pub trait PositionRepayModule:
         cache: &mut Cache<Self>,
     ) {
         if position_attributes.is_isolated() {
-            let egld_amount = self
-                .get_token_egld_value(&self.get_total_amount(position, feed, cache), &feed.price);
+            let amount = self.get_total_amount(position, feed, cache);
+            let egld_amount = self.get_token_egld_value(&amount, &feed.price);
             let debt_usd_amount = self.get_egld_usd_value(&egld_amount, &cache.egld_usd_price);
             self.adjust_isolated_debt_usd(
                 &position_attributes.get_isolated_token(),

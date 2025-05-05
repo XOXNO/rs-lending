@@ -30,7 +30,7 @@ pub trait Controller:
     + positions::liquidation::PositionLiquidationModule
     + positions::update::PositionUpdateModule
     + positions::emode::EModeModule
-    + positions::vault::PositionVaultModule
+    // + positions::vault::PositionVaultModule
     + router::RouterModule
     + config::ConfigModule
     + common_events::EventsModule
@@ -303,7 +303,7 @@ pub trait Controller:
         let asset_config = cache.get_cached_asset_info(borrowed_asset_id);
         require!(asset_config.can_flashloan(), ERROR_FLASHLOAN_NOT_ENABLED);
 
-        let pool_address = self.get_pool_address(borrowed_asset_id);
+        let pool_address = cache.get_cached_pool_address(borrowed_asset_id);
         self.validate_flash_loan_shard(contract_address);
         self.require_amount_greater_than_zero(&amount);
         self.validate_flash_loan_endpoint(&endpoint);

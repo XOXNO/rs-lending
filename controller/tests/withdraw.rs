@@ -241,7 +241,7 @@ fn test_withdrawal_with_interest_one_user() {
     let revenue = state.get_market_revenue(state.egld_market.clone());
     println!("reserve: {}", reserve);
     println!("revenue: {}", revenue);
-    let diff =  reserve - revenue.clone();
+    let diff = reserve - revenue.clone();
     println!("diff:    {}", diff);
 }
 
@@ -319,7 +319,7 @@ fn test_withdrawal_with_interest_one_user_prior_update() {
     // Get initial state
     let final_collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
     println!("final_collateral:   {}", final_collateral);
-    let diff = (reserve - final_collateral.clone())- revenue.clone() ;
+    let diff = (reserve - final_collateral.clone()) - revenue.clone();
     println!("diff: {}", diff);
     println!("revenue: {}", revenue);
     // Withdraw partial amount

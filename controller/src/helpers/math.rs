@@ -123,6 +123,7 @@ pub trait MathsModule: common_math::SharedMathModule {
     ///
     /// # Returns
     /// - Tuple of (upper_bound, lower_bound) in BPS precision.
+    #[inline]
     fn calculate_tolerance_range(
         &self,
         tolerance: &BigUint,

@@ -106,6 +106,11 @@ pub trait SharedMathModule {
     }
 
     #[inline]
+    fn bps_zero(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
+        self.to_decimal_bps(BigUint::zero())
+    }
+
+    #[inline]
     fn wad_zero(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal_wad(BigUint::zero())
     }

@@ -179,20 +179,20 @@ pub trait EventsModule {
         #[indexed] amount: ManagedDecimal<Self::Api, NumDecimals>,
     );
 
-    /// Emits an event to update the supplied amount in the global vault of an market.
-    ///
-    /// # Parameters
-    /// - `asset`: The asset identifier.
-    /// - `amount`: The updated vault supplied amount.
-    ///
-    /// # Returns
-    /// - Nothing.
-    #[event("update_vault_supplied_amount")]
-    fn update_vault_supplied_amount_event(
-        &self,
-        #[indexed] asset: &EgldOrEsdtTokenIdentifier,
-        #[indexed] amount: ManagedDecimal<Self::Api, NumDecimals>,
-    );
+    // /// Emits an event to update the supplied amount in the global vault of an market.
+    // ///
+    // /// # Parameters
+    // /// - `asset`: The asset identifier.
+    // /// - `amount`: The updated vault supplied amount.
+    // ///
+    // /// # Returns
+    // /// - Nothing.
+    // #[event("update_vault_supplied_amount")]
+    // fn update_vault_supplied_amount_event(
+    //     &self,
+    //     #[indexed] asset: &EgldOrEsdtTokenIdentifier,
+    //     #[indexed] amount: ManagedDecimal<Self::Api, NumDecimals>,
+    // );
 
     /// Emits an event when the asset configuration is updated.
     ///

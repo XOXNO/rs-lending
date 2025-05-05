@@ -1,8 +1,9 @@
+use common_errors::ERROR_WITHDRAW_TOKEN_RECEIVED;
 use common_structs::{AccountAttributes, AccountPosition, PriceFeedShort};
 
 use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validation};
 
-use super::{account, update, vault};
+use super::{account, update};
 
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
@@ -17,7 +18,7 @@ pub trait PositionWithdrawModule:
     + helpers::math::MathsModule
     + account::PositionAccountModule
     + common_math::SharedMathModule
-    + vault::PositionVaultModule
+    // + vault::PositionVaultModule
     + update::PositionUpdateModule
 {
     /// Processes a withdrawal from a deposit position.
@@ -128,12 +129,10 @@ pub trait PositionWithdrawModule:
         if back_transfers.total_egld_amount > 0 {
             require!(
                 deposit_position.asset_id.is_egld(),
-                "EGLD withdrawals are not supported"
+                ERROR_WITHDRAW_TOKEN_RECEIVED
             );
             payment.amount += back_transfers.total_egld_amount;
         }
-
-        // require!(payment.amount > 0, "No assets to withdraw");
 
         payment
     }

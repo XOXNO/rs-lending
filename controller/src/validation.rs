@@ -1,6 +1,8 @@
 multiversx_sc::imports!();
 
-use common_errors::{ERROR_FLASH_LOAN_ALREADY_ONGOING, ERROR_INVALID_SHARD};
+use common_errors::{
+    ERROR_FLASH_LOAN_ALREADY_ONGOING, ERROR_INVALID_ENDPOINT, ERROR_INVALID_SHARD,
+};
 
 use crate::{
     helpers, oracle, storage, utils, ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO,
@@ -78,6 +80,15 @@ pub trait ValidationModule:
         require!(
             destination_shard_id == current_shard_id,
             ERROR_INVALID_SHARD
+        );
+    }
+
+    #[inline]
+    /// Validates the endpoint for flash loans.
+    fn validate_flash_loan_endpoint(&self, endpoint: &ManagedBuffer<Self::Api>) {
+        require!(
+            !self.blockchain().is_builtin_function(endpoint) && !endpoint.is_empty(),
+            ERROR_INVALID_ENDPOINT
         );
     }
 

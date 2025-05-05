@@ -11,7 +11,7 @@ use common_errors::{
     ERROR_POSITION_NOT_FOUND, ERROR_SUPPLY_CAP,
 };
 
-use super::{account, emode, update, vault};
+use super::{account, emode, update};
 
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
@@ -27,7 +27,7 @@ pub trait PositionDepositModule:
     + account::PositionAccountModule
     + emode::EModeModule
     + common_math::SharedMathModule
-    + vault::PositionVaultModule
+    // + vault::PositionVaultModule
     + update::PositionUpdateModule
 {
     /// Processes a deposit operation for a user's position.

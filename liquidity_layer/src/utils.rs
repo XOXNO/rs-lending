@@ -25,6 +25,7 @@ pub trait UtilsModule:
     /// - `cache`: Reference to the pool state (`Cache<Self>`).
     /// - `asset_price`: Current price of the pool asset (`ManagedDecimal<Self::Api, NumDecimals>`).
     ///
+    #[inline(always)]
     fn emit_market_update(
         &self,
         cache: &Cache<Self>,

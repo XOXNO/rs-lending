@@ -1,4 +1,3 @@
-use common_constants::{EGLD_TICKER, SECONDS_PER_HOUR};
 use common_events::{MarketIndex, OracleProvider};
 use common_structs::{AssetConfig, PriceFeedShort};
 
@@ -34,23 +33,27 @@ where
 {
     pub fn new(sc_ref: &'a C) -> Self {
         let price_aggregator = sc_ref.price_aggregator_address().get();
-        let egld_ticker = ManagedBuffer::new_from_bytes(EGLD_TICKER);
+        let egld_token_id = EgldOrEsdtTokenIdentifier::egld();
+        let egld_provider = sc_ref.token_oracle(&egld_token_id).get();
+        let mut asset_oracles = ManagedMapEncoded::new();
+        asset_oracles.put(&egld_token_id, &egld_provider);
         let egld_price_feed = sc_ref.get_aggregator_price_feed(
-            egld_ticker.clone(),
+            egld_token_id.clone().into_name(),
             &price_aggregator,
-            SECONDS_PER_HOUR * 2,
+            egld_provider.max_price_stale_seconds,
         );
         let egld_usd_price = sc_ref.to_decimal_wad(egld_price_feed.price);
+
         Cache {
             sc_ref,
             prices_cache: ManagedMapEncoded::new(),
             asset_configs: ManagedMapEncoded::new(),
             asset_pools: ManagedMapEncoded::new(),
-            asset_oracles: ManagedMapEncoded::new(),
+            asset_oracles,
             market_indexes: ManagedMapEncoded::new(),
             egld_usd_price,
             price_aggregator_sc: price_aggregator,
-            egld_ticker,
+            egld_ticker: egld_token_id.into_name(),
             allow_unsafe_price: true,
             flash_loan_ongoing: sc_ref.flash_loan_ongoing().get(),
         }

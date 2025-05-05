@@ -163,8 +163,8 @@ pub trait ViewsModule:
 
         deposit_positions.values().fold(self.wad_zero(), |acc, dp| {
             let feed = self.get_token_price(&dp.asset_id, &mut cache);
-            acc + self
-                .get_token_egld_value(&self.get_total_amount(&dp, &feed, &mut cache), &feed.price)
+            let amount = self.get_total_amount(&dp, &feed, &mut cache);
+            acc + self.get_token_egld_value(&amount, &feed.price)
         })
     }
 

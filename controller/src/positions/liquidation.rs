@@ -4,7 +4,7 @@ use common_structs::{AccountPosition, PriceFeedShort};
 use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validation};
 use common_errors::ERROR_HEALTH_FACTOR;
 
-use super::{account, borrow, emode, repay, update, vault, withdraw};
+use super::{account, borrow, emode, repay, update, withdraw};
 
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
@@ -23,8 +23,7 @@ pub trait PositionLiquidationModule:
     + update::PositionUpdateModule
     + borrow::PositionBorrowModule
     + common_math::SharedMathModule
-    + emode::EModeModule
-    + vault::PositionVaultModule
+    + emode::EModeModule // + vault::PositionVaultModule
 {
     /// Executes core liquidation logic for an account.
     /// Manages debt repayment and collateral seizure.
@@ -331,11 +330,8 @@ pub trait PositionLiquidationModule:
             let amount_dec = self.to_decimal(payment_ref.amount.clone(), token_feed.asset_decimals);
 
             let token_egld_amount = self.get_token_egld_value(&amount_dec, &token_feed.price);
-
-            let borrowed_egld_amount = self.get_token_egld_value(
-                &self.get_total_amount(&original_borrow, &token_feed, cache),
-                &token_feed.price,
-            );
+            let amount = self.get_total_amount(&original_borrow, &token_feed, cache);
+            let borrowed_egld_amount = self.get_token_egld_value(&amount, &token_feed.price);
 
             let mut payment = payment_ref.clone();
             if token_egld_amount > borrowed_egld_amount {
@@ -381,15 +377,15 @@ pub trait PositionLiquidationModule:
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
-        let mut proportion_seized = self.to_decimal_bps(BigUint::zero());
-        let mut weighted_bonus = self.to_decimal_bps(BigUint::zero());
+        let mut proportion_seized = self.bps_zero();
+        let mut weighted_bonus = self.bps_zero();
 
         for dp in positions {
             let feed = self.get_token_price(&dp.asset_id, cache);
-            let collateral_in_egld =
-                self.get_token_egld_value(&self.get_total_amount(&dp, &feed, cache), &feed.price);
+            let amount = self.get_total_amount(&dp, &feed, cache);
+            let egld_amount = self.get_token_egld_value(&amount, &feed.price);
             let fraction = self
-                .div_half_up(&collateral_in_egld, total_collateral_in_egld, RAY_PRECISION)
+                .div_half_up(&egld_amount, total_collateral_in_egld, RAY_PRECISION)
                 .rescale(BPS_PRECISION);
             proportion_seized += self
                 .mul_half_up(&fraction, &dp.liquidation_threshold, RAY_PRECISION)

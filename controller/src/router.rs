@@ -293,7 +293,7 @@ pub trait RouterModule:
 
         let accumulator_address = accumulator_address_mapper.get();
         for asset in assets {
-            let pool_address = self.get_pool_address(&asset);
+            let pool_address = cache.get_cached_pool_address(&asset);
             let data = self.get_token_price(&asset, &mut cache);
             let revenue = self
                 .tx()
