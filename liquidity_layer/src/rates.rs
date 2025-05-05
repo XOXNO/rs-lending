@@ -283,36 +283,37 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
         cache: &mut Cache<Self>,
         old_borrow_index: ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        // Calculate the actual accrued interest correctly using calc_interest (returns asset decimals)
+        // Calculate the actual accrued interest correctly using calc_interest
         let old_total_debt = self.mul_half_up(&cache.borrowed, &old_borrow_index, RAY_PRECISION);
         let new_total_debt = self.mul_half_up(&cache.borrowed, &cache.borrow_index, RAY_PRECISION);
 
         let accrued_interest_ray = new_total_debt.sub(old_total_debt);
-        let accrued_interest_asset_decimals =
-            accrued_interest_ray.rescale(cache.params.asset_decimals);
-        // If the accrued interest is less than the bad debt, we can collect the entire accrued interest
-        if accrued_interest_asset_decimals.le(&cache.bad_debt) {
-            // Use asset decimal version for subtracting from bad_debt storage
-            cache.bad_debt -= &accrued_interest_asset_decimals;
+
+        // If the accrued interest (asset dec) is less than or equal to bad debt (asset dec)
+        if accrued_interest_ray.le(&cache.bad_debt.rescale(RAY_PRECISION)) {
+            // Subtract the asset decimal interest from asset decimal bad debt
+            cache.bad_debt -= &accrued_interest_ray.rescale(cache.params.asset_decimals);
+            // No rewards or fees generated
             self.ray_zero()
         } else {
-            // If the accrued interest is greater than the bad debt, we clear the bad debt and calculate the protocol's share and the suppliers' share
-            let left_interest_after_bad_debt =
-                accrued_interest_asset_decimals - cache.bad_debt.clone();
+            // Accrued interest is greater than bad debt.
+            // Calculate remaining interest after clearing bad debt (in asset decimals)
+            let left_interest_ray = accrued_interest_ray.sub(cache.bad_debt.rescale(RAY_PRECISION));
+
+            // Clear bad debt (asset decimals)
             cache.bad_debt = self.to_decimal(BigUint::zero(), cache.params.asset_decimals);
 
             let protocol_fee = self.mul_half_up(
-                &left_interest_after_bad_debt,
-                &cache.params.reserve_factor, // Ensure reserve_factor is RAY scaled
+                &left_interest_ray,
+                &cache.params.reserve_factor,
                 RAY_PRECISION,
             );
-            // Update revenue and reserves storage with fee scaled to asset decimals
-            let protocol_fee_asset_decimals = protocol_fee.rescale(cache.params.asset_decimals);
+            // Calculate supplier rewards (in asset decimals)
+            let supplier_rewards = left_interest_ray - protocol_fee.clone();
 
-            cache.revenue += &protocol_fee_asset_decimals;
-
-            // Return net rewards (interest after bad debt and fee) in RAY precision
-            left_interest_after_bad_debt.rescale(RAY_PRECISION) - protocol_fee
+            cache.revenue += protocol_fee.rescale(RAY_PRECISION);
+            // Return rewards and fees converted back to RAY precision for consistency elsewhere
+            supplier_rewards
         }
     }
 
@@ -341,10 +342,8 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
             let borrow_rate = self.calc_borrow_rate(cache.get_utilization(), cache.params.clone());
             let borrow_factor = self.calculate_compounded_interest(borrow_rate.clone(), delta);
             let old_borrow_index = self.update_borrow_index(cache, borrow_factor.clone());
-            let supplier_rewards = self.calc_supplier_rewards(cache, old_borrow_index.clone());
-
-            self.update_supply_index(cache, supplier_rewards);
-
+            let rewards = self.calc_supplier_rewards(cache, old_borrow_index.clone());
+            self.update_supply_index(cache, rewards);
             cache.last_timestamp = cache.timestamp;
         }
     }

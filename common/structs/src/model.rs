@@ -26,6 +26,7 @@ pub struct MarketParams<M: ManagedTypeApi> {
     pub mid_utilization: ManagedDecimal<M, NumDecimals>,
     pub optimal_utilization: ManagedDecimal<M, NumDecimals>,
     pub reserve_factor: ManagedDecimal<M, NumDecimals>,
+    pub asset_id: EgldOrEsdtTokenIdentifier<M>,
     pub asset_decimals: usize,
 }
 
@@ -66,7 +67,6 @@ pub struct AccountPosition<M: ManagedTypeApi> {
     pub asset_id: EgldOrEsdtTokenIdentifier<M>,
     pub scaled_amount: ManagedDecimal<M, NumDecimals>,
     pub account_nonce: u64,
-    pub last_update_timestamp: u64,
     pub market_index: ManagedDecimal<M, NumDecimals>,
     pub liquidation_threshold: ManagedDecimal<M, NumDecimals>,
     pub liquidation_bonus: ManagedDecimal<M, NumDecimals>,
@@ -99,7 +99,6 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
         asset_id: EgldOrEsdtTokenIdentifier<M>,
         scaled_amount: ManagedDecimal<M, NumDecimals>,
         account_nonce: u64,
-        last_update_timestamp: u64,
         market_index: ManagedDecimal<M, NumDecimals>,
         liquidation_threshold: ManagedDecimal<M, NumDecimals>,
         liquidation_bonus: ManagedDecimal<M, NumDecimals>,
@@ -111,7 +110,6 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
             asset_id,
             scaled_amount,
             account_nonce,
-            last_update_timestamp,
             market_index,
             liquidation_threshold,
             liquidation_bonus,

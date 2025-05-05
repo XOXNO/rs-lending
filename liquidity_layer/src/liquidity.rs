@@ -84,7 +84,6 @@ pub trait LiquidityModule:
 
         let scaled_amount = cache.get_scaled_supply_amount(&amount);
         position.scaled_amount += &scaled_amount;
-        position.last_update_timestamp = cache.timestamp;
         position.market_index = cache.supply_index.clone();
         cache.supplied += scaled_amount;
 
@@ -133,7 +132,6 @@ pub trait LiquidityModule:
 
         let scaled_amount = cache.get_scaled_borrow_amount(amount);
         position.scaled_amount += &scaled_amount;
-        position.last_update_timestamp = cache.timestamp;
         position.market_index = cache.borrow_index.clone();
 
         cache.borrowed += scaled_amount;
@@ -213,7 +211,7 @@ pub trait LiquidityModule:
                 "Withdraw amount less than liquidation fee"
             );
 
-            cache.revenue += &protocol_fees_actual;
+            cache.revenue += &protocol_fees_actual.rescale(RAY_PRECISION);
 
             amount_to_transfer_net = amount_to_withdraw_gross - protocol_fees_actual;
         }
@@ -227,7 +225,6 @@ pub trait LiquidityModule:
         // 5. Update pool and position state by subtracting the determined scaled amount
         cache.supplied -= &scaled_withdrawal_amount_gross;
         position.scaled_amount -= &scaled_withdrawal_amount_gross;
-        position.last_update_timestamp = cache.timestamp;
         position.market_index = cache.supply_index.clone();
 
         // 6. Send the net amount
@@ -293,7 +290,6 @@ pub trait LiquidityModule:
         // 5. Subtract the determined scaled repayment amount from the position's scaled amount
 
         position.scaled_amount -= &amount_to_repay_scaled;
-        position.last_update_timestamp = cache.timestamp;
         position.market_index = cache.borrow_index.clone();
 
         // 6. Subtract the same scaled amount from the total pool borrowed
@@ -348,13 +344,11 @@ pub trait LiquidityModule:
         require!(cache.has_reserves(amount), ERROR_FLASHLOAN_RESERVE_ASSET);
 
         // Calculate flash loan min repayment amount
-        let required_repayment = self.mul_half_up(
-            amount,
-            &(self.bps() + fees.clone()),
-            cache.params.asset_decimals,
-        );
+        let required_repayment = self
+            .mul_half_up(amount, &(self.bps() + fees.clone()), RAY_PRECISION)
+            .rescale(cache.params.asset_decimals);
 
-        let asset = cache.pool_asset.clone();
+        let asset = cache.params.asset_id.clone();
         // Prevent re entry attacks with loop flash loans
         drop(cache);
         let back_transfers = self
@@ -366,10 +360,10 @@ pub trait LiquidityModule:
             .returns(ReturnsBackTransfersReset)
             .sync_call();
 
-        let mut post_flash_loan_cache = Cache::new(self);
+        let mut last_cache = Cache::new(self);
 
         let repayment = self.validate_flash_repayment(
-            &post_flash_loan_cache,
+            &last_cache,
             &back_transfers,
             amount,
             &required_repayment,
@@ -377,9 +371,9 @@ pub trait LiquidityModule:
 
         let protocol_fee = repayment - amount.clone();
 
-        post_flash_loan_cache.revenue += &protocol_fee;
+        last_cache.revenue += protocol_fee.rescale(RAY_PRECISION);
 
-        self.emit_market_update(&post_flash_loan_cache, price);
+        self.emit_market_update(&last_cache, price);
     }
 
     /// Simulates a flash loan strategy by borrowing assets without immediate repayment.
@@ -428,12 +422,11 @@ pub trait LiquidityModule:
         let scaled_amount_to_add = cache.get_scaled_borrow_amount(&effective_initial_debt);
 
         position.scaled_amount += &scaled_amount_to_add;
-        position.last_update_timestamp = cache.timestamp;
         position.market_index = cache.borrow_index.clone();
 
         cache.borrowed += scaled_amount_to_add;
 
-        cache.revenue += strategy_fee;
+        cache.revenue += strategy_fee.rescale(RAY_PRECISION);
 
         self.emit_market_update(&cache, price);
 
@@ -469,7 +462,7 @@ pub trait LiquidityModule:
         } else {
             let remaining_amount = amount - cache.bad_debt.clone();
             cache.bad_debt = cache.zero.clone();
-            cache.revenue += &remaining_amount;
+            cache.revenue += remaining_amount.rescale(RAY_PRECISION);
         }
 
         self.emit_market_update(&cache, price);
@@ -514,7 +507,6 @@ pub trait LiquidityModule:
         cache.borrowed -= &position.scaled_amount;
 
         position.scaled_amount = self.ray_zero();
-        position.last_update_timestamp = cache.timestamp;
         position.market_index = cache.borrow_index.clone();
 
         self.emit_market_update(&cache, price);
@@ -558,13 +550,12 @@ pub trait LiquidityModule:
         } else {
             let remaining_amount_actual = current_dust_actual - cache.bad_debt.clone();
             cache.bad_debt = cache.zero.clone();
-            cache.revenue += &remaining_amount_actual;
+            cache.revenue += remaining_amount_actual.rescale(RAY_PRECISION);
         }
 
         cache.supplied -= &position.scaled_amount;
 
         position.scaled_amount = self.ray_zero();
-        position.last_update_timestamp = cache.timestamp;
         position.market_index = cache.supply_index.clone();
 
         self.emit_market_update(&cache, price);
@@ -598,11 +589,12 @@ pub trait LiquidityModule:
         let mut cache = Cache::new(self);
 
         self.global_sync(&mut cache);
-        cache.has_reserves(&cache.revenue);
+        let revenue = cache.revenue.rescale(cache.params.asset_decimals);
+        cache.has_reserves(&revenue);
 
         let controller = self.blockchain().get_caller();
-        let payment = self.send_asset(&cache, &cache.revenue, &controller);
-        cache.revenue = cache.zero.clone();
+        let payment = self.send_asset(&cache, &revenue, &controller);
+        cache.revenue = self.ray_zero();
 
         self.emit_market_update(&cache, price);
 

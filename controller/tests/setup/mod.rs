@@ -924,7 +924,7 @@ impl LendingPoolTestState {
             .query()
             .to(market_address)
             .typed(proxy_liquidity_pool::LiquidityPoolProxy)
-            .revenue()
+            .get_protocol_revenue()
             .returns(ReturnsResult)
             .run();
 
@@ -1273,6 +1273,22 @@ impl LendingPoolTestState {
             .typed(proxy_lending_pool::ControllerProxy)
             .clean_bad_debt(account_position)
             .run();
+    }
+
+    pub fn get_ltv_collateral_in_egld(
+        &mut self,
+        account_position: u64,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        let get_ltv_collateral_in_egld = self
+            .world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .get_ltv_collateral_in_egld(account_position)
+            .returns(ReturnsResult)
+            .run();
+
+        get_ltv_collateral_in_egld
     }
 
     pub fn get_total_collateral_in_egld(
@@ -2351,6 +2367,49 @@ pub fn setup_accounts(
     state
         .world
         .account(borrower)
+        .nonce(1)
+        .esdt_balance(
+            LP_EGLD_TOKEN,
+            BigUint::from(100000000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+        )
+        .esdt_balance(
+            EGLD_TOKEN,
+            BigUint::from(588649983367169591u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+        )
+        .esdt_balance(
+            XOXNO_TOKEN,
+            BigUint::from(10000u64) * BigUint::from(10u64).pow(XOXNO_DECIMALS as u32),
+        )
+        .esdt_balance(
+            CAPPED_TOKEN,
+            BigUint::from(1000u64) * BigUint::from(10u64).pow(CAPPED_DECIMALS as u32),
+        )
+        .esdt_balance(
+            ISOLATED_TOKEN,
+            BigUint::from(1000u64) * BigUint::from(10u64).pow(ISOLATED_DECIMALS as u32),
+        )
+        .esdt_balance(
+            SILOED_TOKEN,
+            BigUint::from(1000u64) * BigUint::from(10u64).pow(SILOED_DECIMALS as u32),
+        )
+        .esdt_balance(
+            XEGLD_TOKEN,
+            BigUint::from(10000000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+        )
+        .esdt_balance(
+            SEGLD_TOKEN,
+            BigUint::from(1000u64) * BigUint::from(10u64).pow(SEGLD_DECIMALS as u32),
+        )
+        .esdt_balance(
+            USDC_TOKEN,
+            BigUint::from(1000000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
+        );
+}
+
+pub fn setup_account(state: &mut LendingPoolTestState, account: TestAddress) {
+    state
+        .world
+        .account(account)
         .nonce(1)
         .esdt_balance(
             LP_EGLD_TOKEN,

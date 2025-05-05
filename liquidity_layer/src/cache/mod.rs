@@ -28,8 +28,6 @@ where
     pub revenue: ManagedDecimal<C::Api, NumDecimals>,
     /// The timestamp of the current block (seconds since Unix epoch).
     pub timestamp: u64,
-    /// The asset identifier of the pool (EGLD or ESDT token).
-    pub pool_asset: EgldOrEsdtTokenIdentifier<C::Api>,
     /// The configuration parameters of the pool (e.g., interest rate slopes).
     pub params: MarketParams<C::Api>,
     /// The borrow index tracking compounded interest for borrowers.
@@ -68,7 +66,6 @@ where
             bad_debt: sc_ref.bad_debt().get(),
             revenue: sc_ref.revenue().get(),
             timestamp: sc_ref.blockchain().get_block_timestamp(),
-            pool_asset: sc_ref.pool_asset().get(),
             params,
             borrow_index: sc_ref.borrow_index().get(),
             supply_index: sc_ref.supply_index().get(),
@@ -171,7 +168,10 @@ where
     ///
     /// **Security Tip**: Prevents underflow by returning 0 if `revenue` exceeds `reserves`.
     pub fn get_reserves(&self) -> ManagedDecimal<C::Api, NumDecimals> {
-        let current_pool_balance = self.sc_ref.blockchain().get_sc_balance(&self.pool_asset, 0);
+        let current_pool_balance = self
+            .sc_ref
+            .blockchain()
+            .get_sc_balance(&self.params.asset_id, 0);
         self.get_decimal_value(&current_pool_balance)
     }
 
@@ -217,7 +217,7 @@ where
     /// # Returns
     /// - `bool`: True if `pool_asset == asset`, false otherwise.
     pub fn is_same_asset(&self, asset: &EgldOrEsdtTokenIdentifier<C::Api>) -> bool {
-        self.pool_asset == *asset
+        self.params.asset_id == *asset
     }
 
     pub fn get_scaled_supply_amount(

@@ -33,10 +33,9 @@ pub trait ViewModule:
 
     #[view(getReserves)]
     fn get_reserves(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let pool_balance = self
-            .blockchain()
-            .get_sc_balance(&self.pool_asset().get(), 0);
-        self.to_decimal(pool_balance, self.params().get().asset_decimals)
+        let params = self.params().get();
+        let pool_balance = self.blockchain().get_sc_balance(&params.asset_id, 0);
+        self.to_decimal(pool_balance, params.asset_decimals)
     }
 
     /// Retrieves the current deposit rate for the pool.
@@ -71,5 +70,42 @@ pub trait ViewModule:
     #[view(getDeltaTime)]
     fn get_delta_time(&self) -> u64 {
         self.blockchain().get_block_timestamp() - self.last_timestamp().get()
+    }
+
+    /// Retrieves the protocol revenue accrued from borrow interest fees.
+    ///
+    /// # Returns
+    /// - `BigUint`: The accumulated protocol revenue.
+    #[view(getProtocolRevenue)]
+    fn get_protocol_revenue(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
+        let revenue_scaled = self.revenue().get();
+        let revenue_actual = revenue_scaled.rescale(self.params().get().asset_decimals);
+        revenue_actual
+    }
+
+    /// Retrieves the total amount supplied to the pool.
+    ///
+    /// # Returns
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total amount supplied.
+    #[view(getSuppliedAmount)]
+    fn get_supplied_amount(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
+        let supplied_scaled = self.supplied().get();
+        let supplied_actual = self
+            .mul_half_up(&supplied_scaled, &self.supply_index().get(), RAY_PRECISION)
+            .rescale(self.params().get().asset_decimals);
+        supplied_actual
+    }
+
+    /// Retrieves the total amount borrowed from the pool.
+    ///
+    /// # Returns
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total amount borrowed.
+    #[view(getBorrowedAmount)]
+    fn get_borrowed_amount(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
+        let borrowed_scaled = self.borrowed().get();
+        let borrowed_actual = self
+            .mul_half_up(&borrowed_scaled, &self.borrow_index().get(), RAY_PRECISION)
+            .rescale(self.params().get().asset_decimals);
+        borrowed_actual
     }
 }

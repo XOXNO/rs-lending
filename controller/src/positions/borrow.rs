@@ -238,7 +238,6 @@ pub trait PositionBorrowModule:
                 token_id.clone(),
                 self.ray_zero(),
                 account_nonce,
-                self.blockchain().get_block_timestamp(),
                 self.ray(),
                 borrow_asset_config.liquidation_threshold.clone(),
                 borrow_asset_config.liquidation_bonus.clone(),
@@ -315,6 +314,13 @@ pub trait PositionBorrowModule:
         borrowed_amount: &ManagedDecimal<Self::Api, NumDecimals>,
         amount_to_borrow: &ManagedDecimal<Self::Api, NumDecimals>,
     ) {
+        sc_print!(
+            "ltv_base_amount: {}, borrowed_amount: {}, amount_to_borrow: {}, total: {}",
+            ltv_base_amount,
+            borrowed_amount,
+            amount_to_borrow,
+            (borrowed_amount.clone() + amount_to_borrow.clone())
+        );
         require!(
             ltv_base_amount >= &(borrowed_amount.clone() + amount_to_borrow.clone()),
             ERROR_INSUFFICIENT_COLLATERAL

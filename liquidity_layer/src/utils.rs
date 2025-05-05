@@ -37,7 +37,7 @@ pub trait UtilsModule:
             &cache.supplied,
             &cache.borrowed,
             &cache.revenue,
-            &cache.pool_asset,
+            &cache.params.asset_id,
             asset_price,
             &cache.bad_debt,
         );
@@ -65,7 +65,7 @@ pub trait UtilsModule:
         to: &ManagedAddress,
     ) -> EgldOrEsdtTokenPayment<Self::Api> {
         let payment = EgldOrEsdtTokenPayment::new(
-            cache.pool_asset.clone(),
+            cache.params.asset_id.clone(),
             0,
             amount.into_raw_units().clone(),
         );
@@ -123,7 +123,7 @@ pub trait UtilsModule:
         amount: &ManagedDecimal<Self::Api, NumDecimals>,
         required_repayment: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let repayment = if cache.pool_asset.is_egld() {
+        let repayment = if cache.params.asset_id.is_egld() {
             cache.get_decimal_value(&back_transfers.total_egld_amount)
         } else {
             require!(

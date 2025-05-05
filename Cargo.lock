@@ -281,6 +281,7 @@ dependencies = [
  "pair",
  "price_aggregator",
  "rand 0.9.1",
+ "rand_chacha 0.9.0",
  "rs-liquid-xoxno",
 ]
 

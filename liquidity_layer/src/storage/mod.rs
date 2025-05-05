@@ -19,7 +19,7 @@ pub trait Storage {
     ///
     /// # Returns
     /// - `BigUint`: The total supplied tokens.
-    #[view(getSuppliedAmount)]
+    #[view(getSuppliedScaled)]
     #[storage_mapper("supplied")]
     fn supplied(&self) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
 
@@ -27,7 +27,7 @@ pub trait Storage {
     ///
     /// # Returns
     /// - `BigUint`: The accumulated protocol revenue.
-    #[view(getProtocolRevenue)]
+    #[view(getRevenueScaled)]
     #[storage_mapper("revenue")]
     fn revenue(&self) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
 
@@ -35,7 +35,7 @@ pub trait Storage {
     ///
     /// # Returns
     /// - `BigUint`: The total tokens borrowed.
-    #[view(getTotalBorrow)]
+    #[view(getBorrowedScaled)]
     #[storage_mapper("borrowed")]
     fn borrowed(&self) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
 

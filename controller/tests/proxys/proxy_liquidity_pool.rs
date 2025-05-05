@@ -798,4 +798,17 @@ where
             .raw_call("getDeltaTime")
             .original_result()
     }
+
+    /// Retrieves the protocol revenue accrued from borrow interest fees. 
+    ///  
+    /// # Returns 
+    /// - `BigUint`: The accumulated protocol revenue. 
+    pub fn get_protocol_revenue(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getProtocolRevenue")
+            .original_result()
+    }
 }
