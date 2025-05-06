@@ -43,6 +43,7 @@ pub trait SnapModule:
         steps_payment: OptionalValue<ManagedArgBuffer<Self::Api>>,
     ) {
         let mut cache = Cache::new(self);
+        cache.allow_unsafe_price = false;
         self.reentrancy_guard(cache.flash_loan_ongoing);
         require!(collateral_token != debt_token, ERROR_ASSETS_ARE_THE_SAME);
         // Get payments, account, caller and attributes
@@ -180,6 +181,7 @@ pub trait SnapModule:
         );
 
         let mut cache = Cache::new(self);
+        cache.allow_unsafe_price = false;
         self.reentrancy_guard(cache.flash_loan_ongoing);
         // Get payments, account, caller and attributes
         let (mut payments, opt_account, caller, opt_attributes) =
@@ -249,6 +251,7 @@ pub trait SnapModule:
         steps: ManagedArgBuffer<Self::Api>,
     ) {
         let mut cache = Cache::new(self);
+        cache.allow_unsafe_price = false;
         self.reentrancy_guard(cache.flash_loan_ongoing);
         let (mut payments, opt_account, caller, opt_attributes) =
             self.validate_supply_payment(true, true);
@@ -321,6 +324,7 @@ pub trait SnapModule:
         steps: OptionalValue<ManagedArgBuffer<Self::Api>>,
     ) {
         let mut cache = Cache::new(self);
+        cache.allow_unsafe_price = false;
         self.reentrancy_guard(cache.flash_loan_ongoing);
         let (mut payments, opt_account, caller, opt_attributes) =
             self.validate_supply_payment(true, false);
