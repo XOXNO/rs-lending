@@ -39,19 +39,16 @@ pub trait PositionWithdrawModule:
     fn process_withdrawal(
         &self,
         account_nonce: u64,
-        requested_amount: BigUint<Self::Api>,
+        amount: ManagedDecimal<Self::Api, NumDecimals>,
         caller: &ManagedAddress,
         is_liquidation: bool,
         liquidation_fee: Option<ManagedDecimal<Self::Api, NumDecimals>>,
         cache: &mut Cache<Self>,
         position_attributes: &AccountAttributes<Self::Api>,
         deposit_position: &mut AccountPosition<Self::Api>,
+        feed: &PriceFeedShort<Self::Api>,
     ) -> EgldOrEsdtTokenPayment<Self::Api> {
-        let feed = self.get_token_price(&deposit_position.asset_id, cache);
         let pool_address = cache.get_cached_pool_address(&deposit_position.asset_id);
-
-        // let mut deposit_position = self.get_deposit_position(account_nonce, &token_id);
-        let amount = deposit_position.make_amount_decimal(&requested_amount, feed.asset_decimals);
 
         // The amount cap happens in the liquidity pool to account for the interest accrued after sync
         let payment = self.process_market_withdrawal(
@@ -61,7 +58,7 @@ pub trait PositionWithdrawModule:
             deposit_position,
             is_liquidation,
             liquidation_fee,
-            &feed,
+            feed,
         );
 
         self.emit_position_update_event(

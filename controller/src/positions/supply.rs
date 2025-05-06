@@ -173,7 +173,7 @@ pub trait PositionDepositModule:
             &mut position,
             &collateral.amount,
             &collateral.token_identifier,
-            &feed,
+            feed,
             cache,
         );
 

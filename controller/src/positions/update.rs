@@ -18,21 +18,9 @@ pub trait PositionUpdateModule:
     + account::PositionAccountModule
     + common_math::SharedMathModule
 {
-    /// Syncs borrow positions with the liquidity layer.
-    /// Updates accrued interest for all borrow positions.
-    ///
-    /// # Arguments
-    /// - `account_nonce`: Position NFT nonce.
-    /// - `cache`: Mutable storage cache.
-    /// - `should_fetch_price`: Flag to fetch prices.
-    /// - `should_return_map`: Flag to return index map.
-    ///
-    /// # Returns
-    /// - Tuple of (updated positions, optional index map).
-    fn sync_borrow_positions_interest(
+    fn get_borrow_positions(
         &self,
         account_nonce: u64,
-        cache: &mut Cache<Self>,
         should_return_map: bool,
     ) -> (
         ManagedVec<AccountPosition<Self::Api>>,
@@ -43,8 +31,6 @@ pub trait PositionUpdateModule:
         let mut position_index_map = ManagedMapEncoded::new();
 
         for (index, asset_id) in borrow_positions_map.keys().enumerate() {
-            let _ = cache.get_cached_market_index(&asset_id);
-
             if should_return_map {
                 let safe_index = index + 1; // Avoid zero index issues
                 position_index_map.put(&asset_id, &safe_index);
@@ -56,35 +42,6 @@ pub trait PositionUpdateModule:
         (updated_positions, position_index_map)
     }
 
-    /// Syncs deposit positions with the liquidity layer.
-    /// Updates accrued interest for non-vault deposits.
-    ///
-    /// # Arguments
-    /// - `account_nonce`: Position NFT nonce.
-    /// - `cache`: Mutable storage cache.
-    /// - `should_fetch_price`: Flag to fetch prices.
-    ///
-    /// # Returns
-    /// - Vector of updated deposit positions.
-    fn sync_deposit_positions_interest(
-        &self,
-        account_nonce: u64,
-        cache: &mut Cache<Self>,
-        should_create_array: bool,
-    ) -> ManagedVec<AccountPosition<Self::Api>> {
-        let deposit_positions_map = self.deposit_positions(account_nonce);
-        let mut updated_positions = ManagedVec::new();
-
-        for asset_id in deposit_positions_map.keys() {
-            let _ = cache.get_cached_market_index(&asset_id);
-
-            if should_create_array {
-                updated_positions.push(deposit_positions_map.get(&asset_id).unwrap());
-            }
-        }
-
-        updated_positions
-    }
 
     /// Fetches token price if requested.
     /// Supports conditional price updates.

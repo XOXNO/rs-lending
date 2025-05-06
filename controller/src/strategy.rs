@@ -362,31 +362,20 @@ pub trait SnapModule:
         self.validate_is_healthy(account.token_nonce, &mut cache, None);
         let has_no_debt = self.borrow_positions(account.token_nonce).is_empty();
         if close_position && has_no_debt {
-            // Sync positions with interest
-            let collaterals =
-                self.sync_deposit_positions_interest(account.token_nonce, &mut cache, true);
-
-            for collateral in collaterals {
-                let feed = self.get_token_price(&collateral.asset_id, &mut cache);
-                let amount = self.get_total_amount(&collateral, &feed, &mut cache);
-                let withdraw_payment = EgldOrEsdtTokenPayment::new(
-                    collateral.asset_id.clone(),
-                    0,
-                    amount.into_raw_units().clone(),
-                );
-
-                let mut deposit_position =
-                    self.get_deposit_position(account.token_nonce, &collateral.asset_id);
+            for mut deposit_position in self.deposit_positions(account.token_nonce).values() {
+                let feed = self.get_token_price(&deposit_position.asset_id, &mut cache);
+                let amount = self.get_total_amount(&deposit_position, &feed, &mut cache);
 
                 let _ = self.process_withdrawal(
                     account.token_nonce,
-                    withdraw_payment.amount,
+                    amount,
                     &caller,
                     false,
                     None,
                     &mut cache,
                     &account_attributes,
                     &mut deposit_position,
+                    &feed,
                 );
             }
         }
@@ -407,16 +396,18 @@ pub trait SnapModule:
         let controller = self.blockchain().get_sc_address();
 
         let mut deposit_position = self.get_deposit_position(account_nonce, from_token);
-
+        let feed = self.get_token_price(&deposit_position.asset_id, cache);
+        let amount = deposit_position.make_amount_decimal(&from_amount, feed.asset_decimals);
         let withdraw_payment = self.process_withdrawal(
             account_nonce,
-            from_amount,
+            amount,
             &controller,
             false,
             None,
             cache,
             account_attributes,
             &mut deposit_position,
+            &feed,
         );
 
         self.convert_token_from_to(

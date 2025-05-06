@@ -167,16 +167,19 @@ pub trait Controller:
             self.validate_payment(&collateral);
             let mut deposit_position = self
                 .get_deposit_position(account_payment.token_nonce, &collateral.token_identifier);
+            let feed = self.get_token_price(&deposit_position.asset_id, &mut cache);
+            let amount = deposit_position.make_amount_decimal(&collateral.amount, feed.asset_decimals);
 
             let _ = self.process_withdrawal(
                 account_payment.token_nonce,
-                collateral.amount,
+                amount,
                 &caller,
                 false,
                 None,
                 &mut cache,
                 &account_attributes,
                 &mut deposit_position,
+                &feed,
             );
         }
 
@@ -203,15 +206,14 @@ pub trait Controller:
         let (account_payment, caller, account_attributes) = self.validate_account(true);
 
         // Sync positions with interest
-        let collaterals =
-            self.sync_deposit_positions_interest(account_payment.token_nonce, &mut cache, true);
+        let collaterals = self.deposit_positions(account_payment.token_nonce).values().collect();
+        // self.sync_deposit_positions_interest(account_payment.token_nonce, &mut cache, true);
 
         let (_, _, ltv_collateral) = self.calculate_collateral_values(&collaterals, &mut cache);
 
         let is_bulk_borrow = borrowed_tokens.len() > 1;
-        let (mut borrows, mut borrow_index_mapper) = self.sync_borrow_positions_interest(
+        let (mut borrows, mut borrow_index_mapper) = self.get_borrow_positions(
             account_payment.token_nonce,
-            &mut cache,
             is_bulk_borrow,
         );
 
@@ -386,10 +388,9 @@ pub trait Controller:
         self.reentrancy_guard(cache.flash_loan_ongoing);
         self.require_active_account(account_nonce);
 
-        let collaterals = self.sync_deposit_positions_interest(account_nonce, &mut cache, true);
+        let collaterals = self.deposit_positions(account_nonce).values().collect();
 
-        let (borrow_positions, _) =
-            self.sync_borrow_positions_interest(account_nonce, &mut cache, false);
+        let (borrow_positions, _) = self.get_borrow_positions(account_nonce, false);
 
         let (_, total_collateral, _) = self.calculate_collateral_values(&collaterals, &mut cache);
         let total_borrow = self.calculate_total_borrow_in_egld(&borrow_positions, &mut cache);

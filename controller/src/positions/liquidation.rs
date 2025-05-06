@@ -53,10 +53,9 @@ pub trait PositionLiquidationModule:
         >,
     ) {
         let mut refunds = ManagedVec::new();
-        let deposit_positions = self.sync_deposit_positions_interest(account_nonce, cache, true);
+        let deposit_positions = self.deposit_positions(account_nonce).values().collect();
 
-        let (borrow_positions, map_debt_indexes) =
-            self.sync_borrow_positions_interest(account_nonce, cache, true);
+        let (borrow_positions, map_debt_indexes) = self.get_borrow_positions(account_nonce, true);
 
         let (debt_payment_in_egld, mut repaid_tokens) = self.calculate_repayment_amounts(
             debt_payments,
@@ -164,15 +163,19 @@ pub trait PositionLiquidationModule:
             let (seized_collateral, protocol_fee) = collateral_data.into_tuple();
             let mut deposit_position =
                 self.get_deposit_position(account_nonce, &seized_collateral.token_identifier);
+            let feed = self.get_token_price(&deposit_position.asset_id, &mut cache);
+            let amount = deposit_position
+                .make_amount_decimal(&seized_collateral.amount, feed.asset_decimals);
             let _ = self.process_withdrawal(
                 account_nonce,
-                seized_collateral.amount,
+                amount,
                 caller,
                 true,
                 Some(protocol_fee),
                 &mut cache,
                 &account_attributes,
                 &mut deposit_position,
+                &feed,
             );
         }
     }

@@ -53,7 +53,7 @@ pub trait PositionBorrowModule:
         self.apply_e_mode_to_asset_config(debt_config, &e_mode, debt_emode_config);
         require!(debt_config.can_borrow(), ERROR_ASSET_NOT_BORROWABLE);
 
-        let (borrows, _) = self.sync_borrow_positions_interest(account_nonce, cache, false);
+        let (borrows, _) = self.get_borrow_positions(account_nonce, false);
 
         let mut borrow_position =
             self.get_or_create_borrow_position(account_nonce, debt_config, new_debt_token);
