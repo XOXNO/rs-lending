@@ -1,4 +1,5 @@
 use common_constants::TOTAL_SUPPLY_AMOUNT_STORAGE_KEY;
+use common_events::RAY_PRECISION;
 use common_structs::{
     AccountAttributes, AccountPosition, AccountPositionType, AssetConfig, PriceFeedShort,
 };
@@ -75,7 +76,8 @@ pub trait PositionDepositModule:
                 &asset_info,
                 &position_attributes,
             );
-            self.validate_supply_cap(&asset_info, &deposit_payment, cache);
+            let feed = self.get_token_price(&deposit_payment.token_identifier, cache);
+            self.validate_supply_cap(&asset_info, &deposit_payment, &feed, cache);
 
             self.update_deposit_position(
                 account_nonce,
@@ -83,6 +85,7 @@ pub trait PositionDepositModule:
                 &asset_info,
                 caller,
                 &position_attributes,
+                &feed,
                 cache,
             );
         }
@@ -142,9 +145,9 @@ pub trait PositionDepositModule:
         asset_info: &AssetConfig<Self::Api>,
         caller: &ManagedAddress,
         attributes: &AccountAttributes<Self::Api>,
+        feed: &PriceFeedShort<Self::Api>,
         cache: &mut Cache<Self>,
     ) -> AccountPosition<Self::Api> {
-        let feed = self.get_token_price(&collateral.token_identifier, cache);
         let mut position = self.get_or_create_deposit_position(
             account_nonce,
             asset_info,
@@ -328,6 +331,7 @@ pub trait PositionDepositModule:
         &self,
         asset_info: &AssetConfig<Self::Api>,
         deposit_payment: &EgldOrEsdtTokenPayment,
+        feed: &PriceFeedShort<Self::Api>,
         cache: &mut Cache<Self>,
     ) {
         match &asset_info.supply_cap {
@@ -336,13 +340,12 @@ pub trait PositionDepositModule:
                     return;
                 }
 
-                let pool_address = cache.get_cached_pool_address(&deposit_payment.token_identifier);
-                let mut total_supplied = self.get_total_supply(pool_address).get();
-
-                let vault_supplied_amount = self
-                    .vault_supplied_amount(&deposit_payment.token_identifier)
-                    .get();
-                total_supplied += vault_supplied_amount;
+                let pool = cache.get_cached_pool_address(&deposit_payment.token_identifier);
+                let total_supply_scaled = self.get_total_supply(pool).get();
+                let index = cache.get_cached_market_index(&deposit_payment.token_identifier);
+                let total_supplied = self
+                    .mul_half_up(&total_supply_scaled, &index.supply_index, RAY_PRECISION)
+                    .rescale(feed.asset_decimals);
 
                 require!(
                     total_supplied.into_raw_units() + &deposit_payment.amount <= *supply_cap,
