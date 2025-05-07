@@ -141,4 +141,28 @@ pub trait Storage {
     #[view(isFlashLoanOngoing)]
     #[storage_mapper("flash_loan_ongoing")]
     fn flash_loan_ongoing(&self) -> SingleValueMapper<bool>;
+
+    /// Retrieves the current borrow index.
+    ///
+    /// The borrow index is used to calculate accrued interest on borrow positions.
+    ///
+    /// # Returns
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The current borrow index.
+    #[storage_mapper_from_address("borrow_index")]
+    fn borrow_index(
+        &self,
+        pool_address: ManagedAddress,
+    ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>, ManagedAddress>;
+
+    /// Retrieves the current supply index.
+    ///
+    /// The supply index is used to compute the yield for suppliers.
+    ///
+    /// # Returns
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The current supply index.
+    #[storage_mapper_from_address("supply_index")]
+    fn supply_index(
+        &self,
+        pool_address: ManagedAddress,
+    ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>, ManagedAddress>;
 }

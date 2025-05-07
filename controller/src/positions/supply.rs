@@ -340,10 +340,11 @@ pub trait PositionDepositModule:
                 }
 
                 let pool = cache.get_cached_pool_address(&deposit_payment.token_identifier);
-                let total_supply_scaled = self.get_total_supply(pool).get();
-                let index = cache.get_cached_market_index(&deposit_payment.token_identifier);
+                let total_supply_scaled = self.get_total_supply(pool.clone()).get();
+                // Validates with the last updated index avoiding a double call to the pool to update the index
+                let index = self.supply_index(pool.clone()).get();
                 let total_supplied = self.rescale_half_up(
-                    &self.mul_half_up(&total_supply_scaled, &index.supply_index, RAY_PRECISION),
+                    &self.mul_half_up(&total_supply_scaled, &index, RAY_PRECISION),
                     feed.asset_decimals,
                 );
 

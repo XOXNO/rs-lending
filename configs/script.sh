@@ -193,7 +193,9 @@ to_ray() {
 to_decimals() {
     local value=$1
     local decimals=$2
-    echo "${value}$(printf '%0*d' "$decimals" 0)"
+    # Use bc for floating point multiplication, then cut off any decimal part
+    local result=$(echo "scale=0; ($value * (10 ^ $decimals))/1" | bc)
+    echo "$result"
 }
 
 # Function to build market arguments

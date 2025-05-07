@@ -3,8 +3,8 @@
     "proxy": "https://devnet-gateway.xoxno.com",
     "chain_id": "D",
     "addresses": {
-      "controller": "erd1qqqqqqqqqqqqqpgqjtd8xu42judwqky5u365pxk93anrkwqaah0s4gz5eq",
-      "lp_template": "erd1qqqqqqqqqqqqqpgqdrhsmzym2ushchg8y97pgwfpjltfstn0ah0sdc5zwf",
+      "controller": "erd1qqqqqqqqqqqqqpgqsq0x5fdkcsl8x8ntycr6xslhj6q5h64zah0s9cmyef",
+      "lp_template": "erd1qqqqqqqqqqqqqpgqxf56zsnsg8egt4d09g04fjq68eyr6g7mah0szmesex",
       "price_aggregator": "erd1qqqqqqqqqqqqqpgqcd5jnctcnyhcqep70fwvr3y9eel52kt4ah0saez2dj",
       "ash": "erd1qqqqqqqqqqqqqpgqglqtgt5m50njg6le3calj6hknfuuta2tnrzsuh2qlc",
       "wegld": "erd1qqqqqqqqqqqqqpgqpv09kfzry5y4sj05udcngesat07umyj70n4sa2c0rp",

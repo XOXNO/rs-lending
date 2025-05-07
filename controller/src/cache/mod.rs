@@ -100,13 +100,19 @@ where
         &mut self,
         token_id: &EgldOrEsdtTokenIdentifier<C::Api>,
     ) -> OracleProvider<C::Api> {
-        let existing = self.asset_oracles.contains(token_id);
+        let canonical_token_id = if self.sc_ref.get_token_ticker(token_id, self) == self.egld_ticker
+        {
+            EgldOrEsdtTokenIdentifier::egld()
+        } else {
+            token_id.clone()
+        };
+        let existing = self.asset_oracles.contains(&canonical_token_id);
         if existing {
-            return self.asset_oracles.get(token_id);
+            return self.asset_oracles.get(&canonical_token_id);
         }
 
-        let new = self.sc_ref.token_oracle(token_id).get();
-        self.asset_oracles.put(token_id, &new);
+        let new = self.sc_ref.token_oracle(&canonical_token_id).get();
+        self.asset_oracles.put(&canonical_token_id, &new);
 
         new
     }
