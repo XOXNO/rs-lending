@@ -130,7 +130,6 @@ pub trait UtilsModule:
         &self,
         cache: &Cache<Self>,
         back_transfers: &BackTransfers<Self::Api>,
-        amount: &ManagedDecimal<Self::Api, NumDecimals>,
         required_repayment: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let repayment = if cache.params.asset_id.is_egld() {

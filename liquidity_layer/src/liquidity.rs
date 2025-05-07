@@ -339,12 +339,8 @@ pub trait LiquidityModule:
 
         let mut last_cache = Cache::new(self);
 
-        let repayment = self.validate_flash_repayment(
-            &last_cache,
-            &back_transfers,
-            amount,
-            &required_repayment,
-        );
+        let repayment =
+            self.validate_flash_repayment(&last_cache, &back_transfers, &required_repayment);
 
         let protocol_fee = repayment - amount.clone();
 
