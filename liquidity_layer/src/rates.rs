@@ -90,12 +90,12 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
     /// **Formula**:
     /// - `deposit_rate = utilization * borrow_rate * (1 - reserve_factor)`.
     /// - If `utilization` is zero, `deposit_rate` is zero.
-    /// - `(1 - reserve_factor)` is calculated as `self.bps().sub(reserve_factor)`, assuming `bps()` represents 100% (scaled to RAY) and `reserve_factor` is also RAY-scaled.
+    /// - `(1 - reserve_factor)` is calculated as `self.bps().sub(reserve_factor)`, assuming `bps()` represents 100% and `reserve_factor` is also BPS-scaled.
     ///
     /// # Arguments
     /// - `utilization`: Current utilization ratio (`ManagedDecimal<Self::Api, NumDecimals>`), RAY-based.
     /// - `borrow_rate`: Current per-second borrow rate (`ManagedDecimal<Self::Api, NumDecimals>`), RAY-based.
-    /// - `reserve_factor`: Protocol fee fraction (`ManagedDecimal<Self::Api, NumDecimals>`), RAY-based (representing a BPS value).
+    /// - `reserve_factor`: Protocol fee fraction (`ManagedDecimal<Self::Api, NumDecimals>`), BPS-based.
     ///
     /// # Returns
     /// - `ManagedDecimal<Self::Api, NumDecimals>`: Per-second deposit rate (RAY-based).

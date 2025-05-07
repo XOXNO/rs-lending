@@ -152,7 +152,7 @@ pub trait UtilsModule:
         };
 
         require!(
-            repayment >= *required_repayment && amount < required_repayment,
+            repayment >= *required_repayment,
             ERROR_INVALID_FLASHLOAN_REPAYMENT
         );
 
@@ -291,10 +291,10 @@ pub trait UtilsModule:
                     *amount_to_transfer_net_asset_decimals >= *protocol_fee_asset_decimals,
                     ERROR_WITHDRAW_AMOUNT_LESS_THAN_FEE
                 );
-
                 let protocol_fee_for_revenue_ray =
                     self.rescale_half_up(protocol_fee_asset_decimals, RAY_PRECISION);
-                *amount_to_transfer_net_asset_decimals -= &protocol_fee_for_revenue_ray;
+
+                *amount_to_transfer_net_asset_decimals -= protocol_fee_asset_decimals;
 
                 if protocol_fee_for_revenue_ray > self.ray_zero() {
                     cache.revenue += &protocol_fee_for_revenue_ray;
