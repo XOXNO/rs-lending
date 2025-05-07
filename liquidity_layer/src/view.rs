@@ -1,7 +1,7 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
-use common_events::RAY_PRECISION;
+use common_constants::RAY_PRECISION;
 
 use crate::{rates, storage};
 
@@ -31,6 +31,11 @@ pub trait ViewModule:
         }
     }
 
+    /// Retrieves the total actual balance of the asset held by the pool contract.
+    /// This represents the current liquidity or reserves available in the pool.
+    ///
+    /// # Returns
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total reserves in the pool, scaled to the asset's decimals.
     #[view(getReserves)]
     fn get_reserves(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
         let params = self.params().get();
@@ -72,15 +77,14 @@ pub trait ViewModule:
         self.blockchain().get_block_timestamp() - self.last_timestamp().get()
     }
 
-    /// Retrieves the protocol revenue accrued from borrow interest fees.
+    /// Retrieves the protocol revenue accrued from borrow interest fees, scaled to the asset's decimals.
     ///
     /// # Returns
-    /// - `BigUint`: The accumulated protocol revenue.
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The accumulated protocol revenue, scaled to the asset's decimals.
     #[view(getProtocolRevenue)]
     fn get_protocol_revenue(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
         let revenue_scaled = self.revenue().get();
-
-        revenue_scaled.rescale(self.params().get().asset_decimals)
+        self.rescale_half_up(&revenue_scaled, self.params().get().asset_decimals)
     }
 
     /// Retrieves the total amount supplied to the pool.
@@ -91,8 +95,10 @@ pub trait ViewModule:
     fn get_supplied_amount(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
         let supplied_scaled = self.supplied().get();
 
-        self.mul_half_up(&supplied_scaled, &self.supply_index().get(), RAY_PRECISION)
-            .rescale(self.params().get().asset_decimals)
+        self.rescale_half_up(
+            &self.mul_half_up(&supplied_scaled, &self.supply_index().get(), RAY_PRECISION),
+            self.params().get().asset_decimals,
+        )
     }
 
     /// Retrieves the total amount borrowed from the pool.
@@ -103,7 +109,9 @@ pub trait ViewModule:
     fn get_borrowed_amount(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
         let borrowed_scaled = self.borrowed().get();
 
-        self.mul_half_up(&borrowed_scaled, &self.borrow_index().get(), RAY_PRECISION)
-            .rescale(self.params().get().asset_decimals)
+        self.rescale_half_up(
+            &self.mul_half_up(&borrowed_scaled, &self.borrow_index().get(), RAY_PRECISION),
+            self.params().get().asset_decimals,
+        )
     }
 }

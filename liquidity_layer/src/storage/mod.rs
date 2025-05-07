@@ -7,49 +7,47 @@ use common_structs::MarketParams;
 /// for accessing the core state variables of the liquidity pool.
 #[multiversx_sc::module]
 pub trait Storage {
-    /// Returns the pool asset identifier.
+    /// Retrieves the total scaled amount supplied to the pool.
+    /// This value represents the sum of all supplied principals, each divided by the supply index at the time of their deposit.
+    /// It is stored RAY-scaled.
     ///
     /// # Returns
-    /// - `EgldOrEsdtTokenIdentifier`: The asset managed by this pool.
-    #[view(getPoolAsset)]
-    #[storage_mapper("pool_asset")]
-    fn pool_asset(&self) -> SingleValueMapper<EgldOrEsdtTokenIdentifier>;
-
-    /// Retrieves the total amount supplied to the pool.
-    ///
-    /// # Returns
-    /// - `BigUint`: The total supplied tokens.
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total scaled amount supplied, RAY-scaled.
     #[view(getSuppliedScaled)]
     #[storage_mapper("supplied")]
     fn supplied(&self) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
 
     /// Retrieves the protocol revenue accrued from borrow interest fees.
+    /// This value is stored RAY-scaled.
     ///
     /// # Returns
-    /// - `BigUint`: The accumulated protocol revenue.
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The accumulated protocol revenue, RAY-scaled.
     #[view(getRevenueScaled)]
     #[storage_mapper("revenue")]
     fn revenue(&self) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
 
-    /// Retrieves the total borrowed amount from the pool.
+    /// Retrieves the total scaled borrowed amount from the pool.
+    /// This value represents the sum of all borrowed principals, each divided by the borrow index at the time of their borrowing.
+    /// It is stored RAY-scaled.
     ///
     /// # Returns
-    /// - `BigUint`: The total tokens borrowed.
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total scaled borrowed amount, RAY-scaled.
     #[view(getBorrowedScaled)]
     #[storage_mapper("borrowed")]
     fn borrowed(&self) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
 
     /// Retrieves the total bad debt from the pool.
+    /// This value is stored scaled to the asset's actual decimal precision.
     ///
     /// # Returns
-    /// - `BigUint`: The total bad debt pending to be collected.
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total bad debt pending to be collected, scaled to the asset's decimals.
     #[view(getBadDebt)]
     #[storage_mapper("bad_debt")]
     fn bad_debt(&self) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
 
     /// Returns the market parameters.
     ///
-    /// These include interest rate parameters and asset asset_decimals.
+    /// These include interest rate parameters and asset decimals.
     ///
     /// # Returns
     /// - `MarketParams<Self::Api>`: The market configuration.

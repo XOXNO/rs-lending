@@ -1,5 +1,4 @@
-use common_events::{MarketIndex, OracleProvider};
-use common_structs::{AssetConfig, PriceFeedShort};
+use common_structs::{AssetConfig, MarketIndex, OracleProvider, PriceFeedShort};
 
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();

@@ -44,11 +44,15 @@ pub trait LendingUtilsModule:
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let index = cache.get_cached_market_index(&position.asset_id);
         if position.position_type == AccountPositionType::Deposit {
-            self.mul_half_up(&position.scaled_amount, &index.supply_index, RAY_PRECISION)
-                .rescale(feed.asset_decimals)
+            self.rescale_half_up(
+                &self.mul_half_up(&position.scaled_amount, &index.supply_index, RAY_PRECISION),
+                feed.asset_decimals,
+            )
         } else {
-            self.mul_half_up(&position.scaled_amount, &index.borrow_index, RAY_PRECISION)
-                .rescale(feed.asset_decimals)
+            self.rescale_half_up(
+                &self.mul_half_up(&position.scaled_amount, &index.borrow_index, RAY_PRECISION),
+                feed.asset_decimals,
+            )
         }
     }
 
@@ -196,12 +200,12 @@ pub trait LendingUtilsModule:
         cache: &mut Cache<Self>,
         safety_factor: Option<ManagedDecimal<Self::Api, NumDecimals>>,
     ) {
-        let borrow_positions = self.borrow_positions(account_nonce);
+        let borrow_positions = self.positions(account_nonce, AccountPositionType::Borrow);
         if borrow_positions.is_empty() {
             return;
         }
 
-        let deposit_positions = self.deposit_positions(account_nonce);
+        let deposit_positions = self.positions(account_nonce, AccountPositionType::Deposit);
         let (collateral, _, _) =
             self.calculate_collateral_values(&deposit_positions.values().collect(), cache);
         let borrowed =

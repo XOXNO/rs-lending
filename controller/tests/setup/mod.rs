@@ -352,7 +352,7 @@ impl LendingPoolTestState {
         asset_decimals: usize,
         account_nonce: OptionalValue<u64>,
         e_mode_category: OptionalValue<u8>,
-        is_vault: bool,
+        _is_vault: bool,
     ) {
         let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
 
@@ -389,7 +389,7 @@ impl LendingPoolTestState {
         asset_decimals: usize,
         account_nonce: OptionalValue<u64>,
         e_mode_category: OptionalValue<u8>,
-        is_vault: bool,
+        _is_vault: bool,
         error_message: &[u8],
     ) {
         let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
@@ -425,7 +425,7 @@ impl LendingPoolTestState {
         from: &TestAddress,
         account_nonce: OptionalValue<u64>,
         e_mode_category: OptionalValue<u8>,
-        is_vault: bool,
+        _is_vault: bool,
         error_message: &[u8],
     ) {
         let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
@@ -454,7 +454,7 @@ impl LendingPoolTestState {
         from: &TestAddress,
         account_nonce: OptionalValue<u64>,
         e_mode_category: OptionalValue<u8>,
-        is_vault: bool,
+        _is_vault: bool,
         assets: ManagedVec<StaticApi, EsdtTokenPayment<StaticApi>>,
         error_message: &[u8],
     ) {
@@ -484,7 +484,7 @@ impl LendingPoolTestState {
         &mut self,
         from: &TestAddress,
         e_mode_category: OptionalValue<u8>,
-        is_vault: bool,
+        _is_vault: bool,
         error_message: &[u8],
     ) {
         self.world
@@ -505,7 +505,7 @@ impl LendingPoolTestState {
         asset_decimals: usize,
         account_nonce: OptionalValue<u64>,
         e_mode_category: OptionalValue<u8>,
-        is_vault: bool,
+        _is_vault: bool,
         error_message: &[u8],
     ) {
         let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
@@ -1081,7 +1081,7 @@ impl LendingPoolTestState {
             .query()
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .deposit_positions(nonce)
+            .positions(nonce, AccountPositionType::Deposit)
             .returns(ReturnsResult)
             .run();
 
@@ -1127,18 +1127,6 @@ impl LendingPoolTestState {
             .run();
     }
 
-    pub fn get_vault_supplied_amount(
-        &mut self,
-        token_id: TestTokenIdentifier,
-    ) -> ManagedDecimal<StaticApi, NumDecimals> {
-        self.world
-            .query()
-            .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::ControllerProxy)
-            .vault_supplied_amount(token_id)
-            .returns(ReturnsResult)
-            .run()
-    }
     // View functions
     pub fn get_collateral_amount_for_token(
         &mut self,
@@ -1387,7 +1375,7 @@ pub fn setup_lending_pool(
         .from(OWNER_ADDRESS)
         .to(lending_sc.clone())
         .whitebox(controller::contract_obj, |sc| {
-            sc.account_token()
+            sc.account()
                 .set_token_id(ACCOUNT_TOKEN.to_token_identifier());
         });
 

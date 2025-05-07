@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           28
+// Endpoints:                           27
 // Async Callback (empty):               1
-// Total number of exported functions:  31
+// Total number of exported functions:  30
 
 #![no_std]
 
@@ -20,7 +20,6 @@ multiversx_sc_wasm_adapter::endpoints! {
     (
         init => init
         upgrade => upgrade
-        getPoolAsset => pool_asset
         getSuppliedScaled => supplied
         getRevenueScaled => revenue
         getBorrowedScaled => borrowed

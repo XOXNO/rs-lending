@@ -178,3 +178,6 @@ pub static ERROR_FLASH_LOAN_ALREADY_ONGOING: &[u8] = b"Flash loan already ongoin
 pub static ERROR_ACCOUNT_ATTRIBUTES_MISMATCH: &[u8] = b"Account attributes mismatch.";
 
 pub static ERROR_WITHDRAW_TOKEN_RECEIVED: &[u8] = b"Wrong token received during withdraw.";
+
+pub static ERROR_WITHDRAW_AMOUNT_LESS_THAN_FEE: &[u8] =
+    b"Withdraw amount less than liquidation fee.";

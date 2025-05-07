@@ -4,7 +4,7 @@ use common_errors::{
     ERROR_ASSETS_ARE_THE_SAME, ERROR_INVALID_PAYMENTS, ERROR_INVALID_POSITION_MODE,
     ERROR_MULTIPLY_REQUIRE_EXTRA_STEPS, ERROR_SWAP_DEBT_NOT_SUPPORTED,
 };
-use common_events::{AccountAttributes, PositionMode};
+use common_structs::{AccountAttributes, AccountPositionType, PositionMode};
 
 use crate::{
     cache::Cache, helpers, oracle, positions, storage, utils, validation,
@@ -364,9 +364,14 @@ pub trait SnapModule:
 
         // Make sure that after the swap the position is not becoming eligible for liquidation due to slippage
         self.validate_is_healthy(account.token_nonce, &mut cache, None);
-        let has_no_debt = self.borrow_positions(account.token_nonce).is_empty();
+        let has_no_debt = self
+            .positions(account.token_nonce, AccountPositionType::Borrow)
+            .is_empty();
         if close_position && has_no_debt {
-            for mut deposit_position in self.deposit_positions(account.token_nonce).values() {
+            for mut deposit_position in self
+                .positions(account.token_nonce, AccountPositionType::Deposit)
+                .values()
+            {
                 let feed = self.get_token_price(&deposit_position.asset_id, &mut cache);
                 let amount = self.get_total_amount(&deposit_position, &feed, &mut cache);
 

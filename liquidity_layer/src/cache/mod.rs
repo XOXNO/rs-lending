@@ -121,7 +121,8 @@ where
         &self,
         value: &BigUint<C::Api>,
     ) -> ManagedDecimal<C::Api, NumDecimals> {
-        ManagedDecimal::from_raw_units(value.clone(), self.params.asset_decimals)
+        self.sc_ref
+            .to_decimal(value.clone(), self.params.asset_decimals)
     }
 
     /// Computes the utilization ratio of the pool (borrowed / supplied).
@@ -140,14 +141,10 @@ where
     /// **Security Tip**: Handles division-by-zero by returning 0 when `supplied` is zero.
     pub fn get_utilization(&self) -> ManagedDecimal<C::Api, NumDecimals> {
         if self.supplied == self.zero {
-            self.sc_ref.to_decimal_ray(BigUint::zero())
+            self.sc_ref.ray_zero()
         } else {
-            let total_borrowed =
-                self.sc_ref
-                    .mul_half_up(&self.borrowed, &self.borrow_index, RAY_PRECISION);
-            let total_supplied =
-                self.sc_ref
-                    .mul_half_up(&self.supplied, &self.supply_index, RAY_PRECISION);
+            let total_borrowed = self.get_original_borrow_amount(&self.borrowed);
+            let total_supplied = self.get_original_supply_amount(&self.supplied);
             self.sc_ref
                 .div_half_up(&total_borrowed, &total_supplied, RAY_PRECISION)
         }
@@ -190,21 +187,6 @@ where
         self.get_reserves() >= *amount
     }
 
-    /// Checks if the pool has sufficient supplied assets for a given amount.
-    ///
-    /// **Scope**: Validates supplied asset availability for operations like borrowing.
-    ///
-    /// **Goal**: Ensure the pool can support requested actions.
-    ///
-    /// # Arguments
-    /// - `amount`: The amount to check against (`ManagedDecimal`).
-    ///
-    /// # Returns
-    /// - `bool`: True if `supplied >= amount`, false otherwise.
-    pub fn has_supplied(&self, amount: &ManagedDecimal<C::Api, NumDecimals>) -> bool {
-        self.supplied >= *amount
-    }
-
     /// Checks if the given asset matches the pool’s asset.
     ///
     /// **Scope**: Validates asset compatibility for pool operations.
@@ -243,7 +225,8 @@ where
         let original_amount =
             self.sc_ref
                 .mul_half_up(scaled_amount, &self.supply_index, RAY_PRECISION);
-        original_amount.rescale(self.params.asset_decimals)
+        self.sc_ref
+            .rescale_half_up(&original_amount, self.params.asset_decimals)
     }
 
     pub fn get_original_borrow_amount(
@@ -253,6 +236,7 @@ where
         let original_amount =
             self.sc_ref
                 .mul_half_up(scaled_amount, &self.borrow_index, RAY_PRECISION);
-        original_amount.rescale(self.params.asset_decimals)
+        self.sc_ref
+            .rescale_half_up(&original_amount, self.params.asset_decimals)
     }
 }

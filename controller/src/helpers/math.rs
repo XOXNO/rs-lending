@@ -1,12 +1,11 @@
 use common_constants::{
-    BPS, K_SCALLING_FACTOR, MAX_FIRST_TOLERANCE, MAX_LAST_TOLERANCE, MAX_LIQUIDATION_BONUS,
-    MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE, RAY_PRECISION, WAD_PRECISION,
+    BPS, BPS_PRECISION, K_SCALLING_FACTOR, MAX_FIRST_TOLERANCE, MAX_LAST_TOLERANCE,
+    MAX_LIQUIDATION_BONUS, MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE, RAY_PRECISION, WAD_PRECISION,
 };
 use common_errors::{
     ERROR_UNEXPECTED_ANCHOR_TOLERANCES, ERROR_UNEXPECTED_FIRST_TOLERANCE,
     ERROR_UNEXPECTED_LAST_TOLERANCE,
 };
-use common_events::BPS_PRECISION;
 use common_structs::{OraclePriceFluctuation, PriceFeedShort};
 
 multiversx_sc::imports!();
@@ -28,8 +27,10 @@ pub trait MathsModule: common_math::SharedMathModule {
         amount_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
         token_data: &PriceFeedShort<Self::Api>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        self.div_half_up(amount_in_egld, &token_data.price, RAY_PRECISION)
-            .rescale(token_data.asset_decimals)
+        self.rescale_half_up(
+            &self.div_half_up(amount_in_egld, &token_data.price, RAY_PRECISION),
+            token_data.asset_decimals,
+        )
     }
 
     /// Converts an EGLD amount to token units using the token's price feed data.
@@ -65,8 +66,10 @@ pub trait MathsModule: common_math::SharedMathModule {
         amount: &ManagedDecimal<Self::Api, NumDecimals>,
         token_price: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        self.mul_half_up(amount, token_price, RAY_PRECISION)
-            .rescale(WAD_PRECISION)
+        self.rescale_half_up(
+            &self.mul_half_up(amount, token_price, RAY_PRECISION),
+            WAD_PRECISION,
+        )
     }
 
     /// Computes the EGLD value of a token amount using its price.
@@ -84,8 +87,10 @@ pub trait MathsModule: common_math::SharedMathModule {
         amount: &ManagedDecimal<Self::Api, NumDecimals>,
         token_price: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        self.mul_half_up(amount, token_price, RAY_PRECISION)
-            .rescale(WAD_PRECISION)
+        self.rescale_half_up(
+            &self.mul_half_up(amount, token_price, RAY_PRECISION),
+            WAD_PRECISION,
+        )
     }
 
     /// Calculates the health factor from weighted collateral and borrowed value.
@@ -112,7 +117,7 @@ pub trait MathsModule: common_math::SharedMathModule {
             RAY_PRECISION,
         );
 
-        health_factor.rescale(WAD_PRECISION)
+        self.rescale_half_up(&health_factor, WAD_PRECISION)
     }
 
     /// Calculates upper and lower bounds for a tolerance in basis points.
@@ -221,10 +226,13 @@ pub trait MathsModule: common_math::SharedMathModule {
         // Calculate the bonus range: max_bonus - min_bonus
         let bonus_range = max_bonus.clone() - min_bonus.clone();
         // Calculate the bonus increment: bonus_range * clamped_term
-        let bonus_increment = self.mul_half_up(&bonus_range, &clamped_term, RAY_PRECISION);
+        let bonus_increment = self.rescale_half_up(
+            &self.mul_half_up(&bonus_range, &clamped_term, RAY_PRECISION),
+            BPS_PRECISION,
+        );
 
         // Final bonus: min_bonus + bonus_increment
-        min_bonus.clone() + bonus_increment.rescale(BPS_PRECISION)
+        min_bonus.clone() + bonus_increment
     }
 
     /// Computes debt repayment, bonus, and new health factor for a liquidation.
@@ -291,7 +299,7 @@ pub trait MathsModule: common_math::SharedMathModule {
         let seized = self.mul_half_up(proportion_seized, &debt_to_repay_ray, RAY_PRECISION);
         let seized_weighted_raw = self.mul_half_up(&seized, &one_plus_bonus, RAY_PRECISION);
         let seized_weighted = self.get_min(
-            seized_weighted_raw.rescale(WAD_PRECISION),
+            self.rescale_half_up(&seized_weighted_raw, WAD_PRECISION),
             weighted_collateral.clone(),
         );
 
@@ -306,10 +314,10 @@ pub trait MathsModule: common_math::SharedMathModule {
         // Compute new_health_factor
         let new_health_factor = self.compute_health_factor(
             &new_weighted_wad,
-            &new_total_debt_ray.rescale(WAD_PRECISION),
+            &self.rescale_half_up(&new_total_debt_ray, WAD_PRECISION),
         );
         (
-            debt_to_repay_ray.rescale(WAD_PRECISION),
+            self.rescale_half_up(&debt_to_repay_ray, WAD_PRECISION),
             liquidation_bonus.clone(),
             new_health_factor,
         )

@@ -185,36 +185,20 @@ pub trait LiquidityModule:
 
         require!(cache.is_same_asset(&position.asset_id), ERROR_INVALID_ASSET);
 
-        // 1. Calculate the actual current supply based on the position's scaled amount and current index
-        let current_supply_actual = cache.get_original_supply_amount(&position.scaled_amount);
-
-        let (scaled_withdrawal_amount_gross, amount_to_withdraw_gross) =
-            // 2. Check if the requested amount covers the full current supply
-            if amount >= current_supply_actual {
-                // Full withdrawal: Use the entire scaled amount of the position
-                // The actual amount to withdraw is the calculated current supply
-                (position.scaled_amount.clone(), current_supply_actual)
-            } else {
-                // Partial withdrawal: Calculate the scaled amount equivalent to the requested amount
-                // The actual amount to withdraw is the requested amount
-                let requested_scaled = cache.get_scaled_supply_amount(&amount);
-                (requested_scaled, amount.clone())
-            };
-
-        // 3. Calculate net amount to transfer after potential liquidation fees
-        let mut amount_to_transfer_net = amount_to_withdraw_gross.clone();
-
-        if is_liquidation && protocol_fee_opt.is_some() {
-            let protocol_fees_actual = unsafe { protocol_fee_opt.unwrap_unchecked() };
-            require!(
-                amount_to_withdraw_gross >= protocol_fees_actual,
-                "Withdraw amount less than liquidation fee"
+        // 1. Determine gross withdrawal amounts (scaled and actual)
+        let (scaled_withdrawal_amount_gross, mut amount_to_transfer_net) = self
+            .determine_gross_withdrawal_amounts(
+                &cache,
+                &position.scaled_amount,
+                &amount, // `amount` is the requested_amount_actual
             );
 
-            cache.revenue += &protocol_fees_actual.rescale(RAY_PRECISION);
-
-            amount_to_transfer_net = amount_to_withdraw_gross - protocol_fees_actual;
-        }
+        self.process_liquidation_fee_details(
+            &mut cache, // Pass cache as mutable
+            is_liquidation,
+            &protocol_fee_opt,
+            &mut amount_to_transfer_net,
+        );
 
         // 4. Check for sufficient reserves
         require!(
@@ -241,10 +225,12 @@ pub trait LiquidityModule:
     ///
     /// **Process**:
     /// 1. Retrieves and validates the repayment amount.
-    /// 2. Updates global indexes and the position with accrued interest.
-    /// 3. Splits the repayment into principal, interest, and overpayment using `split_repay`.
-    /// 4. Updates the position and pool state, refunding any overpayment.
-    /// 5. Emits a market state event.
+    /// 2. Updates global indexes (which also updates the position's implicit accrued interest).
+    /// 3. Calculates the actual current debt of the position. Based on this and the payment amount,
+    ///    it determines the scaled amount to repay and any overpaid amount.
+    /// 4. Updates the position's scaled debt and the pool's total scaled borrowed amount.
+    /// 5. Refunds any overpaid amount to the `initial_caller`.
+    /// 6. Emits a market state event.
     ///
     /// # Arguments
     /// - `initial_caller`: The address repaying the debt (`ManagedAddress`).
@@ -266,26 +252,14 @@ pub trait LiquidityModule:
         price: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> AccountPosition<Self::Api> {
         let mut cache = Cache::new(self);
-        // 1. Get the payment amount sent by the user
         let payment_amount = self.get_payment_amount(&cache);
         self.global_sync(&mut cache); // 2. Update indexes
 
         require!(cache.is_same_asset(&position.asset_id), ERROR_INVALID_ASSET);
-        // 3. Calculate the current actual debt based on the position's scaled amount and current index
-        let current_debt_actual = cache.get_original_borrow_amount(&position.scaled_amount);
+
+        // 3. Determine scaled repayment amount and any overpayment
         let (amount_to_repay_scaled, over_paid_amount) =
-            // 4. Check if the payment covers the full current debt
-            if payment_amount >= current_debt_actual {
-                // Full repayment: Subtract the entire scaled debt from the position
-                // Calculate overpayment based on the difference between payment and actual debt
-                let over_paid = payment_amount - current_debt_actual;
-                (position.scaled_amount.clone(), over_paid)
-            } else {
-                // Partial repayment: Calculate the scaled amount equivalent to the payment
-                // Subtract this scaled payment amount from the position
-                let payment_scaled = cache.get_scaled_borrow_amount(&payment_amount);
-                (payment_scaled, position.zero_decimal()) // No overpayment
-            };
+            self.determine_repayment_details(&cache, &position.scaled_amount, &payment_amount);
 
         // 5. Subtract the determined scaled repayment amount from the position's scaled amount
 
@@ -307,12 +281,14 @@ pub trait LiquidityModule:
     /// **Purpose**: Facilitates flash loans for strategies like arbitrage, requiring repayment with fees in the same transaction.
     ///
     /// **Process**:
-    /// 1. Validates the borrowed token and reserve availability.
-    /// 2. Deducts the loan amount from reserves.
-    /// 3. Computes the required repayment with fees.
-    /// 4. Drops the cache to prevent reentrancy, executes an external call, and validates repayment.
-    /// 5. Updates reserves and protocol revenue with the repayment and fee.
-    /// 6. Emits a market state event.
+    /// 1. Validates the borrowed token (`cache.params.asset_id`) and reserve availability for the `amount`.
+    /// 2. Sends the `amount` to the `contract_address` for the external call. Protocol revenue is not yet affected, and total borrowed is not yet increased.
+    /// 3. Computes the `required_repayment` (loan `amount` + `fees`).
+    /// 4. Drops the `cache` to prevent reentrancy, then executes the external call to `contract_address` and `endpoint` with `arguments`.
+    /// 5. Validates that the `back_transfers` (repayment) meet or exceed `required_repayment`.
+    /// 6. Calculates the `protocol_fee` from `repayment - amount`.
+    /// 7. Adds the `protocol_fee` (rescaled to RAY) to `cache.revenue`.
+    /// 8. Emits a market state event.
     ///
     /// # Arguments
     /// - `borrowed_token`: The token to borrow (`EgldOrEsdtTokenIdentifier`).
@@ -344,9 +320,10 @@ pub trait LiquidityModule:
         require!(cache.has_reserves(amount), ERROR_FLASHLOAN_RESERVE_ASSET);
 
         // Calculate flash loan min repayment amount
-        let required_repayment = self
-            .mul_half_up(amount, &(self.bps() + fees.clone()), RAY_PRECISION)
-            .rescale(cache.params.asset_decimals);
+        let required_repayment = self.rescale_half_up(
+            &self.mul_half_up(amount, &(self.bps() + fees.clone()), RAY_PRECISION),
+            cache.params.asset_decimals,
+        );
 
         let asset = cache.params.asset_id.clone();
         // Prevent re entry attacks with loop flash loans
@@ -381,19 +358,21 @@ pub trait LiquidityModule:
     /// **Purpose**: Enables internal strategies requiring temporary asset access, adding fees to protocol revenue.
     ///
     /// **Process**:
-    /// 1. Validates the token and reserve availability.
-    /// 2. Deducts from reserves, increases borrowed amount, and adds fees to revenue.
-    /// 3. Transfers the borrowed amount to the caller.
-    /// 4. Emits a market state event and returns the borrow index and timestamp.
+    /// 1. Validates the asset in the `position` and reserve availability for `strategy_amount`.
+    /// 2. Calculates `effective_initial_debt = strategy_amount + strategy_fee`.
+    /// 3. Increases the `position`'s scaled debt and the pool's total scaled `borrowed` amount by the scaled `effective_initial_debt`.
+    /// 4. Adds `strategy_fee` (rescaled to RAY) to `cache.revenue`.
+    /// 5. Transfers the `strategy_amount` to the caller.
+    /// 6. Emits a market state event.
     ///
     /// # Arguments
-    /// - `token`: The token to borrow (`EgldOrEsdtTokenIdentifier`).
-    /// - `strategy_amount`: The amount to borrow (`ManagedDecimal<Self::Api, NumDecimals>`).
+    /// - `position`: The account's position for the asset being borrowed for the strategy (`AccountPosition<Self::Api>`).
+    /// - `strategy_amount`: The amount to borrow for the strategy (`ManagedDecimal<Self::Api, NumDecimals>`).
     /// - `strategy_fee`: The fee for the strategy (`ManagedDecimal<Self::Api, NumDecimals>`).
     /// - `price`: The asset price for market update (`ManagedDecimal<Self::Api, NumDecimals>`).
     ///
     /// # Returns
-    /// - `(ManagedDecimal<Self::Api, NumDecimals>, u64)`: The current borrow index and timestamp for later position updates.
+    /// - `AccountPosition<Self::Api>`: The updated account position reflecting the new strategy debt.
     ///
     /// **Security Considerations**: Ensures asset validity and sufficient reserves with `require!` checks.
     /// Can only be called by the owner (via controller contract)
@@ -441,9 +420,11 @@ pub trait LiquidityModule:
     /// **Purpose**: Increases protocol revenue and reserves with funds from external sources.
     ///
     /// **Process**:
-    /// 1. Retrieves and validates the payment amount.
-    /// 2. Adds the amount to both revenue and reserves.
-    /// 3. Emits a market state event.
+    /// 1. Retrieves and validates the payment `amount`.
+    /// 2. If `amount` is less than or equal to `cache.bad_debt`, it reduces `cache.bad_debt` by `amount`.
+    /// 3. Otherwise, `cache.bad_debt` is cleared, and the `remaining_amount` (after covering bad debt) is added to `cache.revenue` (rescaled to RAY).
+    /// 4. Pool reserves are implicitly increased by the incoming payment.
+    /// 5. Emits a market state event.
     ///
     /// # Arguments
     /// - `price`: The asset price for market update (`ManagedDecimal<Self::Api, NumDecimals>`).
@@ -523,9 +504,12 @@ pub trait LiquidityModule:
     ///
     /// **Process**:
     /// 1. Updates global indexes.
-    /// 2. Adds the dust collateral to protocol revenue.
-    /// 3. Subtracts the dust collateral from supplied.
-    /// 4. Emits a market state event.
+    /// 2. Calculates the `current_dust_actual` (original value of the position's supplied collateral).
+    /// 3. If `current_dust_actual` is less than or equal to `cache.bad_debt`, it reduces `cache.bad_debt` by `current_dust_actual`.
+    /// 4. Otherwise, `cache.bad_debt` is cleared, and the `remaining_amount_actual` (after covering bad debt) is added to `cache.revenue` (rescaled to RAY).
+    /// 5. Subtracts the position's scaled amount from `cache.supplied`.
+    /// 6. Clears the position's scaled amount and updates its market index.
+    /// 7. Emits a market state event.
     ///
     /// # Arguments
     /// - `position`: The position to seize dust collateral from (`AccountPosition<Self::Api>`).
@@ -587,17 +571,49 @@ pub trait LiquidityModule:
         price: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> EgldOrEsdtTokenPayment<Self::Api> {
         let mut cache = Cache::new(self);
-
         self.global_sync(&mut cache);
-        let revenue = cache.revenue.rescale(cache.params.asset_decimals);
-        cache.has_reserves(&revenue);
+
+        // Calculate Target Claim Amount based on accounted revenue
+        let mut target_claim_asset_decimals =
+            self.rescale_half_up(&cache.revenue, cache.params.asset_decimals);
+
+        let actual_reserves_asset_decimals = cache.get_reserves();
+
+        // Check if the pool is effectively empty of user funds
+        let pool_is_empty = cache.supplied == self.ray_zero() && cache.borrowed == self.ray_zero();
+
+        if pool_is_empty {
+            // If the pool is empty, all actual reserves can be considered revenue.
+            target_claim_asset_decimals = actual_reserves_asset_decimals.clone();
+        }
+
+        // Determine Actual Transferable Amount (capped by actual reserves)
+        let amount_to_transfer_asset_decimals = self.get_min(
+            target_claim_asset_decimals.clone(),
+            actual_reserves_asset_decimals,
+        );
 
         let controller = self.blockchain().get_caller();
-        let payment = self.send_asset(&cache, &revenue, &controller);
-        cache.revenue = self.ray_zero();
+        let mut payment =
+            EgldOrEsdtTokenPayment::new(cache.params.asset_id.clone(), 0, BigUint::zero());
+
+        if amount_to_transfer_asset_decimals > cache.zero {
+            payment = self.send_asset(&cache, &amount_to_transfer_asset_decimals, &controller);
+
+            if pool_is_empty {
+                cache.revenue = self.ray_zero();
+            } else {
+                let transferred_amount_ray =
+                    self.rescale_half_up(&amount_to_transfer_asset_decimals, RAY_PRECISION);
+                if cache.revenue >= transferred_amount_ray {
+                    cache.revenue -= transferred_amount_ray;
+                } else {
+                    cache.revenue = self.ray_zero();
+                }
+            }
+        }
 
         self.emit_market_update(&cache, price);
-
         payment
     }
 }

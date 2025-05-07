@@ -1,5 +1,4 @@
-use common_constants::TOTAL_SUPPLY_AMOUNT_STORAGE_KEY;
-use common_events::RAY_PRECISION;
+use common_constants::{RAY_PRECISION, TOTAL_SUPPLY_AMOUNT_STORAGE_KEY};
 use common_structs::{
     AccountAttributes, AccountPosition, AccountPositionType, AssetConfig, PriceFeedShort,
 };
@@ -108,7 +107,7 @@ pub trait PositionDepositModule:
         asset_info: &AssetConfig<Self::Api>,
         token_id: &EgldOrEsdtTokenIdentifier,
     ) -> AccountPosition<Self::Api> {
-        self.deposit_positions(account_nonce)
+        self.positions(account_nonce, AccountPositionType::Deposit)
             .get(token_id)
             .unwrap_or_else(|| {
                 AccountPosition::new(
@@ -244,7 +243,7 @@ pub trait PositionDepositModule:
 
         let first_payment = payments.get(0);
 
-        if self.account_token().get_token_id() == first_payment.token_identifier {
+        if self.account().get_token_id() == first_payment.token_identifier {
             self.require_active_account(first_payment.token_nonce);
 
             let account_payment = first_payment.clone().unwrap_esdt();
@@ -343,9 +342,10 @@ pub trait PositionDepositModule:
                 let pool = cache.get_cached_pool_address(&deposit_payment.token_identifier);
                 let total_supply_scaled = self.get_total_supply(pool).get();
                 let index = cache.get_cached_market_index(&deposit_payment.token_identifier);
-                let total_supplied = self
-                    .mul_half_up(&total_supply_scaled, &index.supply_index, RAY_PRECISION)
-                    .rescale(feed.asset_decimals);
+                let total_supplied = self.rescale_half_up(
+                    &self.mul_half_up(&total_supply_scaled, &index.supply_index, RAY_PRECISION),
+                    feed.asset_decimals,
+                );
 
                 require!(
                     total_supplied.into_raw_units() + &deposit_payment.amount <= *supply_cap,
@@ -369,7 +369,7 @@ pub trait PositionDepositModule:
     ) {
         self.require_active_account(account_nonce);
         let controller_sc = self.blockchain().get_sc_address();
-        let deposit_positions = self.deposit_positions(account_nonce);
+        let deposit_positions = self.positions(account_nonce, AccountPositionType::Deposit);
         let dp_option = deposit_positions.get(asset_id);
         require!(dp_option.is_some(), ERROR_POSITION_NOT_FOUND);
 

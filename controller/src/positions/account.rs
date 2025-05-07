@@ -1,6 +1,5 @@
 use common_constants::BASE_NFT_URI;
-use common_events::PositionMode;
-use common_structs::AccountAttributes;
+use common_structs::{AccountAttributes, PositionMode};
 
 use crate::storage;
 use common_errors::{
@@ -50,12 +49,12 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
             isolated_token,
         };
 
-        let map_last_nonce = self.last_account_nonce();
+        let map_last_nonce = self.account_nonce();
         let last_account_nonce = map_last_nonce.get();
         let next_nonce = last_account_nonce + 1;
 
-        let nft_nonce = self.send().esdt_nft_create(
-            self.account_token().get_token_id_ref(),
+        let account_nonce = self.send().esdt_nft_create(
+            self.account().get_token_id_ref(),
             &BigUint::from(1u64),
             &sc_format!("Lending Account #{}", next_nonce),
             &BigUint::zero(),
@@ -64,18 +63,19 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
             &ManagedVec::from_single_item(sc_format!("{}/{}", BASE_NFT_URI, next_nonce)),
         );
 
-        map_last_nonce.set(nft_nonce);
+        map_last_nonce.set(account_nonce);
 
         let nft_token_payment = EsdtTokenPayment::new(
-            self.account_token().get_token_id(),
-            nft_nonce,
+            self.account().get_token_id(),
+            account_nonce,
             BigUint::from(1u64),
         );
 
         self.tx().to(caller).payment(&nft_token_payment).transfer();
 
-        let _ = self.account_positions().insert(nft_nonce);
-        self.account_attributes(nft_nonce).set(attributes.clone());
+        let _ = self.accounts().insert(account_nonce);
+        self.account_attributes(account_nonce)
+            .set(attributes.clone());
 
         (nft_token_payment, attributes)
     }
@@ -147,7 +147,7 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
     #[inline]
     fn require_active_account(&self, nonce: u64) {
         require!(
-            self.account_positions().contains(&nonce),
+            self.accounts().contains(&nonce),
             ERROR_ACCOUNT_NOT_IN_THE_MARKET
         );
     }
@@ -169,7 +169,7 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
     ) {
         let account_payment = self.call_value().single_esdt().clone();
         self.require_active_account(account_payment.token_nonce);
-        self.account_token()
+        self.account()
             .require_same_token(&account_payment.token_identifier);
 
         let caller = self.blockchain().get_caller();

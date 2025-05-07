@@ -31,7 +31,7 @@ pub trait ConfigModule:
     #[endpoint(registerAccountToken)]
     fn register_account_token(&self, token_name: ManagedBuffer, ticker: ManagedBuffer) {
         let payment_amount = self.call_value().egld();
-        self.account_token().issue_and_set_all_roles(
+        self.account().issue_and_set_all_roles(
             EsdtTokenType::DynamicNFT,
             payment_amount.clone_value(),
             token_name,
@@ -208,24 +208,24 @@ pub trait ConfigModule:
         self.price_aggregator_address().set(&aggregator);
     }
 
-    /// Sets the AshSwap contract address.
-    /// Configures the source for AshSwap price data.
+    /// Sets the Swap Router contract address.
+    /// Configures the source for Swap Router price data.
     ///
     /// # Arguments
-    /// - `aggregator`: Address of the AshSwap contract.
+    /// - `address`: Address of the Swap Router contract.
     ///
     /// # Errors
     /// - `ERROR_INVALID_AGGREGATOR`: If address is zero or not a smart contract.
     #[only_owner]
-    #[endpoint(setAshSwap)]
-    fn set_ash_swap(&self, aggregator: ManagedAddress) {
-        require!(!aggregator.is_zero(), ERROR_INVALID_AGGREGATOR);
+    #[endpoint(setSwapRouter)]
+    fn set_swap_router(&self, address: ManagedAddress) {
+        require!(!address.is_zero(), ERROR_INVALID_AGGREGATOR);
 
         require!(
-            self.blockchain().is_smart_contract(&aggregator),
+            self.blockchain().is_smart_contract(&address),
             ERROR_INVALID_AGGREGATOR
         );
-        self.aggregator().set(&aggregator);
+        self.swap_router().set(&address);
     }
 
     /// Sets the accumulator contract address.

@@ -1,5 +1,5 @@
-use common_constants::TOTAL_BORROWED_AMOUNT_STORAGE_KEY;
-use common_events::RAY_PRECISION;
+use common_constants::{RAY_PRECISION, TOTAL_BORROWED_AMOUNT_STORAGE_KEY};
+
 use common_structs::{
     AccountAttributes, AccountPosition, AccountPositionType, AssetConfig, EModeCategory,
     PriceFeedShort,
@@ -231,7 +231,7 @@ pub trait PositionBorrowModule:
         borrow_asset_config: &AssetConfig<Self::Api>,
         token_id: &EgldOrEsdtTokenIdentifier,
     ) -> AccountPosition<Self::Api> {
-        let borrow_positions = self.borrow_positions(account_nonce);
+        let borrow_positions = self.positions(account_nonce, AccountPositionType::Borrow);
         borrow_positions.get(token_id).unwrap_or_else(|| {
             AccountPosition::new(
                 AccountPositionType::Borrow,
@@ -269,9 +269,10 @@ pub trait PositionBorrowModule:
                 let pool = cache.get_cached_pool_address(asset);
                 let total_borrow_scaled = self.get_total_borrow(pool).get();
                 let index = cache.get_cached_market_index(asset);
-                let borrowed_amount = self
-                    .mul_half_up(&total_borrow_scaled, &index.borrow_index, RAY_PRECISION)
-                    .rescale(amount.scale());
+                let borrowed_amount = self.rescale_half_up(
+                    &self.mul_half_up(&total_borrow_scaled, &index.borrow_index, RAY_PRECISION),
+                    amount.scale(),
+                );
 
                 require!(
                     borrowed_amount.clone() + amount.clone()
@@ -314,13 +315,6 @@ pub trait PositionBorrowModule:
         borrowed_amount: &ManagedDecimal<Self::Api, NumDecimals>,
         amount_to_borrow: &ManagedDecimal<Self::Api, NumDecimals>,
     ) {
-        sc_print!(
-            "ltv_base_amount: {}, borrowed_amount: {}, amount_to_borrow: {}, total: {}",
-            ltv_base_amount,
-            borrowed_amount,
-            amount_to_borrow,
-            (borrowed_amount.clone() + amount_to_borrow.clone())
-        );
         require!(
             ltv_base_amount >= &(borrowed_amount.clone() + amount_to_borrow.clone()),
             ERROR_INSUFFICIENT_COLLATERAL

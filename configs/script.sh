@@ -781,19 +781,19 @@ claim_revenue() {
 
 # Function to set AshSwap address
 set_ash_swap() {
-    local ash_swap_address=$1
+    local swap_router_address=$1
     
-    if [ -z "$ash_swap_address" ]; then
-        echo "Error: AshSwap address is required"
-        echo "Usage: setAshSwap <address>"
+    if [ -z "$swap_router_address" ]; then
+        echo "Error: Swap router address is required"
+        echo "Usage: setSwapRouter <address>"
         exit 1
     fi
     
-    echo "Setting AshSwap address to ${ash_swap_address}..."
+    echo "Setting Swap router address to ${swap_router_address}..."
     
     mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=20000000 \
     --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
-    --function="setAshSwap" --arguments ${ash_swap_address} \
+    --function="setSwapRouter" --arguments ${swap_router_address} \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 

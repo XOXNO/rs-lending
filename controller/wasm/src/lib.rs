@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           65
+// Endpoints:                           63
 // Async Callback:                       1
-// Total number of exported functions:  68
+// Total number of exported functions:  66
 
 #![no_std]
 
@@ -36,7 +36,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         setTokenOracle => set_token_oracle
         editTokenOracleTolerance => edit_token_oracle_tolerance
         setAggregator => set_aggregator
-        setAshSwap => set_ash_swap
+        setSwapRouter => set_swap_router
         setAccumulator => set_accumulator
         setSafePriceView => set_safe_price_view
         setLiquidityPoolTemplate => set_liquidity_pool_template
@@ -47,27 +47,25 @@ multiversx_sc_wasm_adapter::endpoints! {
         editAssetInEModeCategory => edit_asset_in_e_mode_category
         removeAssetFromEModeCategory => remove_asset_from_e_mode_category
         editAssetConfig => edit_asset_config
-        getPoolAllowed => pools_allowed
-        getAccountToken => account_token
-        getLastAccountNonce => last_account_nonce
-        getAccountPositions => account_positions
+        getPools => pools
+        getAccount => account
+        getAccountNonce => account_nonce
+        getAccounts => accounts
         getAccountAttributes => account_attributes
-        getDepositPositions => deposit_positions
-        getBorrowPositions => borrow_positions
+        getPositions => positions
         getLiqPoolTemplateAddress => liq_pool_template_address
         getAccumulatorAddress => accumulator_address
         getPoolAddress => pools_map
         getPriceAggregatorAddress => price_aggregator_address
         getSafePriceAddress => safe_price_view
         getEGLDWrapperAddress => wegld_wrapper
-        getAggregatorAddress => aggregator
+        getSwapRouterAddress => swap_router
         getAssetConfig => asset_config
         lastEModeCategoryId => last_e_mode_category_id
         getEModes => e_mode_category
         getAssetEModes => asset_e_modes
         getEModesAssets => e_mode_assets
         getIsolatedAssetDebtUsd => isolated_asset_debt_usd
-        getVaultSuppliedAmount => vault_supplied_amount
         getTokenOracle => token_oracle
         isFlashLoanOngoing => flash_loan_ongoing
         getAllMarkets => get_all_markets

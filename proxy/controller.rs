@@ -51,7 +51,7 @@ where
     /// - `safe_price_view_address`: Address for safe price views. 
     /// - `accumulator_address`: Address for revenue accumulation. 
     /// - `wegld_address`: Address for wrapped EGLD. 
-    /// - `ash_swap_address`: Address for AshSwap integration. 
+    /// - `swap_router_address`: Address for Swap Router integration. 
     pub fn init<
         Arg0: ProxyArg<ManagedAddress<Env::Api>>,
         Arg1: ProxyArg<ManagedAddress<Env::Api>>,
@@ -66,7 +66,7 @@ where
         safe_price_view_address: Arg2,
         accumulator_address: Arg3,
         wegld_address: Arg4,
-        ash_swap_address: Arg5,
+        swap_router_address: Arg5,
     ) -> TxTypedDeploy<Env, From, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
@@ -76,7 +76,7 @@ where
             .argument(&safe_price_view_address)
             .argument(&accumulator_address)
             .argument(&wegld_address)
-            .argument(&ash_swap_address)
+            .argument(&swap_router_address)
             .original_result()
     }
 }
@@ -611,24 +611,24 @@ where
             .original_result()
     }
 
-    /// Sets the AshSwap contract address. 
-    /// Configures the source for AshSwap price data. 
+    /// Sets the Swap Router contract address. 
+    /// Configures the source for Swap Router price data. 
     ///  
     /// # Arguments 
-    /// - `aggregator`: Address of the AshSwap contract. 
+    /// - `address`: Address of the Swap Router contract. 
     ///  
     /// # Errors 
     /// - `ERROR_INVALID_AGGREGATOR`: If address is zero or not a smart contract. 
-    pub fn set_ash_swap<
+    pub fn set_swap_router<
         Arg0: ProxyArg<ManagedAddress<Env::Api>>,
     >(
         self,
-        aggregator: Arg0,
+        address: Arg0,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("setAshSwap")
-            .argument(&aggregator)
+            .raw_call("setSwapRouter")
+            .argument(&address)
             .original_result()
     }
 
@@ -938,43 +938,45 @@ where
 
     /// Get the set of allowed pools 
     /// This storage mapper holds the addresses of pools that are allowed to participate in the lending protocol. 
-    pub fn pools_allowed(
+    pub fn pools(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValueEncoded<Env::Api, ManagedAddress<Env::Api>>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getPoolAllowed")
+            .raw_call("getPools")
             .original_result()
     }
 
     /// Get the account token 
     /// This storage mapper holds the logic of the account token, which is a non-fungible token (NFT). 
-    pub fn account_token(
+    pub fn account(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, TokenIdentifier<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getAccountToken")
+            .raw_call("getAccount")
             .original_result()
     }
 
-    pub fn last_account_nonce(
+    /// Get the account nonce 
+    /// This storage mapper holds the nonce of the account, which is a non-fungible token (NFT). 
+    pub fn account_nonce(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, u64> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getLastAccountNonce")
+            .raw_call("getAccountNonce")
             .original_result()
     }
 
     /// Get the account positions 
     /// This storage mapper holds a list of account positions as a set. A position represents a nonce of an account (NFT nonce). 
-    pub fn account_positions(
+    pub fn accounts(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValueEncoded<Env::Api, u64>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getAccountPositions")
+            .raw_call("getAccounts")
             .original_result()
     }
 
@@ -995,31 +997,19 @@ where
 
     /// Get the deposit positions 
     /// This storage mapper maps each deposit position to an account nonce, holding a list of assets and their corresponding structs. 
-    pub fn deposit_positions<
+    pub fn positions<
         Arg0: ProxyArg<u64>,
+        Arg1: ProxyArg<common_structs::AccountPositionType>,
     >(
         self,
-        owner_nonce: Arg0,
+        nonce: Arg0,
+        position_type: Arg1,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValueEncoded<Env::Api, MultiValue2<EgldOrEsdtTokenIdentifier<Env::Api>, common_structs::AccountPosition<Env::Api>>>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getDepositPositions")
-            .argument(&owner_nonce)
-            .original_result()
-    }
-
-    /// Get the borrow positions 
-    /// This storage mapper maps each borrow position to an account nonce, holding a list of assets and their corresponding structs. 
-    pub fn borrow_positions<
-        Arg0: ProxyArg<u64>,
-    >(
-        self,
-        owner_nonce: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValueEncoded<Env::Api, MultiValue2<EgldOrEsdtTokenIdentifier<Env::Api>, common_structs::AccountPosition<Env::Api>>>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getBorrowPositions")
-            .argument(&owner_nonce)
+            .raw_call("getPositions")
+            .argument(&nonce)
+            .argument(&position_type)
             .original_result()
     }
 
@@ -1092,12 +1082,12 @@ where
             .original_result()
     }
 
-    pub fn aggregator(
+    pub fn swap_router(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getAggregatorAddress")
+            .raw_call("getSwapRouterAddress")
             .original_result()
     }
 
@@ -1179,21 +1169,6 @@ where
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getIsolatedAssetDebtUsd")
-            .argument(&asset)
-            .original_result()
-    }
-
-    /// Get the vault supplied amount per token 
-    /// This storage mapper holds the supplied amount per token in the vault. 
-    pub fn vault_supplied_amount<
-        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-    >(
-        self,
-        asset: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getVaultSuppliedAmount")
             .argument(&asset)
             .original_result()
     }

@@ -5,9 +5,10 @@ use common_constants::{
     WAD_HALF_PRECISION, WAD_PRECISION, WEGLD_TICKER,
 };
 use common_errors::{ERROR_PRICE_FEED_STALE, ERROR_UN_SAFE_PRICE_NOT_ALLOWED};
-use common_events::MarketIndex;
 use common_proxies::{proxy_pool, proxy_xexchange_pair};
-use common_structs::{ExchangeSource, OracleProvider, OracleType, PriceFeedShort, PricingMethod};
+use common_structs::{
+    ExchangeSource, MarketIndex, OracleProvider, OracleType, PriceFeedShort, PricingMethod,
+};
 use multiversx_sc::storage::StorageKey;
 
 use price_aggregator::{
@@ -412,8 +413,10 @@ pub trait OracleModule:
         let feed =
             self.get_aggregator_price_feed(ticker, &cache.price_aggregator_sc, max_seconds_stale);
         let token_usd_price = self.to_decimal_wad(feed.price);
-        self.div_half_up(&token_usd_price, &cache.egld_usd_price, RAY_PRECISION)
-            .rescale(WAD_PRECISION)
+        self.rescale_half_up(
+            &self.div_half_up(&token_usd_price, &cache.egld_usd_price, RAY_PRECISION),
+            WAD_PRECISION,
+        )
     }
 
     fn find_token_price_in_egld_from_aggregator(
@@ -524,9 +527,12 @@ pub trait OracleModule:
 
         // --- Calculate final LP price in EGLD per LP token ---
         // Ensure total_supply is scaled to WAD before division
-        let total_supply_wad = total_supply.rescale(WAD_PRECISION);
+        let total_supply_wad = self.rescale_half_up(total_supply, WAD_PRECISION);
         // Price = (Total Value * WAD) / (LP Supply * WAD) * WAD = Price * WAD
-        self.div_half_up(&lp_total_value_egld, &total_supply_wad, WAD_PRECISION)
+        self.rescale_half_up(
+            &self.div_half_up(&lp_total_value_egld, &total_supply_wad, WAD_PRECISION),
+            WAD_PRECISION,
+        )
     }
 
     /// Fetch price feed from aggregator, converting to decimal format.

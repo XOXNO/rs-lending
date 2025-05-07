@@ -1,5 +1,5 @@
 use common_errors::ERROR_WITHDRAW_TOKEN_RECEIVED;
-use common_structs::{AccountAttributes, AccountPosition, PriceFeedShort};
+use common_structs::{AccountAttributes, AccountPosition, AccountPositionType, PriceFeedShort};
 
 use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validation};
 
@@ -147,14 +147,18 @@ pub trait PositionWithdrawModule:
         account_payment: &EsdtTokenPayment<Self::Api>,
         caller: &ManagedAddress,
     ) {
-        let deposit_positions_count = self.deposit_positions(account_payment.token_nonce).len();
-        let borrow_positions_count = self.borrow_positions(account_payment.token_nonce).len();
+        let deposit_positions_count = self
+            .positions(account_payment.token_nonce, AccountPositionType::Deposit)
+            .len();
+        let borrow_positions_count = self
+            .positions(account_payment.token_nonce, AccountPositionType::Borrow)
+            .len();
 
         // Burn NFT if position is fully closed
         if deposit_positions_count == 0 && borrow_positions_count == 0 {
-            self.account_token()
+            self.account()
                 .nft_burn(account_payment.token_nonce, &BigUint::from(1u64));
-            self.account_positions()
+            self.accounts()
                 .swap_remove(&account_payment.token_nonce);
             self.account_attributes(account_payment.token_nonce).clear();
         } else {
@@ -175,7 +179,9 @@ pub trait PositionWithdrawModule:
         account_nonce: u64,
         token_id: &EgldOrEsdtTokenIdentifier,
     ) -> AccountPosition<Self::Api> {
-        let opt_deposit_position = self.deposit_positions(account_nonce).get(token_id);
+        let opt_deposit_position = self
+            .positions(account_nonce, AccountPositionType::Deposit)
+            .get(token_id);
         require!(
             opt_deposit_position.is_some(),
             "Token {} is not available for this account",

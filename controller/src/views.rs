@@ -1,4 +1,4 @@
-use common_structs::AssetExtendedConfigView;
+use common_structs::{AccountPositionType, AssetExtendedConfigView};
 
 use crate::{cache::Cache, helpers, oracle, storage, utils};
 
@@ -92,7 +92,10 @@ pub trait ViewsModule:
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let mut cache = Cache::new(self);
         let feed = self.get_token_price(token_id, &mut cache);
-        match self.deposit_positions(account_nonce).get(token_id) {
+        match self
+            .positions(account_nonce, AccountPositionType::Deposit)
+            .get(token_id)
+        {
             Some(dp) => self.get_total_amount(&dp, &feed, &mut cache),
             None => sc_panic!("Token not existing in the account {}", token_id),
         }
@@ -119,7 +122,10 @@ pub trait ViewsModule:
         let mut cache = Cache::new(self);
         cache.allow_unsafe_price = false;
         let feed = self.get_token_price(token_id, &mut cache);
-        match self.borrow_positions(account_nonce).get(token_id) {
+        match self
+            .positions(account_nonce, AccountPositionType::Borrow)
+            .get(token_id)
+        {
             Some(bp) => self.get_total_amount(&bp, &feed, &mut cache),
             None => sc_panic!("Token not existing in the account {}", token_id),
         }
@@ -139,8 +145,11 @@ pub trait ViewsModule:
         account_nonce: u64,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let mut cache = Cache::new(self);
-        let borrow_positions = self.borrow_positions(account_nonce);
-        self.calculate_total_borrow_in_egld(&borrow_positions.values().collect(), &mut cache)
+        let borrow_positions = self
+            .positions(account_nonce, AccountPositionType::Borrow)
+            .values()
+            .collect();
+        self.calculate_total_borrow_in_egld(&borrow_positions, &mut cache)
     }
 
     /// Computes the total collateral value in EGLD for an account position.
@@ -156,7 +165,7 @@ pub trait ViewsModule:
         &self,
         account_nonce: u64,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let deposit_positions = self.deposit_positions(account_nonce);
+        let deposit_positions = self.positions(account_nonce, AccountPositionType::Deposit);
 
         let mut cache = Cache::new(self);
         cache.allow_unsafe_price = false;
@@ -181,7 +190,7 @@ pub trait ViewsModule:
         &self,
         account_nonce: u64,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let deposit_positions = self.deposit_positions(account_nonce);
+        let deposit_positions = self.positions(account_nonce, AccountPositionType::Deposit);
 
         let mut cache = Cache::new(self);
 
@@ -204,7 +213,7 @@ pub trait ViewsModule:
         &self,
         account_nonce: u64,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let deposit_positions = self.deposit_positions(account_nonce);
+        let deposit_positions = self.positions(account_nonce, AccountPositionType::Deposit);
 
         let mut cache = Cache::new(self);
 

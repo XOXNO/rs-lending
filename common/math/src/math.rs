@@ -1,5 +1,7 @@
 #![no_std]
 
+use core::cmp::Ordering;
+
 use common_constants::{BPS, BPS_PRECISION, RAY, RAY_PRECISION, WAD, WAD_PRECISION};
 
 multiversx_sc::imports!();
@@ -154,6 +156,30 @@ pub trait SharedMathModule {
         ManagedDecimal::from_raw_units(value, precision)
     }
 
+    #[inline]
+    fn rescale_half_up(
+        &self,
+        value: &ManagedDecimal<Self::Api, NumDecimals>,
+        new_precision: NumDecimals,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        let old_precision = value.scale();
+        let raw_value = value.into_raw_units();
+
+        match new_precision.cmp(&old_precision) {
+            Ordering::Equal => value.clone(),
+            Ordering::Less => {
+                let precision_diff = old_precision - new_precision;
+                let factor = BigUint::from(10u64).pow(precision_diff as u32);
+                let half_factor = &factor / 2u64;
+
+                let rounded_downscaled_value = (raw_value + &half_factor) / factor;
+                return ManagedDecimal::from_raw_units(rounded_downscaled_value, new_precision);
+            },
+            Ordering::Greater => value.rescale(new_precision),
+        }
+    }
+
+    #[inline]
     fn get_min(
         self,
         a: ManagedDecimal<Self::Api, NumDecimals>,

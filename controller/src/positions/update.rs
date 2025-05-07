@@ -26,7 +26,7 @@ pub trait PositionUpdateModule:
         ManagedVec<AccountPosition<Self::Api>>,
         ManagedMapEncoded<Self::Api, EgldOrEsdtTokenIdentifier, usize>,
     ) {
-        let borrow_positions_map = self.borrow_positions(account_nonce);
+        let borrow_positions_map = self.positions(account_nonce, AccountPositionType::Borrow);
         let mut updated_positions = ManagedVec::new();
         let mut position_index_map = ManagedMapEncoded::new();
 
@@ -41,7 +41,6 @@ pub trait PositionUpdateModule:
 
         (updated_positions, position_index_map)
     }
-
 
     /// Fetches token price if requested.
     /// Supports conditional price updates.
@@ -74,21 +73,8 @@ pub trait PositionUpdateModule:
     /// - `account_nonce`: Position NFT nonce.
     /// - `position`: Updated position.
     fn store_updated_position(&self, account_nonce: u64, position: &AccountPosition<Self::Api>) {
-        match position.position_type {
-            AccountPositionType::Deposit => {
-                let _ = self
-                    .deposit_positions(account_nonce)
-                    .insert(position.asset_id.clone(), position.clone());
-            },
-            AccountPositionType::Borrow => {
-                let _ = self
-                    .borrow_positions(account_nonce)
-                    .insert(position.asset_id.clone(), position.clone());
-            },
-            AccountPositionType::None => {
-                panic!("Position type is None");
-            },
-        }
+        self.positions(account_nonce, position.position_type.clone())
+            .insert(position.asset_id.clone(), position.clone());
     }
 
     /// Stores an updated position in storage.
@@ -98,22 +84,10 @@ pub trait PositionUpdateModule:
     /// - `account_nonce`: Position NFT nonce.
     /// - `position`: Updated position.
     fn remove_position(&self, account_nonce: u64, position: &AccountPosition<Self::Api>) {
-        match position.position_type {
-            AccountPositionType::Deposit => {
-                let _ = self
-                    .deposit_positions(account_nonce)
-                    .remove(&position.asset_id);
-            },
-            AccountPositionType::Borrow => {
-                let _ = self
-                    .borrow_positions(account_nonce)
-                    .remove(&position.asset_id);
-            },
-            AccountPositionType::None => {
-                panic!("Position type is None");
-            },
-        }
+        self.positions(account_nonce, position.position_type.clone())
+            .remove(&position.asset_id);
     }
+
     /// Updates or removes a borrow position in storage.
     /// Reflects repayment changes in storage.
     ///

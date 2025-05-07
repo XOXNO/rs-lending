@@ -107,11 +107,9 @@ pub trait RouterModule:
         self.require_non_zero_address(&address);
 
         self.pools_map(&base_asset).set(address.clone());
-        self.pools_allowed().insert(address.clone());
+        self.pools().insert(address.clone());
 
         // Init ManagedDecimal for future usage and avoiding storage decode errors for checks
-        self.vault_supplied_amount(&base_asset)
-            .set(self.to_decimal(BigUint::zero(), asset_decimals));
         self.isolated_asset_debt_usd(&base_asset)
             .set(self.to_decimal(BigUint::zero(), asset_decimals));
 

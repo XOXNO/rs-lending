@@ -194,16 +194,5 @@ pub trait LiquidityPool:
                 ERROR_INVALID_RESERVE_FACTOR
             );
         });
-
-        // let current_balance = self
-        //     .blockchain()
-        //     .get_sc_balance(&self.pool_asset().get(), 0);
-
-        // if current_balance > BigUint::zero() {
-        //     self.tx()
-        //         .to(self.blockchain().get_caller())
-        //         .egld_or_single_esdt(&self.pool_asset().get(), 0, &current_balance)
-        //         .transfer();
-        // }
     }
 }

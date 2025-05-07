@@ -1,4 +1,4 @@
-use common_structs::{AccountAttributes, AccountPosition, PriceFeedShort};
+use common_structs::{AccountAttributes, AccountPosition, AccountPositionType, PriceFeedShort};
 
 use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validation};
 
@@ -167,7 +167,7 @@ pub trait PositionRepayModule:
         account_nonce: u64,
         token_id: &EgldOrEsdtTokenIdentifier,
     ) -> AccountPosition<Self::Api> {
-        let borrow_positions = self.borrow_positions(account_nonce);
+        let borrow_positions = self.positions(account_nonce, AccountPositionType::Borrow);
         let position = borrow_positions.get(token_id);
         require!(
             position.is_some(),

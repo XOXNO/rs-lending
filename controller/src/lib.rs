@@ -53,7 +53,7 @@ pub trait Controller:
     /// - `safe_price_view_address`: Address for safe price views.
     /// - `accumulator_address`: Address for revenue accumulation.
     /// - `wegld_address`: Address for wrapped EGLD.
-    /// - `ash_swap_address`: Address for AshSwap integration.
+    /// - `swap_router_address`: Address for Swap Router integration.
     #[init]
     fn init(
         &self,
@@ -62,7 +62,7 @@ pub trait Controller:
         safe_price_view_address: &ManagedAddress,
         accumulator_address: &ManagedAddress,
         wegld_address: &ManagedAddress,
-        ash_swap_address: &ManagedAddress,
+        swap_router_address: &ManagedAddress,
     ) {
         self.liq_pool_template_address().set(lp_template_address);
         self.price_aggregator_address()
@@ -70,7 +70,7 @@ pub trait Controller:
         self.safe_price_view().set(safe_price_view_address);
         self.accumulator_address().set(accumulator_address);
         self.wegld_wrapper().set(wegld_address);
-        self.aggregator().set(ash_swap_address);
+        self.swap_router().set(swap_router_address);
     }
 
     #[upgrade]
@@ -204,16 +204,17 @@ pub trait Controller:
         cache.allow_unsafe_price = false;
 
         let (account_payment, caller, account_attributes) = self.validate_account(true);
+        let (_, account_nonce, _) = account_payment.into_tuple();
 
         // Sync positions with interest
-        let collaterals = self.deposit_positions(account_payment.token_nonce).values().collect();
+        let collaterals = self.positions(account_nonce, AccountPositionType::Deposit).values().collect();
         // self.sync_deposit_positions_interest(account_payment.token_nonce, &mut cache, true);
 
         let (_, _, ltv_collateral) = self.calculate_collateral_values(&collaterals, &mut cache);
 
         let is_bulk_borrow = borrowed_tokens.len() > 1;
         let (mut borrows, mut borrow_index_mapper) = self.get_borrow_positions(
-            account_payment.token_nonce,
+            account_nonce,
             is_bulk_borrow,
         );
 
@@ -224,7 +225,7 @@ pub trait Controller:
         for borrowed_token in borrowed_tokens {
             self.process_borrow(
                 &mut cache,
-                account_payment.token_nonce,
+                account_nonce,
                 &caller,
                 &borrowed_token,
                 &account_attributes,
@@ -388,7 +389,7 @@ pub trait Controller:
         self.reentrancy_guard(cache.flash_loan_ongoing);
         self.require_active_account(account_nonce);
 
-        let collaterals = self.deposit_positions(account_nonce).values().collect();
+        let collaterals = self.positions(account_nonce, AccountPositionType::Deposit).values().collect();
 
         let (borrow_positions, _) = self.get_borrow_positions(account_nonce, false);
 
