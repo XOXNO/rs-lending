@@ -17,8 +17,8 @@ pub mod views;
 
 use cache::Cache;
 pub use common_errors::*;
-pub use common_structs::*;
 pub use common_proxies::*;
+pub use common_structs::*;
 
 #[multiversx_sc::contract]
 pub trait Controller:
@@ -30,7 +30,7 @@ pub trait Controller:
     + positions::liquidation::PositionLiquidationModule
     + positions::update::PositionUpdateModule
     + positions::emode::EModeModule
-    + positions::vault::PositionVaultModule
+    // + positions::vault::PositionVaultModule
     + router::RouterModule
     + config::ConfigModule
     + common_events::EventsModule
@@ -53,7 +53,7 @@ pub trait Controller:
     /// - `safe_price_view_address`: Address for safe price views.
     /// - `accumulator_address`: Address for revenue accumulation.
     /// - `wegld_address`: Address for wrapped EGLD.
-    /// - `ash_swap_address`: Address for AshSwap integration.
+    /// - `swap_router_address`: Address for Swap Router integration.
     #[init]
     fn init(
         &self,
@@ -62,7 +62,7 @@ pub trait Controller:
         safe_price_view_address: &ManagedAddress,
         accumulator_address: &ManagedAddress,
         wegld_address: &ManagedAddress,
-        ash_swap_address: &ManagedAddress,
+        swap_router_address: &ManagedAddress,
     ) {
         self.liq_pool_template_address().set(lp_template_address);
         self.price_aggregator_address()
@@ -70,11 +70,22 @@ pub trait Controller:
         self.safe_price_view().set(safe_price_view_address);
         self.accumulator_address().set(accumulator_address);
         self.wegld_wrapper().set(wegld_address);
-        self.aggregator().set(ash_swap_address);
+        self.swap_router().set(swap_router_address);
     }
 
     #[upgrade]
-    fn upgrade(&self) {}
+    fn upgrade(&self, _assets: MultiValueEncoded<EgldOrEsdtTokenIdentifier>) {
+        // for asset in assets {
+        //     let current_balance = self.blockchain().get_sc_balance(&asset, 0);
+
+        //     if current_balance > BigUint::zero() {
+        //         self.tx()
+        //             .to(self.blockchain().get_caller())
+        //             .egld_or_single_esdt(&asset, 0, &current_balanclearce)
+        //             .transfer();
+        //     }
+        // }
+    }
 
     /// Supplies collateral to the lending pool.
     ///
@@ -86,15 +97,15 @@ pub trait Controller:
     /// - Accepts minimum 1 payment: optional account NFT and bulk collateral tokens.
     #[payable]
     #[endpoint(supply)]
-    fn supply(&self, is_vault: bool, e_mode_category: OptionalValue<u8>) {
+    fn supply(&self, e_mode_category: OptionalValue<u8>) {
         let mut cache = Cache::new(self);
-
+        self.reentrancy_guard(cache.flash_loan_ongoing);
         // Validate and extract payment details
-        let (collaterals, maybe_account, caller, maybe_attributes) =
-            self.validate_supply_payment(false);
+        let (collaterals, opt_account, caller, opt_attributes) =
+            self.validate_supply_payment(false, true);
 
         require!(
-            collaterals.len() >= 1,
+            !collaterals.is_empty(),
             ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS
         );
 
@@ -105,28 +116,25 @@ pub trait Controller:
         let first_asset_info = cache.get_cached_asset_info(&first_collateral.token_identifier);
 
         // If the asset is isolated, we can only supply one collateral not a bulk
-        require!(
-            first_asset_info.is_isolated() && collaterals.len() == 1
-                || !first_asset_info.is_isolated(),
-            ERROR_BULK_SUPPLY_NOT_SUPPORTED
-        );
+        if first_asset_info.is_isolated() {
+            require!(collaterals.len() == 1, ERROR_BULK_SUPPLY_NOT_SUPPORTED);
+        }
 
         // Get or create account position
+        let opt_isolated_token = if first_asset_info.is_isolated() {
+            Some(first_collateral.token_identifier.clone())
+        } else {
+            None
+        };
         let (account_nonce, account_attributes) = self.get_or_create_account(
             &caller,
             first_asset_info.is_isolated(),
-            is_vault,
+            PositionMode::Normal,
             e_mode_category,
-            maybe_account,
-            maybe_attributes,
-            if first_asset_info.is_isolated() {
-                Some(first_collateral.token_identifier.clone())
-            } else {
-                None
-            },
+            opt_account,
+            opt_attributes,
+            opt_isolated_token,
         );
-
-        self.validate_vault_consistency(&account_attributes, is_vault);
 
         // Process the deposit
         self.process_deposit(
@@ -151,20 +159,27 @@ pub trait Controller:
         let (account_payment, caller, account_attributes) = self.validate_account(false);
 
         let mut cache = Cache::new(self);
+        self.reentrancy_guard(cache.flash_loan_ongoing);
         cache.allow_unsafe_price = false;
 
         // Process each withdrawal
         for collateral in collaterals {
             self.validate_payment(&collateral);
-            self.process_withdrawal(
+            let mut deposit_position = self
+                .get_deposit_position(account_payment.token_nonce, &collateral.token_identifier);
+            let feed = self.get_token_price(&deposit_position.asset_id, &mut cache);
+            let amount = deposit_position.make_amount_decimal(&collateral.amount, feed.asset_decimals);
+
+            let _ = self.process_withdrawal(
                 account_payment.token_nonce,
-                collateral,
+                amount,
                 &caller,
                 false,
                 None,
                 &mut cache,
                 &account_attributes,
-                false,
+                &mut deposit_position,
+                &feed,
             );
         }
 
@@ -185,27 +200,21 @@ pub trait Controller:
     #[endpoint(borrow)]
     fn borrow(&self, borrowed_tokens: MultiValueEncoded<EgldOrEsdtTokenPayment<Self::Api>>) {
         let mut cache = Cache::new(self);
+        self.reentrancy_guard(cache.flash_loan_ongoing);
         cache.allow_unsafe_price = false;
 
         let (account_payment, caller, account_attributes) = self.validate_account(true);
+        let (_, account_nonce, _) = account_payment.into_tuple();
 
         // Sync positions with interest
-        let collaterals = self.sync_deposit_positions_interest(
-            account_payment.token_nonce,
-            &mut cache,
-            false,
-            &account_attributes,
-            true,
-        );
+        let collaterals = self.positions(account_nonce, AccountPositionType::Deposit).values().collect();
+        // self.sync_deposit_positions_interest(account_payment.token_nonce, &mut cache, true);
 
         let (_, _, ltv_collateral) = self.calculate_collateral_values(&collaterals, &mut cache);
 
         let is_bulk_borrow = borrowed_tokens.len() > 1;
-
-        let (mut borrows, mut borrow_index_mapper) = self.sync_borrow_positions_interest(
-            account_payment.token_nonce,
-            &mut cache,
-            false,
+        let (mut borrows, mut borrow_index_mapper) = self.get_borrow_positions(
+            account_nonce,
             is_bulk_borrow,
         );
 
@@ -216,7 +225,7 @@ pub trait Controller:
         for borrowed_token in borrowed_tokens {
             self.process_borrow(
                 &mut cache,
-                account_payment.token_nonce,
+                account_nonce,
                 &caller,
                 &borrowed_token,
                 &account_attributes,
@@ -237,13 +246,15 @@ pub trait Controller:
     #[endpoint(repay)]
     fn repay(&self, account_nonce: u64) {
         let mut cache = Cache::new(self);
+        self.reentrancy_guard(cache.flash_loan_ongoing);
         let payments = self.call_value().all_transfers();
-        let caller = self.blockchain().get_caller();
         self.require_active_account(account_nonce);
-        let account_attributes = self.account_attributes(account_nonce).get();
 
+        let account_attributes = self.account_attributes(account_nonce).get();
+        let caller = self.blockchain().get_caller();
         for payment in payments.iter() {
             self.validate_payment(&payment);
+
             let feed = self.get_token_price(&payment.token_identifier, &mut cache);
             let payment_decimal = self.to_decimal(payment.amount.clone(), feed.asset_decimals);
             let egld_value = self.get_token_egld_value(&payment_decimal, &feed.price);
@@ -291,16 +302,18 @@ pub trait Controller:
         arguments: ManagedArgBuffer<Self::Api>,
     ) {
         let mut cache = Cache::new(self);
+        self.reentrancy_guard(cache.flash_loan_ongoing);
         let asset_config = cache.get_cached_asset_info(borrowed_asset_id);
         require!(asset_config.can_flashloan(), ERROR_FLASHLOAN_NOT_ENABLED);
 
-        let pool_address = self.get_pool_address(borrowed_asset_id);
+        let pool_address = cache.get_cached_pool_address(borrowed_asset_id);
         self.validate_flash_loan_shard(contract_address);
         self.require_amount_greater_than_zero(&amount);
         self.validate_flash_loan_endpoint(&endpoint);
 
         let feed = self.get_token_price(borrowed_asset_id, &mut cache);
 
+        self.flash_loan_ongoing().set(true);
         self.tx()
             .to(pool_address)
             .typed(proxy_pool::LiquidityPoolProxy)
@@ -315,57 +328,8 @@ pub trait Controller:
             )
             .returns(ReturnsResult)
             .sync_call();
-    }
 
-    /// Updates account positions with the latest interest data.
-    ///
-    /// # Arguments
-    /// - `account_nonce`: NFT nonce of the account to sync.
-    ///
-    /// # Returns
-    /// - `MultiValue2<ManagedVec<AccountPosition>, ManagedVec<AccountPosition>>`: Updated deposit and borrow positions.
-    #[endpoint(updateAccountPositions)]
-    fn update_account_positions(
-        &self,
-        account_nonce: u64,
-    ) -> MultiValue2<ManagedVec<AccountPosition<Self::Api>>, ManagedVec<AccountPosition<Self::Api>>>
-    {
-        self.require_active_account(account_nonce);
-        let mut cache = Cache::new(self);
-        let account_attributes = self.account_attributes(account_nonce).get();
-        let deposits = self.sync_deposit_positions_interest(
-            account_nonce,
-            &mut cache,
-            true,
-            &account_attributes,
-            true,
-        );
-
-        let (borrows, _) =
-            self.sync_borrow_positions_interest(account_nonce, &mut cache, true, false);
-        (deposits, borrows).into()
-    }
-
-    /// Disables vault mode for an account, moving funds to the market pool.
-    #[payable]
-    #[endpoint(toggleVault)]
-    fn toggle_vault(&self, status: bool) {
-        let (account_payment, caller, mut account_attributes) = self.validate_account(false);
-        self.validate_vault_account(&account_attributes, !status);
-
-        let mut cache = Cache::new(self);
-        account_attributes.is_vault_position = status;
-
-        self.process_vault_toggle(
-            account_payment.token_nonce,
-            status,
-            &mut cache,
-            &account_attributes,
-            &caller,
-        );
-
-        self.update_account_attributes(account_payment.token_nonce, &account_attributes);
-        self.tx().to(caller).payment(&account_payment).transfer();
+        self.flash_loan_ongoing().set(false);
     }
 
     /// Updates LTV or liquidation threshold for account positions of a specific asset.
@@ -382,7 +346,9 @@ pub trait Controller:
         account_nonces: MultiValueEncoded<u64>,
     ) {
         self.require_asset_supported(&asset_id);
+
         let mut cache = Cache::new(self);
+        self.reentrancy_guard(cache.flash_loan_ongoing);
         let mut asset_config = cache.get_cached_asset_info(&asset_id);
 
         for account_nonce in account_nonces {
@@ -404,6 +370,7 @@ pub trait Controller:
     #[endpoint(updateIndexes)]
     fn update_indexes(&self, assets: MultiValueEncoded<EgldOrEsdtTokenIdentifier>) {
         let mut cache = Cache::new(self);
+        self.reentrancy_guard(cache.flash_loan_ongoing);
         for asset_id in assets {
             self.update_asset_index(&asset_id, &mut cache);
         }
@@ -419,20 +386,12 @@ pub trait Controller:
     #[endpoint(cleanBadDebt)]
     fn clean_bad_debt(&self, account_nonce: u64) {
         let mut cache = Cache::new(self);
+        self.reentrancy_guard(cache.flash_loan_ongoing);
         self.require_active_account(account_nonce);
 
-        let account_attributes = self.account_attributes(account_nonce).get();
+        let collaterals = self.positions(account_nonce, AccountPositionType::Deposit).values().collect();
 
-        let collaterals = self.sync_deposit_positions_interest(
-            account_nonce,
-            &mut cache,
-            true,
-            &account_attributes,
-            true,
-        );
-
-        let (borrow_positions, _) =
-            self.sync_borrow_positions_interest(account_nonce, &mut cache, true, false);
+        let (borrow_positions, _) = self.get_borrow_positions(account_nonce, false);
 
         let (_, total_collateral, _) = self.calculate_collateral_values(&collaterals, &mut cache);
         let total_borrow = self.calculate_total_borrow_in_egld(&borrow_positions, &mut cache);

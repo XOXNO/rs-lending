@@ -5,16 +5,16 @@
     "liquidation_threshold": "8000",
     "liquidation_bonus": "550",
     "liquidation_base_fee": "500",
-    "borrow_cap": "20000",
-    "supply_cap": "20000",
-    "base_rate": "3",
-    "max_rate": "45",
+    "borrow_cap": "2000000",
+    "supply_cap": "2000000",
+    "base_rate": "1",
+    "max_rate": "69",
     "slope1": "2",
-    "slope2": "25",
-    "slope3": "50",
-    "mid_utilization": "65",
+    "slope2": "5",
+    "slope3": "25",
+    "mid_utilization": "45",
     "optimal_utilization": "85",
-    "reserve_factor": "2000",
+    "reserve_factor": "500",
     "can_be_collateral": "0x01",
     "can_be_borrowed": "0x01",
     "is_isolated": "0x00",
@@ -28,8 +28,9 @@
     "oracle_type": "1",
     "oracle_source": "1",
     "oracle_decimals": "18",
-    "first_tolerance": "125",
-    "last_tolerance": "150"
+    "first_tolerance": "155",
+    "last_tolerance": "225",
+    "max_price_stale_seconds": "14400"
   },
   "XEGLD": {
     "token_id": "XEGLD-23b511",
@@ -61,7 +62,8 @@
     "oracle_source": "3",
     "oracle_decimals": "18",
     "first_tolerance": "125",
-    "last_tolerance": "150"
+    "last_tolerance": "150",
+    "max_price_stale_seconds": "14400"
   },
   "LEGLD": {
     "token_id": "LEGLD-e8378b",
@@ -93,7 +95,8 @@
     "oracle_source": "4",
     "oracle_decimals": "18",
     "first_tolerance": "125",
-    "last_tolerance": "150"
+    "last_tolerance": "150",
+    "max_price_stale_seconds": "14400"
   },
   "XOXNO": {
     "token_id": "XOXNO-589e09",
@@ -125,7 +128,8 @@
     "oracle_source": "1",
     "oracle_decimals": "18",
     "first_tolerance": "225",
-    "last_tolerance": "450"
+    "last_tolerance": "450",
+    "max_price_stale_seconds": "14400"
   },
   "LXOXNO": {
     "token_id": "LXOXNO-a00540",
@@ -157,7 +161,8 @@
     "oracle_source": "2",
     "oracle_decimals": "18",
     "first_tolerance": "125",
-    "last_tolerance": "150"
+    "last_tolerance": "150",
+    "max_price_stale_seconds": "14400"
   },
   "USDC": {
     "token_id": "USDC-350c4e",
@@ -168,13 +173,13 @@
     "borrow_cap": "7000000",
     "supply_cap": "7000000",
     "base_rate": "1",
-    "max_rate": "100",
-    "slope1": "5",
-    "slope2": "15",
-    "slope3": "100",
-    "mid_utilization": "70",
-    "optimal_utilization": "90",
-    "reserve_factor": "1000",
+    "max_rate": "69",
+    "slope1": "1",
+    "slope2": "2",
+    "slope3": "50",
+    "mid_utilization": "40",
+    "optimal_utilization": "85",
+    "reserve_factor": "500",
     "can_be_collateral": "0x01",
     "can_be_borrowed": "0x01",
     "is_isolated": "0x00",
@@ -188,8 +193,9 @@
     "oracle_type": "1",
     "oracle_source": "1",
     "oracle_decimals": "6",
-    "first_tolerance": "125",
-    "last_tolerance": "150"
+    "first_tolerance": "50",
+    "last_tolerance": "150",
+    "max_price_stale_seconds": "43200"
   },
   "USDT": {
     "token_id": "USDT-58d5d0",
@@ -221,7 +227,8 @@
     "oracle_source": "1",
     "oracle_decimals": "6",
     "first_tolerance": "125",
-    "last_tolerance": "150"
+    "last_tolerance": "150",
+    "max_price_stale_seconds": "43200"
   },
   "WETH": {
     "token_id": "WETH-bbe4ab",
@@ -253,7 +260,8 @@
     "oracle_source": "1",
     "oracle_decimals": "18",
     "first_tolerance": "125",
-    "last_tolerance": "150"
+    "last_tolerance": "150",
+    "max_price_stale_seconds": "14400"
   },
   "MEX": {
     "token_id": "MEX-a659d0",
@@ -284,8 +292,9 @@
     "oracle_type": "1",
     "oracle_source": "1",
     "oracle_decimals": "18",
-    "first_tolerance": "125",
-    "last_tolerance": "150"
+    "first_tolerance": "225",
+    "last_tolerance": "500",
+    "max_price_stale_seconds": "14400"
   },
   "UTK": {
     "token_id": "UTK-14d57d",
@@ -317,7 +326,8 @@
     "oracle_source": "1",
     "oracle_decimals": "18",
     "first_tolerance": "125",
-    "last_tolerance": "150"
+    "last_tolerance": "150",
+    "max_price_stale_seconds": "14400"
   },
   "WBTC": {
     "token_id": "WBTC-05fd5b",
@@ -349,7 +359,8 @@
     "oracle_source": "1",
     "oracle_decimals": "8",
     "first_tolerance": "125",
-    "last_tolerance": "150"
+    "last_tolerance": "150",
+    "max_price_stale_seconds": "14400"
   },
   "XOXNOWEGLD": {
     "token_id": "XOXNOWEGLD-232308",
@@ -381,7 +392,8 @@
     "oracle_source": "1",
     "oracle_decimals": "18",
     "first_tolerance": "125",
-    "last_tolerance": "150"
+    "last_tolerance": "150",
+    "max_price_stale_seconds": "14400"
   },
   "XEGLDWEGLD": {
     "token_id": "XEGLDWEGLD-cc2dd9",
@@ -413,7 +425,8 @@
     "oracle_source": "1",
     "oracle_decimals": "18",
     "first_tolerance": "125",
-    "last_tolerance": "150"
+    "last_tolerance": "150",
+    "max_price_stale_seconds": "14400"
   },
   "WEGLDUSDC": {
     "token_id": "EGLDUSDC-ac1a30",
@@ -421,8 +434,8 @@
     "liquidation_threshold": "8500",
     "liquidation_bonus": "550",
     "liquidation_base_fee": "500",
-    "borrow_cap": "2000",
-    "supply_cap": "2000",
+    "borrow_cap": "0.0000001",
+    "supply_cap": "0.0000001",
     "base_rate": "3",
     "max_rate": "45",
     "slope1": "10",
@@ -443,9 +456,10 @@
     "oracle_method": "0",
     "oracle_type": "3",
     "oracle_source": "1",
-    "oracle_decimals": "6",
+    "oracle_decimals": "18",
     "first_tolerance": "125",
-    "last_tolerance": "150"
+    "last_tolerance": "150",
+    "max_price_stale_seconds": "14400"
   },
   "ONE": {
     "token_id": "ONE-83a7c0",
@@ -478,6 +492,7 @@
     "oracle_decimals": "18",
     "first_tolerance": "225",
     "last_tolerance": "450",
-    "pair_id": "1"
+    "pair_id": "1",
+    "max_price_stale_seconds": "14400"
   }
 }

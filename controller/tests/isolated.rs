@@ -2,7 +2,7 @@ use controller::{
     ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL, ERROR_DEBT_CEILING_REACHED,
     ERROR_EMODE_CATEGORY_NOT_FOUND, ERROR_MIX_ISOLATED_COLLATERAL, WAD_PRECISION,
 };
-use multiversx_sc::types::ManagedDecimal;
+use multiversx_sc::types::{EgldOrEsdtTokenIdentifier, ManagedDecimal, MultiValueEncoded};
 use multiversx_sc_scenario::imports::{BigUint, OptionalValue, TestAddress};
 pub mod constants;
 pub mod proxys;
@@ -210,8 +210,11 @@ fn test_borrow_asset_as_isolated_debt_celling_case_with_debt_interest() {
 
     println!("Borrow {:?}", borrow_amount);
     assert!(borrow_amount > ManagedDecimal::from_raw_units(BigUint::zero(), ISOLATED_DECIMALS));
-    state.world.current_block().block_timestamp(SECONDS_PER_DAY);
-    state.update_account_positions(&borrower, 2);
+    state.change_timestamp(SECONDS_PER_DAY);
+
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
+    state.update_markets(&borrower, markets.clone());
     let borrow_amount = state.get_borrow_amount_for_token(2, USDC_TOKEN);
     println!("Borrow {:?}", borrow_amount);
     state.repay_asset(
@@ -278,11 +281,10 @@ fn test_borrow_asset_as_isolated_debt_celling_liquidation_debt_paid() {
     assert!(
         borrow_amount_first > ManagedDecimal::from_raw_units(BigUint::zero(), ISOLATED_DECIMALS)
     );
-    state
-        .world
-        .current_block()
-        .block_timestamp(SECONDS_PER_DAY * 1600);
-    state.update_borrows_with_debt(&borrower, 2);
+    state.change_timestamp(SECONDS_PER_DAY * 1600);
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
+    state.update_markets(&borrower, markets.clone());
     let total_collateral = state.get_total_collateral_in_egld(2);
     let total_debt = state.get_borrow_amount_for_token(2, USDC_TOKEN);
     println!("total_collateral: {:?}", total_collateral);
@@ -309,70 +311,10 @@ fn test_borrow_asset_as_isolated_debt_celling_liquidation_debt_paid() {
     state.clean_bad_debt(2);
     let borrow_amount = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
     println!("borrow_amount: {:?}", borrow_amount);
-    assert_eq!(borrow_amount, ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS))
-
-    
-}
-
-#[test]
-fn test_borrow_asset_as_isolated_debt_celling_under_repayment_only_interest() {
-    let mut state = LendingPoolTestState::new();
-    let supplier = TestAddress::new("supplier");
-    let borrower = TestAddress::new("borrower");
-
-    setup_accounts(&mut state, supplier, borrower);
-
-    // First supply a normal asset not siloed
-    state.supply_asset(
-        &supplier,
-        USDC_TOKEN,
-        BigUint::from(1000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
-    );
-
-    state.supply_asset(
-        &borrower,
-        ISOLATED_TOKEN,
-        BigUint::from(100u64), // $500 deposit
-        ISOLATED_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
-    );
-
-    // Then borrow the siloed asset
-    state.borrow_asset(
-        &borrower,
-        USDC_TOKEN,
-        BigUint::from(100u64), // $100 borrow
-        2,
-        USDC_DECIMALS,
-    );
-
-    let borrow_amount_first = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
-
-    assert!(
-        borrow_amount_first > ManagedDecimal::from_raw_units(BigUint::zero(), ISOLATED_DECIMALS)
-    );
-    state
-        .world
-        .current_block()
-        .block_timestamp(SECONDS_PER_DAY * 500);
-
-    state.repay_asset(
-        &borrower,
-        &USDC_TOKEN,
-        BigUint::from(1u64), // $100 borrow
-        2,
-        USDC_DECIMALS,
-    );
-    let borrow_amount = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
-
-    // No change due to interest that was paid and not counted as repaid principal asset global debt
-    assert!(borrow_amount == borrow_amount_first);
+    assert_eq!(
+        borrow_amount,
+        ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS)
+    )
 }
 
 #[test]

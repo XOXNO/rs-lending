@@ -1,10 +1,10 @@
 multiversx_sc::imports!();
 
 use common_errors::{
-    ERROR_ASSETS_ARE_THE_SAME, ERROR_INVALID_PAYMENTS, ERROR_MULTIPLY_REQUIRE_EXTRA_STEPS,
-    ERROR_SWAP_DEBT_NOT_SUPPORTED,
+    ERROR_ASSETS_ARE_THE_SAME, ERROR_INVALID_PAYMENTS, ERROR_INVALID_POSITION_MODE,
+    ERROR_MULTIPLY_REQUIRE_EXTRA_STEPS, ERROR_SWAP_DEBT_NOT_SUPPORTED,
 };
-use common_events::AccountAttributes;
+use common_structs::{AccountAttributes, AccountPositionType, PositionMode};
 
 use crate::{
     cache::Cache, helpers, oracle, positions, storage, utils, validation,
@@ -26,7 +26,7 @@ pub trait SnapModule:
     + positions::borrow::PositionBorrowModule
     + positions::withdraw::PositionWithdrawModule
     + positions::repay::PositionRepayModule
-    + positions::vault::PositionVaultModule
+    // + positions::vault::PositionVaultModule
     + positions::emode::EModeModule
     + positions::update::PositionUpdateModule
 {
@@ -38,31 +38,77 @@ pub trait SnapModule:
         collateral_token: &EgldOrEsdtTokenIdentifier,
         debt_to_flash_loan: BigUint,
         debt_token: &EgldOrEsdtTokenIdentifier,
-        _mode: ManagedBuffer,
+        mode: PositionMode,
         steps: ManagedArgBuffer<Self::Api>,
         steps_payment: OptionalValue<ManagedArgBuffer<Self::Api>>,
     ) {
         let mut cache = Cache::new(self);
+        cache.allow_unsafe_price = false;
+        self.reentrancy_guard(cache.flash_loan_ongoing);
         require!(collateral_token != debt_token, ERROR_ASSETS_ARE_THE_SAME);
         // Get payments, account, caller and attributes
-        let (payments, maybe_account, caller, maybe_attributes) =
-            self.validate_supply_payment(false);
-
-        require!(payments.len() == 1, ERROR_INVALID_PAYMENTS);
-
-        let initial_payment = payments.get(0);
-        self.validate_payment(&initial_payment);
+        let (payments, opt_account, caller, opt_attributes) =
+            self.validate_supply_payment(false, true);
 
         let collateral_config = cache.get_cached_asset_info(collateral_token);
         let mut debt_config = cache.get_cached_asset_info(debt_token);
 
+        let collateral_price_feed = self.get_token_price(collateral_token, &mut cache);
+        let debt_price_feed = self.get_token_price(debt_token, &mut cache);
+
+        let mut collateral_to_be_supplied =
+            self.to_decimal(BigUint::zero(), collateral_price_feed.asset_decimals);
+        let mut debt_to_be_swapped =
+            self.to_decimal(debt_to_flash_loan.clone(), debt_price_feed.asset_decimals);
+
+        if opt_account.is_none() {
+            // Check if payment token matches debt token - potential optimization path
+            require!(payments.len() == 1, ERROR_INVALID_PAYMENTS);
+            let initial_payment = payments.get(0);
+            self.validate_payment(&initial_payment);
+
+            let is_payment_same_as_debt = initial_payment.token_identifier == *debt_token;
+            let is_payment_as_collateral = initial_payment.token_identifier == *collateral_token;
+            if is_payment_as_collateral {
+                let collateral_received = self.to_decimal(
+                    initial_payment.amount.clone(),
+                    collateral_price_feed.asset_decimals,
+                );
+
+                collateral_to_be_supplied += &collateral_received
+            } else if is_payment_same_as_debt {
+                let debt_amount_received = self.to_decimal(
+                    initial_payment.amount.clone(),
+                    debt_price_feed.asset_decimals,
+                );
+                debt_to_be_swapped += &debt_amount_received;
+            } else {
+                //Swap token
+                require!(steps_payment.is_some(), ERROR_MULTIPLY_REQUIRE_EXTRA_STEPS);
+                self.convert_token_from_to(
+                    collateral_token,
+                    &initial_payment.token_identifier,
+                    &initial_payment.amount,
+                    &caller,
+                    steps_payment.into_option().unwrap(),
+                );
+                // let collateral_received =
+                //     self.to_decimal(received.amount, collateral_price_feed.asset_decimals);
+
+                // TODO: Once Bernard mainnet protocol is live, we can uncomment this line
+                // collateral_to_be_supplied += &collateral_received;
+            }
+        } else {
+            require!(payments.is_empty(), ERROR_INVALID_PAYMENTS);
+        }
+
         let (account_nonce, nft_attributes) = self.get_or_create_account(
             &caller,
             collateral_config.is_isolated(),
-            false,
+            mode,
             OptionalValue::Some(e_mode_category),
-            maybe_account,
-            maybe_attributes,
+            opt_account,
+            opt_attributes,
             if collateral_config.is_isolated() {
                 Some(collateral_token.clone())
             } else {
@@ -70,46 +116,11 @@ pub trait SnapModule:
             },
         );
 
-        let collateral_price_feed = self.get_token_price(collateral_token, &mut cache);
-        let debt_price_feed = self.get_token_price(debt_token, &mut cache);
-        // Check if payment token matches debt token - potential optimization path
-        let is_payment_same_as_debt = initial_payment.token_identifier == *debt_token;
-        let is_payment_as_collateral = initial_payment.token_identifier == *collateral_token;
-
-        let mut collateral_to_be_supplied =
-            self.to_decimal(BigUint::zero(), collateral_price_feed.asset_decimals);
-        let mut debt_to_be_swapped =
-            self.to_decimal(debt_to_flash_loan.clone(), debt_price_feed.asset_decimals);
-
-        if is_payment_as_collateral {
-            let collateral_received = self.to_decimal(
-                initial_payment.amount.clone(),
-                collateral_price_feed.asset_decimals,
-            );
-
-            collateral_to_be_supplied += &collateral_received
-        } else if is_payment_same_as_debt {
-            let debt_amount_received = self.to_decimal(
-                initial_payment.amount.clone(),
-                debt_price_feed.asset_decimals,
-            );
-            debt_to_be_swapped += &debt_amount_received;
-        } else {
-            //Swap token
-            require!(steps_payment.is_some(), ERROR_MULTIPLY_REQUIRE_EXTRA_STEPS);
-            self.convert_token_from_to(
-                collateral_token,
-                &initial_payment.token_identifier,
-                &initial_payment.amount,
-                &caller,
-                steps_payment.into_option().unwrap(),
-            );
-            // let collateral_received =
-            //     self.to_decimal(received.amount, collateral_price_feed.asset_decimals);
-
-            // Once Bernard mainnet protocol is live, we can uncomment this line
-            // collateral_to_be_supplied += &collateral_received;
-        }
+        require!(
+            nft_attributes.mode != PositionMode::Normal
+                && nft_attributes.mode != PositionMode::None,
+            ERROR_INVALID_POSITION_MODE
+        );
 
         self.handle_create_borrow_strategy(
             account_nonce,
@@ -124,7 +135,7 @@ pub trait SnapModule:
         let mut final_collateral = self.convert_token_from_to(
             collateral_token,
             debt_token,
-            &debt_to_be_swapped.into_raw_units(),
+            debt_to_be_swapped.into_raw_units(),
             &caller,
             steps,
         );
@@ -170,13 +181,15 @@ pub trait SnapModule:
         );
 
         let mut cache = Cache::new(self);
+        cache.allow_unsafe_price = false;
+        self.reentrancy_guard(cache.flash_loan_ongoing);
         // Get payments, account, caller and attributes
-        let (mut payments, maybe_account, caller, maybe_attributes) =
-            self.validate_supply_payment(true);
+        let (mut payments, opt_account, caller, opt_attributes) =
+            self.validate_supply_payment(true, true);
 
-        let account = maybe_account.unwrap();
+        let account = opt_account.unwrap();
 
-        let account_attributes = maybe_attributes.unwrap();
+        let account_attributes = opt_attributes.unwrap();
         let mut debt_config = cache.get_cached_asset_info(new_debt_token);
         let exisiting_debt_config = cache.get_cached_asset_info(exisiting_debt_token);
 
@@ -197,7 +210,7 @@ pub trait SnapModule:
         );
 
         let received = self.swap_tokens(
-            &exisiting_debt_token,
+            exisiting_debt_token,
             new_debt_token,
             new_debt_amount_raw,
             &caller,
@@ -238,11 +251,13 @@ pub trait SnapModule:
         steps: ManagedArgBuffer<Self::Api>,
     ) {
         let mut cache = Cache::new(self);
-        let (mut payments, maybe_account, caller, maybe_attributes) =
-            self.validate_supply_payment(true);
+        cache.allow_unsafe_price = false;
+        self.reentrancy_guard(cache.flash_loan_ongoing);
+        let (mut payments, opt_account, caller, opt_attributes) =
+            self.validate_supply_payment(true, true);
 
-        let account = maybe_account.unwrap();
-        let account_attributes = maybe_attributes.unwrap();
+        let account = opt_account.unwrap();
+        let account_attributes = opt_attributes.unwrap();
 
         require!(
             !account_attributes.is_isolated(),
@@ -258,7 +273,7 @@ pub trait SnapModule:
 
         let received = self.common_swap_collateral(
             current_collateral,
-            &from_amount,
+            from_amount,
             new_collateral,
             steps,
             account.token_nonce,
@@ -287,7 +302,7 @@ pub trait SnapModule:
     /// * `from_token` - The collateral token to use for repayment
     /// * `from_amount` - Amount of collateral to use
     /// * `to_token` - The debt token to repay
-    /// * `steps` - Optional swap steps for token conversion
+    /// * `close_position` - A flag to refund all collaterals when the full debt is fully repaid and burn the position NFT
     /// * `limits` - Optional price limits for the swap
     ///
     /// # Requirements
@@ -303,15 +318,18 @@ pub trait SnapModule:
     fn repay_debt_with_collateral(
         &self,
         from_token: &EgldOrEsdtTokenIdentifier,
-        from_amount: &BigUint,
+        from_amount: BigUint,
         to_token: &EgldOrEsdtTokenIdentifier,
+        close_position: bool,
         steps: OptionalValue<ManagedArgBuffer<Self::Api>>,
     ) {
         let mut cache = Cache::new(self);
-        let (mut payments, maybe_account, caller, maybe_attributes) =
-            self.validate_supply_payment(true);
-        let account = maybe_account.unwrap();
-        let account_attributes = maybe_attributes.unwrap();
+        cache.allow_unsafe_price = false;
+        self.reentrancy_guard(cache.flash_loan_ongoing);
+        let (mut payments, opt_account, caller, opt_attributes) =
+            self.validate_supply_payment(true, false);
+        let account = opt_account.unwrap();
+        let account_attributes = opt_attributes.unwrap();
 
         let received = self.common_swap_collateral(
             from_token,
@@ -346,12 +364,37 @@ pub trait SnapModule:
 
         // Make sure that after the swap the position is not becoming eligible for liquidation due to slippage
         self.validate_is_healthy(account.token_nonce, &mut cache, None);
+        let has_no_debt = self
+            .positions(account.token_nonce, AccountPositionType::Borrow)
+            .is_empty();
+        if close_position && has_no_debt {
+            for mut deposit_position in self
+                .positions(account.token_nonce, AccountPositionType::Deposit)
+                .values()
+            {
+                let feed = self.get_token_price(&deposit_position.asset_id, &mut cache);
+                let amount = self.get_total_amount(&deposit_position, &feed, &mut cache);
+
+                let _ = self.process_withdrawal(
+                    account.token_nonce,
+                    amount,
+                    &caller,
+                    false,
+                    None,
+                    &mut cache,
+                    &account_attributes,
+                    &mut deposit_position,
+                    &feed,
+                );
+            }
+        }
+        self.manage_account_after_withdrawal(&account, &caller);
     }
 
     fn common_swap_collateral(
         &self,
         from_token: &EgldOrEsdtTokenIdentifier,
-        from_amount: &BigUint,
+        from_amount: BigUint,
         to_token: &EgldOrEsdtTokenIdentifier,
         steps: ManagedArgBuffer<Self::Api>,
         account_nonce: u64,
@@ -359,60 +402,29 @@ pub trait SnapModule:
         account_attributes: &AccountAttributes<Self::Api>,
         cache: &mut Cache<Self>,
     ) -> EgldOrEsdtTokenPayment<Self::Api> {
-        // Retrieve deposit position for the given token
-        let deposit_positions = self.deposit_positions(account_nonce);
-        let maybe_deposit_position = deposit_positions.get(from_token);
-
-        require!(
-            maybe_deposit_position.is_some(),
-            "Token {} is not available for this account",
-            from_token
-        );
-
-        let mut deposit_position = maybe_deposit_position.unwrap();
-
-        if !account_attributes.is_vault() {
-            // Required to be in sync with the global index for accurate swaps to avoid extra interest during withdraw
-            self.update_position(
-                &cache.get_cached_pool_address(&deposit_position.asset_id),
-                &mut deposit_position,
-                OptionalValue::Some(self.get_token_price(&from_token, cache).price),
-            );
-
-            self.update_deposit_position_storage(account_nonce, from_token, &mut deposit_position);
-        }
-
-        let mut amount_to_swap = deposit_position.make_amount_decimal(from_amount);
-
-        // Cap the withdrawal amount to the available balance with interest
-        amount_to_swap = deposit_position.cap_amount(amount_to_swap);
-
         let controller = self.blockchain().get_sc_address();
-        let withdraw_payment = EgldOrEsdtTokenPayment::new(
-            from_token.clone(),
-            0,
-            amount_to_swap.into_raw_units().clone(),
-        );
 
-        self.process_withdrawal(
+        let mut deposit_position = self.get_deposit_position(account_nonce, from_token);
+        let feed = self.get_token_price(&deposit_position.asset_id, cache);
+        let amount = deposit_position.make_amount_decimal(&from_amount, feed.asset_decimals);
+        let withdraw_payment = self.process_withdrawal(
             account_nonce,
-            withdraw_payment,
+            amount,
             &controller,
             false,
             None,
             cache,
-            &account_attributes,
-            true,
+            account_attributes,
+            &mut deposit_position,
+            &feed,
         );
 
-        let received = self.convert_token_from_to(
-            &to_token,
-            &from_token,
-            &amount_to_swap.into_raw_units(),
-            &caller,
+        self.convert_token_from_to(
+            to_token,
+            from_token,
+            &withdraw_payment.amount,
+            caller,
             steps,
-        );
-
-        received
+        )
     }
 }

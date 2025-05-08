@@ -154,8 +154,13 @@ pub trait UtilsModule:
     }
 
     fn clear_submissions(&self, token_pair: &TokenPair<Self::Api>) {
-        if let Some(mut pair_submission_mapper) = self.submissions().get(token_pair) {
-            pair_submission_mapper.clear();
+        match self.submissions().get(token_pair) {
+            Some(mut pair_submission_mapper) => {
+                pair_submission_mapper.clear();
+            },
+            None => {
+                // Key not found, do nothing
+            },
         }
         self.first_submission_timestamp(token_pair).clear();
         self.last_submission_timestamp(token_pair).clear();

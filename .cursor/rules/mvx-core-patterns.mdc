@@ -1,0 +1,70 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# MultiversX Smart Contract Core Patterns and Rules
+## Storage Definitions
+
+- **Storage Module**: Define all storage items within a dedicated `storage` module marked with `#[multiversx_sc::module]`.
+- **Storage Mappers**: Use the appropriate mapper type for the data structure:
+  - `SingleValueMapper<T>`: For single configuration values, addresses, flags.
+  - `MapMapper<K, V>`: For mappings like `asset_id -> pool_address` or `account_nonce -> position_data`.
+  - `UnorderedSetMapper<T>`: For collections where order doesn't matter, like `pools_allowed`.
+  - `NonFungibleTokenMapper<Self::Api>`: Specifically for managing the lifecycle of NFTs (issue, mint, burn, roles).
+- **Storage Keys**: Use descriptive, lowercase `snake_case` keys in `#[storage_mapper("key")]`.
+- **View Functions**: Expose storage data through `#[view(FunctionName)]` annotated functions within the storage module or a dedicated `views` module. View function names often start with `get`.
+
+## Endpoint Definitions
+
+- **Endpoint Annotation**: Use `#[endpoint(endpointName)]` for all functions callable from outside the contract. Endpoint names are typically `camelCase`.
+- **Payable Annotation**: Specify token acceptance:
+    - `#[payable("*")]`: Accepts any EGLD or ESDT payment. Access payments via `self.call_value().all_transfers()` or `self.call_value().single_esdt()` / `self.call_value().egld_or_single_esdt()`.
+    - `#[payable("EGLD")]`: Accepts only EGLD. Access via `self.call_value().egld()`.
+    - `#[payable("TOKEN-ID")]`: Accepts only a specific ESDT. Access via `self.call_value().single_esdt()`.
+- **Access Control**: Use `#[only_owner]` for functions restricted to the contract owner.
+- **Return Values**: Use standard Rust return types or `MultiValueN` for multiple return values.
+
+## Event Definitions
+
+- **Event Module**: Define event signatures in a dedicated `events` module marked with `#[multiversx_sc::module]`.
+- **Event Annotation**: Use `#[event("event_name")]` for the event signature. Event names are typically `snake_case`.
+- **Indexed Parameters**: Use `#[indexed]` on event parameters that need to be efficiently queryable by indexers/APIs (e.g., addresses, token identifiers, amounts, nonces).
+- **Event Structs**: Often helpful to define a struct for complex event data.
+- **Emission Helpers**: Create helper functions (e.g., `emit_supply_event(...)`) within the `EventsModule` implementation to encapsulate the logic of populating and emitting events.
+
+## Error Handling
+
+- **Error Constants**: Define errors as `pub static ERROR_NAME: &[u8] = b"Error message.";` in `common/errors`. Use descriptive `SCREAMING_SNAKE_CASE` names starting with `ERROR_`.
+- **Require Macro**: Use `require!(condition, ERROR_CONSTANT);` for runtime checks. Place checks early in the function flow.
+
+## Type Definitions
+
+- **Custom Structs/Enums**: Define domain-specific data structures in `common/structs`. Annotate with `#[type_abi]` and derive necessary traits (`TopEncode`, `TopDecode`, `NestedEncode`, `NestedDecode`, `Clone`, `PartialEq`, `Eq`).
+- **Core Types**: Utilize built-in MultiversX types:
+    - `ManagedAddress`, `ManagedBuffer`, `BigUint`, `ManagedDecimal<M, NumDecimals>`, `EgldOrEsdtTokenIdentifier`, `EgldOrEsdtTokenPayment`, `EsdtTokenPayment`.
+- **Collections**: Use managed collections: `ManagedVec`, `ManagedMap`, `ManagedSet`.
+- **Optional Values**: Use `OptionalValue<T>` for optional arguments and `ManagedOption<M, T>` for optional fields in structs.
+
+## Advanced Patterns
+
+- **Cache Pattern**: Instantiate a `Cache` struct at the beginning of complex functions to store frequently accessed data (like prices, asset configs) read from storage, reducing redundant storage reads. Pass the cache mutably (`&mut cache`) if it needs updating during the function execution.
+- **Module Composition**: Structure the main contract trait by inheriting (`+`) from multiple feature-specific module traits (e.g., `PositionSupplyModule`, `PositionBorrowModule`).
+- **Proxies**: Use `multiversx-sc-proxy` generated proxies for type-safe cross-contract calls. Place proxies in `common/proxies` or a dedicated `proxies` directory.
+    ```rust
+    self.tx()
+        .to(target_address)
+        .typed(proxy_name::ProxyTrait) // Use the generated proxy
+        .target_endpoint(/* args */)
+        .returns(ReturnsResult) // Or specific return type
+        .sync_call(); // Or async_call / transfer_execute
+    ```
+
+## Mathematical Precision
+
+- **Decimal Types**: Use `ManagedDecimal<M, NumDecimals>` for financial calculations requiring fixed-point precision.
+- **Precision Constants**: Utilize constants from `common/constants`:
+    - `RAY_PRECISION` (10^27) for interest rates.
+    - `WAD_PRECISION` (10^18) for general high precision.
+    - `BPS_PRECISION` (10000) for basis points (fees, percentages).
+- **Conversion Helpers**: Implement or use helper functions (like `to_decimal_ray`, `to_decimal_bps`, `from_decimal`) for consistent conversion between `BigUint` and `ManagedDecimal` using the correct precision. Define these in `common/math` or a math helper module.

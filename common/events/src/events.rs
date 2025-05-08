@@ -85,12 +85,12 @@ pub trait EventsModule {
     ///
     /// # Returns
     /// - Nothing.
+    #[inline(always)]
     fn update_market_state_event(
         &self,
         timestamp: u64,
         supply_index: &ManagedDecimal<Self::Api, NumDecimals>,
         borrow_index: &ManagedDecimal<Self::Api, NumDecimals>,
-        reserves: &ManagedDecimal<Self::Api, NumDecimals>,
         supplied: &ManagedDecimal<Self::Api, NumDecimals>,
         borrowed: &ManagedDecimal<Self::Api, NumDecimals>,
         revenue: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -102,7 +102,6 @@ pub trait EventsModule {
             timestamp,
             supply_index,
             borrow_index,
-            reserves,
             supplied,
             borrowed,
             revenue,
@@ -133,7 +132,6 @@ pub trait EventsModule {
         #[indexed] timestamp: u64,
         #[indexed] supply_index: &ManagedDecimal<Self::Api, NumDecimals>,
         #[indexed] borrow_index: &ManagedDecimal<Self::Api, NumDecimals>,
-        #[indexed] reserves: &ManagedDecimal<Self::Api, NumDecimals>,
         #[indexed] supplied: &ManagedDecimal<Self::Api, NumDecimals>,
         #[indexed] borrowed: &ManagedDecimal<Self::Api, NumDecimals>,
         #[indexed] revenue: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -181,20 +179,20 @@ pub trait EventsModule {
         #[indexed] amount: ManagedDecimal<Self::Api, NumDecimals>,
     );
 
-    /// Emits an event to update the supplied amount in the global vault of an market.
-    ///
-    /// # Parameters
-    /// - `asset`: The asset identifier.
-    /// - `amount`: The updated vault supplied amount.
-    ///
-    /// # Returns
-    /// - Nothing.
-    #[event("update_vault_supplied_amount")]
-    fn update_vault_supplied_amount_event(
-        &self,
-        #[indexed] asset: &EgldOrEsdtTokenIdentifier,
-        #[indexed] amount: ManagedDecimal<Self::Api, NumDecimals>,
-    );
+    // /// Emits an event to update the supplied amount in the global vault of an market.
+    // ///
+    // /// # Parameters
+    // /// - `asset`: The asset identifier.
+    // /// - `amount`: The updated vault supplied amount.
+    // ///
+    // /// # Returns
+    // /// - Nothing.
+    // #[event("update_vault_supplied_amount")]
+    // fn update_vault_supplied_amount_event(
+    //     &self,
+    //     #[indexed] asset: &EgldOrEsdtTokenIdentifier,
+    //     #[indexed] amount: ManagedDecimal<Self::Api, NumDecimals>,
+    // );
 
     /// Emits an event when the asset configuration is updated.
     ///

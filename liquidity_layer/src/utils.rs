@@ -4,11 +4,16 @@ multiversx_sc::derive_imports!();
 use crate::{cache::Cache, rates, storage, view};
 
 use common_constants::RAY_PRECISION;
-use common_errors::{ERROR_INVALID_ASSET, ERROR_INVALID_FLASHLOAN_REPAYMENT};
-use common_structs::*;
+use common_errors::{
+    ERROR_INVALID_ASSET, ERROR_INVALID_FLASHLOAN_REPAYMENT, ERROR_WITHDRAW_AMOUNT_LESS_THAN_FEE,
+};
 
-/// The UtilsModule trait contains helper functions for updating interest indexes,
-/// computing interest factors, and adjusting account positions with accrued interest.
+/// The `UtilsModule` trait provides a collection of helper functions supporting core liquidity pool operations.
+///
+/// **Scope**: Offers utilities for event emission, standardized asset transfers, payment retrieval and validation,
+/// and flash loan repayment verification.
+///
+/// **Goal**: To encapsulate common, reusable logic, promoting clarity and consistency within the liquidity pool contract.
 #[multiversx_sc::module]
 pub trait UtilsModule:
     rates::InterestRates
@@ -17,223 +22,6 @@ pub trait UtilsModule:
     + view::ViewModule
     + common_math::SharedMathModule
 {
-    /// Calculates supplier rewards by deducting protocol fees from accrued interest.
-    ///
-    /// **Scope**: This function computes the rewards suppliers earn from interest paid by borrowers,
-    /// after the protocol takes its share (reserve factor). It’s used during index updates to distribute profits.
-    ///
-    /// **Goal**: Ensure suppliers receive their fair share of interest while updating protocol revenue.
-    ///
-    /// **Formula**:
-    /// - Accrued interest = `borrowed * (borrow_index / old_borrow_index - 1)`
-    /// - Rewards = `accrued_interest * (1 - reserve_factor)`
-    ///
-    /// # Arguments
-    /// - `cache`: Mutable reference to the pool state (`Cache<Self>`), containing borrow amounts, indexes, and params.
-    /// - `old_borrow_index`: The borrow index before the current update (`ManagedDecimal<Self::Api, NumDecimals>`).
-    ///
-    /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: Net rewards for suppliers after protocol fees.
-    ///
-    /// **Security Tip**: No direct `require!` checks here; relies on upstream validation of `cache` state (e.g., in `global_sync`).
-    fn calc_supplier_rewards(
-        &self,
-        cache: &mut Cache<Self>,
-        old_borrow_index: ManagedDecimal<Self::Api, NumDecimals>,
-    ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        // 1. Calculate new borrowed amount
-        let accrued_interest =
-            self.calc_interest(&cache.borrowed, &cache.borrow_index, &old_borrow_index);
-
-        // If the accrued interest is less than the bad debt, we can collect the entire accrued interest
-        if accrued_interest.le(&cache.bad_debt) {
-            cache.bad_debt -= &accrued_interest;
-            self.to_decimal(BigUint::zero(), cache.params.asset_decimals)
-        } else {
-            // If the accrued interest is greater than the bad debt, we clear the bad debt and calculate the protocol's share and the suppliers' share
-            let left_accrued_interest = accrued_interest - cache.bad_debt.clone();
-            cache.bad_debt = self.to_decimal(BigUint::zero(), cache.params.asset_decimals);
-            // 2. Calculate protocol's share
-            let protocol_fee = self
-                .mul_half_up(
-                    &left_accrued_interest,
-                    &cache.params.reserve_factor,
-                    RAY_PRECISION,
-                )
-                .rescale(cache.params.asset_decimals);
-            // 3. Update reserves
-            cache.revenue += &protocol_fee;
-
-            // 4. Return suppliers' share
-            left_accrued_interest - protocol_fee
-        }
-    }
-
-    /// Updates both borrow and supply indexes based on elapsed time since the last update.
-    ///
-    /// **Scope**: Synchronizes the global state of the pool by recalculating borrow and supply indexes,
-    /// factoring in interest growth over time and distributing rewards.
-    ///
-    /// **Goal**: Keep the pool’s financial state current, ensuring accurate interest accrual and reward distribution.
-    ///
-    /// **Process**:
-    /// 1. Computes time delta since last update.
-    /// 2. Updates borrow index using growth factor.
-    /// 3. Calculates supplier rewards.
-    /// 4. Updates supply index with rewards.
-    /// 5. Refreshes last update timestamp.
-    ///
-    /// # Arguments
-    /// - `cache`: Mutable reference to the pool state (`Cache<Self>`), holding timestamps and indexes.
-    ///
-    /// **Security Tip**: Skips updates if `delta == 0`, preventing redundant computation. Protected by caller ensuring valid `cache`.
-    fn global_sync(&self, cache: &mut Cache<Self>) {
-        let delta = cache.timestamp - cache.last_timestamp;
-
-        if delta > 0 {
-            let factor = self.growth_factor(cache, delta);
-
-            let old_borrow_index = self.update_borrow_index(cache, factor);
-
-            let rewards = self.calc_supplier_rewards(cache, old_borrow_index);
-
-            self.update_supply_index(rewards, cache);
-
-            // Update the last used timestamp
-            cache.last_timestamp = cache.timestamp;
-        }
-    }
-
-    /// Calculates accrued interest for a position since its last update.
-    ///
-    /// **Scope**: Computes interest accrued on a principal amount based on the change in market index since the last recorded index.
-    ///
-    /// **Goal**: Provide an accurate interest calculation for updating positions or determining rewards/debts.
-    ///
-    /// **Formula**:
-    /// - `interest = amount * (current_index / account_position_index - 1)`
-    /// - Result is rescaled to match `amount`’s asset_decimals.
-    ///
-    /// # Arguments
-    /// - `amount`: Principal amount (`ManagedDecimal<Self::Api, NumDecimals>`).
-    /// - `current_index`: Latest market index (`ManagedDecimal<Self::Api, NumDecimals>`).
-    /// - `account_position_index`: Position’s last recorded index (`ManagedDecimal<Self::Api, NumDecimals>`).
-    ///
-    /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: Accrued interest since the last update.
-    ///
-    /// **Security Tip**: No division-by-zero risk if `account_position_index` is non-zero, ensured by upstream position initialization.
-    fn calc_interest(
-        &self,
-        amount: &ManagedDecimal<Self::Api, NumDecimals>, // Amount of the asset
-        current_index: &ManagedDecimal<Self::Api, NumDecimals>, // Market index
-        account_position_index: &ManagedDecimal<Self::Api, NumDecimals>, // Account position index
-    ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        if current_index == account_position_index {
-            return self.to_decimal(BigUint::zero(), amount.scale());
-        }
-
-        let numerator = self.mul_half_up(amount, current_index, RAY_PRECISION);
-        let new_amount = self
-            .div_half_up(&numerator, account_position_index, RAY_PRECISION)
-            .rescale(amount.scale());
-
-        new_amount.sub(amount.clone())
-    }
-
-    /// Updates an account position with accrued interest based on current market indexes.
-    ///
-    /// **Scope**: Adjusts a user’s deposit or borrow position by calculating and adding accrued interest,
-    /// updating timestamps and indexes accordingly.
-    ///
-    /// **Goal**: Ensure a position reflects the latest interest accrued, handling edge cases like zero amounts.
-    ///
-    /// **Process**:
-    /// - Selects supply or borrow index based on position type.
-    /// - For zero-amount positions, resets timestamp and index.
-    /// - For non-zero amounts, calculates and adds interest.
-    ///
-    /// # Arguments
-    /// - `position`: Mutable reference to the account position (`AccountPosition<Self::Api>`).
-    /// - `cache`: Mutable reference to the pool state (`Cache<Self>`).
-    ///
-    /// **Security Tip**: Handles zero amounts safely by resetting state, protected by caller ensuring valid position type.
-    fn position_sync(&self, position: &mut AccountPosition<Self::Api>, cache: &mut Cache<Self>) {
-        let is_supply = position.position_type == AccountPositionType::Deposit;
-        let index = if is_supply {
-            cache.supply_index.clone()
-        } else {
-            cache.borrow_index.clone()
-        };
-
-        if position.get_total_amount().eq(&cache.zero) {
-            position.last_update_timestamp = cache.timestamp;
-            position.market_index = index.clone();
-            return;
-        }
-        let interest =
-            self.calc_interest(&position.get_total_amount(), &index, &position.market_index);
-
-        if interest.gt(&cache.zero) {
-            position.interest_accrued += &interest;
-            position.last_update_timestamp = cache.timestamp;
-            position.market_index = index.clone();
-        }
-    }
-
-    /// Splits a repayment into principal, interest, and overpayment components.
-    ///
-    /// **Scope**: Determines how a repayment amount is allocated to clear interest and principal,
-    /// handling both partial and full repayments with potential overpayment.
-    ///
-    /// **Goal**: Accurately distribute repayment to reduce debt, ensuring fairness and transparency.
-    ///
-    /// **Process**:
-    /// - If repayment exceeds total debt, returns principal, interest, and overpayment.
-    /// - Otherwise, prioritizes interest, then principal, with no overpayment.
-    ///
-    /// # Arguments
-    /// - `repayment`: Total repayment amount (`ManagedDecimal<Self::Api, NumDecimals>`).
-    /// - `position`: Reference to the account position (`AccountPosition<Self::Api>`).
-    /// - `cache`: Mutable reference to the pool state (`Cache<Self>`).
-    ///
-    /// # Returns
-    /// - `(principal_repaid, interest_repaid, over_repaid)`: Tuple of `ManagedDecimal<Self::Api, NumDecimals>`:
-    ///   - `principal_repaid`: Amount reducing principal.
-    ///   - `interest_repaid`: Amount reducing interest.
-    ///   - `over_repaid`: Excess amount beyond total debt.
-    ///
-    fn split_repay(
-        &self,
-        repayment: &ManagedDecimal<Self::Api, NumDecimals>,
-        position: &AccountPosition<Self::Api>,
-        cache: &mut Cache<Self>,
-    ) -> (
-        ManagedDecimal<Self::Api, NumDecimals>, // principal_repaid
-        ManagedDecimal<Self::Api, NumDecimals>, // interest_repaid
-        ManagedDecimal<Self::Api, NumDecimals>, // over_repaid
-    ) {
-        if repayment >= &position.get_total_amount() {
-            // Full repayment with possible overpayment.
-            let over_repaid = repayment.clone() - position.get_total_amount();
-            // The entire outstanding debt is cleared.
-            (
-                position.principal_amount.clone(),
-                position.interest_accrued.clone(),
-                over_repaid,
-            )
-        } else {
-            // Partial repayment: first cover interest, then principal.
-            let interest_repaid = if repayment > &position.interest_accrued {
-                position.interest_accrued.clone()
-            } else {
-                repayment.clone()
-            };
-            let principal_repaid = repayment.clone() - interest_repaid.clone();
-            (principal_repaid, interest_repaid, cache.zero.clone())
-        }
-    }
-
     /// Emits an event logging the current market state for transparency.
     ///
     /// **Scope**: Records key pool metrics like indexes, reserves, and asset price in an event.
@@ -244,6 +32,7 @@ pub trait UtilsModule:
     /// - `cache`: Reference to the pool state (`Cache<Self>`).
     /// - `asset_price`: Current price of the pool asset (`ManagedDecimal<Self::Api, NumDecimals>`).
     ///
+    #[inline(always)]
     fn emit_market_update(
         &self,
         cache: &Cache<Self>,
@@ -253,11 +42,10 @@ pub trait UtilsModule:
             cache.timestamp,
             &cache.supply_index,
             &cache.borrow_index,
-            &cache.reserves,
             &cache.supplied,
             &cache.borrowed,
             &cache.revenue,
-            &cache.pool_asset,
+            &cache.params.asset_id,
             asset_price,
             &cache.bad_debt,
         );
@@ -278,6 +66,7 @@ pub trait UtilsModule:
     /// - `EgldOrEsdtTokenPayment<Self::Api>`: Payment object representing the transfer.
     ///
     /// **Security Tip**: Uses `transfer_if_not_empty` to avoid empty transfers, protected by caller validation of `amount`.
+    #[inline]
     fn send_asset(
         &self,
         cache: &Cache<Self>,
@@ -285,7 +74,7 @@ pub trait UtilsModule:
         to: &ManagedAddress,
     ) -> EgldOrEsdtTokenPayment<Self::Api> {
         let payment = EgldOrEsdtTokenPayment::new(
-            cache.pool_asset.clone(),
+            cache.params.asset_id.clone(),
             0,
             amount.into_raw_units().clone(),
         );
@@ -297,7 +86,7 @@ pub trait UtilsModule:
 
     /// Retrieves and validates the payment amount from a transaction.
     ///
-    /// **Scope**: Extracts the payment amount (EGLD or ESDT) and ensures it matches the pool’s asset.
+    /// **Scope**: Extracts the payment amount (EGLD or ESDT) and ensures it matches the pool's asset.
     ///
     /// **Goal**: Validate incoming payments to prevent asset mismatches during operations like deposits or repayments.
     ///
@@ -316,80 +105,11 @@ pub trait UtilsModule:
         cache.get_decimal_value(&amount)
     }
 
-    /// Caps a withdrawal amount to prevent exceeding the position’s total.
-    ///
-    /// **Scope**: Limits the amount a user can withdraw to their available balance.
-    ///
-    /// **Goal**: Prevent over-withdrawal, ensuring the contract remains solvent.
-    ///
-    /// # Arguments
-    /// - `amount`: Mutable reference to the requested withdrawal amount (`ManagedDecimal<Self::Api, NumDecimals>`).
-    /// - `position`: Reference to the account position (`AccountPosition<Self::Api>`).
-    ///
-    fn cap_withdrawal_amount(
-        &self,
-        amount: &mut ManagedDecimal<Self::Api, NumDecimals>,
-        position: &AccountPosition<Self::Api>,
-    ) {
-        if *amount > position.get_total_amount() {
-            *amount = position.get_total_amount();
-        }
-    }
-
-    /// Calculates withdrawal amounts, including principal, interest, and total, with liquidation handling.
-    ///
-    /// **Scope**: Computes how a withdrawal affects a position, adjusting for interest and liquidation fees if applicable.
-    ///
-    /// **Goal**: Provide precise withdrawal details, ensuring correct accounting and fee application.
-    ///
-    /// **Process**:
-    /// - Calculates extra interest accrued.
-    /// - Splits withdrawal into principal and interest.
-    /// - Adjusts total for liquidation fees if present.
-    ///
-    /// # Arguments
-    /// - `amount`: Requested withdrawal amount (`ManagedDecimal<Self::Api, NumDecimals>`).
-    /// - `position`: Reference to the account position (`AccountPosition<Self::Api>`).
-    /// - `cache`: Mutable reference to the pool state (`Cache<Self>`).
-    /// - `is_liquidation`: Flag indicating if this is a liquidation withdrawal (`bool`).
-    /// - `protocol_fee_opt`: Optional protocol fee for liquidations (`Option<ManagedDecimal<Self::Api, NumDecimals>>`).
-    ///
-    /// # Returns
-    /// - `(principal, interest, to_withdraw)`: Tuple of `ManagedDecimal<Self::Api, NumDecimals>`:
-    ///   - `principal`: Amount reducing principal.
-    ///   - `interest`: Amount reducing interest.
-    ///   - `to_withdraw`: Total amount to transfer (net of fees).
-    ///
-    /// **Security Tip**: Relies on `split_repay` for safe arithmetic
-    fn calc_withdrawal_amounts(
-        &self,
-        amount: &ManagedDecimal<Self::Api, NumDecimals>,
-        position: &AccountPosition<Self::Api>,
-        cache: &mut Cache<Self>,
-        is_liquidation: bool,
-        protocol_fee_opt: Option<ManagedDecimal<Self::Api, NumDecimals>>,
-    ) -> (
-        ManagedDecimal<Self::Api, NumDecimals>,
-        ManagedDecimal<Self::Api, NumDecimals>,
-        ManagedDecimal<Self::Api, NumDecimals>,
-    ) {
-        let extra = self.calc_interest(amount, &cache.supply_index, &position.market_index);
-        let (principal, interest, _) = self.split_repay(amount, position, cache);
-        let mut to_withdraw = amount.clone() + extra;
-        if is_liquidation && protocol_fee_opt.is_some() {
-            let protocol_fees = protocol_fee_opt.unwrap();
-            cache.revenue += &protocol_fees;
-            cache.reserves += &protocol_fees;
-            to_withdraw -= &protocol_fees;
-        }
-        (principal, interest, to_withdraw)
-    }
-
     /// Validates repayment of a flash loan, ensuring it meets requirements.
     ///
     /// **Scope**: Checks that a flash loan repayment matches the pool asset and exceeds the required amount.
     ///
-    /// **Goal**: Secure the flash loan process by enforcing repayment conditions, protecting the pool’s funds.
+    /// **Goal**: Secure the flash loan process by enforcing repayment conditions, protecting the pool's funds.
     ///
     /// **Process**:
     /// - Extracts repayment amount (EGLD or ESDT).
@@ -405,14 +125,14 @@ pub trait UtilsModule:
     /// - `ManagedDecimal<Self::Api, NumDecimals>`: Actual repayment amount.
     ///
     /// **Security Tip**: Multiple `require!` checks enforce asset and amount validity, protected by the flash loan flow structure.
+    #[inline(always)]
     fn validate_flash_repayment(
         &self,
         cache: &Cache<Self>,
         back_transfers: &BackTransfers<Self::Api>,
-        amount: &ManagedDecimal<Self::Api, NumDecimals>,
         required_repayment: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let repayment = if cache.pool_asset.is_egld() {
+        let repayment = if cache.params.asset_id.is_egld() {
             cache.get_decimal_value(&back_transfers.total_egld_amount)
         } else {
             require!(
@@ -431,10 +151,154 @@ pub trait UtilsModule:
         };
 
         require!(
-            repayment >= *required_repayment && amount < required_repayment,
+            repayment >= *required_repayment,
             ERROR_INVALID_FLASHLOAN_REPAYMENT
         );
 
         repayment
+    }
+
+    /// Determines the gross scaled and actual amounts for a withdrawal operation.
+    ///
+    /// **Scope**: Calculates how much of a user's position should be considered for withdrawal,
+    /// based on their requested amount versus their total current supply (including interest).
+    ///
+    /// **Goal**: To provide a clear calculation of withdrawal amounts before applying any fees or further checks.
+    ///
+    /// **Process**:
+    /// 1. Calculates the user's `current_supply_actual` (original value of their scaled position including interest).
+    /// 2. If `requested_amount_actual` is greater than or equal to `current_supply_actual` (full withdrawal):
+    ///    - `scaled_withdrawal_amount_gross` becomes the user's entire `position_scaled_amount`.
+    ///    - `amount_to_withdraw_gross` becomes `current_supply_actual`.
+    /// 3. Else (partial withdrawal):
+    ///    - `scaled_withdrawal_amount_gross` becomes the scaled equivalent of `requested_amount_actual`.
+    ///    - `amount_to_withdraw_gross` becomes `requested_amount_actual`.
+    ///
+    /// # Arguments
+    /// - `cache`: A reference to the current pool state (`Cache<Self>`), used for index and scaling information.
+    /// - `position_scaled_amount`: The scaled amount of the user's supply position.
+    /// - `requested_amount_actual`: The actual amount the user has requested to withdraw.
+    ///
+    /// # Returns
+    /// A tuple `(scaled_withdrawal_amount_gross, amount_to_withdraw_gross)`:
+    /// - `scaled_withdrawal_amount_gross`: The portion of the user's scaled position to be withdrawn.
+    /// - `amount_to_withdraw_gross`: The actual gross amount of tokens to be withdrawn, before any fees.
+    #[inline(always)]
+    fn determine_gross_withdrawal_amounts(
+        &self,
+        cache: &Cache<Self>,
+        position_scaled_amount: &ManagedDecimal<Self::Api, NumDecimals>,
+        requested_amount_actual: &ManagedDecimal<Self::Api, NumDecimals>,
+    ) -> (
+        ManagedDecimal<Self::Api, NumDecimals>, // scaled_withdrawal_amount_gross
+        ManagedDecimal<Self::Api, NumDecimals>, // amount_to_withdraw_gross
+    ) {
+        let current_supply_actual = cache.get_original_supply_amount(position_scaled_amount);
+
+        if *requested_amount_actual >= current_supply_actual {
+            // Full withdrawal
+            (position_scaled_amount.clone(), current_supply_actual)
+        } else {
+            // Partial withdrawal
+            let requested_scaled = cache.get_scaled_supply_amount(requested_amount_actual);
+            (requested_scaled, requested_amount_actual.clone())
+        }
+    }
+
+    /// Determines the scaled amount to repay and any overpaid actual amount for a borrow position.
+    ///
+    /// **Scope**: Calculates the effect of a payment on a borrow position, identifying how much of the
+    /// scaled debt is covered and if there's any overpayment.
+    ///
+    /// **Goal**: To provide a clear calculation of repayment effects before updating pool and position states.
+    ///
+    /// **Process**:
+    /// 1. Calculates the user's `current_debt_actual` (original value of their scaled position including interest).
+    /// 2. If `payment_amount_actual` is greater than or equal to `current_debt_actual` (full repayment or overpayment):
+    ///    - `scaled_amount_to_repay` becomes the user's entire `position_scaled_amount`.
+    ///    - `over_paid_amount_actual` is calculated as `payment_amount_actual - current_debt_actual`.
+    /// 3. Else (partial repayment):
+    ///    - `scaled_amount_to_repay` becomes the scaled equivalent of `payment_amount_actual`.
+    ///    - `over_paid_amount_actual` is zero.
+    ///
+    /// # Arguments
+    /// - `cache`: A reference to the current pool state (`Cache<Self>`), used for index, scaling information, and zero value.
+    /// - `position_scaled_amount`: The scaled amount of the user's borrow position.
+    /// - `payment_amount_actual`: The actual amount the user has paid.
+    ///
+    /// # Returns
+    /// A tuple `(scaled_amount_to_repay, over_paid_amount_actual)`:
+    /// - `scaled_amount_to_repay`: The portion of the user's scaled debt that is repaid.
+    /// - `over_paid_amount_actual`: The actual amount overpaid by the user, if any.
+    #[inline(always)]
+    fn determine_repayment_details(
+        &self,
+        cache: &Cache<Self>,
+        position_scaled_amount: &ManagedDecimal<Self::Api, NumDecimals>,
+        payment_amount_actual: &ManagedDecimal<Self::Api, NumDecimals>,
+    ) -> (
+        ManagedDecimal<Self::Api, NumDecimals>, // scaled_amount_to_repay
+        ManagedDecimal<Self::Api, NumDecimals>, // over_paid_amount_actual
+    ) {
+        let current_debt_actual = cache.get_original_borrow_amount(position_scaled_amount);
+
+        if *payment_amount_actual >= current_debt_actual {
+            // Full repayment or overpayment
+            let over_paid = payment_amount_actual.clone() - current_debt_actual;
+            (position_scaled_amount.clone(), over_paid)
+        } else {
+            // Partial repayment
+            let payment_scaled = cache.get_scaled_borrow_amount(payment_amount_actual);
+            (payment_scaled, cache.zero.clone())
+        }
+    }
+
+    /// Calculates and applies any applicable liquidation fee, updating the net transfer amount directly
+    /// and adding the fee to protocol revenue within the cache.
+    ///
+    /// **Scope**: Modifies the net withdrawal amount if a liquidation fee applies and updates `cache.revenue`
+    /// with the fee amount.
+    ///
+    /// **Goal**: To encapsulate the logic for applying liquidation fees, directly adjusting the transfer amount
+    /// and centralizing the revenue update.
+    ///
+    /// **Process**:
+    /// 1. If `is_liquidation` is true and `protocol_fee_asset_decimals_opt` contains a fee:
+    ///    a. Retrieves the `protocol_fee_asset_decimals`.
+    ///    b. Requires that the initial `amount_to_transfer_net_asset_decimals` (gross withdrawal) is sufficient to cover the fee.
+    ///    c. Calculates `protocol_fee_for_revenue_ray` by rescaling `protocol_fee_asset_decimals` to RAY precision.
+    ///    d. Deducts `protocol_fee_asset_decimals` directly from the mutable `amount_to_transfer_net_asset_decimals`.
+    ///    e. If `protocol_fee_for_revenue_ray` is greater than zero, adds it to `cache.revenue`.
+    ///
+    /// # Arguments
+    /// - `cache`: A mutable reference to the current pool state (`Cache<Self>`), used for updating revenue.
+    /// - `is_liquidation`: A boolean indicating if the withdrawal is part of a liquidation.
+    /// - `protocol_fee_asset_decimals_opt`: An optional `ManagedDecimal` representing the liquidation fee in asset decimals.
+    /// - `amount_to_transfer_net_asset_decimals`: A mutable reference to the gross amount to be withdrawn (in asset decimals).
+    ///                                            This value will be reduced by the fee if applicable.
+    #[inline(always)]
+    fn process_liquidation_fee_details(
+        &self,
+        cache: &mut Cache<Self>,
+        is_liquidation: bool,
+        protocol_fee_asset_decimals_opt: &Option<ManagedDecimal<Self::Api, NumDecimals>>,
+        amount_to_transfer_net_asset_decimals: &mut ManagedDecimal<Self::Api, NumDecimals>,
+    ) {
+        if is_liquidation {
+            if let Some(protocol_fee_asset_decimals) = protocol_fee_asset_decimals_opt {
+                require!(
+                    *amount_to_transfer_net_asset_decimals >= *protocol_fee_asset_decimals,
+                    ERROR_WITHDRAW_AMOUNT_LESS_THAN_FEE
+                );
+                let protocol_fee_for_revenue_ray =
+                    self.rescale_half_up(protocol_fee_asset_decimals, RAY_PRECISION);
+
+                *amount_to_transfer_net_asset_decimals -= protocol_fee_asset_decimals;
+
+                if protocol_fee_for_revenue_ray > self.ray_zero() {
+                    cache.revenue += &protocol_fee_for_revenue_ray;
+                }
+            }
+        }
     }
 }

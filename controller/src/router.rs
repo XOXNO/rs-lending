@@ -107,16 +107,14 @@ pub trait RouterModule:
         self.require_non_zero_address(&address);
 
         self.pools_map(&base_asset).set(address.clone());
-        self.pools_allowed().insert(address.clone());
+        self.pools().insert(address.clone());
 
         // Init ManagedDecimal for future usage and avoiding storage decode errors for checks
-        self.vault_supplied_amount(&base_asset)
-            .set(self.to_decimal(BigUint::zero(), asset_decimals));
         self.isolated_asset_debt_usd(&base_asset)
             .set(self.to_decimal(BigUint::zero(), asset_decimals));
 
         require!(
-            &liquidation_threshold > &ltv,
+            liquidation_threshold > ltv,
             ERROR_INVALID_LIQUIDATION_THRESHOLD
         );
 
@@ -218,8 +216,7 @@ pub trait RouterModule:
 
         let decimals = self.token_oracle(base_asset).get().price_decimals;
 
-        let new_address = self
-            .tx()
+        self.tx()
             .typed(proxy_pool::LiquidityPoolProxy)
             .init(
                 base_asset,
@@ -236,9 +233,7 @@ pub trait RouterModule:
             .from_source(self.liq_pool_template_address().get())
             .code_metadata(CodeMetadata::UPGRADEABLE | CodeMetadata::READABLE)
             .returns(ReturnsNewManagedAddress)
-            .sync_call();
-
-        new_address
+            .sync_call()
     }
 
     fn upgrade_pool(
@@ -296,7 +291,7 @@ pub trait RouterModule:
 
         let accumulator_address = accumulator_address_mapper.get();
         for asset in assets {
-            let pool_address = self.get_pool_address(&asset);
+            let pool_address = cache.get_cached_pool_address(&asset);
             let data = self.get_token_price(&asset, &mut cache);
             let revenue = self
                 .tx()

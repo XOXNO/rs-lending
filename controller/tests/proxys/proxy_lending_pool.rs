@@ -51,7 +51,7 @@ where
     /// - `safe_price_view_address`: Address for safe price views. 
     /// - `accumulator_address`: Address for revenue accumulation. 
     /// - `wegld_address`: Address for wrapped EGLD. 
-    /// - `ash_swap_address`: Address for AshSwap integration. 
+    /// - `swap_router_address`: Address for Swap Router integration. 
     pub fn init<
         Arg0: ProxyArg<ManagedAddress<Env::Api>>,
         Arg1: ProxyArg<ManagedAddress<Env::Api>>,
@@ -66,7 +66,7 @@ where
         safe_price_view_address: Arg2,
         accumulator_address: Arg3,
         wegld_address: Arg4,
-        ash_swap_address: Arg5,
+        swap_router_address: Arg5,
     ) -> TxTypedDeploy<Env, From, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
@@ -76,7 +76,7 @@ where
             .argument(&safe_price_view_address)
             .argument(&accumulator_address)
             .argument(&wegld_address)
-            .argument(&ash_swap_address)
+            .argument(&swap_router_address)
             .original_result()
     }
 }
@@ -90,12 +90,16 @@ where
     To: TxTo<Env>,
     Gas: TxGas<Env>,
 {
-    pub fn upgrade(
+    pub fn upgrade<
+        Arg0: ProxyArg<MultiValueEncoded<Env::Api, EgldOrEsdtTokenIdentifier<Env::Api>>>,
+    >(
         self,
+        _assets: Arg0,
     ) -> TxTypedUpgrade<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_upgrade()
+            .argument(&_assets)
             .original_result()
     }
 }
@@ -118,16 +122,13 @@ where
     /// # Payment 
     /// - Accepts minimum 1 payment: optional account NFT and bulk collateral tokens. 
     pub fn supply<
-        Arg0: ProxyArg<bool>,
-        Arg1: ProxyArg<OptionalValue<u8>>,
+        Arg0: ProxyArg<OptionalValue<u8>>,
     >(
         self,
-        is_vault: Arg0,
-        e_mode_category: Arg1,
+        e_mode_category: Arg0,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("supply")
-            .argument(&is_vault)
             .argument(&e_mode_category)
             .original_result()
     }
@@ -232,39 +233,6 @@ where
             .argument(&contract_address)
             .argument(&endpoint)
             .argument(&arguments)
-            .original_result()
-    }
-
-    /// Updates account positions with the latest interest data. 
-    ///  
-    /// # Arguments 
-    /// - `account_nonce`: NFT nonce of the account to sync. 
-    ///  
-    /// # Returns 
-    /// - `MultiValue2<ManagedVec<AccountPosition>, ManagedVec<AccountPosition>>`: Updated deposit and borrow positions. 
-    pub fn update_account_positions<
-        Arg0: ProxyArg<u64>,
-    >(
-        self,
-        account_nonce: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValue2<ManagedVec<Env::Api, common_structs::AccountPosition<Env::Api>>, ManagedVec<Env::Api, common_structs::AccountPosition<Env::Api>>>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("updateAccountPositions")
-            .argument(&account_nonce)
-            .original_result()
-    }
-
-    /// Disables vault mode for an account, moving funds to the market pool. 
-    pub fn toggle_vault<
-        Arg0: ProxyArg<bool>,
-    >(
-        self,
-        status: Arg0,
-    ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
-        self.wrapped_tx
-            .raw_call("toggleVault")
-            .argument(&status)
             .original_result()
     }
 
@@ -563,7 +531,8 @@ where
         Arg5: ProxyArg<common_structs::ExchangeSource>,
         Arg6: ProxyArg<BigUint<Env::Api>>,
         Arg7: ProxyArg<BigUint<Env::Api>>,
-        Arg8: ProxyArg<OptionalValue<usize>>,
+        Arg8: ProxyArg<u64>,
+        Arg9: ProxyArg<OptionalValue<usize>>,
     >(
         self,
         market_token: Arg0,
@@ -574,7 +543,8 @@ where
         source: Arg5,
         first_tolerance: Arg6,
         last_tolerance: Arg7,
-        one_dex_pair_id: Arg8,
+        max_price_stale_seconds: Arg8,
+        one_dex_pair_id: Arg9,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
@@ -587,6 +557,7 @@ where
             .argument(&source)
             .argument(&first_tolerance)
             .argument(&last_tolerance)
+            .argument(&max_price_stale_seconds)
             .argument(&one_dex_pair_id)
             .original_result()
     }
@@ -640,24 +611,24 @@ where
             .original_result()
     }
 
-    /// Sets the AshSwap contract address. 
-    /// Configures the source for AshSwap price data. 
+    /// Sets the Swap Router contract address. 
+    /// Configures the source for Swap Router price data. 
     ///  
     /// # Arguments 
-    /// - `aggregator`: Address of the AshSwap contract. 
+    /// - `address`: Address of the Swap Router contract. 
     ///  
     /// # Errors 
     /// - `ERROR_INVALID_AGGREGATOR`: If address is zero or not a smart contract. 
-    pub fn set_ash_swap<
+    pub fn set_swap_router<
         Arg0: ProxyArg<ManagedAddress<Env::Api>>,
     >(
         self,
-        aggregator: Arg0,
+        address: Arg0,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("setAshSwap")
-            .argument(&aggregator)
+            .raw_call("setSwapRouter")
+            .argument(&address)
             .original_result()
     }
 
@@ -967,34 +938,45 @@ where
 
     /// Get the set of allowed pools 
     /// This storage mapper holds the addresses of pools that are allowed to participate in the lending protocol. 
-    pub fn pools_allowed(
+    pub fn pools(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValueEncoded<Env::Api, ManagedAddress<Env::Api>>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getPoolAllowed")
+            .raw_call("getPools")
             .original_result()
     }
 
     /// Get the account token 
     /// This storage mapper holds the logic of the account token, which is a non-fungible token (NFT). 
-    pub fn account_token(
+    pub fn account(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, TokenIdentifier<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getAccountToken")
+            .raw_call("getAccount")
+            .original_result()
+    }
+
+    /// Get the account nonce 
+    /// This storage mapper holds the nonce of the account, which is a non-fungible token (NFT). 
+    pub fn account_nonce(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, u64> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getAccountNonce")
             .original_result()
     }
 
     /// Get the account positions 
     /// This storage mapper holds a list of account positions as a set. A position represents a nonce of an account (NFT nonce). 
-    pub fn account_positions(
+    pub fn accounts(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValueEncoded<Env::Api, u64>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getAccountPositions")
+            .raw_call("getAccounts")
             .original_result()
     }
 
@@ -1015,31 +997,19 @@ where
 
     /// Get the deposit positions 
     /// This storage mapper maps each deposit position to an account nonce, holding a list of assets and their corresponding structs. 
-    pub fn deposit_positions<
+    pub fn positions<
         Arg0: ProxyArg<u64>,
+        Arg1: ProxyArg<common_structs::AccountPositionType>,
     >(
         self,
-        owner_nonce: Arg0,
+        nonce: Arg0,
+        position_type: Arg1,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValueEncoded<Env::Api, MultiValue2<EgldOrEsdtTokenIdentifier<Env::Api>, common_structs::AccountPosition<Env::Api>>>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getDepositPositions")
-            .argument(&owner_nonce)
-            .original_result()
-    }
-
-    /// Get the borrow positions 
-    /// This storage mapper maps each borrow position to an account nonce, holding a list of assets and their corresponding structs. 
-    pub fn borrow_positions<
-        Arg0: ProxyArg<u64>,
-    >(
-        self,
-        owner_nonce: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValueEncoded<Env::Api, MultiValue2<EgldOrEsdtTokenIdentifier<Env::Api>, common_structs::AccountPosition<Env::Api>>>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getBorrowPositions")
-            .argument(&owner_nonce)
+            .raw_call("getPositions")
+            .argument(&nonce)
+            .argument(&position_type)
             .original_result()
     }
 
@@ -1112,12 +1082,12 @@ where
             .original_result()
     }
 
-    pub fn aggregator(
+    pub fn swap_router(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getAggregatorAddress")
+            .raw_call("getSwapRouterAddress")
             .original_result()
     }
 
@@ -1203,21 +1173,6 @@ where
             .original_result()
     }
 
-    /// Get the vault supplied amount per token 
-    /// This storage mapper holds the supplied amount per token in the vault. 
-    pub fn vault_supplied_amount<
-        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-    >(
-        self,
-        asset: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getVaultSuppliedAmount")
-            .argument(&asset)
-            .original_result()
-    }
-
     /// Get the token oracle 
     /// This storage mapper holds the oracle of a token, used to get the price of a token. 
     pub fn token_oracle<
@@ -1230,6 +1185,15 @@ where
             .payment(NotPayable)
             .raw_call("getTokenOracle")
             .argument(&asset)
+            .original_result()
+    }
+
+    pub fn flash_loan_ongoing(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, bool> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("isFlashLoanOngoing")
             .original_result()
     }
 
@@ -1483,25 +1447,61 @@ where
         Arg1: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg2: ProxyArg<BigUint<Env::Api>>,
         Arg3: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-        Arg4: ProxyArg<OptionalValue<ManagedVec<Env::Api, AggregatorStep<Env::Api>>>>,
-        Arg5: ProxyArg<OptionalValue<ManagedVec<Env::Api, TokenAmount<Env::Api>>>>,
+        Arg4: ProxyArg<common_structs::PositionMode>,
+        Arg5: ProxyArg<ManagedArgBuffer<Env::Api>>,
+        Arg6: ProxyArg<OptionalValue<ManagedArgBuffer<Env::Api>>>,
     >(
         self,
         e_mode_category: Arg0,
         collateral_token: Arg1,
-        final_collateral_amount: Arg2,
+        debt_to_flash_loan: Arg2,
         debt_token: Arg3,
-        steps: Arg4,
-        limits: Arg5,
+        mode: Arg4,
+        steps: Arg5,
+        steps_payment: Arg6,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("multiply")
             .argument(&e_mode_category)
             .argument(&collateral_token)
-            .argument(&final_collateral_amount)
+            .argument(&debt_to_flash_loan)
             .argument(&debt_token)
+            .argument(&mode)
             .argument(&steps)
-            .argument(&limits)
+            .argument(&steps_payment)
+            .original_result()
+    }
+
+    /// Swaps debt token 
+    ///  
+    /// # Requirements 
+    /// * Account must have sufficient collateral 
+    /// * Position must remain healthy after operation 
+    /// * Tokens must be different 
+    ///  
+    /// # Arguments 
+    /// * `exisiting_debt_token` - The existing debt token 
+    /// * `new_debt_amount_raw` - The new debt token amount 
+    /// * `new_debt_token` - The new debt token 
+    /// * `steps` - Optional swap steps for token conversion 
+    pub fn swap_debt<
+        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+        Arg1: ProxyArg<BigUint<Env::Api>>,
+        Arg2: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+        Arg3: ProxyArg<ManagedArgBuffer<Env::Api>>,
+    >(
+        self,
+        exisiting_debt_token: Arg0,
+        new_debt_amount_raw: Arg1,
+        new_debt_token: Arg2,
+        steps: Arg3,
+    ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
+        self.wrapped_tx
+            .raw_call("swapDebt")
+            .argument(&exisiting_debt_token)
+            .argument(&new_debt_amount_raw)
+            .argument(&new_debt_token)
+            .argument(&steps)
             .original_result()
     }
 
@@ -1509,95 +1509,61 @@ where
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
         Arg2: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-        Arg3: ProxyArg<OptionalValue<ManagedVec<Env::Api, AggregatorStep<Env::Api>>>>,
-        Arg4: ProxyArg<OptionalValue<ManagedVec<Env::Api, TokenAmount<Env::Api>>>>,
+        Arg3: ProxyArg<ManagedArgBuffer<Env::Api>>,
     >(
         self,
-        from_token: Arg0,
+        current_collateral: Arg0,
         from_amount: Arg1,
-        to_token: Arg2,
+        new_collateral: Arg2,
         steps: Arg3,
-        limits: Arg4,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("swapCollateral")
-            .argument(&from_token)
+            .argument(&current_collateral)
             .argument(&from_amount)
-            .argument(&to_token)
+            .argument(&new_collateral)
             .argument(&steps)
-            .argument(&limits)
             .original_result()
     }
 
-    pub fn swap_debt<
-        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-        Arg1: ProxyArg<BigUint<Env::Api>>,
-        Arg2: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-        Arg3: ProxyArg<OptionalValue<ManagedVec<Env::Api, AggregatorStep<Env::Api>>>>,
-        Arg4: ProxyArg<OptionalValue<ManagedVec<Env::Api, TokenAmount<Env::Api>>>>,
-    >(
-        self,
-        from_token: Arg0,
-        to_amount: Arg1,
-        to_token: Arg2,
-        steps: Arg3,
-        limits: Arg4,
-    ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
-        self.wrapped_tx
-            .raw_call("swapDebt")
-            .argument(&from_token)
-            .argument(&to_amount)
-            .argument(&to_token)
-            .argument(&steps)
-            .argument(&limits)
-            .original_result()
-    }
-
+    /// Repays debt using collateral assets 
+    ///  
+    /// # Arguments 
+    /// * `from_token` - The collateral token to use for repayment 
+    /// * `from_amount` - Amount of collateral to use 
+    /// * `to_token` - The debt token to repay 
+    /// * `close_position` - A flag to refund all collaterals when the full debt is fully repaid and burn the position NFT 
+    /// * `limits` - Optional price limits for the swap 
+    ///  
+    /// # Requirements 
+    /// * Account must have sufficient collateral 
+    /// * Position must remain healthy after operation 
+    /// * Tokens must be different 
+    ///  
+    /// # Returns 
+    /// * Success if debt is repaid and position remains healthy 
+    /// * Error if any requirements are not met 
     pub fn repay_debt_with_collateral<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
         Arg2: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
-        Arg3: ProxyArg<OptionalValue<ManagedVec<Env::Api, AggregatorStep<Env::Api>>>>,
-        Arg4: ProxyArg<OptionalValue<ManagedVec<Env::Api, TokenAmount<Env::Api>>>>,
+        Arg3: ProxyArg<bool>,
+        Arg4: ProxyArg<OptionalValue<ManagedArgBuffer<Env::Api>>>,
     >(
         self,
         from_token: Arg0,
         from_amount: Arg1,
         to_token: Arg2,
-        steps: Arg3,
-        limits: Arg4,
+        close_position: Arg3,
+        steps: Arg4,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("repayDebtWithCollateral")
             .argument(&from_token)
             .argument(&from_amount)
             .argument(&to_token)
+            .argument(&close_position)
             .argument(&steps)
-            .argument(&limits)
             .original_result()
     }
-}
-
-#[type_abi]
-#[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, PartialEq, Clone, ManagedVecItem)]
-pub struct AggregatorStep<Api>
-where
-    Api: ManagedTypeApi,
-{
-    pub token_in: TokenIdentifier<Api>,
-    pub token_out: TokenIdentifier<Api>,
-    pub amount_in: BigUint<Api>,
-    pub pool_address: ManagedAddress<Api>,
-    pub function_name: ManagedBuffer<Api>,
-    pub arguments: ManagedVec<Api, ManagedBuffer<Api>>,
-}
-
-#[type_abi]
-#[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, PartialEq, Clone, ManagedVecItem)]
-pub struct TokenAmount<Api>
-where
-    Api: ManagedTypeApi,
-{
-    pub token: TokenIdentifier<Api>,
-    pub amount: BigUint<Api>,
 }

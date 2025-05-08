@@ -1,16 +1,17 @@
-use common_constants::TOTAL_SUPPLY_AMOUNT_STORAGE_KEY;
+use common_constants::{RAY_PRECISION, TOTAL_SUPPLY_AMOUNT_STORAGE_KEY};
 use common_structs::{
     AccountAttributes, AccountPosition, AccountPositionType, AssetConfig, PriceFeedShort,
 };
 use multiversx_sc::storage::StorageKey;
 
-use crate::{cache::Cache, helpers, oracle, positions, proxy_pool, storage, utils, validation};
+use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validation};
 use common_errors::{
-    ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL, ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS,
-    ERROR_MIX_ISOLATED_COLLATERAL, ERROR_POSITION_NOT_FOUND, ERROR_SUPPLY_CAP,
+    ERROR_ACCOUNT_ATTRIBUTES_MISMATCH, ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL,
+    ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS, ERROR_MIX_ISOLATED_COLLATERAL,
+    ERROR_POSITION_NOT_FOUND, ERROR_SUPPLY_CAP,
 };
 
-use super::account;
+use super::{account, emode, update};
 
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
@@ -24,9 +25,10 @@ pub trait PositionDepositModule:
     + utils::LendingUtilsModule
     + helpers::math::MathsModule
     + account::PositionAccountModule
-    + positions::emode::EModeModule
+    + emode::EModeModule
     + common_math::SharedMathModule
-    + positions::vault::PositionVaultModule
+    // + vault::PositionVaultModule
+    + update::PositionUpdateModule
 {
     /// Processes a deposit operation for a user's position.
     /// Handles validations, e-mode, and updates for deposits.
@@ -50,8 +52,8 @@ pub trait PositionDepositModule:
 
         for deposit_payment in deposit_payments {
             self.validate_payment(&deposit_payment);
-            let mut asset_info = cache.get_cached_asset_info(&deposit_payment.token_identifier);
 
+            let mut asset_info = cache.get_cached_asset_info(&deposit_payment.token_identifier);
             let asset_emode_config = self.get_token_e_mode_config(
                 position_attributes.get_emode_id(),
                 &deposit_payment.token_identifier,
@@ -61,7 +63,6 @@ pub trait PositionDepositModule:
                 &asset_info,
                 position_attributes.get_emode_id(),
             );
-
             self.apply_e_mode_to_asset_config(&mut asset_info, &e_mode, asset_emode_config);
 
             require!(
@@ -74,8 +75,8 @@ pub trait PositionDepositModule:
                 &asset_info,
                 &position_attributes,
             );
-
-            self.validate_supply_cap(&asset_info, &deposit_payment, cache);
+            let feed = self.get_token_price(&deposit_payment.token_identifier, cache);
+            self.validate_supply_cap(&asset_info, &deposit_payment, &feed, cache);
 
             self.update_deposit_position(
                 account_nonce,
@@ -83,6 +84,7 @@ pub trait PositionDepositModule:
                 &asset_info,
                 caller,
                 &position_attributes,
+                &feed,
                 cache,
             );
         }
@@ -105,17 +107,14 @@ pub trait PositionDepositModule:
         asset_info: &AssetConfig<Self::Api>,
         token_id: &EgldOrEsdtTokenIdentifier,
     ) -> AccountPosition<Self::Api> {
-        self.deposit_positions(account_nonce)
+        self.positions(account_nonce, AccountPositionType::Deposit)
             .get(token_id)
             .unwrap_or_else(|| {
-                let data = self.token_oracle(token_id).get();
                 AccountPosition::new(
                     AccountPositionType::Deposit,
                     token_id.clone(),
-                    self.to_decimal(BigUint::zero(), data.price_decimals),
-                    self.to_decimal(BigUint::zero(), data.price_decimals),
+                    self.ray_zero(),
                     account_nonce,
-                    self.blockchain().get_block_timestamp(),
                     self.ray(),
                     asset_info.liquidation_threshold.clone(),
                     asset_info.liquidation_bonus.clone(),
@@ -145,9 +144,9 @@ pub trait PositionDepositModule:
         asset_info: &AssetConfig<Self::Api>,
         caller: &ManagedAddress,
         attributes: &AccountAttributes<Self::Api>,
+        feed: &PriceFeedShort<Self::Api>,
         cache: &mut Cache<Self>,
     ) -> AccountPosition<Self::Api> {
-        let feed = self.get_token_price(&collateral.token_identifier, cache);
         let mut position = self.get_or_create_deposit_position(
             account_nonce,
             asset_info,
@@ -167,31 +166,26 @@ pub trait PositionDepositModule:
             position.liquidation_fees = asset_info.liquidation_fees.clone();
         }
 
-        let amount_decimal = position.make_amount_decimal(&collateral.amount);
-        if attributes.is_vault() {
-            self.update_vault_supplied_amount(&collateral.token_identifier, &amount_decimal, true);
-            position.principal_amount += &amount_decimal;
-        } else {
-            self.update_market_position(
-                &mut position,
-                &collateral.amount,
-                &collateral.token_identifier,
-                &feed,
-                cache,
-            );
-        }
+        let amount_decimal = position.make_amount_decimal(&collateral.amount, feed.asset_decimals);
 
-        self.update_position_event(
+        self.update_market_position(
+            &mut position,
+            &collateral.amount,
+            &collateral.token_identifier,
+            feed,
+            cache,
+        );
+
+        self.emit_position_update_event(
             &amount_decimal,
             &position,
-            OptionalValue::Some(feed.price.clone()),
-            OptionalValue::Some(caller),
-            OptionalValue::Some(attributes),
+            feed.price.clone(),
+            caller,
+            attributes,
         );
 
         // Update storage with the latest position
-        self.deposit_positions(account_nonce)
-            .insert(collateral.token_identifier.clone(), position.clone());
+        self.store_updated_position(account_nonce, &position);
 
         position
     }
@@ -234,6 +228,7 @@ pub trait PositionDepositModule:
     fn validate_supply_payment(
         &self,
         require_account_payment: bool,
+        return_nft: bool,
     ) -> (
         ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
         Option<EsdtTokenPayment<Self::Api>>,
@@ -248,18 +243,25 @@ pub trait PositionDepositModule:
 
         let first_payment = payments.get(0);
 
-        if self.account_token().get_token_id() == first_payment.token_identifier {
+        if self.account().get_token_id() == first_payment.token_identifier {
             self.require_active_account(first_payment.token_nonce);
 
             let account_payment = first_payment.clone().unwrap_esdt();
-
             let account_attributes = self.nft_attributes(&account_payment);
-            // Refund NFT
-            self.tx().to(&caller).payment(&account_payment).transfer();
+            let stored_attributes = self.account_attributes(account_payment.token_nonce).get();
+
+            require!(
+                account_attributes == stored_attributes,
+                ERROR_ACCOUNT_ATTRIBUTES_MISMATCH
+            );
+
+            if return_nft {
+                // Refund NFT
+                self.tx().to(&caller).payment(&account_payment).transfer();
+            }
+
             (
-                payments
-                    .slice(1, payments.len())
-                    .unwrap_or(ManagedVec::new()),
+                payments.slice(1, payments.len()).unwrap_or_default(),
                 Some(account_payment),
                 caller,
                 Some(account_attributes),
@@ -269,6 +271,7 @@ pub trait PositionDepositModule:
                 !require_account_payment,
                 ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS
             );
+
             (payments.clone(), None, caller, None)
         }
     }
@@ -288,13 +291,15 @@ pub trait PositionDepositModule:
         position_attributes: &AccountAttributes<Self::Api>,
     ) {
         let is_isolated = asset_info.is_isolated() || position_attributes.is_isolated();
-        if is_isolated {
-            require!(
-                asset_info.is_isolated() == position_attributes.is_isolated()
-                    && position_attributes.get_isolated_token() == *token_id,
-                ERROR_MIX_ISOLATED_COLLATERAL
-            );
+        if !is_isolated {
+            return;
         }
+
+        require!(
+            asset_info.is_isolated() == position_attributes.is_isolated()
+                && position_attributes.get_isolated_token() == *token_id,
+            ERROR_MIX_ISOLATED_COLLATERAL
+        );
     }
 
     /// Retrieves total supply amount from the liquidity pool.
@@ -325,25 +330,32 @@ pub trait PositionDepositModule:
         &self,
         asset_info: &AssetConfig<Self::Api>,
         deposit_payment: &EgldOrEsdtTokenPayment,
+        feed: &PriceFeedShort<Self::Api>,
         cache: &mut Cache<Self>,
     ) {
-        if let Some(supply_cap) = &asset_info.supply_cap {
-            if supply_cap == &BigUint::zero() {
-                return;
-            }
+        match &asset_info.supply_cap {
+            Some(supply_cap) => {
+                if supply_cap == &0 {
+                    return;
+                }
 
-            let pool_address = cache.get_cached_pool_address(&deposit_payment.token_identifier);
-            let mut total_supplied = self.get_total_supply(pool_address).get();
+                let pool = cache.get_cached_pool_address(&deposit_payment.token_identifier);
+                let total_supply_scaled = self.get_total_supply(pool.clone()).get();
+                // Validates with the last updated index avoiding a double call to the pool to update the index
+                let index = self.supply_index(pool.clone()).get();
+                let total_supplied = self.rescale_half_up(
+                    &self.mul_half_up(&total_supply_scaled, &index, RAY_PRECISION),
+                    feed.asset_decimals,
+                );
 
-            let vault_supplied_amount = self
-                .vault_supplied_amount(&deposit_payment.token_identifier)
-                .get();
-            total_supplied += vault_supplied_amount;
-
-            require!(
-                total_supplied.into_raw_units() + &deposit_payment.amount <= *supply_cap,
-                ERROR_SUPPLY_CAP
-            );
+                require!(
+                    total_supplied.into_raw_units() + &deposit_payment.amount <= *supply_cap,
+                    ERROR_SUPPLY_CAP
+                );
+            },
+            None => {
+                // No supply cap set, do nothing
+            },
         }
     }
 
@@ -357,14 +369,15 @@ pub trait PositionDepositModule:
         cache: &mut Cache<Self>,
     ) {
         self.require_active_account(account_nonce);
-        let mut deposit_positions = self.deposit_positions(account_nonce);
+        let controller_sc = self.blockchain().get_sc_address();
+        let deposit_positions = self.positions(account_nonce, AccountPositionType::Deposit);
         let dp_option = deposit_positions.get(asset_id);
         require!(dp_option.is_some(), ERROR_POSITION_NOT_FOUND);
 
         let account_attributes = self.account_attributes(account_nonce).get();
         let e_mode_category = self.get_e_mode_category(account_attributes.get_emode_id());
         let asset_emode_config =
-            self.get_token_e_mode_config(account_attributes.get_emode_id(), &asset_id);
+            self.get_token_e_mode_config(account_attributes.get_emode_id(), asset_id);
         self.apply_e_mode_to_asset_config(asset_config, &e_mode_category, asset_emode_config);
 
         let mut dp = dp_option.unwrap();
@@ -387,7 +400,7 @@ pub trait PositionDepositModule:
             }
         }
 
-        deposit_positions.insert(dp.asset_id.clone(), dp.clone());
+        self.store_updated_position(account_nonce, &dp);
 
         if has_risks {
             self.validate_is_healthy(
@@ -397,12 +410,12 @@ pub trait PositionDepositModule:
             );
         }
 
-        self.update_position_event(
+        self.emit_position_update_event(
             &dp.zero_decimal(),
             &dp,
-            OptionalValue::None,
-            OptionalValue::None,
-            OptionalValue::None,
+            self.get_token_price(asset_id, cache).price,
+            &controller_sc,
+            &account_attributes,
         );
     }
 }

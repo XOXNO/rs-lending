@@ -168,3 +168,16 @@ pub static ERROR_CANNOT_CLEAN_BAD_DEBT: &[u8] = b"Cannot clean bad debt.";
 pub static ERROR_ASSETS_ARE_THE_SAME: &[u8] = b"Assets are the same.";
 
 pub static ERROR_INVALID_PAYMENTS: &[u8] = b"Invalid payments.";
+
+pub static ERROR_INVALID_POSITION_MODE: &[u8] = b"Invalid position mode.";
+
+pub static ERROR_PRICE_FEED_STALE: &[u8] = b"Price feed is stale.";
+
+pub static ERROR_FLASH_LOAN_ALREADY_ONGOING: &[u8] = b"Flash loan already ongoing.";
+
+pub static ERROR_ACCOUNT_ATTRIBUTES_MISMATCH: &[u8] = b"Account attributes mismatch.";
+
+pub static ERROR_WITHDRAW_TOKEN_RECEIVED: &[u8] = b"Wrong token received during withdraw.";
+
+pub static ERROR_WITHDRAW_AMOUNT_LESS_THAN_FEE: &[u8] =
+    b"Withdraw amount less than liquidation fee.";

@@ -163,7 +163,7 @@ upgrade_all_markets() {
         echo "Upgrading market: $market"
         upgrade_market "$market"
         # Optionally wait a few seconds to ensure that the tx is processed before sending the next one
-        sleep 5
+        sleep 10
     done
 }
 
@@ -193,7 +193,9 @@ to_ray() {
 to_decimals() {
     local value=$1
     local decimals=$2
-    echo "${value}$(printf '%0*d' "$decimals" 0)"
+    # Use bc for floating point multiplication, then cut off any decimal part
+    local result=$(echo "scale=0; ($value * (10 ^ $decimals))/1" | bc)
+    echo "$result"
 }
 
 # Function to build market arguments
@@ -339,7 +341,7 @@ create_oracle_args() {
     args+=("$(get_config_value "$market_name" "oracle_source")")
     args+=("$(get_config_value "$market_name" "first_tolerance")")
     args+=("$(get_config_value "$market_name" "last_tolerance")")
-    
+    args+=("$(get_config_value "$market_name" "max_price_stale_seconds")")
     # Check if pair_id exists in config and add it if present
     local pair_id=$(jq -r ".[\"$market_name\"][\"pair_id\"] // empty" "$MARKET_CONFIG_FILE")
     if [ ! -z "$pair_id" ]; then
@@ -428,10 +430,34 @@ deploy_controller() {
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 }
 
+# upgrade_controller() {
+#     mxpy --verbose contract upgrade ${ADDRESS} --bytecode=${PROJECT_CONTROLLER} --recall-nonce \
+#     --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+#     --gas-limit=550000000 \
+#     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
+# }
+
 upgrade_controller() {
+    # Get all token IDs from the config file
+    local token_ids=($(jq -r 'to_entries[] | .value.token_id' "$MARKET_CONFIG_FILE"))
+    
+    if [ ${#token_ids[@]} -eq 0 ]; then
+        echo "No markets found in configuration"
+        exit 1
+    fi
+    
+    echo "Token IDs to claim revenue from: ${token_ids[*]}"
+    
+    # Prepare arguments for the contract call
+    local args=()
+    for token_id in "${token_ids[@]}"; do
+        args+=("str:$token_id")
+    done
+
     mxpy --verbose contract upgrade ${ADDRESS} --bytecode=${PROJECT_CONTROLLER} --recall-nonce \
     --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
     --gas-limit=550000000 \
+    --arguments "${args[@]}" \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 }
 
@@ -757,19 +783,19 @@ claim_revenue() {
 
 # Function to set AshSwap address
 set_ash_swap() {
-    local ash_swap_address=$1
+    local swap_router_address=$1
     
-    if [ -z "$ash_swap_address" ]; then
-        echo "Error: AshSwap address is required"
-        echo "Usage: setAshSwap <address>"
+    if [ -z "$swap_router_address" ]; then
+        echo "Error: Swap router address is required"
+        echo "Usage: setSwapRouter <address>"
         exit 1
     fi
     
-    echo "Setting AshSwap address to ${ash_swap_address}..."
+    echo "Setting Swap router address to ${swap_router_address}..."
     
     mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=20000000 \
     --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
-    --function="setAshSwap" --arguments ${ash_swap_address} \
+    --function="setSwapRouter" --arguments ${swap_router_address} \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 

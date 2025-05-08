@@ -1,8 +1,9 @@
-use common_structs::{AccountAttributes, AccountPosition, PriceFeedShort};
+use common_errors::ERROR_WITHDRAW_TOKEN_RECEIVED;
+use common_structs::{AccountAttributes, AccountPosition, AccountPositionType, PriceFeedShort};
 
 use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validation};
 
-use super::{account, vault};
+use super::{account, update};
 
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
@@ -17,7 +18,8 @@ pub trait PositionWithdrawModule:
     + helpers::math::MathsModule
     + account::PositionAccountModule
     + common_math::SharedMathModule
-    + vault::PositionVaultModule
+    // + vault::PositionVaultModule
+    + update::PositionUpdateModule
 {
     /// Processes a withdrawal from a deposit position.
     /// Handles vault or market withdrawals with validations.
@@ -37,99 +39,39 @@ pub trait PositionWithdrawModule:
     fn process_withdrawal(
         &self,
         account_nonce: u64,
-        withdraw_payment: EgldOrEsdtTokenPayment,
+        amount: ManagedDecimal<Self::Api, NumDecimals>,
         caller: &ManagedAddress,
         is_liquidation: bool,
         liquidation_fee: Option<ManagedDecimal<Self::Api, NumDecimals>>,
         cache: &mut Cache<Self>,
         position_attributes: &AccountAttributes<Self::Api>,
-        is_swap: bool,
-    ) -> AccountPosition<Self::Api> {
-        let (token_id, _, requested_amount) = withdraw_payment.into_tuple();
-        let feed = self.get_token_price(&token_id, cache);
-        let pool_address = cache.get_cached_pool_address(&token_id);
+        deposit_position: &mut AccountPosition<Self::Api>,
+        feed: &PriceFeedShort<Self::Api>,
+    ) -> EgldOrEsdtTokenPayment<Self::Api> {
+        let pool_address = cache.get_cached_pool_address(&deposit_position.asset_id);
 
-        let mut deposit_position = self.get_deposit_position(account_nonce, &token_id);
-        let amount = self.cap_withdraw_amount(&deposit_position, &requested_amount);
-
-        if position_attributes.is_vault() {
-            self.process_vault_withdrawal(
-                &token_id,
-                &amount,
-                is_liquidation,
-                liquidation_fee,
-                caller,
-                pool_address,
-                &feed,
-                &mut deposit_position,
-                is_swap,
-            );
-        } else {
-            self.process_market_withdrawal(
-                pool_address,
-                caller,
-                &amount,
-                &mut deposit_position,
-                is_liquidation,
-                liquidation_fee,
-                &feed,
-            );
-        };
-
-        self.update_position_event(
+        // The amount cap happens in the liquidity pool to account for the interest accrued after sync
+        let payment = self.process_market_withdrawal(
+            pool_address,
+            caller,
             &amount,
-            &deposit_position,
-            OptionalValue::Some(feed.price.clone()),
-            OptionalValue::Some(caller),
-            OptionalValue::Some(position_attributes),
+            deposit_position,
+            is_liquidation,
+            liquidation_fee,
+            feed,
         );
 
-        self.update_deposit_position_storage(account_nonce, &token_id, &deposit_position);
+        self.emit_position_update_event(
+            &amount,
+            deposit_position,
+            feed.price.clone(),
+            caller,
+            position_attributes,
+        );
 
-        deposit_position
-    }
+        self.update_or_remove_position(account_nonce, deposit_position);
 
-    /// Processes a vault withdrawal.
-    /// Updates storage and transfers assets for vault positions.
-    ///
-    /// # Arguments
-    /// - `token_id`: Token identifier.
-    /// - `amount`: Withdrawal amount.
-    /// - `is_liquidation`: Liquidation flag.
-    /// - `liquidation_fee_opt`: Optional liquidation fee.
-    /// - `caller`: Receiver's address.
-    /// - `pool_address`: Pool address.
-    /// - `feed`: Price data for the token.
-    /// - `deposit_position`: Mutable deposit position.
-    /// - `is_swap`: Swap operation flag.
-    ///
-    /// # Returns
-    /// - Updated deposit position.
-    fn process_vault_withdrawal(
-        &self,
-        token_id: &EgldOrEsdtTokenIdentifier,
-        amount: &ManagedDecimal<Self::Api, NumDecimals>,
-        is_liquidation: bool,
-        liquidation_fee_opt: Option<ManagedDecimal<Self::Api, NumDecimals>>,
-        caller: &ManagedAddress,
-        pool_address: ManagedAddress,
-        feed: &PriceFeedShort<Self::Api>,
-        deposit_position: &mut AccountPosition<Self::Api>,
-        is_swap: bool,
-    ) -> AccountPosition<Self::Api> {
-        self.update_vault_supplied_amount(token_id, amount, false);
-        deposit_position.principal_amount -= amount;
-
-        if is_liquidation && liquidation_fee_opt.is_some() {
-            let liquidation_fee = liquidation_fee_opt.unwrap();
-            let amount_after_fee = amount.clone() - liquidation_fee.clone();
-            self.transfer_withdrawn_assets(caller, token_id, &amount_after_fee, is_swap);
-            self.transfer_liquidation_fee(pool_address, token_id, &liquidation_fee, feed);
-        } else {
-            self.transfer_withdrawn_assets(caller, token_id, amount, is_swap);
-        }
-
-        deposit_position.clone()
+        payment
     }
 
     /// Executes a market withdrawal via the liquidity pool.
@@ -154,8 +96,8 @@ pub trait PositionWithdrawModule:
         is_liquidation: bool,
         liquidation_fee: Option<ManagedDecimal<Self::Api, NumDecimals>>,
         feed: &PriceFeedShort<Self::Api>,
-    ) {
-        *deposit_position = self
+    ) -> EgldOrEsdtTokenPayment<Self::Api> {
+        let (position_updated, back_transfers) = self
             .tx()
             .to(pool_address)
             .typed(proxy_pool::LiquidityPoolProxy)
@@ -168,7 +110,28 @@ pub trait PositionWithdrawModule:
                 feed.price.clone(),
             )
             .returns(ReturnsResult)
+            .returns(ReturnsBackTransfers)
             .sync_call();
+
+        *deposit_position = position_updated;
+
+        let mut payment =
+            EgldOrEsdtTokenPayment::new(deposit_position.asset_id.clone(), 0, BigUint::zero());
+
+        for esdt in back_transfers.esdt_payments {
+            if esdt.token_identifier == deposit_position.asset_id {
+                payment.amount += esdt.amount;
+            }
+        }
+        if back_transfers.total_egld_amount > 0 {
+            require!(
+                deposit_position.asset_id.is_egld(),
+                ERROR_WITHDRAW_TOKEN_RECEIVED
+            );
+            payment.amount += back_transfers.total_egld_amount;
+        }
+
+        payment
     }
 
     /// Manages the position NFT after withdrawal.
@@ -184,14 +147,18 @@ pub trait PositionWithdrawModule:
         account_payment: &EsdtTokenPayment<Self::Api>,
         caller: &ManagedAddress,
     ) {
-        let deposit_positions_count = self.deposit_positions(account_payment.token_nonce).len();
-        let borrow_positions_count = self.borrow_positions(account_payment.token_nonce).len();
+        let deposit_positions_count = self
+            .positions(account_payment.token_nonce, AccountPositionType::Deposit)
+            .len();
+        let borrow_positions_count = self
+            .positions(account_payment.token_nonce, AccountPositionType::Borrow)
+            .len();
 
         // Burn NFT if position is fully closed
         if deposit_positions_count == 0 && borrow_positions_count == 0 {
-            self.account_token()
+            self.account()
                 .nft_burn(account_payment.token_nonce, &BigUint::from(1u64));
-            self.account_positions()
+            self.accounts()
                 .swap_remove(&account_payment.token_nonce);
             self.account_attributes(account_payment.token_nonce).clear();
         } else {
@@ -212,36 +179,15 @@ pub trait PositionWithdrawModule:
         account_nonce: u64,
         token_id: &EgldOrEsdtTokenIdentifier,
     ) -> AccountPosition<Self::Api> {
-        let maybe_deposit_position = self.deposit_positions(account_nonce).get(&token_id);
+        let opt_deposit_position = self
+            .positions(account_nonce, AccountPositionType::Deposit)
+            .get(token_id);
         require!(
-            maybe_deposit_position.is_some(),
+            opt_deposit_position.is_some(),
             "Token {} is not available for this account",
             token_id
         );
-        maybe_deposit_position.unwrap()
-    }
-
-    /// Calculates the actual withdrawal amount.
-    /// Caps withdrawal at available balance.
-    ///
-    /// # Arguments
-    /// - `deposit_position`: Current deposit position.
-    /// - `requested_amount`: Requested withdrawal amount.
-    ///
-    /// # Returns
-    /// - Actual withdrawal amount in decimal format.
-    fn cap_withdraw_amount(
-        &self,
-        deposit_position: &AccountPosition<Self::Api>,
-        requested_amount: &BigUint<Self::Api>,
-    ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let requested_amount_dec = deposit_position.make_amount_decimal(requested_amount);
-        let total_amount = deposit_position.get_total_amount();
-        if requested_amount_dec > total_amount {
-            total_amount
-        } else {
-            requested_amount_dec
-        }
+        opt_deposit_position.unwrap()
     }
 
     /// Transfers withdrawn assets to the caller.
@@ -289,26 +235,5 @@ pub trait PositionWithdrawModule:
             .egld_or_single_esdt(token_id, 0, fee.into_raw_units())
             .returns(ReturnsResult)
             .sync_call();
-    }
-
-    /// Updates or removes a deposit position in storage.
-    /// Reflects withdrawal changes in storage.
-    ///
-    /// # Arguments
-    /// - `account_nonce`: Position NFT nonce.
-    /// - `token_id`: Token identifier.
-    /// - `position`: Updated deposit position.
-    fn update_deposit_position_storage(
-        &self,
-        account_nonce: u64,
-        token_id: &EgldOrEsdtTokenIdentifier,
-        position: &AccountPosition<Self::Api>,
-    ) {
-        let mut deposit_positions = self.deposit_positions(account_nonce);
-        if position.can_remove() {
-            deposit_positions.remove(token_id);
-        } else {
-            deposit_positions.insert(token_id.clone(), position.clone());
-        }
     }
 }

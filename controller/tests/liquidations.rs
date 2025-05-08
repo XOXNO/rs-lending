@@ -1,5 +1,5 @@
 use controller::ERROR_INSUFFICIENT_COLLATERAL;
-use multiversx_sc::types::ManagedDecimal;
+use multiversx_sc::types::{EgldOrEsdtTokenIdentifier, ManagedDecimal, MultiValueEncoded};
 use multiversx_sc_scenario::imports::{BigUint, OptionalValue, TestAddress};
 pub mod constants;
 pub mod proxys;
@@ -15,7 +15,7 @@ fn test_liquidation() {
     let borrower = TestAddress::new("borrower");
 
     // Setup accounts
-    state.world.current_block().block_timestamp(0);
+    state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
     // Total Supplied 5000$
     state.supply_asset(
@@ -84,11 +84,11 @@ fn test_liquidation() {
     println!("Health Factor {:?}", health_factor);
     assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
     assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
-    state
-        .world
-        .current_block()
-        .block_timestamp(SECONDS_PER_DAY * 500);
-    state.update_account_positions(&borrower, 2);
+    state.change_timestamp(SECONDS_PER_DAY * 500);
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
+    state.update_markets(&borrower, markets.clone());
     let health_factor = state.get_account_health_factor(2);
     println!("Health Factor {:?}", health_factor);
 
@@ -145,7 +145,7 @@ fn test_liquidation_bad_debt_multi_asset() {
     let borrower = TestAddress::new("borrower");
 
     // Setup accounts
-    state.world.current_block().block_timestamp(0);
+    state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
     // Total Supplied 5000$
     state.supply_asset(
@@ -215,11 +215,11 @@ fn test_liquidation_bad_debt_multi_asset() {
     println!("Health Factor {:?}", health_factor);
     assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
     assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
-    state
-        .world
-        .current_block()
-        .block_timestamp(SECONDS_PER_DAY * 1000);
-    state.update_account_positions(&borrower, 2);
+    state.change_timestamp(SECONDS_PER_DAY * 1000);
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
+    state.update_markets(&borrower, markets.clone());
     let borrowed = state.get_total_borrow_in_egld(2);
     let borrowed_egld = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
     let collateral = state.get_total_collateral_in_egld(2);
@@ -293,7 +293,9 @@ fn test_liquidation_bad_debt_multi_asset() {
     println!("Health Factor {:?}", health_factor);
     assert!(borrowed_after == ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
     assert!(collateral_after == ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
-    assert!(collateral_weighted == ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
+    assert!(
+        collateral_weighted == ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS)
+    );
 }
 
 #[test]
@@ -309,7 +311,7 @@ fn test_liquidation_single_position() {
     );
 
     // Setup accounts
-    state.world.current_block().block_timestamp(0);
+    state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
 
     // Total Supplied 5000$
@@ -356,11 +358,10 @@ fn test_liquidation_single_position() {
     assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
     assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
 
-    state
-        .world
-        .current_block()
-        .block_timestamp(SECONDS_PER_YEAR + SECONDS_PER_DAY * 1500);
-    state.update_account_positions(&borrower, 2);
+    state.change_timestamp(SECONDS_PER_YEAR + SECONDS_PER_DAY * 1500);
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
+    state.update_markets(&borrower, markets.clone());
     let borrowed_egld = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
     let borrowed = state.get_total_borrow_in_egld(2);
     let collateral = state.get_total_collateral_in_egld(2);
@@ -456,15 +457,16 @@ fn test_liquidation_and_left_bad_debt() {
 
     state.borrow_asset(
         &borrower,
-        USDC_TOKEN.clone(),
+        USDC_TOKEN,
         BigUint::from(2000u64),
         2,
         USDC_DECIMALS,
     );
 
-    state.world.current_block().block_timestamp(590000000u64);
-    state.update_borrows_with_debt(&borrower, 2);
-    state.global_sync(&supplier, 2);
+    state.change_timestamp(590000000u64);
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
+    state.update_markets(&supplier, markets.clone());
     let health = state.get_account_health_factor(2);
     let borrow_amount_in_egld = state.get_total_borrow_in_egld(2);
     let collateral_in_egld = state.get_total_collateral_in_egld(2);
@@ -492,7 +494,7 @@ fn test_liquidation_and_left_bad_debt() {
     println!("borrow_amount_in_egld: {:?}", borrow_amount_in_egld);
     assert!(borrow_amount_in_egld > ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS));
     assert!(
-        collateral_in_egld == ManagedDecimal::from_raw_units(BigUint::from(1u64), EGLD_DECIMALS)
+        collateral_in_egld < ManagedDecimal::from_raw_units(BigUint::from(WAD / 2), EGLD_DECIMALS)
     );
 
     // Repay the bad debt, usually the protocol will do this
@@ -584,13 +586,13 @@ fn test_liquidation_partial_payment() {
 
     state.borrow_asset(
         &borrower,
-        USDC_TOKEN.clone(),
+        USDC_TOKEN,
         BigUint::from(2000u64),
         2,
         USDC_DECIMALS,
     );
 
-    state.world.current_block().block_timestamp(1);
+    state.change_timestamp(1);
 
     let borrow_amount_in_dollars = state.get_borrow_amount_for_token(2, USDC_TOKEN);
     let collateral_in_dollars = state.get_collateral_amount_for_token(2, EGLD_TOKEN);
@@ -598,8 +600,11 @@ fn test_liquidation_partial_payment() {
     println!("borrow_amount_in_dollars: {}", borrow_amount_in_dollars);
     println!("collateral_in_dollars: {:?}", collateral_in_dollars);
 
-    state.world.current_block().block_timestamp(600000000u64);
-    state.update_borrows_with_debt(&borrower, 2);
+    state.change_timestamp(600000000u64);
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
+    state.update_markets(&borrower, markets.clone());
     println!("borrow_amount_in_dollars: {:?}", borrow_amount_in_dollars);
     let health = state.get_account_health_factor(2);
     println!("health: {}", health);

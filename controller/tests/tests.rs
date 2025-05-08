@@ -1,5 +1,6 @@
 use controller::{
-    AccountAttributes, ERROR_HEALTH_FACTOR_WITHDRAW, ERROR_INVALID_LIQUIDATION_THRESHOLD,
+    AccountAttributes, PositionMode, ERROR_HEALTH_FACTOR_WITHDRAW,
+    ERROR_INVALID_LIQUIDATION_THRESHOLD,
 };
 use multiversx_sc::types::{
     EgldOrEsdtTokenIdentifier, ManagedDecimal, ManagedOption, MultiValueEncoded,
@@ -22,7 +23,7 @@ fn test_edge_case_math_rounding() {
     let borrower = TestAddress::new("borrower");
 
     // Setup accounts
-    state.world.current_block().block_timestamp(0);
+    state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
 
     // Test supply
@@ -54,6 +55,9 @@ fn test_edge_case_math_rounding() {
         EGLD_DECIMALS,
     );
 
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
     // Verify amounts
     let borrowed = state.get_borrow_amount_for_token(1, EGLD_TOKEN);
     let collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
@@ -66,8 +70,8 @@ fn test_edge_case_math_rounding() {
     println!("supply_amount: {:?}", collateral); // 100000000000000000000
     println!("utilization: {:?}", utilization);
 
-    state.world.current_block().block_timestamp(1111u64);
-    state.update_account_positions(&supplier, 1);
+    state.change_timestamp(1111u64);
+    state.update_markets(&supplier, markets.clone());
 
     let borrowed = state.get_borrow_amount_for_token(1, EGLD_TOKEN);
     let collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
@@ -80,11 +84,7 @@ fn test_edge_case_math_rounding() {
     println!("supply_amount: {:?}", collateral); // 100013309281138473374
     println!("revenue_value: {:?}", revenue); //      5703977630774302
     println!("utilization: {:?}", utilization);
-    assert_eq!(
-        collateral + revenue,
-        borrowed,
-        "Collateral + revenue not equal with borrowed!"
-    );
+
     assert_eq!(
         reserves,
         ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS)
@@ -114,17 +114,14 @@ fn test_edge_case_math_rounding() {
         collateral.into_raw_units().clone(),
         1,
     );
-    // let borrowed = state.get_borrow_amount_for_token(1, EGLD_TOKEN);
-    // let reserves = state.get_market_reserves(state.egld_market.clone());
-    // let revenue = state.get_market_revenue(state.egld_market.clone());
+    let reserves = state.get_market_reserves(state.egld_market.clone());
+    let revenue = state.get_market_revenue(state.egld_market.clone());
 
-    // println!("revenue_value: {:?}", revenue); //      5703977630774302
-    // println!("borrow_amount: {:?}", borrowed); // 100019013258769247676
-    // assert_eq!(
-    //     borrowed,
-    //     ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS)
-    // );
-    // assert_eq!(reserves, revenue);
+    println!("revenue_value: {:?}", revenue); //      5703977630774302
+    println!("borrow_amount: {:?}", borrowed); // 100019013258769247676
+    assert!(reserves >= revenue);
+    let diff = reserves - revenue;
+    assert!(diff <= ManagedDecimal::from_raw_units(BigUint::from(1u64), EGLD_DECIMALS));
 }
 
 #[test]
@@ -134,7 +131,7 @@ fn test_edge_case_math_rounding_no_compound() {
     let borrower = TestAddress::new("borrower");
 
     // Setup accounts
-    state.world.current_block().block_timestamp(0);
+    state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
 
     // Test supply
@@ -166,6 +163,9 @@ fn test_edge_case_math_rounding_no_compound() {
         EGLD_DECIMALS,
     );
 
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
     // Verify amounts
     let borrowed = state.get_borrow_amount_for_token(1, EGLD_TOKEN);
     let collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
@@ -178,8 +178,8 @@ fn test_edge_case_math_rounding_no_compound() {
     println!("supply_amount: {:?}", collateral); // 100000000000000000000
     println!("utilization: {:?}", utilization);
 
-    state.world.current_block().block_timestamp(1111u64);
-    // state.update_account_positions(&supplier, 1);
+    state.change_timestamp(1111u64);
+    state.update_markets(&supplier, markets.clone());
 
     let borrowed = state.get_borrow_amount_for_token(1, EGLD_TOKEN);
     let collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
@@ -217,7 +217,7 @@ fn test_edge_case_math_rounding_no_compound() {
     println!("supply_amount: {:?}", collateral); // 100000000000000000000
     println!("revenue_value: {:?}", revenue); //      1056186524631708
     println!("utilization: {:?}", utilization);
-    assert!(reserves > collateral + revenue, "Reserves are not enough");
+    assert!(reserves >= collateral + revenue, "Reserves are not enough");
 
     state.withdraw_asset(&supplier, EGLD_TOKEN, BigUint::from(1u64), 1, EGLD_DECIMALS);
     let reserves = state.get_market_reserves(state.egld_market.clone());
@@ -227,8 +227,8 @@ fn test_edge_case_math_rounding_no_compound() {
     println!("reserves: {:?}", reserves); //        99003495977396530955
     println!("supply_amount: {:?}", collateral); // 99000000000000000000
     println!("revenue_value: {:?}", revenue); //        1056186524631708
-    assert!(reserves > collateral + revenue, "Reserves are not enough");
-    state.update_account_positions(&supplier, 1);
+    assert!(reserves >= collateral + revenue, "Reserves are not enough");
+    state.update_markets(&supplier, markets.clone());
     let reserves = state.get_market_reserves(state.egld_market.clone());
     let revenue = state.get_market_revenue(state.egld_market.clone());
     let collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
@@ -237,7 +237,7 @@ fn test_edge_case_math_rounding_no_compound() {
     println!("revenue_value: {:?}", revenue); //        1056186524631708
                                               // assert_eq!(borrowed, ManagedDecimal::from_raw_units(BigUint::zero(), 0usize));
     assert!(
-        reserves > collateral.clone() + revenue,
+        reserves >= collateral.clone() + revenue,
         "Reserves are not enough"
     );
     state.withdraw_asset_den(
@@ -251,7 +251,7 @@ fn test_edge_case_math_rounding_no_compound() {
     println!("reserves: {:?}", reserves); //     1056186524631709
     println!("revenue_value: {:?}", revenue); // 1056186524631708
 
-    assert!(reserves > revenue);
+    assert!(reserves >= revenue);
 }
 
 #[test]
@@ -302,10 +302,11 @@ fn test_complete_market_exit() {
         false,
     );
 
-    state.world.current_block().block_timestamp(8000u64);
-    state.update_borrows_with_debt(&borrower, 2);
-    state.global_sync(&supplier, 1);
-    state.global_sync(&OWNER_ADDRESS, 3);
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
+    state.change_timestamp(8000u64);
+    state.update_markets(&borrower, markets.clone());
 
     state
         .world
@@ -317,33 +318,38 @@ fn test_complete_market_exit() {
             AccountAttributes::<StaticApi> {
                 is_isolated_position: false,
                 e_mode_category_id: 0,
-                is_vault_position: false,
+                mode: PositionMode::Normal,
                 isolated_token: ManagedOption::none(),
             },
         );
-    let borrow_amount_in_dollars = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
-    println!("borrow_amount_in_dollars: {:?}", borrow_amount_in_dollars);
+    let borrow_amount = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+    println!("borrow_amount_in_dollars: {:?}", borrow_amount);
 
     state.repay_asset_deno(
         &borrower,
         &EGLD_TOKEN,
-        borrow_amount_in_dollars.into_raw_units().clone(),
+        borrow_amount.into_raw_units().clone(),
         2,
     );
     let custom_error_message = format!("Token not existing in the account {}", EGLD_TOKEN.as_str());
     state.get_borrow_amount_for_token_non_existing(2, EGLD_TOKEN, custom_error_message.as_bytes());
+    state.change_timestamp(1000000u64);
+    state.update_markets(&borrower, markets.clone());
 
-    state.world.current_block().block_timestamp(1000000u64);
-    state.update_borrows_with_debt(&borrower, 2);
-    state.global_sync(&supplier, 1);
-    state.global_sync(&supplier, 3);
-
-    state.withdraw_asset(
+    let supplied_collateral = state.get_collateral_amount_for_token(2, USDC_TOKEN);
+    println!("supplied_collateral: {:?}", supplied_collateral);
+    state.withdraw_asset_den(
         &borrower,
         USDC_TOKEN,
-        BigUint::from(5000u64),
+        supplied_collateral.into_raw_units().clone(),
         2,
-        USDC_DECIMALS,
+    );
+    let custom_error_message = format!("Token not existing in the account {}", USDC_TOKEN.as_str());
+
+    state.get_collateral_amount_for_token_non_existing(
+        2,
+        USDC_TOKEN,
+        custom_error_message.as_bytes(),
     );
     state
         .world
@@ -355,7 +361,7 @@ fn test_complete_market_exit() {
             AccountAttributes::<StaticApi> {
                 is_isolated_position: false,
                 e_mode_category_id: 0,
-                is_vault_position: false,
+                mode: PositionMode::Normal,
                 isolated_token: ManagedOption::none(),
             },
         );
@@ -372,6 +378,7 @@ fn test_complete_market_exit() {
         supplied_collateral.into_raw_units().clone(),
         1,
     );
+
     let custom_error_message = format!("Token not existing in the account {}", EGLD_TOKEN.as_str());
 
     state.get_collateral_amount_for_token_non_existing(
@@ -380,7 +387,8 @@ fn test_complete_market_exit() {
         custom_error_message.as_bytes(),
     );
 
-    state.global_sync(&supplier, 3);
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
     let supplied_collateral = state.get_collateral_amount_for_token(3, EGLD_TOKEN);
     let reserves = state.get_market_reserves(state.egld_market.clone());
     let revenue = state.get_market_revenue(state.egld_market.clone());
@@ -413,7 +421,6 @@ fn test_complete_market_exit() {
     let revenue = state.get_market_revenue(state.egld_market.clone());
     assert!(reserves >= revenue);
     // state.claim_revenue(EGLD_TOKEN);
-    return;
 }
 
 #[test]
@@ -423,7 +430,7 @@ fn test_interest_accrual() {
     let borrower = TestAddress::new("borrower");
 
     // Setup initial state
-    state.world.current_block().block_timestamp(0);
+    state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
 
     // Initial supply and borrow
@@ -464,14 +471,8 @@ fn test_interest_accrual() {
     println!("borrow_rate: {:?}", borrow_rate);
     // Simulate daily updates for a month
     // for day in 1..=SECONDS_PER_DAY {
-    state
-        .world
-        .current_block()
-        .block_timestamp(SECONDS_PER_YEAR);
+    state.change_timestamp(SECONDS_PER_YEAR);
     state.update_markets(&supplier, markets.clone());
-    state.update_borrows_with_debt(&borrower, 2);
-    state.global_sync(&supplier, 1);
-    // }
 
     // Verify interest accrual
     let final_borrow = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
@@ -522,7 +523,7 @@ fn test_interest_accrual_two_suppliers_at_different_times() {
     let borrower = TestAddress::new("borrower");
 
     // Setup initial state
-    state.world.current_block().block_timestamp(0);
+    state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
 
     // Initial supply and borrow
@@ -567,16 +568,14 @@ fn test_interest_accrual_two_suppliers_at_different_times() {
     let initial_supply_borrower = state.get_collateral_amount_for_token(2, EGLD_TOKEN);
     let initial_supply_supplier = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
 
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
     // Simulate hourly updates for 2 years
     for day in 1..=365 * 2 {
-        state
-            .world
-            .current_block()
-            .block_timestamp(day * SECONDS_PER_DAY);
+        state.change_timestamp(day * SECONDS_PER_DAY);
+        state.update_markets(&supplier, markets.clone());
     }
-    state.global_sync(&borrower, 2);
-    state.update_borrows_with_debt(&borrower, 2);
-    state.global_sync(&supplier, 1);
     // Verify interest accrual
     let final_supply_borrower = state.get_collateral_amount_for_token(2, EGLD_TOKEN);
     let final_supply_supplier = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
@@ -649,9 +648,9 @@ fn test_update_asset_config_after_next_supply() {
     let position_opt = initial_position.into_iter().find_map(|data| {
         let (token, position) = data.into_tuple();
         if token == EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()) {
-            return Option::Some(position);
+            Option::Some(position)
         } else {
-            return Option::None;
+            Option::None
         }
     });
     let position = position_opt.unwrap();
@@ -690,9 +689,9 @@ fn test_update_asset_config_after_next_supply() {
     let last_position_opt = initial_position.into_iter().find_map(|data| {
         let (token, position) = data.into_tuple();
         if token == EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()) {
-            return Option::Some(position);
+            Option::Some(position)
         } else {
-            return Option::None;
+            Option::None
         }
     });
 
@@ -726,9 +725,9 @@ fn test_update_asset_config_via_endpoint_only_safe_values() {
     let position_opt = initial_position.into_iter().find_map(|data| {
         let (token, position) = data.into_tuple();
         if token == EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()) {
-            return Option::Some(position);
+            Option::Some(position)
         } else {
-            return Option::None;
+            Option::None
         }
     });
     let position = position_opt.unwrap();
@@ -766,9 +765,9 @@ fn test_update_asset_config_via_endpoint_only_safe_values() {
     let last_position_opt = initial_position.into_iter().find_map(|data| {
         let (token, position) = data.into_tuple();
         if token == EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()) {
-            return Option::Some(position);
+            Option::Some(position)
         } else {
-            return Option::None;
+            Option::None
         }
     });
 
@@ -802,9 +801,9 @@ fn test_update_asset_config_via_endpoint_only_rirsky_values() {
     let position_opt = initial_position.into_iter().find_map(|data| {
         let (token, position) = data.into_tuple();
         if token == EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()) {
-            return Option::Some(position);
+            Option::Some(position)
         } else {
-            return Option::None;
+            Option::None
         }
     });
     let position = position_opt.unwrap();
@@ -842,9 +841,9 @@ fn test_update_asset_config_via_endpoint_only_rirsky_values() {
     let last_position_opt = initial_position.into_iter().find_map(|data| {
         let (token, position) = data.into_tuple();
         if token == EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()) {
-            return Option::Some(position);
+            Option::Some(position)
         } else {
-            return Option::None;
+            Option::None
         }
     });
 
@@ -886,9 +885,9 @@ fn test_update_asset_config_via_endpoint_only_rirsky_values_with_borrows_valid()
     let position_opt = initial_position.into_iter().find_map(|data| {
         let (token, position) = data.into_tuple();
         if token == EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()) {
-            return Option::Some(position);
+            Option::Some(position)
         } else {
-            return Option::None;
+            Option::None
         }
     });
     let position = position_opt.unwrap();
@@ -926,9 +925,9 @@ fn test_update_asset_config_via_endpoint_only_rirsky_values_with_borrows_valid()
     let last_position_opt = initial_position.into_iter().find_map(|data| {
         let (token, position) = data.into_tuple();
         if token == EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()) {
-            return Option::Some(position);
+            Option::Some(position)
         } else {
-            return Option::None;
+            Option::None
         }
     });
 

@@ -52,7 +52,6 @@ fn views_tests() {
     let utilisation = state.get_market_utilization(state.egld_market.clone());
     let borrow_rate = state.get_market_borrow_rate(state.egld_market.clone());
     let deposit_rate = state.get_market_supply_rate(state.egld_market.clone());
-    let total_capital = state.get_market_total_capital(state.egld_market.clone());
     let usd_price = state.get_usd_price(EGLD_TOKEN);
     let egld_price = state.get_egld_price(EGLD_TOKEN);
     println!("usd_price: {:?}", usd_price);
@@ -62,7 +61,6 @@ fn views_tests() {
     println!("collateral_weighted: {:?}", collateral_weighted);
     println!("health_factor: {:?}", health_factor);
     println!("utilisation: {:?}", utilisation);
-    println!("total_capital {:?}", total_capital);
     println!(
         "borrow_rate: {:?}",
         borrow_rate
@@ -82,10 +80,6 @@ fn views_tests() {
             BigUint::from(450000000000000000000000000u128),
             RAY_PRECISION
         )
-    );
-    assert_eq!(
-        total_capital,
-        ManagedDecimal::from_raw_units(BigUint::from(100000000000000000000u128), WAD_PRECISION)
     );
     assert_eq!(
         usd_price,

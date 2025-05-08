@@ -61,7 +61,7 @@ pub trait LiquidityPool:
     #[init]
     fn init(
         &self,
-        asset: &EgldOrEsdtTokenIdentifier,
+        asset: EgldOrEsdtTokenIdentifier,
         max_borrow_rate: BigUint,
         base_borrow_rate: BigUint,
         slope1: BigUint,
@@ -72,7 +72,6 @@ pub trait LiquidityPool:
         reserve_factor: BigUint,
         asset_decimals: usize,
     ) {
-        self.pool_asset().set(asset);
         let params = &MarketParams {
             max_borrow_rate: self.to_decimal_ray(max_borrow_rate),
             base_borrow_rate: self.to_decimal_ray(base_borrow_rate),
@@ -82,6 +81,7 @@ pub trait LiquidityPool:
             mid_utilization: self.to_decimal_ray(mid_utilization),
             optimal_utilization: self.to_decimal_ray(optimal_utilization),
             reserve_factor: self.to_decimal_bps(reserve_factor),
+            asset_id: asset,
             asset_decimals,
         };
 
@@ -106,17 +106,11 @@ pub trait LiquidityPool:
         self.borrow_index().set(self.ray());
         self.supply_index().set(self.ray());
 
-        self.supplied()
-            .set(self.to_decimal(BigUint::zero(), asset_decimals));
+        self.supplied().set(self.ray_zero());
 
-        self.reserves()
-            .set(self.to_decimal(BigUint::zero(), asset_decimals));
+        self.borrowed().set(self.ray_zero());
 
-        self.borrowed()
-            .set(self.to_decimal(BigUint::zero(), asset_decimals));
-
-        self.revenue()
-            .set(self.to_decimal(BigUint::zero(), asset_decimals));
+        self.revenue().set(self.ray_zero());
 
         self.bad_debt()
             .set(self.to_decimal(BigUint::zero(), asset_decimals));
@@ -163,19 +157,18 @@ pub trait LiquidityPool:
         optimal_utilization: BigUint,
         reserve_factor: BigUint,
     ) {
-        self.market_params_event(
-            &self.pool_asset().get(),
-            &max_borrow_rate,
-            &base_borrow_rate,
-            &slope1,
-            &slope2,
-            &slope3,
-            &mid_utilization,
-            &optimal_utilization,
-            &reserve_factor,
-        );
-
         self.params().update(|params| {
+            self.market_params_event(
+                &params.asset_id,
+                &max_borrow_rate,
+                &base_borrow_rate,
+                &slope1,
+                &slope2,
+                &slope3,
+                &mid_utilization,
+                &optimal_utilization,
+                &reserve_factor,
+            );
             params.max_borrow_rate = self.to_decimal_ray(max_borrow_rate);
             params.base_borrow_rate = self.to_decimal_ray(base_borrow_rate);
             params.slope1 = self.to_decimal_ray(slope1);

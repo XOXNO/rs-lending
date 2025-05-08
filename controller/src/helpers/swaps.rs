@@ -20,6 +20,7 @@ pub trait SwapsModule:
         if to_token == from_token {
             return EgldOrEsdtTokenPayment::new(to_token.clone(), 0, from_amount.clone());
         }
+
         self.swap_tokens(to_token, from_token, from_amount, caller, args)
     }
 
@@ -33,7 +34,7 @@ pub trait SwapsModule:
     ) -> EgldOrEsdtTokenPayment {
         let back_transfers = self
             .tx()
-            .to(self.aggregator().get())
+            .to(self.swap_router().get())
             .raw_call(ManagedBuffer::new_from_bytes(b"swap"))
             .arguments_raw(args)
             .egld_or_single_esdt(from_token, 0, from_amount)
@@ -71,7 +72,7 @@ pub trait SwapsModule:
             }
         }
 
-        if refunds.len() > 0 {
+        if !refunds.is_empty() {
             self.tx()
                 .to(caller)
                 .payment(refunds)

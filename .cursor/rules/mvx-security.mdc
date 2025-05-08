@@ -1,0 +1,47 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# MultiversX Smart Contract Security Rules
+
+## Security Practices (General)
+- Validate all inputs before processing.
+- Check caller permissions when needed (e.g., `#[only_owner]`).
+- Always validate token transfers and payments for correct token ID and non-zero amount.
+- Avoid unbounded loops in contract execution.
+- Never trust user input without validation. Use `require!` extensively.
+- Check balances before transfers to prevent unexpected failures.
+- Use `self.require_*` pattern for validation checks.
+
+## Security Practices (Specific - Based on Codebase Analysis)
+
+- **Input Validation**:
+    - Always validate inputs at the beginning of functions, especially amounts and addresses.
+    - Use helper functions like `validate_payment` and `require_amount_greater_than_zero`.
+- **Authorization Checks**:
+    - Implement checks for specific roles or permissions where necessary (e.g., `require_is_oracle`, `require_not_paused`).
+    - Use `#[only_owner]` for administrative functions.
+- **Amount Validation**:
+    - Ensure amounts are greater than zero before performing operations.
+    ```rust
+    self.require_amount_greater_than_zero(&amount);
+    ```
+- **State Validation**:
+    - Check contract state before proceeding (e.g., `require_not_paused`, `require_active_account`).
+- **Health Factor Checks**:
+    - Before allowing withdrawals or borrows that could affect collateral, validate the account's health factor to prevent self-liquidation.
+    ```rust
+    self.validate_is_healthy(account_nonce, &mut cache, None);
+    ```
+- **Token Validation**:
+    - Verify received payments match expected token identifiers.
+    - Use `validate_payment` which implicitly checks `require_asset_supported`.
+- **Flash Loan Security**:
+    - Validate the target contract address and endpoint name for flash loans.
+    - Ensure the target contract is on the same shard.
+    - Verify the asset is enabled for flash loans.
+- **Reentrancy**: While Rust's ownership model helps, be mindful of external calls, especially during flash loans or interactions with other contracts. Use checks-effects-interactions pattern where applicable.
+- **Error Handling**: Use specific error constants from `common/errors` for clear failure reasons.
+- **Integer Overflow/Underflow**: Use `BigUint` and `ManagedDecimal` which handle large numbers safely. Be cautious with standard integer types if used.
+- **Timestamp Dependency**: Be aware that `get_block_timestamp()` can have minor variations. Use it for ordering or duration calculations, but avoid relying on exact values for critical logic.

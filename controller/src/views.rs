@@ -1,4 +1,4 @@
-use common_structs::AssetExtendedConfigView;
+use common_structs::{AccountPositionType, AssetExtendedConfigView};
 
 use crate::{cache::Cache, helpers, oracle, storage, utils};
 
@@ -31,7 +31,7 @@ pub trait ViewsModule:
         for asset in assets {
             let pool_address = self.pools_map(&asset).get();
             let feed = self.get_token_price(&asset, &mut cache);
-            let usd = self.get_egld_usd_value(&feed.price, &cache.egld_price_feed);
+            let usd = self.get_egld_usd_value(&feed.price, &cache.egld_usd_price);
 
             markets.push(AssetExtendedConfigView {
                 asset_id: asset,
@@ -90,8 +90,13 @@ pub trait ViewsModule:
         account_nonce: u64,
         token_id: &EgldOrEsdtTokenIdentifier,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        match self.deposit_positions(account_nonce).get(token_id) {
-            Some(dp) => dp.get_total_amount(),
+        let mut cache = Cache::new(self);
+        let feed = self.get_token_price(token_id, &mut cache);
+        match self
+            .positions(account_nonce, AccountPositionType::Deposit)
+            .get(token_id)
+        {
+            Some(dp) => self.get_total_amount(&dp, &feed, &mut cache),
             None => sc_panic!("Token not existing in the account {}", token_id),
         }
     }
@@ -114,8 +119,14 @@ pub trait ViewsModule:
         account_nonce: u64,
         token_id: &EgldOrEsdtTokenIdentifier,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        match self.borrow_positions(account_nonce).get(token_id) {
-            Some(bp) => bp.get_total_amount(),
+        let mut cache = Cache::new(self);
+        cache.allow_unsafe_price = false;
+        let feed = self.get_token_price(token_id, &mut cache);
+        match self
+            .positions(account_nonce, AccountPositionType::Borrow)
+            .get(token_id)
+        {
+            Some(bp) => self.get_total_amount(&bp, &feed, &mut cache),
             None => sc_panic!("Token not existing in the account {}", token_id),
         }
     }
@@ -134,8 +145,11 @@ pub trait ViewsModule:
         account_nonce: u64,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let mut cache = Cache::new(self);
-        let borrow_positions = self.borrow_positions(account_nonce);
-        self.calculate_total_borrow_in_egld(&borrow_positions.values().collect(), &mut cache)
+        let borrow_positions = self
+            .positions(account_nonce, AccountPositionType::Borrow)
+            .values()
+            .collect();
+        self.calculate_total_borrow_in_egld(&borrow_positions, &mut cache)
     }
 
     /// Computes the total collateral value in EGLD for an account position.
@@ -151,14 +165,15 @@ pub trait ViewsModule:
         &self,
         account_nonce: u64,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let deposit_positions = self.deposit_positions(account_nonce);
+        let deposit_positions = self.positions(account_nonce, AccountPositionType::Deposit);
 
         let mut cache = Cache::new(self);
         cache.allow_unsafe_price = false;
 
         deposit_positions.values().fold(self.wad_zero(), |acc, dp| {
             let feed = self.get_token_price(&dp.asset_id, &mut cache);
-            acc + self.get_token_egld_value(&dp.get_total_amount(), &feed.price)
+            let amount = self.get_total_amount(&dp, &feed, &mut cache);
+            acc + self.get_token_egld_value(&amount, &feed.price)
         })
     }
 
@@ -175,7 +190,7 @@ pub trait ViewsModule:
         &self,
         account_nonce: u64,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let deposit_positions = self.deposit_positions(account_nonce);
+        let deposit_positions = self.positions(account_nonce, AccountPositionType::Deposit);
 
         let mut cache = Cache::new(self);
 
@@ -198,7 +213,7 @@ pub trait ViewsModule:
         &self,
         account_nonce: u64,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let deposit_positions = self.deposit_positions(account_nonce);
+        let deposit_positions = self.positions(account_nonce, AccountPositionType::Deposit);
 
         let mut cache = Cache::new(self);
 
@@ -224,7 +239,7 @@ pub trait ViewsModule:
         let mut cache = Cache::new(self);
         let data = self.get_token_price(token_id, &mut cache);
 
-        self.get_egld_usd_value(&data.price, &cache.egld_price_feed)
+        self.get_egld_usd_value(&data.price, &cache.egld_usd_price)
     }
 
     /// Retrieves the EGLD price of a token using oracle data.

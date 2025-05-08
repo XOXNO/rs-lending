@@ -1,7 +1,5 @@
 use crate::{constants::*, proxys::*};
-use common_constants::{EGLD_TICKER, MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE};
-
-use cache::Cache;
+use common_constants::{EGLD_TICKER, MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE, SECONDS_PER_HOUR};
 
 use multiversx_sc::{
     imports::{MultiValue2, OptionalValue},
@@ -24,7 +22,7 @@ use rs_liquid_xoxno::{config::ConfigModule as XoxnoConfigModule, rs_xoxno_proxy}
 use std::ops::Mul;
 use storage::Storage;
 
-use controller::{positions::update::PositionUpdateModule, *};
+use controller::*;
 use multiversx_sc::types::{
     EgldOrEsdtTokenIdentifier, EsdtLocalRole, EsdtTokenPayment, ManagedVec, TestEsdtTransfer,
 };
@@ -76,6 +74,12 @@ pub struct LendingPoolTestState {
     pub lp_egld_market: ManagedAddress<StaticApi>,
     pub xoxno_market: ManagedAddress<StaticApi>,
     pub flash_mock: ManagedAddress<StaticApi>,
+}
+
+impl Default for LendingPoolTestState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl LendingPoolTestState {
@@ -278,78 +282,6 @@ impl LendingPoolTestState {
             .run();
     }
 
-    pub fn enable_vault(&mut self, from: &TestAddress, account_nonce: u64) {
-        self.world
-            .tx()
-            .from(from.to_managed_address())
-            .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::ControllerProxy)
-            .toggle_vault(true)
-            .single_esdt(
-                &ACCOUNT_TOKEN.to_token_identifier(),
-                account_nonce,
-                &BigUint::from(1u32),
-            )
-            .run();
-    }
-
-    pub fn enable_vault_error(
-        &mut self,
-        from: &TestAddress,
-        account_nonce: u64,
-        error_message: &[u8],
-    ) {
-        self.world
-            .tx()
-            .from(from.to_managed_address())
-            .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::ControllerProxy)
-            .toggle_vault(true)
-            .single_esdt(
-                &ACCOUNT_TOKEN.to_token_identifier(),
-                account_nonce,
-                &BigUint::from(1u32),
-            )
-            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
-            .run();
-    }
-
-    pub fn disable_vault(&mut self, from: &TestAddress, account_nonce: u64) {
-        self.world
-            .tx()
-            .from(from.to_managed_address())
-            .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::ControllerProxy)
-            .toggle_vault(false)
-            .single_esdt(
-                &ACCOUNT_TOKEN.to_token_identifier(),
-                account_nonce,
-                &BigUint::from(1u32),
-            )
-            .run();
-    }
-
-    pub fn disable_vault_error(
-        &mut self,
-        from: &TestAddress,
-        account_nonce: u64,
-        error_message: &[u8],
-    ) {
-        self.world
-            .tx()
-            .from(from.to_managed_address())
-            .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::ControllerProxy)
-            .toggle_vault(false)
-            .single_esdt(
-                &ACCOUNT_TOKEN.to_token_identifier(),
-                account_nonce,
-                &BigUint::from(1u32),
-            )
-            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
-            .run();
-    }
-
     pub fn get_usd_price_error(&mut self, token_id: TestTokenIdentifier, error_message: &[u8]) {
         self.world
             .query()
@@ -420,7 +352,7 @@ impl LendingPoolTestState {
         asset_decimals: usize,
         account_nonce: OptionalValue<u64>,
         e_mode_category: OptionalValue<u8>,
-        is_vault: bool,
+        _is_vault: bool,
     ) {
         let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
 
@@ -443,7 +375,7 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .supply(is_vault, e_mode_category)
+            .supply(e_mode_category)
             .multi_esdt(vec)
             .run();
     }
@@ -457,7 +389,7 @@ impl LendingPoolTestState {
         asset_decimals: usize,
         account_nonce: OptionalValue<u64>,
         e_mode_category: OptionalValue<u8>,
-        is_vault: bool,
+        _is_vault: bool,
         error_message: &[u8],
     ) {
         let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
@@ -481,7 +413,7 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .supply(is_vault, e_mode_category)
+            .supply(e_mode_category)
             .multi_esdt(vec)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
@@ -493,7 +425,7 @@ impl LendingPoolTestState {
         from: &TestAddress,
         account_nonce: OptionalValue<u64>,
         e_mode_category: OptionalValue<u8>,
-        is_vault: bool,
+        _is_vault: bool,
         error_message: &[u8],
     ) {
         let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
@@ -511,7 +443,7 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .supply(is_vault, e_mode_category)
+            .supply(e_mode_category)
             .multi_esdt(vec)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
@@ -522,7 +454,7 @@ impl LendingPoolTestState {
         from: &TestAddress,
         account_nonce: OptionalValue<u64>,
         e_mode_category: OptionalValue<u8>,
-        is_vault: bool,
+        _is_vault: bool,
         assets: ManagedVec<StaticApi, EsdtTokenPayment<StaticApi>>,
         error_message: &[u8],
     ) {
@@ -542,7 +474,7 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .supply(is_vault, e_mode_category)
+            .supply(e_mode_category)
             .multi_esdt(vec)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
@@ -552,7 +484,7 @@ impl LendingPoolTestState {
         &mut self,
         from: &TestAddress,
         e_mode_category: OptionalValue<u8>,
-        is_vault: bool,
+        _is_vault: bool,
         error_message: &[u8],
     ) {
         self.world
@@ -560,7 +492,7 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .supply(is_vault, e_mode_category)
+            .supply(e_mode_category)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
     }
@@ -573,7 +505,7 @@ impl LendingPoolTestState {
         asset_decimals: usize,
         account_nonce: OptionalValue<u64>,
         e_mode_category: OptionalValue<u8>,
-        is_vault: bool,
+        _is_vault: bool,
         error_message: &[u8],
     ) {
         let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
@@ -608,7 +540,7 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .supply(is_vault, e_mode_category)
+            .supply(e_mode_category)
             .multi_esdt(vec)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
@@ -907,7 +839,7 @@ impl LendingPoolTestState {
     }
 
     // Price aggregator operations
-    pub fn submit_price(&mut self, from: &[u8], price: u64, timestamp: u64) -> () {
+    pub fn change_price(&mut self, from: &[u8], price: u64, timestamp: u64) {
         let oracles = vec![
             ORACLE_ADDRESS_1,
             ORACLE_ADDRESS_2,
@@ -930,13 +862,21 @@ impl LendingPoolTestState {
         }
     }
 
+    pub fn change_timestamp(&mut self, timestamp: u64) {
+        self.world.current_block().block_timestamp(timestamp);
+        self.change_price(EGLD_TICKER, EGLD_PRICE_IN_DOLLARS, timestamp);
+        self.change_price(SEGLD_TICKER, SEGLD_PRICE_IN_DOLLARS, timestamp);
+        self.change_price(LEGLD_TICKER, LEGLD_PRICE_IN_DOLLARS, timestamp);
+        self.change_price(USDC_TICKER, USDC_PRICE_IN_DOLLARS, timestamp);
+        self.change_price(XEGLD_TICKER, XEGLD_PRICE_IN_DOLLARS, timestamp);
+        self.change_price(ISOLATED_TICKER, ISOLATED_PRICE_IN_DOLLARS, timestamp);
+        self.change_price(SILOED_TICKER, SILOED_PRICE_IN_DOLLARS, timestamp);
+        self.change_price(CAPPED_TICKER, CAPPED_PRICE_IN_DOLLARS, timestamp);
+        self.change_price(XOXNO_TICKER, XOXNO_PRICE_IN_DOLLARS, timestamp);
+    }
+
     // Price aggregator operations
-    pub fn submit_price_denom(
-        &mut self,
-        from: &[u8],
-        price: BigUint<StaticApi>,
-        timestamp: u64,
-    ) -> () {
+    pub fn submit_price_denom(&mut self, from: &[u8], price: BigUint<StaticApi>, timestamp: u64) {
         let oracles = vec![
             ORACLE_ADDRESS_1,
             ORACLE_ADDRESS_2,
@@ -984,11 +924,43 @@ impl LendingPoolTestState {
             .query()
             .to(market_address)
             .typed(proxy_liquidity_pool::LiquidityPoolProxy)
-            .revenue()
+            .get_protocol_revenue()
             .returns(ReturnsResult)
             .run();
 
         revenue
+    }
+
+    pub fn get_market_total_debt(
+        &mut self,
+        market_address: ManagedAddress<StaticApi>,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        let borrowed = self
+            .world
+            .query()
+            .to(market_address)
+            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
+            .borrowed()
+            .returns(ReturnsResult)
+            .run();
+
+        borrowed
+    }
+
+    pub fn get_market_total_deposit(
+        &mut self,
+        market_address: ManagedAddress<StaticApi>,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        let supplied = self
+            .world
+            .query()
+            .to(market_address)
+            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
+            .supplied()
+            .returns(ReturnsResult)
+            .run();
+
+        supplied
     }
 
     pub fn get_market_borrow_index(
@@ -1032,7 +1004,7 @@ impl LendingPoolTestState {
             .query()
             .to(market_address)
             .typed(proxy_liquidity_pool::LiquidityPoolProxy)
-            .reserves()
+            .get_reserves()
             .returns(ReturnsResult)
             .run();
 
@@ -1097,48 +1069,6 @@ impl LendingPoolTestState {
         supply_rate
     }
 
-    pub fn get_market_total_capital(
-        &mut self,
-        market_address: ManagedAddress<StaticApi>,
-    ) -> ManagedDecimal<StaticApi, usize> {
-        self.world
-            .query()
-            .to(market_address)
-            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
-            .get_total_capital()
-            .returns(ReturnsResult)
-            .run()
-    }
-
-    pub fn update_borrows_with_debt(&mut self, from: &TestAddress, account_position: u64) {
-        self.world
-            .tx()
-            .from(from.to_managed_address())
-            .to(self.lending_sc.clone())
-            .whitebox(controller::contract_obj, |sc| {
-                let mut cache = Cache::new(&sc);
-                sc.sync_borrow_positions_interest(account_position, &mut cache, true, false);
-            });
-    }
-
-    pub fn global_sync(&mut self, from: &TestAddress, account_position: u64) {
-        self.world
-            .tx()
-            .from(from.to_managed_address())
-            .to(self.lending_sc.clone())
-            .whitebox(controller::contract_obj, |sc| {
-                let mut cache = Cache::new(&sc);
-                let account_attributes = sc.account_attributes(account_position).get();
-                sc.sync_deposit_positions_interest(
-                    account_position,
-                    &mut cache,
-                    true,
-                    &account_attributes,
-                    true,
-                );
-            });
-    }
-
     pub fn deposit_positions(
         &mut self,
         nonce: u64,
@@ -1151,11 +1081,11 @@ impl LendingPoolTestState {
             .query()
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .deposit_positions(nonce)
+            .positions(nonce, AccountPositionType::Deposit)
             .returns(ReturnsResult)
             .run();
 
-        return query;
+        query
     }
 
     pub fn update_account_threshold(
@@ -1197,28 +1127,6 @@ impl LendingPoolTestState {
             .run();
     }
 
-    pub fn update_account_positions(&mut self, from: &TestAddress, account_position: u64) {
-        self.world
-            .tx()
-            .from(from.to_managed_address())
-            .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::ControllerProxy)
-            .update_account_positions(account_position)
-            .run();
-    }
-
-    pub fn get_vault_supplied_amount(
-        &mut self,
-        token_id: TestTokenIdentifier,
-    ) -> ManagedDecimal<StaticApi, NumDecimals> {
-        self.world
-            .query()
-            .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::ControllerProxy)
-            .vault_supplied_amount(token_id)
-            .returns(ReturnsResult)
-            .run()
-    }
     // View functions
     pub fn get_collateral_amount_for_token(
         &mut self,
@@ -1355,6 +1263,22 @@ impl LendingPoolTestState {
             .run();
     }
 
+    pub fn get_ltv_collateral_in_egld(
+        &mut self,
+        account_position: u64,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        let get_ltv_collateral_in_egld = self
+            .world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .get_ltv_collateral_in_egld(account_position)
+            .returns(ReturnsResult)
+            .run();
+
+        get_ltv_collateral_in_egld
+    }
+
     pub fn get_total_collateral_in_egld(
         &mut self,
         account_position: u64,
@@ -1451,7 +1375,7 @@ pub fn setup_lending_pool(
         .from(OWNER_ADDRESS)
         .to(lending_sc.clone())
         .whitebox(controller::contract_obj, |sc| {
-            sc.account_token()
+            sc.account()
                 .set_token_id(ACCOUNT_TOKEN.to_token_identifier());
         });
 
@@ -1570,6 +1494,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XEGLD,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            SECONDS_PER_HOUR * 1000,
             OptionalValue::<usize>::None,
         )
         .run();
@@ -1588,6 +1513,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::LXOXNO,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            SECONDS_PER_HOUR * 1000,
             OptionalValue::<usize>::None,
         )
         .run();
@@ -1616,6 +1542,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            SECONDS_PER_HOUR * 1000,
             OptionalValue::<usize>::None,
         )
         .run();
@@ -1633,6 +1560,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            SECONDS_PER_HOUR * 1000,
             OptionalValue::<usize>::None,
         )
         .run();
@@ -1650,6 +1578,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            SECONDS_PER_HOUR * 1000,
             OptionalValue::<usize>::None,
         )
         .run();
@@ -1667,6 +1596,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            SECONDS_PER_HOUR * 1000,
             OptionalValue::<usize>::None,
         )
         .run();
@@ -1685,6 +1615,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            SECONDS_PER_HOUR * 1000,
             OptionalValue::<usize>::None,
         )
         .run();
@@ -1714,6 +1645,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            SECONDS_PER_HOUR * 1000,
             OptionalValue::<usize>::None,
         )
         .run();
@@ -1743,6 +1675,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            SECONDS_PER_HOUR * 1000,
             OptionalValue::<usize>::None,
         )
         .run();
@@ -1772,6 +1705,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            SECONDS_PER_HOUR * 1000,
             OptionalValue::<usize>::None,
         )
         .run();
@@ -1801,6 +1735,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            SECONDS_PER_HOUR * 1000,
             OptionalValue::<usize>::None,
         )
         .run();
@@ -1830,6 +1765,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            SECONDS_PER_HOUR * 1000,
             OptionalValue::<usize>::None,
         )
         .run();
@@ -1859,6 +1795,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
+            SECONDS_PER_HOUR * 1000,
             OptionalValue::<usize>::None,
         )
         .run();
@@ -2238,7 +2175,7 @@ pub fn submit_price(
     price_aggregator_sc: &ManagedAddress<StaticApi>,
     from: &[u8],
     price: u64,
-) -> () {
+) {
     let oracles = vec![
         ORACLE_ADDRESS_1,
         ORACLE_ADDRESS_2,
@@ -2246,7 +2183,6 @@ pub fn submit_price(
         ORACLE_ADDRESS_4,
     ];
 
-    // world.current_block().block_timestamp(1740184106);
     for oracle in oracles {
         world
             .tx()
@@ -2458,6 +2394,49 @@ pub fn setup_accounts(
         );
 }
 
+pub fn setup_account(state: &mut LendingPoolTestState, account: TestAddress) {
+    state
+        .world
+        .account(account)
+        .nonce(1)
+        .esdt_balance(
+            LP_EGLD_TOKEN,
+            BigUint::from(100000000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+        )
+        .esdt_balance(
+            EGLD_TOKEN,
+            BigUint::from(588649983367169591u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+        )
+        .esdt_balance(
+            XOXNO_TOKEN,
+            BigUint::from(10000u64) * BigUint::from(10u64).pow(XOXNO_DECIMALS as u32),
+        )
+        .esdt_balance(
+            CAPPED_TOKEN,
+            BigUint::from(1000u64) * BigUint::from(10u64).pow(CAPPED_DECIMALS as u32),
+        )
+        .esdt_balance(
+            ISOLATED_TOKEN,
+            BigUint::from(1000u64) * BigUint::from(10u64).pow(ISOLATED_DECIMALS as u32),
+        )
+        .esdt_balance(
+            SILOED_TOKEN,
+            BigUint::from(1000u64) * BigUint::from(10u64).pow(SILOED_DECIMALS as u32),
+        )
+        .esdt_balance(
+            XEGLD_TOKEN,
+            BigUint::from(10000000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+        )
+        .esdt_balance(
+            SEGLD_TOKEN,
+            BigUint::from(1000u64) * BigUint::from(10u64).pow(SEGLD_DECIMALS as u32),
+        )
+        .esdt_balance(
+            USDC_TOKEN,
+            BigUint::from(1000000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
+        );
+}
+
 pub fn setup_owner(world: &mut ScenarioWorld) {
     world
         .account(OWNER_ADDRESS)
@@ -2507,7 +2486,7 @@ pub fn setup_owner(world: &mut ScenarioWorld) {
 pub fn setup_flasher(world: &mut ScenarioWorld, flash: ManagedAddress<StaticApi>) {
     world.set_esdt_balance(
         flash,
-        &EGLD_TOKEN.as_bytes(),
+        EGLD_TOKEN.as_bytes(),
         BigUint::from(100000000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
     );
 }

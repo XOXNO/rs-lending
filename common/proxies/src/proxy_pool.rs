@@ -194,77 +194,55 @@ where
     To: TxTo<Env>,
     Gas: TxGas<Env>,
 {
-    /// Returns the pool asset identifier. 
+    /// Retrieves the total scaled amount supplied to the pool. 
+    /// This value represents the sum of all supplied principals, each divided by the supply index at the time of their deposit. 
+    /// It is stored RAY-scaled. 
     ///  
     /// # Returns 
-    /// - `EgldOrEsdtTokenIdentifier`: The asset managed by this pool. 
-    pub fn pool_asset(
-        self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, EgldOrEsdtTokenIdentifier<Env::Api>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getPoolAsset")
-            .original_result()
-    }
-
-    /// Retrieves the current reserves available in the pool. 
-    ///  
-    /// Reserves represent tokens held in the pool that are available for borrowing or withdrawal. 
-    ///  
-    /// # Returns 
-    /// - `BigUint`: The current reserves. 
-    pub fn reserves(
-        self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getReserves")
-            .original_result()
-    }
-
-    /// Retrieves the total amount supplied to the pool. 
-    ///  
-    /// # Returns 
-    /// - `BigUint`: The total supplied tokens. 
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total scaled amount supplied, RAY-scaled. 
     pub fn supplied(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getSuppliedAmount")
+            .raw_call("getSuppliedScaled")
             .original_result()
     }
 
     /// Retrieves the protocol revenue accrued from borrow interest fees. 
+    /// This value is stored RAY-scaled. 
     ///  
     /// # Returns 
-    /// - `BigUint`: The accumulated protocol revenue. 
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The accumulated protocol revenue, RAY-scaled. 
     pub fn revenue(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getProtocolRevenue")
+            .raw_call("getRevenueScaled")
             .original_result()
     }
 
-    /// Retrieves the total borrowed amount from the pool. 
+    /// Retrieves the total scaled borrowed amount from the pool. 
+    /// This value represents the sum of all borrowed principals, each divided by the borrow index at the time of their borrowing. 
+    /// It is stored RAY-scaled. 
     ///  
     /// # Returns 
-    /// - `BigUint`: The total tokens borrowed. 
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total scaled borrowed amount, RAY-scaled. 
     pub fn borrowed(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getTotalBorrow")
+            .raw_call("getBorrowedScaled")
             .original_result()
     }
 
     /// Retrieves the total bad debt from the pool. 
+    /// This value is stored scaled to the asset's actual decimal precision. 
     ///  
     /// # Returns 
-    /// - `BigUint`: The total bad debt pending to be collected. 
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total bad debt pending to be collected, scaled to the asset's decimals. 
     pub fn bad_debt(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
@@ -276,7 +254,7 @@ where
 
     /// Returns the market parameters. 
     ///  
-    /// These include interest rate parameters and asset asset_decimals. 
+    /// These include interest rate parameters and asset decimals. 
     ///  
     /// # Returns 
     /// - `MarketParams<Self::Api>`: The market configuration. 
@@ -350,43 +328,10 @@ where
     >(
         self,
         price: Arg0,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::MarketIndex<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("updateIndexes")
-            .argument(&price)
-            .original_result()
-    }
-
-    /// Synchronizes a user's account position with accrued interest since the last update. 
-    ///  
-    /// **Purpose**: Ensures a user's deposit or borrow position reflects the latest interest accrued, typically called before operations like repayments or withdrawals. 
-    ///  
-    /// **Process**: 
-    /// 1. Creates a `Cache` and updates global indexes via `global_sync`. 
-    /// 2. Updates the position with accrued interest using `position_sync`. 
-    /// 3. If a price is provided, emits a market state event. 
-    ///  
-    /// # Arguments 
-    /// - `position`: The user's account position to update (`AccountPosition<Self::Api>`). 
-    /// - `price`: Optional asset price for emitting a market update (`OptionalValue<ManagedDecimal<Self::Api, NumDecimals>>`). 
-    ///  
-    /// # Returns 
-    /// - `AccountPosition<Self::Api>`: The updated position with accrued interest applied. 
-    ///  
-    /// **Security Considerations**: Restricted to the owner (via controller contract) to ensure controlled updates. 
-    pub fn sync_position_interest<
-        Arg0: ProxyArg<common_structs::AccountPosition<Env::Api>>,
-        Arg1: ProxyArg<OptionalValue<ManagedDecimal<Env::Api, usize>>>,
-    >(
-        self,
-        position: Arg0,
-        price: Arg1,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::AccountPosition<Env::Api>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("updatePositionInterest")
-            .argument(&position)
             .argument(&price)
             .original_result()
     }
@@ -528,10 +473,12 @@ where
     ///  
     /// **Process**: 
     /// 1. Retrieves and validates the repayment amount. 
-    /// 2. Updates global indexes and the position with accrued interest. 
-    /// 3. Splits the repayment into principal, interest, and overpayment using `split_repay`. 
-    /// 4. Updates the position and pool state, refunding any overpayment. 
-    /// 5. Emits a market state event. 
+    /// 2. Updates global indexes (which also updates the position's implicit accrued interest). 
+    /// 3. Calculates the actual current debt of the position. Based on this and the payment amount, 
+    ///    it determines the scaled amount to repay and any overpaid amount. 
+    /// 4. Updates the position's scaled debt and the pool's total scaled borrowed amount. 
+    /// 5. Refunds any overpaid amount to the `initial_caller`. 
+    /// 6. Emits a market state event. 
     ///  
     /// # Arguments 
     /// - `initial_caller`: The address repaying the debt (`ManagedAddress`). 
@@ -566,12 +513,14 @@ where
     /// **Purpose**: Facilitates flash loans for strategies like arbitrage, requiring repayment with fees in the same transaction. 
     ///  
     /// **Process**: 
-    /// 1. Validates the borrowed token and reserve availability. 
-    /// 2. Deducts the loan amount from reserves. 
-    /// 3. Computes the required repayment with fees. 
-    /// 4. Drops the cache to prevent reentrancy, executes an external call, and validates repayment. 
-    /// 5. Updates reserves and protocol revenue with the repayment and fee. 
-    /// 6. Emits a market state event. 
+    /// 1. Validates the borrowed token (`cache.params.asset_id`) and reserve availability for the `amount`. 
+    /// 2. Sends the `amount` to the `contract_address` for the external call. Protocol revenue is not yet affected, and total borrowed is not yet increased. 
+    /// 3. Computes the `required_repayment` (loan `amount` + `fees`). 
+    /// 4. Drops the `cache` to prevent reentrancy, then executes the external call to `contract_address` and `endpoint` with `arguments`. 
+    /// 5. Validates that the `back_transfers` (repayment) meet or exceed `required_repayment`. 
+    /// 6. Calculates the `protocol_fee` from `repayment - amount`. 
+    /// 7. Adds the `protocol_fee` (rescaled to RAY) to `cache.revenue`. 
+    /// 8. Emits a market state event. 
     ///  
     /// # Arguments 
     /// - `borrowed_token`: The token to borrow (`EgldOrEsdtTokenIdentifier`). 
@@ -620,19 +569,21 @@ where
     /// **Purpose**: Enables internal strategies requiring temporary asset access, adding fees to protocol revenue. 
     ///  
     /// **Process**: 
-    /// 1. Validates the token and reserve availability. 
-    /// 2. Deducts from reserves, increases borrowed amount, and adds fees to revenue. 
-    /// 3. Transfers the borrowed amount to the caller. 
-    /// 4. Emits a market state event and returns the borrow index and timestamp. 
+    /// 1. Validates the asset in the `position` and reserve availability for `strategy_amount`. 
+    /// 2. Calculates `effective_initial_debt = strategy_amount + strategy_fee`. 
+    /// 3. Increases the `position`'s scaled debt and the pool's total scaled `borrowed` amount by the scaled `effective_initial_debt`. 
+    /// 4. Adds `strategy_fee` (rescaled to RAY) to `cache.revenue`. 
+    /// 5. Transfers the `strategy_amount` to the caller. 
+    /// 6. Emits a market state event. 
     ///  
     /// # Arguments 
-    /// - `token`: The token to borrow (`EgldOrEsdtTokenIdentifier`). 
-    /// - `strategy_amount`: The amount to borrow (`ManagedDecimal<Self::Api, NumDecimals>`). 
+    /// - `position`: The account's position for the asset being borrowed for the strategy (`AccountPosition<Self::Api>`). 
+    /// - `strategy_amount`: The amount to borrow for the strategy (`ManagedDecimal<Self::Api, NumDecimals>`). 
     /// - `strategy_fee`: The fee for the strategy (`ManagedDecimal<Self::Api, NumDecimals>`). 
     /// - `price`: The asset price for market update (`ManagedDecimal<Self::Api, NumDecimals>`). 
     ///  
     /// # Returns 
-    /// - `(ManagedDecimal<Self::Api, NumDecimals>, u64)`: The current borrow index and timestamp for later position updates. 
+    /// - `AccountPosition<Self::Api>`: The updated account position reflecting the new strategy debt. 
     ///  
     /// **Security Considerations**: Ensures asset validity and sufficient reserves with `require!` checks. 
     /// Can only be called by the owner (via controller contract) 
@@ -664,9 +615,11 @@ where
     /// **Purpose**: Increases protocol revenue and reserves with funds from external sources. 
     ///  
     /// **Process**: 
-    /// 1. Retrieves and validates the payment amount. 
-    /// 2. Adds the amount to both revenue and reserves. 
-    /// 3. Emits a market state event. 
+    /// 1. Retrieves and validates the payment `amount`. 
+    /// 2. If `amount` is less than or equal to `cache.bad_debt`, it reduces `cache.bad_debt` by `amount`. 
+    /// 3. Otherwise, `cache.bad_debt` is cleared, and the `remaining_amount` (after covering bad debt) is added to `cache.revenue` (rescaled to RAY). 
+    /// 4. Pool reserves are implicitly increased by the incoming payment. 
+    /// 5. Emits a market state event. 
     ///  
     /// # Arguments 
     /// - `price`: The asset price for market update (`ManagedDecimal<Self::Api, NumDecimals>`). 
@@ -729,9 +682,12 @@ where
     ///  
     /// **Process**: 
     /// 1. Updates global indexes. 
-    /// 2. Adds the dust collateral to protocol revenue. 
-    /// 3. Subtracts the dust collateral from supplied. 
-    /// 4. Emits a market state event. 
+    /// 2. Calculates the `current_dust_actual` (original value of the position's supplied collateral). 
+    /// 3. If `current_dust_actual` is less than or equal to `cache.bad_debt`, it reduces `cache.bad_debt` by `current_dust_actual`. 
+    /// 4. Otherwise, `cache.bad_debt` is cleared, and the `remaining_amount_actual` (after covering bad debt) is added to `cache.revenue` (rescaled to RAY). 
+    /// 5. Subtracts the position's scaled amount from `cache.supplied`. 
+    /// 6. Clears the position's scaled amount and updates its market index. 
+    /// 7. Emits a market state event. 
     ///  
     /// # Arguments 
     /// - `position`: The position to seize dust collateral from (`AccountPosition<Self::Api>`). 
@@ -797,18 +753,17 @@ where
             .original_result()
     }
 
-    /// Retrieves the total capital of the pool. 
-    ///  
-    /// Total capital is defined as the sum of reserves and borrowed tokens. 
+    /// Retrieves the total actual balance of the asset held by the pool contract. 
+    /// This represents the current liquidity or reserves available in the pool. 
     ///  
     /// # Returns 
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total capital. 
-    pub fn get_total_capital(
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total reserves in the pool, scaled to the asset's decimals. 
+    pub fn get_reserves(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getTotalCapital")
+            .raw_call("getReserves")
             .original_result()
     }
 
@@ -837,6 +792,58 @@ where
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getBorrowRate")
+            .original_result()
+    }
+
+    /// Retrieves the time delta since the last update. 
+    ///  
+    /// # Returns 
+    /// - `u64`: The time delta in seconds. 
+    pub fn get_delta_time(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, u64> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getDeltaTime")
+            .original_result()
+    }
+
+    /// Retrieves the protocol revenue accrued from borrow interest fees, scaled to the asset's decimals. 
+    ///  
+    /// # Returns 
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The accumulated protocol revenue, scaled to the asset's decimals. 
+    pub fn get_protocol_revenue(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getProtocolRevenue")
+            .original_result()
+    }
+
+    /// Retrieves the total amount supplied to the pool. 
+    ///  
+    /// # Returns 
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total amount supplied. 
+    pub fn get_supplied_amount(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getSuppliedAmount")
+            .original_result()
+    }
+
+    /// Retrieves the total amount borrowed from the pool. 
+    ///  
+    /// # Returns 
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total amount borrowed. 
+    pub fn get_borrowed_amount(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getBorrowedAmount")
             .original_result()
     }
 }

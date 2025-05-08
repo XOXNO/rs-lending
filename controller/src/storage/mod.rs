@@ -1,6 +1,6 @@
 use common_structs::{
-    AccountAttributes, AccountPosition, AssetConfig, EModeAssetConfig, EModeCategory,
-    OracleProvider,
+    AccountAttributes, AccountPosition, AccountPositionType, AssetConfig, EModeAssetConfig,
+    EModeCategory, OracleProvider,
 };
 
 multiversx_sc::imports!();
@@ -9,21 +9,27 @@ multiversx_sc::imports!();
 pub trait Storage {
     /// Get the set of allowed pools
     /// This storage mapper holds the addresses of pools that are allowed to participate in the lending protocol.
-    #[view(getPoolAllowed)]
-    #[storage_mapper("pool_allowed")]
-    fn pools_allowed(&self) -> UnorderedSetMapper<ManagedAddress>;
+    #[view(getPools)]
+    #[storage_mapper("pools")]
+    fn pools(&self) -> UnorderedSetMapper<ManagedAddress>;
 
     /// Get the account token
     /// This storage mapper holds the logic of the account token, which is a non-fungible token (NFT).
-    #[view(getAccountToken)]
-    #[storage_mapper("account_token")]
-    fn account_token(&self) -> NonFungibleTokenMapper<Self::Api>;
+    #[view(getAccount)]
+    #[storage_mapper("account")]
+    fn account(&self) -> NonFungibleTokenMapper<Self::Api>;
+
+    /// Get the account nonce
+    /// This storage mapper holds the nonce of the account, which is a non-fungible token (NFT).
+    #[view(getAccountNonce)]
+    #[storage_mapper("account_nonce")]
+    fn account_nonce(&self) -> SingleValueMapper<u64>;
 
     /// Get the account positions
     /// This storage mapper holds a list of account positions as a set. A position represents a nonce of an account (NFT nonce).
-    #[view(getAccountPositions)]
-    #[storage_mapper("account_positions")]
-    fn account_positions(&self) -> UnorderedSetMapper<u64>;
+    #[view(getAccounts)]
+    #[storage_mapper("accounts")]
+    fn accounts(&self) -> UnorderedSetMapper<u64>;
 
     /// Get the account attributes
     /// This storage mapper maps each minted NFT to account attributes, useful for retrieving attributes without having the NFT in hand.
@@ -33,20 +39,12 @@ pub trait Storage {
 
     /// Get the deposit positions
     /// This storage mapper maps each deposit position to an account nonce, holding a list of assets and their corresponding structs.
-    #[view(getDepositPositions)]
-    #[storage_mapper("deposit_positions")]
-    fn deposit_positions(
+    #[view(getPositions)]
+    #[storage_mapper("positions")]
+    fn positions(
         &self,
-        owner_nonce: u64,
-    ) -> MapMapper<EgldOrEsdtTokenIdentifier, AccountPosition<Self::Api>>;
-
-    /// Get the borrow positions
-    /// This storage mapper maps each borrow position to an account nonce, holding a list of assets and their corresponding structs.
-    #[view(getBorrowPositions)]
-    #[storage_mapper("borrow_positions")]
-    fn borrow_positions(
-        &self,
-        owner_nonce: u64,
+        nonce: u64,
+        position_type: AccountPositionType,
     ) -> MapMapper<EgldOrEsdtTokenIdentifier, AccountPosition<Self::Api>>;
 
     /// Get the liquidity pool template address
@@ -84,9 +82,9 @@ pub trait Storage {
     #[storage_mapper("wegld_wrapper_address")]
     fn wegld_wrapper(&self) -> SingleValueMapper<ManagedAddress>;
 
-    #[view(getAggregatorAddress)]
-    #[storage_mapper("aggregator_address")]
-    fn aggregator(&self) -> SingleValueMapper<ManagedAddress>;
+    #[view(getSwapRouterAddress)]
+    #[storage_mapper("swap_router_address")]
+    fn swap_router(&self) -> SingleValueMapper<ManagedAddress>;
 
     /// Get the asset config
     /// This storage mapper holds the configuration of an asset, used to retrieve the config of an asset.
@@ -130,15 +128,6 @@ pub trait Storage {
         asset: &EgldOrEsdtTokenIdentifier,
     ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
 
-    /// Get the vault supplied amount per token
-    /// This storage mapper holds the supplied amount per token in the vault.
-    #[view(getVaultSuppliedAmount)]
-    #[storage_mapper("vault_supplied_amount")]
-    fn vault_supplied_amount(
-        &self,
-        asset: &EgldOrEsdtTokenIdentifier,
-    ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>>;
-
     /// Get the token oracle
     /// This storage mapper holds the oracle of a token, used to get the price of a token.
     #[view(getTokenOracle)]
@@ -147,4 +136,33 @@ pub trait Storage {
         &self,
         asset: &EgldOrEsdtTokenIdentifier,
     ) -> SingleValueMapper<OracleProvider<Self::Api>>;
+
+    // Reentrancy guard
+    #[view(isFlashLoanOngoing)]
+    #[storage_mapper("flash_loan_ongoing")]
+    fn flash_loan_ongoing(&self) -> SingleValueMapper<bool>;
+
+    /// Retrieves the current borrow index.
+    ///
+    /// The borrow index is used to calculate accrued interest on borrow positions.
+    ///
+    /// # Returns
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The current borrow index.
+    #[storage_mapper_from_address("borrow_index")]
+    fn borrow_index(
+        &self,
+        pool_address: ManagedAddress,
+    ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>, ManagedAddress>;
+
+    /// Retrieves the current supply index.
+    ///
+    /// The supply index is used to compute the yield for suppliers.
+    ///
+    /// # Returns
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The current supply index.
+    #[storage_mapper_from_address("supply_index")]
+    fn supply_index(
+        &self,
+        pool_address: ManagedAddress,
+    ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>, ManagedAddress>;
 }

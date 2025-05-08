@@ -2,7 +2,7 @@ multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
 use crate::cache::Cache;
-use crate::{helpers, oracle, proxy_pool, storage, ERROR_NO_POOL_FOUND, WAD_PRECISION};
+use crate::{helpers, oracle, storage, ERROR_NO_POOL_FOUND, WAD_PRECISION};
 use common_errors::*;
 use common_structs::*;
 
@@ -29,6 +29,31 @@ pub trait LendingUtilsModule:
         let pool_address = self.pools_map(asset).get();
         require!(!pool_address.is_zero(), ERROR_NO_POOL_FOUND);
         pool_address
+    }
+
+    /// Returns the total position amount by summing scaled_amount by the index always up to the latest market index
+    ///
+    /// # Returns
+    /// - `ManagedDecimal<M, NumDecimals>`: The total amount in the position.
+    #[inline]
+    fn get_total_amount(
+        &self,
+        position: &AccountPosition<Self::Api>,
+        feed: &PriceFeedShort<Self::Api>,
+        cache: &mut Cache<Self>,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        let index = cache.get_cached_market_index(&position.asset_id);
+        if position.position_type == AccountPositionType::Deposit {
+            self.rescale_half_up(
+                &self.mul_half_up(&position.scaled_amount, &index.supply_index, RAY_PRECISION),
+                feed.asset_decimals,
+            )
+        } else {
+            self.rescale_half_up(
+                &self.mul_half_up(&position.scaled_amount, &index.borrow_index, RAY_PRECISION),
+                feed.asset_decimals,
+            )
+        }
     }
 
     /// Calculates the total weighted collateral, total collateral, and LTV-weighted collateral in EGLD.
@@ -58,17 +83,14 @@ pub trait LendingUtilsModule:
 
         for position in positions {
             let feed = self.get_token_price(&position.asset_id, cache);
-            let collateral_in_egld =
-                self.get_token_egld_value(&position.get_total_amount(), &feed.price);
+            let amount = self.get_total_amount(&position, &feed, cache);
+            let amount_egld = self.get_token_egld_value(&amount, &feed.price);
 
-            total_collateral += &collateral_in_egld;
-            weighted_collateral += self.mul_half_up(
-                &collateral_in_egld,
-                &position.liquidation_threshold,
-                WAD_PRECISION,
-            );
+            total_collateral += &amount_egld;
+            weighted_collateral +=
+                self.mul_half_up(&amount_egld, &position.liquidation_threshold, WAD_PRECISION);
             ltv_collateral +=
-                self.mul_half_up(&collateral_in_egld, &position.loan_to_value, WAD_PRECISION);
+                self.mul_half_up(&amount_egld, &position.loan_to_value, WAD_PRECISION);
         }
 
         (weighted_collateral, total_collateral, ltv_collateral)
@@ -90,7 +112,8 @@ pub trait LendingUtilsModule:
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         positions.iter().fold(self.wad_zero(), |acc, position| {
             let feed = self.get_token_price(&position.asset_id, cache);
-            acc + self.get_token_egld_value(&position.get_total_amount(), &feed.price)
+            let amount = self.get_total_amount(&position, &feed, cache);
+            acc + self.get_token_egld_value(&amount, &feed.price)
         })
     }
 
@@ -134,39 +157,6 @@ pub trait LendingUtilsModule:
         self.update_debt_ceiling_event(asset_id, debt_mapper.get());
     }
 
-    /// Updates an account position with the latest interest data from the liquidity pool.
-    /// Syncs interest accruals for accurate position tracking.
-    ///
-    /// # Arguments
-    /// - `asset_address`: Address of the asset’s liquidity pool.
-    /// - `position`: Mutable reference to the account position to update.
-    /// - `price`: Optional current price of the asset for calculations.
-    ///
-    /// # Notes
-    /// - Performs a synchronous call to the liquidity pool proxy.
-    fn update_position(
-        &self,
-        asset_address: &ManagedAddress,
-        position: &mut AccountPosition<Self::Api>,
-        price: OptionalValue<ManagedDecimal<Self::Api, NumDecimals>>,
-    ) {
-        *position = self
-            .tx()
-            .to(asset_address)
-            .typed(proxy_pool::LiquidityPoolProxy)
-            .sync_position_interest(position.clone(), price)
-            .returns(ReturnsResult)
-            .sync_call();
-    }
-
-    /// Validates the endpoint for flash loans.
-    fn validate_flash_loan_endpoint(&self, endpoint: &ManagedBuffer<Self::Api>) {
-        require!(
-            !self.blockchain().is_builtin_function(endpoint) && !endpoint.is_empty(),
-            ERROR_INVALID_ENDPOINT
-        );
-    }
-
     /// Updates bulk borrow positions in the borrow list.
     fn update_bulk_borrow_positions(
         &self,
@@ -196,21 +186,6 @@ pub trait LendingUtilsModule:
         }
     }
 
-    /// Updates the interest index for a specific asset.
-    fn update_asset_index(
-        &self,
-        asset_id: &EgldOrEsdtTokenIdentifier<Self::Api>,
-        cache: &mut Cache<Self>,
-    ) {
-        let pool_address = self.get_pool_address(asset_id);
-        let asset_price = self.get_token_price(asset_id, cache);
-        self.tx()
-            .to(pool_address)
-            .typed(proxy_pool::LiquidityPoolProxy)
-            .update_indexes(asset_price.price)
-            .sync_call();
-    }
-
     /// Validates health factor post-withdrawal.
     /// Ensures position remains safe after withdrawal.
     ///
@@ -225,22 +200,21 @@ pub trait LendingUtilsModule:
         cache: &mut Cache<Self>,
         safety_factor: Option<ManagedDecimal<Self::Api, NumDecimals>>,
     ) {
-        let borrow_positions = self.borrow_positions(account_nonce);
+        let borrow_positions = self.positions(account_nonce, AccountPositionType::Borrow);
         if borrow_positions.is_empty() {
             return;
         }
 
-        let deposit_positions = self.deposit_positions(account_nonce);
+        let deposit_positions = self.positions(account_nonce, AccountPositionType::Deposit);
         let (collateral, _, _) =
             self.calculate_collateral_values(&deposit_positions.values().collect(), cache);
         let borrowed =
             self.calculate_total_borrow_in_egld(&borrow_positions.values().collect(), cache);
         let health_factor = self.compute_health_factor(&collateral, &borrowed);
 
-        let min_health_factor = if let Some(safety_factor_value) = safety_factor {
-            self.wad() + (self.wad() / safety_factor_value)
-        } else {
-            self.wad()
+        let min_health_factor = match safety_factor {
+            Some(safety_factor_value) => self.wad() + (self.wad() / safety_factor_value),
+            None => self.wad(),
         };
 
         require!(
