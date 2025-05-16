@@ -187,6 +187,7 @@ pub trait RouterModule:
         let pool_address = self.get_pool_address(base_asset);
         self.upgrade_pool(
             pool_address,
+            base_asset,
             max_borrow_rate,
             base_borrow_rate,
             slope1,
@@ -240,6 +241,7 @@ pub trait RouterModule:
     fn upgrade_pool(
         &self,
         lp_address: ManagedAddress,
+        base_asset: &EgldOrEsdtTokenIdentifier,
         max_borrow_rate: BigUint,
         base_borrow_rate: BigUint,
         slope1: BigUint,
@@ -253,6 +255,8 @@ pub trait RouterModule:
             !self.liq_pool_template_address().is_empty(),
             ERROR_TEMPLATE_EMPTY
         );
+        let mut cache = Cache::new(self);
+        let feed = self.get_token_price(base_asset, &mut cache);
         self.tx()
             .to(lp_address)
             .typed(proxy_pool::LiquidityPoolProxy)
@@ -265,6 +269,7 @@ pub trait RouterModule:
                 mid_utilization,
                 optimal_utilization,
                 reserve_factor,
+                feed.price,
             )
             .from_source(self.liq_pool_template_address().get())
             .code_metadata(CodeMetadata::UPGRADEABLE | CodeMetadata::READABLE)

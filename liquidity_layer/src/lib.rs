@@ -155,9 +155,11 @@ pub trait LiquidityPool:
         mid_utilization: BigUint,
         optimal_utilization: BigUint,
         reserve_factor: BigUint,
+        asset_price: ManagedDecimal<Self::Api, NumDecimals>,
     ) {
         let mut cache = Cache::new(self);
         self.global_sync(&mut cache);
+        self.emit_market_update(&cache, &asset_price);
 
         self.params().update(|params| {
             self.market_params_event(

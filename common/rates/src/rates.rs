@@ -373,16 +373,10 @@ pub trait InterestRates: common_math::SharedMathModule {
         let delta = current_timestamp - last_timestamp;
 
         if delta > 0 {
-            let borrowed_original = self.scaled_to_original(
-                &borrowed,
-                &current_borrowed_index,
-                params.asset_decimals,
-            );
-            let supplied_original = self.scaled_to_original(
-                &supplied,
-                &current_supply_index,
-                params.asset_decimals,
-            );
+            let borrowed_original =
+                self.scaled_to_original(&borrowed, &current_borrowed_index, params.asset_decimals);
+            let supplied_original =
+                self.scaled_to_original(&supplied, &current_supply_index, params.asset_decimals);
             let utilization = self.get_utilization(&borrowed_original, &supplied_original);
             let borrow_rate = self.calc_borrow_rate(utilization, params.clone());
             let borrow_factor = self.calculate_compounded_interest(borrow_rate.clone(), delta);

@@ -222,15 +222,21 @@ where
         &self,
         scaled_amount: &ManagedDecimal<C::Api, NumDecimals>,
     ) -> ManagedDecimal<C::Api, NumDecimals> {
-        self.sc_ref
-            .scaled_to_original(scaled_amount, &self.supply_index, self.params.asset_decimals)
+        self.sc_ref.scaled_to_original(
+            scaled_amount,
+            &self.supply_index,
+            self.params.asset_decimals,
+        )
     }
 
     pub fn get_original_borrow_amount(
         &self,
         scaled_amount: &ManagedDecimal<C::Api, NumDecimals>,
     ) -> ManagedDecimal<C::Api, NumDecimals> {
-        self.sc_ref
-            .scaled_to_original(scaled_amount, &self.borrow_index, self.params.asset_decimals)
+        self.sc_ref.scaled_to_original(
+            scaled_amount,
+            &self.borrow_index,
+            self.params.asset_decimals,
+        )
     }
 }

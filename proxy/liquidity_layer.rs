@@ -159,6 +159,7 @@ where
         Arg5: ProxyArg<BigUint<Env::Api>>,
         Arg6: ProxyArg<BigUint<Env::Api>>,
         Arg7: ProxyArg<BigUint<Env::Api>>,
+        Arg8: ProxyArg<ManagedDecimal<Env::Api, usize>>,
     >(
         self,
         max_borrow_rate: Arg0,
@@ -169,6 +170,7 @@ where
         mid_utilization: Arg5,
         optimal_utilization: Arg6,
         reserve_factor: Arg7,
+        asset_price: Arg8,
     ) -> TxTypedUpgrade<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
@@ -181,6 +183,7 @@ where
             .argument(&mid_utilization)
             .argument(&optimal_utilization)
             .argument(&reserve_factor)
+            .argument(&asset_price)
             .original_result()
     }
 }
