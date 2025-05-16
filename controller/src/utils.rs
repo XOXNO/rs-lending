@@ -13,6 +13,7 @@ pub trait LendingUtilsModule:
     + common_events::EventsModule
     + common_math::SharedMathModule
     + helpers::MathsModule
+    + common_rates::InterestRates
 {
     /// Retrieves the liquidity pool address for a given asset.
     /// Ensures the asset has an associated pool; errors if not found.

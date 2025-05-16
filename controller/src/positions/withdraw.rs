@@ -18,7 +18,7 @@ pub trait PositionWithdrawModule:
     + helpers::MathsModule
     + account::PositionAccountModule
     + common_math::SharedMathModule
-    // + vault::PositionVaultModule
+    + common_rates::InterestRates
     + update::PositionUpdateModule
 {
     /// Processes a withdrawal from a deposit position.
@@ -158,8 +158,7 @@ pub trait PositionWithdrawModule:
         if deposit_positions_count == 0 && borrow_positions_count == 0 {
             self.account()
                 .nft_burn(account_payment.token_nonce, &BigUint::from(1u64));
-            self.accounts()
-                .swap_remove(&account_payment.token_nonce);
+            self.accounts().swap_remove(&account_payment.token_nonce);
             self.account_attributes(account_payment.token_nonce).clear();
         } else {
             self.tx().to(caller).payment(account_payment).transfer();

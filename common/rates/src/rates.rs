@@ -1,5 +1,5 @@
 use common_constants::{RAY_PRECISION, SECONDS_PER_YEAR};
-use common_structs::MarketParams;
+use common_structs::{MarketIndex, MarketParams};
 
 multiversx_sc::imports!();
 
@@ -335,6 +335,81 @@ pub trait InterestRates: common_math::SharedMathModule {
 
             let zero_bad_debt = self.to_decimal(BigUint::zero(), params.asset_decimals);
             (supplier_rewards_ray, protocol_fee, zero_bad_debt)
+        }
+    }
+
+    fn get_utilization(
+        &self,
+        borrowed: &ManagedDecimal<Self::Api, NumDecimals>,
+        supplied: &ManagedDecimal<Self::Api, NumDecimals>,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        if supplied == &self.ray_zero() {
+            return self.ray_zero();
+        }
+        self.div_half_up(borrowed, supplied, RAY_PRECISION)
+    }
+
+    fn scaled_to_original(
+        &self,
+        scaled_amount: &ManagedDecimal<Self::Api, NumDecimals>,
+        index: &ManagedDecimal<Self::Api, NumDecimals>,
+        asset_decimals: usize,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        let original_amount = self.mul_half_up(scaled_amount, index, RAY_PRECISION);
+        self.rescale_half_up(&original_amount, asset_decimals)
+    }
+
+    fn simulate_update_indexes(
+        &self,
+        current_timestamp: u64,
+        last_timestamp: u64,
+        borrowed: ManagedDecimal<Self::Api, NumDecimals>,
+        current_borrowed_index: ManagedDecimal<Self::Api, NumDecimals>,
+        supplied: ManagedDecimal<Self::Api, NumDecimals>,
+        current_supply_index: ManagedDecimal<Self::Api, NumDecimals>,
+        bad_debt: ManagedDecimal<Self::Api, NumDecimals>,
+        params: MarketParams<Self::Api>,
+    ) -> MarketIndex<Self::Api> {
+        let delta = current_timestamp - last_timestamp;
+
+        if delta > 0 {
+            let borrowed_original = self.scaled_to_original(
+                &borrowed,
+                &current_borrowed_index,
+                params.asset_decimals,
+            );
+            let supplied_original = self.scaled_to_original(
+                &supplied,
+                &current_supply_index,
+                params.asset_decimals,
+            );
+            let utilization = self.get_utilization(&borrowed_original, &supplied_original);
+            let borrow_rate = self.calc_borrow_rate(utilization, params.clone());
+            let borrow_factor = self.calculate_compounded_interest(borrow_rate.clone(), delta);
+            let (new_borrow_index, old_borrow_index) =
+                self.update_borrow_index(current_borrowed_index.clone(), borrow_factor.clone());
+
+            // 3 raw split
+            let (supplier_rewards_ray, _, _) = self.calc_supplier_rewards(
+                params.clone(),
+                &borrowed,
+                bad_debt.clone(),
+                &new_borrow_index,
+                &old_borrow_index,
+            );
+
+            let new_supply_index =
+                self.update_supply_index(supplied, current_supply_index, supplier_rewards_ray);
+
+            MarketIndex {
+                supply_index: new_supply_index,
+                borrow_index: new_borrow_index,
+            }
+        } else {
+            MarketIndex {
+                supply_index: current_supply_index,
+                borrow_index: current_borrowed_index,
+            }
         }
     }
 }

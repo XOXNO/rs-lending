@@ -1,10 +1,9 @@
-use common_constants::{RAY_PRECISION, TOTAL_BORROWED_AMOUNT_STORAGE_KEY};
+use common_constants::RAY_PRECISION;
 
 use common_structs::{
     AccountAttributes, AccountPosition, AccountPositionType, AssetConfig, EModeCategory,
     PriceFeedShort,
 };
-use multiversx_sc::storage::StorageKey;
 
 use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validation};
 use common_errors::{
@@ -30,6 +29,7 @@ pub trait PositionBorrowModule:
     + update::PositionUpdateModule
     + common_math::SharedMathModule
     + emode::EModeModule
+    + common_rates::InterestRates
 {
     fn handle_create_borrow_strategy(
         &self,
@@ -267,11 +267,10 @@ pub trait PositionBorrowModule:
                 }
 
                 let pool = cache.get_cached_pool_address(asset);
-                let total_borrow_scaled = self.get_total_borrow(pool.clone()).get();
-                // Validates with the last updated index avoiding a double call to the pool to update the index
-                let index = self.borrow_index(pool.clone()).get();
+                let total_borrow_scaled = self.borrowed(pool.clone()).get();
+                let index = cache.get_cached_market_index(asset);
                 let borrowed_amount = self.rescale_half_up(
-                    &self.mul_half_up(&total_borrow_scaled, &index, RAY_PRECISION),
+                    &self.mul_half_up(&total_borrow_scaled, &index.borrow_index, RAY_PRECISION),
                     amount.scale(),
                 );
 
@@ -285,23 +284,6 @@ pub trait PositionBorrowModule:
                 // No borrow cap set, do nothing
             },
         }
-    }
-
-    /// Retrieves total borrow amount from the liquidity pool.
-    ///
-    /// # Arguments
-    /// - `pool_address`: Pool address.
-    ///
-    /// # Returns
-    /// - `SingleValueMapper` with total borrow amount.
-    fn get_total_borrow(
-        &self,
-        pool_address: ManagedAddress,
-    ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>, ManagedAddress> {
-        SingleValueMapper::<_, _, ManagedAddress>::new_from_address(
-            pool_address,
-            StorageKey::new(TOTAL_BORROWED_AMOUNT_STORAGE_KEY),
-        )
     }
 
     /// Validates sufficient collateral for a borrow operation.

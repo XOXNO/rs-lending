@@ -1,14 +1,12 @@
-use common_constants::{RAY_PRECISION, TOTAL_SUPPLY_AMOUNT_STORAGE_KEY};
-use common_structs::{
-    AccountAttributes, AccountPosition, AccountPositionType, AssetConfig, PriceFeedShort,
-};
-use multiversx_sc::storage::StorageKey;
-
 use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validation};
+use common_constants::RAY_PRECISION;
 use common_errors::{
     ERROR_ACCOUNT_ATTRIBUTES_MISMATCH, ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL,
     ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS, ERROR_MIX_ISOLATED_COLLATERAL,
     ERROR_POSITION_NOT_FOUND, ERROR_SUPPLY_CAP,
+};
+use common_structs::{
+    AccountAttributes, AccountPosition, AccountPositionType, AssetConfig, PriceFeedShort,
 };
 
 use super::{account, emode, update};
@@ -28,6 +26,7 @@ pub trait PositionDepositModule:
     + emode::EModeModule
     + common_math::SharedMathModule
     + update::PositionUpdateModule
+    + common_rates::InterestRates
 {
     /// Processes a deposit operation for a user's position.
     /// Handles validations, e-mode, and updates for deposits.
@@ -301,23 +300,6 @@ pub trait PositionDepositModule:
         );
     }
 
-    /// Retrieves total supply amount from the liquidity pool.
-    ///
-    /// # Arguments
-    /// - `pool_address`: Pool address.
-    ///
-    /// # Returns
-    /// - `SingleValueMapper` with total supply amount.
-    fn get_total_supply(
-        &self,
-        pool_address: ManagedAddress,
-    ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>, ManagedAddress> {
-        SingleValueMapper::<_, _, ManagedAddress>::new_from_address(
-            pool_address,
-            StorageKey::new(TOTAL_SUPPLY_AMOUNT_STORAGE_KEY),
-        )
-    }
-
     /// Ensures a deposit respects the asset's supply cap.
     ///
     /// # Arguments
@@ -339,11 +321,10 @@ pub trait PositionDepositModule:
                 }
 
                 let pool = cache.get_cached_pool_address(&deposit_payment.token_identifier);
-                let total_supply_scaled = self.get_total_supply(pool.clone()).get();
-                // Validates with the last updated index avoiding a double call to the pool to update the index
-                let index = self.supply_index(pool.clone()).get();
+                let index = cache.get_cached_market_index(&deposit_payment.token_identifier);
+                let total_supply_scaled = self.supplied(pool.clone()).get();
                 let total_supplied = self.rescale_half_up(
-                    &self.mul_half_up(&total_supply_scaled, &index, RAY_PRECISION),
+                    &self.mul_half_up(&total_supply_scaled, &index.supply_index, RAY_PRECISION),
                     feed.asset_decimals,
                 );
 

@@ -17,6 +17,7 @@ pub trait ValidationModule:
     + oracle::OracleModule
     + helpers::MathsModule
     + common_math::SharedMathModule
+    + common_rates::InterestRates
 {
     /// Validates a payment for operations like repayments or deposits.
     /// Ensures the asset is supported and the amount is valid.

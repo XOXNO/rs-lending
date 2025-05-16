@@ -601,7 +601,7 @@ pub trait LiquidityModule:
         let user_supplied_scaled = if cache.supplied >= treasury_scaled {
             cache.supplied.clone() - treasury_scaled.clone()
         } else {
-            cache.zero.clone()
+            self.ray_zero()
         };
         let pool_is_empty =
             user_supplied_scaled == self.ray_zero() && cache.borrowed == self.ray_zero();

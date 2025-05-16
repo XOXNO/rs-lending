@@ -16,6 +16,7 @@ pub trait ConfigModule:
     + oracle::OracleModule
     + helpers::MathsModule
     + common_math::SharedMathModule
+    + common_rates::InterestRates
 {
     /// Registers a new NFT token for tracking account positions.
     /// Issues an ESDT token with non-fungible properties.

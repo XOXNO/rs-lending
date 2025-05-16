@@ -5,7 +5,7 @@ multiversx_sc::derive_imports!();
 
 pub struct Cache<'a, C>
 where
-    C: crate::oracle::OracleModule + crate::storage::Storage,
+    C: crate::oracle::OracleModule + crate::storage::Storage + common_rates::InterestRates,
 {
     sc_ref: &'a C,
 
@@ -25,11 +25,12 @@ where
     pub allow_unsafe_price: bool,
     pub flash_loan_ongoing: bool,
     pub safe_price_view: ManagedAddress<C::Api>,
+    pub current_timestamp: u64,
 }
 
 impl<'a, C> Cache<'a, C>
 where
-    C: crate::oracle::OracleModule + crate::storage::Storage,
+    C: crate::oracle::OracleModule + crate::storage::Storage + common_rates::InterestRates,
 {
     pub fn new(sc_ref: &'a C) -> Self {
         let price_aggregator = sc_ref.price_aggregator_address().get();
@@ -58,6 +59,7 @@ where
             allow_unsafe_price: true,
             flash_loan_ongoing: sc_ref.flash_loan_ongoing().get(),
             safe_price_view,
+            current_timestamp: sc_ref.blockchain().get_block_timestamp(),
         }
     }
 
@@ -93,7 +95,7 @@ where
             return self.market_indexes.get(token_id);
         }
 
-        let new = self.sc_ref.update_asset_index(token_id, self);
+        let new = self.sc_ref.update_asset_index(token_id, self, true);
         self.market_indexes.put(token_id, &new);
 
         new

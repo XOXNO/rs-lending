@@ -22,6 +22,7 @@ pub trait RouterModule:
     + helpers::MathsModule
     + positions::account::PositionAccountModule
     + common_math::SharedMathModule
+    + common_rates::InterestRates
 {
     /// Creates a new liquidity pool for an asset with specified parameters.
     /// Initializes the pool and configures lending/borrowing settings.

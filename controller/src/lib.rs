@@ -41,6 +41,7 @@ pub trait Controller:
     + strategy::SnapModule
     + helpers::MathsModule
     + common_math::SharedMathModule
+    + common_rates::InterestRates
     + multiversx_sc_modules::default_issue_callbacks::DefaultIssueCallbacksModule
 {
     /// Initializes the lending pool contract with required addresses.
@@ -372,7 +373,7 @@ pub trait Controller:
         let mut cache = Cache::new(self);
         self.reentrancy_guard(cache.flash_loan_ongoing);
         for asset_id in assets {
-            self.update_asset_index(&asset_id, &mut cache);
+            self.update_asset_index(&asset_id, &mut cache, false);
         }
     }
 

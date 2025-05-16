@@ -19,6 +19,7 @@ pub trait PositionRepayModule:
     + borrow::PositionBorrowModule
     + update::PositionUpdateModule
     + common_math::SharedMathModule
+    + common_rates::InterestRates
     + emode::EModeModule
 {
     /// Processes a repayment via the liquidity pool.

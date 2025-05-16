@@ -35,16 +35,3 @@ pub const MIN_LAST_TOLERANCE: usize = 150;
 pub const MAX_LAST_TOLERANCE: usize = BPS;
 
 pub const BASE_NFT_URI: &[u8] = b"https://api.xoxno.com/user/lending/image";
-
-// Storage keys for price aggregator and liquidity layer
-pub static TOTAL_BORROWED_AMOUNT_STORAGE_KEY: &[u8] = b"borrowed";
-
-pub static TOTAL_SUPPLY_AMOUNT_STORAGE_KEY: &[u8] = b"supplied";
-
-pub static STATE_PAIR_STORAGE_KEY: &[u8] = b"state";
-
-pub static STATE_PAIR_ONEDEX_STORAGE_KEY: &[u8] = b"pair_state";
-
-pub static PRICE_AGGREGATOR_ROUNDS_STORAGE_KEY: &[u8] = b"rounds";
-
-pub static PRICE_AGGREGATOR_STATUS_STORAGE_KEY: &[u8] = b"pause_module:paused";

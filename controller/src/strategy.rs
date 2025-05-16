@@ -27,6 +27,7 @@ pub trait SnapModule:
     + positions::repay::PositionRepayModule
     + positions::emode::EModeModule
     + positions::update::PositionUpdateModule
+    + common_rates::InterestRates
 {
     #[payable]
     #[endpoint]

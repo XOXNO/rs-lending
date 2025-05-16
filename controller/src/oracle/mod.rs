@@ -28,22 +28,46 @@ use crate::{
 
 #[multiversx_sc::module]
 pub trait OracleModule:
-    storage::Storage + helpers::MathsModule + common_math::SharedMathModule
+    storage::Storage
+    + helpers::MathsModule
+    + common_math::SharedMathModule
+    + common_rates::InterestRates
 {
     /// Updates the interest index for a specific asset.
     fn update_asset_index(
         &self,
         asset_id: &EgldOrEsdtTokenIdentifier<Self::Api>,
         cache: &mut Cache<Self>,
+        simulate: bool,
     ) -> MarketIndex<Self::Api> {
         let pool_address = cache.get_cached_pool_address(asset_id);
-        let asset_price = self.get_token_price(asset_id, cache);
-        self.tx()
-            .to(pool_address)
-            .typed(proxy_pool::LiquidityPoolProxy)
-            .update_indexes(asset_price.price)
-            .returns(ReturnsResult)
-            .sync_call()
+        if simulate {
+            let asset_price = self.get_token_price(asset_id, cache);
+            self.tx()
+                .to(pool_address)
+                .typed(proxy_pool::LiquidityPoolProxy)
+                .update_indexes(asset_price.price)
+                .returns(ReturnsResult)
+                .sync_call()
+        } else {
+            let last_timestamp = self.last_timestamp(pool_address.clone()).get();
+            let borrowed = self.borrowed(pool_address.clone()).get();
+            let current_borrowed_index = self.borrow_index(pool_address.clone()).get();
+            let supplied = self.supplied(pool_address.clone()).get();
+            let current_supply_index = self.supply_index(pool_address.clone()).get();
+            let params = self.params(pool_address.clone()).get();
+            let bad_debt = self.bad_debt(pool_address).get();
+            self.simulate_update_indexes(
+                cache.current_timestamp,
+                last_timestamp,
+                borrowed,
+                current_borrowed_index,
+                supplied,
+                current_supply_index,
+                bad_debt,
+                params,
+            )
+        }
     }
     /// Get token price data
     /// Retrieves price data with caching; handles EGLD/WEGLD cases early and errors if token is not found.

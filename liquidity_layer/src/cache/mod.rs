@@ -15,7 +15,7 @@ multiversx_sc::derive_imports!();
 /// - Timestamps (`timestamp`, `last_timestamp`) are in seconds since the Unix epoch.
 pub struct Cache<'a, C>
 where
-    C: crate::storage::Storage,
+    C: crate::storage::Storage + common_rates::InterestRates,
 {
     sc_ref: &'a C,
     /// The amount of the asset supplied by lenders.
@@ -42,7 +42,7 @@ where
 
 impl<'a, C> Cache<'a, C>
 where
-    C: crate::storage::Storage + common_math::SharedMathModule,
+    C: crate::storage::Storage + common_math::SharedMathModule + common_rates::InterestRates,
 {
     /// Constructs a new Cache by reading the current state from on-chain storage.
     ///
@@ -77,7 +77,7 @@ where
 
 impl<C> Drop for Cache<'_, C>
 where
-    C: crate::storage::Storage,
+    C: crate::storage::Storage + common_rates::InterestRates,
 {
     /// Commits changes to mutable fields back to on-chain storage when the Cache is dropped.
     ///
@@ -102,7 +102,7 @@ where
 
 impl<C> Cache<'_, C>
 where
-    C: crate::storage::Storage + common_math::SharedMathModule,
+    C: crate::storage::Storage + common_math::SharedMathModule + common_rates::InterestRates,
 {
     /// Converts a raw BigUint value into a ManagedDecimal using the pool's decimal precision.
     ///
@@ -140,7 +140,7 @@ where
     ///
     /// **Security Tip**: Handles division-by-zero by returning 0 when `supplied` is zero.
     pub fn get_utilization(&self) -> ManagedDecimal<C::Api, NumDecimals> {
-        if self.supplied == self.zero {
+        if self.supplied == self.sc_ref.ray_zero() {
             self.sc_ref.ray_zero()
         } else {
             let total_borrowed = self.get_original_borrow_amount(&self.borrowed);
@@ -222,21 +222,15 @@ where
         &self,
         scaled_amount: &ManagedDecimal<C::Api, NumDecimals>,
     ) -> ManagedDecimal<C::Api, NumDecimals> {
-        let original_amount =
-            self.sc_ref
-                .mul_half_up(scaled_amount, &self.supply_index, RAY_PRECISION);
         self.sc_ref
-            .rescale_half_up(&original_amount, self.params.asset_decimals)
+            .scaled_to_original(scaled_amount, &self.supply_index, self.params.asset_decimals)
     }
 
     pub fn get_original_borrow_amount(
         &self,
         scaled_amount: &ManagedDecimal<C::Api, NumDecimals>,
     ) -> ManagedDecimal<C::Api, NumDecimals> {
-        let original_amount =
-            self.sc_ref
-                .mul_half_up(scaled_amount, &self.borrow_index, RAY_PRECISION);
         self.sc_ref
-            .rescale_half_up(&original_amount, self.params.asset_decimals)
+            .scaled_to_original(scaled_amount, &self.borrow_index, self.params.asset_decimals)
     }
 }

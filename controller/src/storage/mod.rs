@@ -171,6 +171,17 @@ pub trait Storage {
         liquidity_pool_address: ManagedAddress,
     ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>, ManagedAddress>;
 
+    /// Retrieves the total bad debt from the pool.
+    /// This value is stored scaled to the asset's actual decimal precision.
+    ///
+    /// # Returns
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total bad debt pending to be collected, scaled to the asset's decimals.
+    #[storage_mapper_from_address("bad_debt")]
+    fn bad_debt(
+        &self,
+        liquidity_pool_address: ManagedAddress,
+    ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>, ManagedAddress>;
+
     /// Retrieves the current borrow index.
     ///
     /// The borrow index is used to calculate accrued interest on borrow positions.

@@ -3,6 +3,7 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
+use cache::Cache;
 use common_errors::{
     ERROR_INVALID_BORROW_RATE_PARAMS, ERROR_INVALID_RESERVE_FACTOR,
     ERROR_INVALID_UTILIZATION_RANGE, ERROR_OPTIMAL_UTILIZATION_TOO_HIGH,
@@ -155,6 +156,9 @@ pub trait LiquidityPool:
         optimal_utilization: BigUint,
         reserve_factor: BigUint,
     ) {
+        let mut cache = Cache::new(self);
+        self.global_sync(&mut cache);
+
         self.params().update(|params| {
             self.market_params_event(
                 &params.asset_id,

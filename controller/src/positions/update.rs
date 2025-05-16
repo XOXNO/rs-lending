@@ -17,6 +17,7 @@ pub trait PositionUpdateModule:
     + helpers::MathsModule
     + account::PositionAccountModule
     + common_math::SharedMathModule
+    + common_rates::InterestRates
 {
     fn get_borrow_positions(
         &self,

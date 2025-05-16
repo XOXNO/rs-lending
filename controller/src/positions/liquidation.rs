@@ -23,7 +23,8 @@ pub trait PositionLiquidationModule:
     + update::PositionUpdateModule
     + borrow::PositionBorrowModule
     + common_math::SharedMathModule
-    + emode::EModeModule // + vault::PositionVaultModule
+    + common_rates::InterestRates
+    + emode::EModeModule
 {
     /// Executes core liquidation logic for an account.
     /// Manages debt repayment and collateral seizure.

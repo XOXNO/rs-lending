@@ -12,6 +12,7 @@ pub trait ViewsModule:
     + common_events::EventsModule
     + helpers::MathsModule
     + common_math::SharedMathModule
+    + common_rates::InterestRates
 {
     /// Retrieves extended configuration views for multiple assets.
     /// Includes market addresses and current prices in EGLD and USD.
