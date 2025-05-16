@@ -81,7 +81,7 @@ where
 {
     /// Commits changes to mutable fields back to on-chain storage when the Cache is dropped.
     ///
-    /// **Scope**: Ensures the pool’s state is persisted after modifications.
+    /// **Scope**: Ensures the pool's state is persisted after modifications.
     ///
     /// **Goal**: Maintain consistency between in-memory cache and blockchain storage.
     ///
@@ -176,7 +176,7 @@ where
     ///
     /// **Scope**: Validates reserve availability for operations like withdrawals.
     ///
-    /// **Goal**: Prevent overdrawing reserves beyond what’s available.
+    /// **Goal**: Prevent overdrawing reserves beyond what's available.
     ///
     /// # Arguments
     /// - `amount`: The amount to check against (`ManagedDecimal`).
@@ -187,7 +187,7 @@ where
         self.get_reserves() >= *amount
     }
 
-    /// Checks if the given asset matches the pool’s asset.
+    /// Checks if the given asset matches the pool's asset.
     ///
     /// **Scope**: Validates asset compatibility for pool operations.
     ///

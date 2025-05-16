@@ -1,8 +1,11 @@
+use common_events::MarketParams;
+use common_proxies::proxy_onedex::State as StateOnedex;
+use common_proxies::proxy_xexchange_pair::State as StateXExchange;
 use common_structs::{
     AccountAttributes, AccountPosition, AccountPositionType, AssetConfig, EModeAssetConfig,
     EModeCategory, OracleProvider,
 };
-
+use price_aggregator::structs::TimestampedPrice;
 multiversx_sc::imports!();
 
 #[multiversx_sc::module]
@@ -142,6 +145,33 @@ pub trait Storage {
     #[storage_mapper("flash_loan_ongoing")]
     fn flash_loan_ongoing(&self) -> SingleValueMapper<bool>;
 
+    /// PROXY STORAGE ///
+
+    ///
+    /// Retrieves the total scaled amount supplied to the pool.
+    /// This value represents the sum of all supplied principals, each divided by the supply index at the time of their deposit.
+    /// It is stored RAY-scaled.
+    ///
+    /// # Returns
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total scaled amount supplied, RAY-scaled.
+    #[storage_mapper_from_address("supplied")]
+    fn supplied(
+        &self,
+        liquidity_pool_address: ManagedAddress,
+    ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>, ManagedAddress>;
+
+    /// Retrieves the total scaled borrowed amount from the pool.
+    /// This value represents the sum of all borrowed principals, each divided by the borrow index at the time of their borrowing.
+    /// It is stored RAY-scaled.
+    ///
+    /// # Returns
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total scaled borrowed amount, RAY-scaled.
+    #[storage_mapper_from_address("borrowed")]
+    fn borrowed(
+        &self,
+        liquidity_pool_address: ManagedAddress,
+    ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>, ManagedAddress>;
+
     /// Retrieves the current borrow index.
     ///
     /// The borrow index is used to calculate accrued interest on borrow positions.
@@ -151,7 +181,7 @@ pub trait Storage {
     #[storage_mapper_from_address("borrow_index")]
     fn borrow_index(
         &self,
-        pool_address: ManagedAddress,
+        liquidity_pool_address: ManagedAddress,
     ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>, ManagedAddress>;
 
     /// Retrieves the current supply index.
@@ -163,6 +193,55 @@ pub trait Storage {
     #[storage_mapper_from_address("supply_index")]
     fn supply_index(
         &self,
-        pool_address: ManagedAddress,
+        liquidity_pool_address: ManagedAddress,
     ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>, ManagedAddress>;
+
+    /// Returns the market parameters.
+    ///
+    /// These include interest rate parameters and asset decimals.
+    ///
+    /// # Returns
+    /// - `MarketParams<Self::Api>`: The market configuration.
+    #[storage_mapper_from_address("params")]
+    fn params(
+        &self,
+        liquidity_pool_address: ManagedAddress,
+    ) -> SingleValueMapper<MarketParams<Self::Api>, ManagedAddress>;
+
+    /// Retrieves the last update timestamp for the interest indexes.
+    ///
+    /// # Returns
+    /// - `u64`: The timestamp when indexes were last updated.
+    #[storage_mapper_from_address("last_timestamp")]
+    fn last_timestamp(
+        &self,
+        liquidity_pool_address: ManagedAddress,
+    ) -> SingleValueMapper<u64, ManagedAddress>;
+
+    #[storage_mapper_from_address("rounds")]
+    fn rounds(
+        &self,
+        price_aggregator_address: ManagedAddress,
+        from: ManagedBuffer,
+        to: ManagedBuffer,
+    ) -> SingleValueMapper<TimestampedPrice<Self::Api>, ManagedAddress>;
+
+    #[storage_mapper_from_address("state")]
+    fn xexchange_pair_state(
+        &self,
+        dex_address: ManagedAddress,
+    ) -> SingleValueMapper<StateXExchange, ManagedAddress>;
+
+    #[storage_mapper_from_address("pair_state")]
+    fn onedex_pair_state(
+        &self,
+        dex_address: ManagedAddress,
+        pair_id: usize,
+    ) -> SingleValueMapper<StateOnedex, ManagedAddress>;
+
+    #[storage_mapper_from_address("pause_module:paused")]
+    fn price_aggregator_paused_state(
+        &self,
+        price_aggregator_address: ManagedAddress,
+    ) -> SingleValueMapper<bool, ManagedAddress>;
 }

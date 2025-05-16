@@ -12,7 +12,7 @@ pub trait LendingUtilsModule:
     + oracle::OracleModule
     + common_events::EventsModule
     + common_math::SharedMathModule
-    + helpers::math::MathsModule
+    + helpers::MathsModule
 {
     /// Retrieves the liquidity pool address for a given asset.
     /// Ensures the asset has an associated pool; errors if not found.

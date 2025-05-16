@@ -1,8 +1,6 @@
 use common_constants::{RAY_PRECISION, SECONDS_PER_YEAR};
 use common_structs::MarketParams;
 
-use crate::{cache::Cache, storage};
-
 multiversx_sc::imports!();
 
 /// The InterestRates module provides functions for calculating market rates,
@@ -12,7 +10,7 @@ multiversx_sc::imports!();
 ///
 /// **Goal**: Ensure accurate, fair, and auditable interest mechanics for borrowers and suppliers.
 #[multiversx_sc::module]
-pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
+pub trait InterestRates: common_math::SharedMathModule {
     /// Calculates the borrow rate based on current utilization and pool parameters.
     ///
     /// **Scope**: Determines the interest rate borrowers pay based on pool utilization.
@@ -223,13 +221,15 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
     /// **Security Tip**: Assumes `interest_factor` is valid; relies on `ManagedDecimal` operations for overflow checks.
     fn update_borrow_index(
         &self,
-        cache: &mut Cache<Self>,
+        old_borrow_index: ManagedDecimal<Self::Api, NumDecimals>,
         interest_factor: ManagedDecimal<Self::Api, NumDecimals>,
-    ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let old_index = cache.borrow_index.clone();
-        cache.borrow_index = self.mul_half_up(&cache.borrow_index, &interest_factor, RAY_PRECISION);
+    ) -> (
+        ManagedDecimal<Self::Api, NumDecimals>,
+        ManagedDecimal<Self::Api, NumDecimals>,
+    ) {
+        let new_borrow_index = self.mul_half_up(&old_borrow_index, &interest_factor, RAY_PRECISION);
 
-        old_index
+        (new_borrow_index, old_borrow_index)
     }
 
     /// Updates the supply index based on net rewards for suppliers.
@@ -248,19 +248,16 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
     /// - `cache`: Mutable reference to pool state (`Cache<Self>`), holding supplied amount and supply index.
     /// - `rewards_increase`: Net rewards for suppliers (`ManagedDecimal<Self::Api, NumDecimals>`), RAY-based.
     ///
-    /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The old supply index before update (RAY-based).
-    ///
     /// **Security Tip**: Skips update if `cache.supplied == 0` (which implies `current_total_supplied_value_ray` would be zero if `old_supply_index` is not zero, or if `old_supply_index` is zero) to avoid division-by-zero.
     fn update_supply_index(
         &self,
-        cache: &mut Cache<Self>,
+        supplied: ManagedDecimal<Self::Api, NumDecimals>,
+        old_supply_index: ManagedDecimal<Self::Api, NumDecimals>,
         rewards_increase: ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let old_supply_index = cache.supply_index.clone();
-        if cache.supplied != cache.zero {
+        if supplied != self.ray_zero() {
             let total_supplied_with_interest =
-                self.mul_half_up(&cache.supplied, &cache.supply_index, RAY_PRECISION);
+                self.mul_half_up(&supplied, &old_supply_index, RAY_PRECISION);
             let rewards_ratio = self.div_half_up(
                 &rewards_increase,
                 &total_supplied_with_interest,
@@ -269,10 +266,9 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
 
             let rewards_factor = self.ray() + rewards_ratio;
 
-            cache.supply_index =
-                self.mul_half_up(&cache.supply_index, &rewards_factor, RAY_PRECISION);
+            return self.mul_half_up(&old_supply_index, &rewards_factor, RAY_PRECISION);
         }
-        old_supply_index
+        return old_supply_index;
     }
 
     /// Calculates supplier rewards by deducting protocol fees from accrued interest, after accounting for bad debt.
@@ -305,75 +301,40 @@ pub trait InterestRates: common_math::SharedMathModule + storage::Storage {
     /// **Security Tip**: Relies on upstream validation of `cache` state. Ensures bad debt is covered before distributing rewards or accruing protocol fees from new interest.
     fn calc_supplier_rewards(
         &self,
-        cache: &mut Cache<Self>,
-        old_borrow_index: ManagedDecimal<Self::Api, NumDecimals>,
-    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        params: MarketParams<Self::Api>,
+        borrowed: &ManagedDecimal<Self::Api, NumDecimals>,
+        bad_debt: ManagedDecimal<Self::Api, NumDecimals>,
+        new_borrow_index: &ManagedDecimal<Self::Api, NumDecimals>,
+        old_borrow_index: &ManagedDecimal<Self::Api, NumDecimals>,
+    ) -> (
+        ManagedDecimal<Self::Api, NumDecimals>, // supplier_rewards_ray
+        ManagedDecimal<Self::Api, NumDecimals>, // protocol_fee_ray
+        ManagedDecimal<Self::Api, NumDecimals>, // new_bad_debt_asset_decimals
+    ) {
         // Calculate the actual accrued interest correctly using calc_interest
-        let old_total_debt = self.mul_half_up(&cache.borrowed, &old_borrow_index, RAY_PRECISION);
-        let new_total_debt = self.mul_half_up(&cache.borrowed, &cache.borrow_index, RAY_PRECISION);
+        let old_total_debt = self.mul_half_up(borrowed, old_borrow_index, RAY_PRECISION);
+        let new_total_debt = self.mul_half_up(borrowed, new_borrow_index, RAY_PRECISION);
 
         let accrued_interest_ray = new_total_debt.sub(old_total_debt);
-
+        let accrued_interest_asset_decimals =
+            self.rescale_half_up(&accrued_interest_ray, params.asset_decimals);
         // If the accrued interest (asset dec) is less than or equal to bad debt (asset dec)
-        if accrued_interest_ray.le(&cache.bad_debt.rescale(RAY_PRECISION)) {
+        if accrued_interest_asset_decimals.le(&bad_debt) {
             // Subtract the asset decimal interest from asset decimal bad debt
-            cache.bad_debt -=
-                self.rescale_half_up(&accrued_interest_ray, cache.params.asset_decimals);
+            let new_bad_debt = bad_debt.sub(accrued_interest_asset_decimals);
             // No rewards or fees generated
-            self.ray_zero()
+            (self.ray_zero(), self.ray_zero(), new_bad_debt)
         } else {
             // Accrued interest is greater than bad debt.
             // Calculate remaining interest after clearing bad debt (in asset decimals)
-            let left_interest_ray = accrued_interest_ray.sub(cache.bad_debt.rescale(RAY_PRECISION));
+            let left_interest_ray = accrued_interest_ray.sub(bad_debt.rescale(RAY_PRECISION));
 
-            // Clear bad debt (asset decimals)
-            cache.bad_debt = self.to_decimal(BigUint::zero(), cache.params.asset_decimals);
+            let protocol_fee =
+                self.mul_half_up(&left_interest_ray, &params.reserve_factor, RAY_PRECISION);
+            let supplier_rewards_ray = left_interest_ray - protocol_fee.clone();
 
-            let protocol_fee = self.mul_half_up(
-                &left_interest_ray,
-                &cache.params.reserve_factor,
-                RAY_PRECISION,
-            );
-            // Calculate supplier rewards (in asset decimals)
-            let supplier_rewards = left_interest_ray - protocol_fee.clone();
-
-            cache.revenue += protocol_fee;
-            // Return rewards and fees converted back to RAY precision for consistency elsewhere
-            supplier_rewards
-        }
-    }
-
-    /// Updates both borrow and supply indexes based on elapsed time since the last update.
-    ///
-    /// **Scope**: Synchronizes the global state of the pool by recalculating borrow and supply indexes,
-    /// factoring in interest growth over time and distributing rewards.
-    ///
-    /// **Goal**: Keep the pool's financial state current, ensuring accurate interest accrual and reward distribution.
-    ///
-    /// **Process**:
-    /// 1. Computes time delta (`delta`) since `cache.last_timestamp`.
-    /// 2. If `delta > 0`:
-    ///    a. Calculates the current `borrow_rate` using `cache.get_utilization()` and `cache.params`.
-    ///    b. Computes the `borrow_factor` using `calculate_compounded_interest(borrow_rate, delta)`.
-    ///    c. Updates `cache.borrow_index` via `update_borrow_index`, storing the `old_borrow_index`.
-    ///    d. Calculates `rewards` for suppliers using `calc_supplier_rewards(cache, old_borrow_index)`.
-    ///    e. Updates `cache.supply_index` via `update_supply_index(cache, rewards)`.
-    ///    f. Sets `cache.last_timestamp` to the current `cache.timestamp`.
-    ///
-    /// # Arguments
-    /// - `cache`: Mutable reference to the pool state (`Cache<Self>`), holding timestamps, indexes, and all relevant financial figures.
-    ///
-    /// **Security Tip**: Skips updates if `delta == 0`, preventing redundant computation. Protected by caller ensuring valid `cache`. The sequence of operations ensures that rewards are calculated based on interest accrued in the current period.
-    fn global_sync(&self, cache: &mut Cache<Self>) {
-        let delta = cache.timestamp - cache.last_timestamp;
-
-        if delta > 0 {
-            let borrow_rate = self.calc_borrow_rate(cache.get_utilization(), cache.params.clone());
-            let borrow_factor = self.calculate_compounded_interest(borrow_rate.clone(), delta);
-            let old_borrow_index = self.update_borrow_index(cache, borrow_factor.clone());
-            let rewards = self.calc_supplier_rewards(cache, old_borrow_index.clone());
-            self.update_supply_index(cache, rewards);
-            cache.last_timestamp = cache.timestamp;
+            let zero_bad_debt = self.to_decimal(BigUint::zero(), params.asset_decimals);
+            (supplier_rewards_ray, protocol_fee, zero_bad_debt)
         }
     }
 }

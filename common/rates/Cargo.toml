@@ -1,0 +1,21 @@
+[package]
+name    = "common-rates"
+version = "0.0.0"
+authors = ["Mihai Eremin <mihai@xoxno.com>"]
+edition = "2021"
+
+[lib]
+path = "src/rates.rs"
+
+[dependencies.multiversx-sc]
+version = "0.57.0"
+
+[dependencies.common-constants]
+path = "../constants"
+
+[dependencies.common-math]
+path = "../math"
+
+
+[dependencies.common-structs]
+path = "../structs"

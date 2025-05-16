@@ -1,7 +1,7 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
-use crate::{cache::Cache, rates, storage, view};
+use crate::{cache::Cache, storage, view};
 
 use common_constants::RAY_PRECISION;
 use common_errors::{
@@ -16,12 +16,72 @@ use common_errors::{
 /// **Goal**: To encapsulate common, reusable logic, promoting clarity and consistency within the liquidity pool contract.
 #[multiversx_sc::module]
 pub trait UtilsModule:
-    rates::InterestRates
-    + storage::Storage
+    storage::Storage
     + common_events::EventsModule
     + view::ViewModule
     + common_math::SharedMathModule
+    + common_rates::InterestRates
 {
+    /// Updates both borrow and supply indexes based on elapsed time since the last update.
+    ///
+    /// **Scope**: Synchronizes the global state of the pool by recalculating borrow and supply indexes,
+    /// factoring in interest growth over time and distributing rewards.
+    ///
+    /// **Goal**: Keep the pool's financial state current, ensuring accurate interest accrual and reward distribution.
+    ///
+    /// **Process**:
+    /// 1. Computes time delta (`delta`) since `cache.last_timestamp`.
+    /// 2. If `delta > 0`:
+    ///    a. Calculates the current `borrow_rate` using `cache.get_utilization()` and `cache.params`.
+    ///    b. Computes the `borrow_factor` using `calculate_compounded_interest(borrow_rate, delta)`.
+    ///    c. Updates `cache.borrow_index` via `update_borrow_index`, storing the `old_borrow_index`.
+    ///    d. Calculates `rewards` for suppliers using `calc_supplier_rewards(cache, old_borrow_index)`.
+    ///    e. Updates `cache.supply_index` via `update_supply_index(cache, rewards)`.
+    ///    f. Sets `cache.last_timestamp` to the current `cache.timestamp`.
+    ///
+    /// # Arguments
+    /// - `cache`: Mutable reference to the pool state (`Cache<Self>`), holding timestamps, indexes, and all relevant financial figures.
+    ///
+    /// **Security Tip**: Skips updates if `delta == 0`, preventing redundant computation. Protected by caller ensuring valid `cache`. The sequence of operations ensures that rewards are calculated based on interest accrued in the current period.
+    fn global_sync(&self, cache: &mut Cache<Self>) {
+        let delta = cache.timestamp - cache.last_timestamp;
+
+        if delta > 0 {
+            let borrow_rate = self.calc_borrow_rate(cache.get_utilization(), cache.params.clone());
+            let borrow_factor = self.calculate_compounded_interest(borrow_rate.clone(), delta);
+            let (new_borrow_index, old_borrow_index) =
+                self.update_borrow_index(cache.borrow_index.clone(), borrow_factor.clone());
+
+            // 3 raw split
+            let (supplier_rewards_ray, protocol_fee_ray, new_bad_debt) = self
+                .calc_supplier_rewards(
+                    cache.params.clone(),
+                    &cache.borrowed,
+                    cache.bad_debt.clone(),
+                    &new_borrow_index,
+                    &old_borrow_index,
+                );
+
+            let new_supply_index = self.update_supply_index(
+                cache.supplied.clone(),
+                cache.supply_index.clone(),
+                supplier_rewards_ray,
+            );
+
+            cache.supply_index = new_supply_index;
+            cache.borrow_index = new_borrow_index;
+            cache.bad_debt = new_bad_debt;
+
+            if protocol_fee_ray > self.ray_zero() {
+                let fee_scaled = cache.get_scaled_supply_amount(&protocol_fee_ray);
+                cache.revenue += &fee_scaled;
+                cache.supplied += &fee_scaled; // mint to total supply
+            }
+
+            cache.last_timestamp = cache.timestamp;
+        }
+    }
+
     /// Emits an event logging the current market state for transparency.
     ///
     /// **Scope**: Records key pool metrics like indexes, reserves, and asset price in an event.
@@ -38,10 +98,12 @@ pub trait UtilsModule:
         cache: &Cache<Self>,
         asset_price: &ManagedDecimal<Self::Api, NumDecimals>,
     ) {
+        let reserves = cache.get_reserves();
         self.update_market_state_event(
             cache.timestamp,
             &cache.supply_index,
             &cache.borrow_index,
+            &reserves,
             &cache.supplied,
             &cache.borrowed,
             &cache.revenue,
@@ -290,15 +352,42 @@ pub trait UtilsModule:
                     *amount_to_transfer_net_asset_decimals >= *protocol_fee_asset_decimals,
                     ERROR_WITHDRAW_AMOUNT_LESS_THAN_FEE
                 );
-                let protocol_fee_for_revenue_ray =
-                    self.rescale_half_up(protocol_fee_asset_decimals, RAY_PRECISION);
 
                 *amount_to_transfer_net_asset_decimals -= protocol_fee_asset_decimals;
 
-                if protocol_fee_for_revenue_ray > self.ray_zero() {
-                    cache.revenue += &protocol_fee_for_revenue_ray;
+                if protocol_fee_asset_decimals > &cache.zero {
+                    self.internal_add_protocol_revenue(cache, protocol_fee_asset_decimals.clone());
                 }
             }
+        }
+    }
+
+    /// Adds protocol revenue to the pool.
+    ///
+    /// **Scope**: Updates the pool's revenue and total supply by adding a portion of the incoming payment.
+    ///
+    /// **Goal**: To handle incoming payments that cover part of the bad debt, converting the remainder to scaled units.
+    ///
+
+    fn internal_add_protocol_revenue(
+        &self,
+        cache: &mut Cache<Self>,
+        mut amount: ManagedDecimal<Self::Api, NumDecimals>,
+    ) {
+        if amount <= cache.bad_debt {
+            // Entire incoming payment covers part (or all) of bad debt.
+            cache.bad_debt -= &amount;
+        } else {
+            // Part of the payment clears bad debt, remainder is protocol revenue.
+            amount -= &cache.bad_debt;
+            cache.bad_debt = cache.zero.clone();
+
+            // Convert remainder directly to scaled units – precision handled inside math helper.
+            let fee_scaled = self.div_half_up(&amount, &cache.supply_index, RAY_PRECISION);
+
+            // Mint to treasury and total supply.
+            cache.revenue += &fee_scaled;
+            cache.supplied += &fee_scaled;
         }
     }
 }

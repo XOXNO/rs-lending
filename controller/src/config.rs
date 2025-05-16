@@ -14,7 +14,7 @@ pub trait ConfigModule:
     + utils::LendingUtilsModule
     + common_events::EventsModule
     + oracle::OracleModule
-    + helpers::math::MathsModule
+    + helpers::MathsModule
     + common_math::SharedMathModule
 {
     /// Registers a new NFT token for tracking account positions.

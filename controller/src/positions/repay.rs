@@ -14,7 +14,7 @@ pub trait PositionRepayModule:
     + oracle::OracleModule
     + common_events::EventsModule
     + utils::LendingUtilsModule
-    + helpers::math::MathsModule
+    + helpers::MathsModule
     + account::PositionAccountModule
     + borrow::PositionBorrowModule
     + update::PositionUpdateModule

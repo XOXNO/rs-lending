@@ -1,15 +1,13 @@
 multiversx_sc::imports!();
 use common_constants::{
-    PRICE_AGGREGATOR_ROUNDS_STORAGE_KEY, PRICE_AGGREGATOR_STATUS_STORAGE_KEY, RAY_PRECISION,
-    SECONDS_PER_MINUTE, STATE_PAIR_ONEDEX_STORAGE_KEY, STATE_PAIR_STORAGE_KEY, USD_TICKER,
-    WAD_HALF_PRECISION, WAD_PRECISION, WEGLD_TICKER,
+    BPS_PRECISION, RAY_PRECISION, SECONDS_PER_MINUTE, USD_TICKER, WAD_HALF_PRECISION,
+    WAD_PRECISION, WEGLD_TICKER,
 };
 use common_errors::{ERROR_PRICE_FEED_STALE, ERROR_UN_SAFE_PRICE_NOT_ALLOWED};
 use common_proxies::{proxy_pool, proxy_xexchange_pair};
 use common_structs::{
     ExchangeSource, MarketIndex, OracleProvider, OracleType, PriceFeedShort, PricingMethod,
 };
-use multiversx_sc::storage::StorageKey;
 
 use price_aggregator::{
     errors::{PAUSED_ERROR, TOKEN_PAIR_NOT_FOUND_ERROR},
@@ -30,7 +28,7 @@ use crate::{
 
 #[multiversx_sc::module]
 pub trait OracleModule:
-    storage::Storage + helpers::math::MathsModule + common_math::SharedMathModule
+    storage::Storage + helpers::MathsModule + common_math::SharedMathModule
 {
     /// Updates the interest index for a specific asset.
     fn update_asset_index(
@@ -90,7 +88,7 @@ pub trait OracleModule:
         cache: &mut Cache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         match configs.oracle_type {
-            OracleType::Derived => self.get_derived_price(configs, cache, false),
+            OracleType::Derived => self.get_derived_price(configs, cache, true),
             OracleType::Lp => self.get_safe_lp_price(configs, cache),
             OracleType::Normal => {
                 self.get_normal_price_in_egld(configs, original_market_token, cache)
@@ -125,17 +123,17 @@ pub trait OracleModule:
             &safe_second_token_feed.price,
         );
 
-        let config_base_token_id = cache.get_cached_oracle(&configs.base_token_id);
-        let config_quote_token_id = cache.get_cached_oracle(&configs.quote_token_id);
+        let oracle_base_token_id = cache.get_cached_oracle(&configs.base_token_id);
+        let oracle_quote_token_id = cache.get_cached_oracle(&configs.quote_token_id);
 
         let off_chain_first_egld_price = self.find_token_price_in_egld_from_aggregator(
-            &config_base_token_id,
+            &oracle_base_token_id,
             &configs.base_token_id,
             cache,
         );
 
         let off_chain_second_egld_price = self.find_token_price_in_egld_from_aggregator(
-            &config_quote_token_id,
+            &oracle_quote_token_id,
             &configs.quote_token_id,
             cache,
         );
@@ -202,7 +200,7 @@ pub trait OracleModule:
             .returns(ReturnsResult)
             .sync_call_readonly();
 
-        self.to_decimal_wad(ratio)
+        self.to_decimal(ratio, configs.price_decimals)
     }
 
     fn get_xegld_derived_price(
@@ -216,15 +214,17 @@ pub trait OracleModule:
             .get_exchange_rate()
             .returns(ReturnsResult)
             .sync_call_readonly();
-        self.to_decimal_wad(ratio)
+
+        self.to_decimal(ratio, configs.price_decimals)
     }
 
     fn get_lxoxno_derived_price(
         &self,
         configs: &OracleProvider<Self::Api>,
         cache: &mut Cache<Self>,
-        safe_price: bool,
+        safe_price_check: bool,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        // 1. Fetch exchange rate (LXOXNO -> XOXNO) from the staking contract.
         let ratio = self
             .tx()
             .to(&configs.oracle_contract_address)
@@ -233,33 +233,20 @@ pub trait OracleModule:
             .returns(ReturnsResult)
             .sync_call_readonly();
         let ratio_dec = self.to_decimal(ratio, configs.price_decimals);
-        let main_price = if safe_price {
+
+        let main_price = if safe_price_check {
             self.get_token_price(&configs.base_token_id, cache).price
         } else {
+            // This is needed for the case were the LXOXNO is part of a LP token
+            // and we need to get the price of the LP token from the aggregator
             self.get_token_price_in_egld_from_aggregator(
                 &configs.base_token_id,
                 configs.max_price_stale_seconds,
                 cache,
             )
         };
+
         self.get_token_egld_value(&ratio_dec, &main_price)
-    }
-
-    // --- Utility Functions ---
-    #[inline]
-    fn get_pair_state(&self, pair: &ManagedAddress) -> StateXExchange {
-        SingleValueMapper::<_, _, ManagedAddress>::new_from_address(
-            pair.clone(),
-            StorageKey::new(STATE_PAIR_STORAGE_KEY),
-        )
-        .get()
-    }
-
-    #[inline]
-    fn get_pair_state_onedex(&self, pair: &ManagedAddress, pair_id: usize) -> StateOnedex {
-        let mut key = StorageKey::new(STATE_PAIR_ONEDEX_STORAGE_KEY);
-        key.append_item(&pair_id);
-        SingleValueMapper::<_, _, ManagedAddress>::new_from_address(pair.clone(), key).get()
     }
 
     // --- Safe Price Functions ---
@@ -273,7 +260,11 @@ pub trait OracleModule:
 
         let result = if configs.exchange_source == ExchangeSource::Onedex {
             let pair_status = self
-                .get_pair_state_onedex(&configs.oracle_contract_address, configs.onedex_pair_id);
+                .onedex_pair_state(
+                    configs.oracle_contract_address.clone(),
+                    configs.onedex_pair_id,
+                )
+                .get();
             require!(pair_status == StateOnedex::Active, ERROR_PAIR_NOT_ACTIVE);
             let from_identifier = token_id.clone().unwrap_esdt();
             let to_identifier = if from_identifier == configs.quote_token_id.clone().unwrap_esdt() {
@@ -293,10 +284,12 @@ pub trait OracleModule:
                 .returns(ReturnsResult)
                 .sync_call_readonly()
         } else if configs.exchange_source == ExchangeSource::XExchange {
-            let pair_status = self.get_pair_state(&configs.oracle_contract_address);
+            let pair_status = self
+                .xexchange_pair_state(configs.oracle_contract_address.clone())
+                .get();
             require!(pair_status == StateXExchange::Active, ERROR_PAIR_NOT_ACTIVE);
 
-            self.safe_price_proxy(self.safe_price_view().get())
+            self.safe_price_proxy(cache.safe_price_view.clone())
                 .get_safe_price_by_timestamp_offset(
                     &configs.oracle_contract_address,
                     SECONDS_PER_MINUTE * 15,
@@ -426,7 +419,7 @@ pub trait OracleModule:
         cache: &mut Cache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         if configs.oracle_type == OracleType::Derived {
-            self.get_derived_price(configs, cache, true)
+            self.get_derived_price(configs, cache, false)
         } else {
             self.get_token_price_in_egld_from_aggregator(
                 token_id,
@@ -444,7 +437,10 @@ pub trait OracleModule:
         upper_bound_ratio: &ManagedDecimal<Self::Api, NumDecimals>,
         lower_bound_ratio: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> bool {
-        let anchor_ratio = safe_price.clone() * self.bps() / aggregator_price.clone();
+        let anchor_ratio = self.rescale_half_up(
+            &self.div_half_up(safe_price, aggregator_price, RAY_PRECISION),
+            BPS_PRECISION,
+        );
         &anchor_ratio <= upper_bound_ratio && &anchor_ratio >= lower_bound_ratio
     }
 
@@ -547,7 +543,9 @@ pub trait OracleModule:
             ERROR_PRICE_AGGREGATOR_NOT_SET
         );
         require!(
-            !self.get_aggregator_status(price_aggregator_sc),
+            !self
+                .price_aggregator_paused_state(price_aggregator_sc.clone())
+                .get(),
             PAUSED_ERROR
         );
 
@@ -555,8 +553,11 @@ pub trait OracleModule:
             from: from_ticker,
             to: ManagedBuffer::new_from_bytes(USD_TICKER),
         };
-        let round_values =
-            self.token_oracle_prices_round(&token_pair.from, &token_pair.to, price_aggregator_sc);
+        let round_values = self.rounds(
+            price_aggregator_sc.clone(),
+            token_pair.from.clone(),
+            token_pair.to.clone(),
+        );
         require!(!round_values.is_empty(), TOKEN_PAIR_NOT_FOUND_ERROR);
 
         let feed = self.make_price_feed(token_pair, round_values.get());
@@ -567,27 +568,6 @@ pub trait OracleModule:
         );
 
         feed
-    }
-
-    fn token_oracle_prices_round(
-        &self,
-        from: &ManagedBuffer,
-        to: &ManagedBuffer,
-        address: &ManagedAddress,
-    ) -> SingleValueMapper<TimestampedPrice<Self::Api>, ManagedAddress> {
-        let mut key = StorageKey::new(PRICE_AGGREGATOR_ROUNDS_STORAGE_KEY);
-        key.append_item(from);
-        key.append_item(to);
-        SingleValueMapper::<_, _, ManagedAddress>::new_from_address(address.clone(), key)
-    }
-
-    #[inline]
-    fn get_aggregator_status(&self, address: &ManagedAddress) -> bool {
-        SingleValueMapper::<_, _, ManagedAddress>::new_from_address(
-            address.clone(),
-            StorageKey::new(PRICE_AGGREGATOR_STATUS_STORAGE_KEY),
-        )
-        .get()
     }
 
     #[inline]

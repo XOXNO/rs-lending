@@ -1,5 +1,5 @@
 [package]
-name = "liquidity_layer"
+name    = "liquidity_layer"
 version = "0.0.1"
 authors = ["Mihai Eremia <mihai@xoxno.com>"]
 edition = "2021"
@@ -16,6 +16,9 @@ path = "../common/structs"
 
 [dependencies.common-math]
 path = "../common/math"
+
+[dependencies.common-rates]
+path = "../common/rates"
 
 [dependencies.common-constants]
 path = "../common/constants"

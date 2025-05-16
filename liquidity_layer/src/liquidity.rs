@@ -6,7 +6,7 @@ use common_errors::{
 };
 use common_structs::*;
 
-use super::{cache::Cache, rates, storage, utils, view};
+use super::{cache::Cache, storage, utils, view};
 
 #[multiversx_sc::module]
 pub trait LiquidityModule:
@@ -14,7 +14,7 @@ pub trait LiquidityModule:
     + utils::UtilsModule
     + common_events::EventsModule
     + common_math::SharedMathModule
-    + rates::InterestRates
+    + common_rates::InterestRates
     + view::ViewModule
 {
     /// Updates the market's borrow and supply indexes based on elapsed time since the last update.
@@ -344,7 +344,7 @@ pub trait LiquidityModule:
 
         let protocol_fee = repayment - amount.clone();
 
-        last_cache.revenue += protocol_fee.rescale(RAY_PRECISION);
+        self.internal_add_protocol_revenue(&mut last_cache, protocol_fee);
 
         self.emit_market_update(&last_cache, price);
     }
@@ -401,7 +401,7 @@ pub trait LiquidityModule:
 
         cache.borrowed += scaled_amount_to_add;
 
-        cache.revenue += strategy_fee.rescale(RAY_PRECISION);
+        self.internal_add_protocol_revenue(&mut cache, strategy_fee.clone());
 
         self.emit_market_update(&cache, price);
 
@@ -432,15 +432,11 @@ pub trait LiquidityModule:
     #[endpoint(addProtocolRevenue)]
     fn add_protocol_revenue(&self, price: &ManagedDecimal<Self::Api, NumDecimals>) {
         let mut cache = Cache::new(self);
+        self.global_sync(&mut cache);
+
         let amount = self.get_payment_amount(&cache);
 
-        if amount <= cache.bad_debt {
-            cache.bad_debt -= &amount;
-        } else {
-            let remaining_amount = amount - cache.bad_debt.clone();
-            cache.bad_debt = cache.zero.clone();
-            cache.revenue += remaining_amount.rescale(RAY_PRECISION);
-        }
+        self.internal_add_protocol_revenue(&mut cache, amount);
 
         self.emit_market_update(&cache, price);
     }
@@ -523,18 +519,34 @@ pub trait LiquidityModule:
 
         require!(cache.is_same_asset(&position.asset_id), ERROR_INVALID_ASSET);
 
-        let current_dust_actual = cache.get_original_supply_amount(&position.scaled_amount);
+        let user_scaled = position.scaled_amount.clone();
+        let current_actual = cache.get_original_supply_amount(&user_scaled);
 
-        if current_dust_actual <= cache.bad_debt {
-            cache.bad_debt -= &current_dust_actual;
+        // Amount (in scaled units) that will be credited to the treasury
+        let mut scaled_to_treasury = self.ray_zero();
+
+        if cache.bad_debt == cache.zero {
+            // No bad debt: entire dust belongs to the protocol, no conversion required
+            scaled_to_treasury = user_scaled.clone();
         } else {
-            let remaining_amount_actual = current_dust_actual - cache.bad_debt.clone();
-            cache.bad_debt = cache.zero.clone();
-            cache.revenue += remaining_amount_actual.rescale(RAY_PRECISION);
+            if current_actual <= cache.bad_debt {
+                // Dust fully (or partially) repays bad debt, nothing left for treasury
+                cache.bad_debt -= &current_actual;
+            } else {
+                // Dust clears bad debt and has a remainder → remainder becomes protocol revenue
+                let remaining_actual = current_actual - cache.bad_debt.clone();
+                cache.bad_debt = cache.zero.clone();
+
+                // Convert remaining_actual to scaled units using current supply index
+                scaled_to_treasury = cache.get_scaled_supply_amount(&remaining_actual);
+            }
         }
 
-        cache.supplied -= &position.scaled_amount;
+        if scaled_to_treasury > self.ray_zero() {
+            cache.revenue += &scaled_to_treasury;
+        }
 
+        // Clear the user's position.
         position.scaled_amount = self.ray_zero();
         position.market_index = cache.supply_index.clone();
 
@@ -569,43 +581,64 @@ pub trait LiquidityModule:
         let mut cache = Cache::new(self);
         self.global_sync(&mut cache);
 
-        // Calculate Target Claim Amount based on accounted revenue
-        let mut target_claim_asset_decimals =
-            self.rescale_half_up(&cache.revenue, cache.params.asset_decimals);
+        // 1. Treasury (protocol) funds are held in `cache.revenue` **scaled** units.
+        let treasury_scaled = cache.revenue.clone();
 
-        let actual_reserves_asset_decimals = cache.get_reserves();
-
-        // Check if the pool is effectively empty of user funds
-        let pool_is_empty = cache.supplied == self.ray_zero() && cache.borrowed == self.ray_zero();
-
-        if pool_is_empty {
-            // If the pool is empty, all actual reserves can be considered revenue.
-            target_claim_asset_decimals = actual_reserves_asset_decimals.clone();
+        // Nothing to do if treasury has no balance.
+        if treasury_scaled == self.ray_zero() {
+            return EgldOrEsdtTokenPayment::new(cache.params.asset_id.clone(), 0, BigUint::zero());
         }
 
-        // Determine Actual Transferable Amount (capped by actual reserves)
-        let amount_to_transfer_asset_decimals = self.get_min(
-            target_claim_asset_decimals.clone(),
-            actual_reserves_asset_decimals,
+        // Convert the full treasury position to asset-decimals using the *current* supply index.
+        let treasury_actual = self.rescale_half_up(
+            &self.mul_half_up(&treasury_scaled, &cache.supply_index, RAY_PRECISION),
+            cache.params.asset_decimals,
         );
 
-        let controller = self.blockchain().get_caller();
+        // Contract balance that is really available right now.
+        let current_reserves = cache.get_reserves();
+
+        // A pool is considered empty of user funds when all supplied tokens belong to the treasury
+        // and there is no outstanding debt.
+        let user_supplied_scaled = if cache.supplied >= treasury_scaled {
+            cache.supplied.clone() - treasury_scaled.clone()
+        } else {
+            cache.zero.clone()
+        };
+        let pool_is_empty =
+            user_supplied_scaled == self.ray_zero() && cache.borrowed == self.ray_zero();
+
+        // Decide whether we can withdraw the entire treasury balance.
+        let full_withdrawable = current_reserves >= treasury_actual;
+
+        // Amount that will actually be transferred to the controller.
+        let amount_to_transfer = if pool_is_empty {
+            // When pool is empty, everything in the contract is by definition revenue or dust – take it all.
+            current_reserves.clone()
+        } else if full_withdrawable {
+            treasury_actual.clone()
+        } else {
+            current_reserves.clone()
+        };
+
         let mut payment =
             EgldOrEsdtTokenPayment::new(cache.params.asset_id.clone(), 0, BigUint::zero());
+        if amount_to_transfer > cache.zero {
+            // 1. Transfer the funds to the controller
+            let controller = self.blockchain().get_caller();
+            payment = self.send_asset(&cache, &amount_to_transfer, &controller);
 
-        if amount_to_transfer_asset_decimals > cache.zero {
-            payment = self.send_asset(&cache, &amount_to_transfer_asset_decimals, &controller);
-
-            if pool_is_empty {
-                cache.revenue = self.ray_zero();
+            // 2. Burn / reduce the scaled treasury balance
+            if pool_is_empty || full_withdrawable {
+                // We removed the entire treasury position – burn it without any rescaling loss.
+                cache.supplied -= &treasury_scaled;
+                cache.revenue = cache.zero.clone();
             } else {
-                let transferred_amount_ray =
-                    self.rescale_half_up(&amount_to_transfer_asset_decimals, RAY_PRECISION);
-                if cache.revenue >= transferred_amount_ray {
-                    cache.revenue -= transferred_amount_ray;
-                } else {
-                    cache.revenue = self.ray_zero();
-                }
+                // Partial withdrawal – compute exact scaled portion of what we transferred.
+                let amount_ray = self.rescale_half_up(&amount_to_transfer, RAY_PRECISION);
+                let scaled_burn = self.div_half_up(&amount_ray, &cache.supply_index, RAY_PRECISION);
+                cache.revenue -= &scaled_burn;
+                cache.supplied -= &scaled_burn;
             }
         }
 

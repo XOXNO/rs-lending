@@ -3,12 +3,10 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
-pub mod rates;
 use common_errors::{
     ERROR_INVALID_BORROW_RATE_PARAMS, ERROR_INVALID_RESERVE_FACTOR,
     ERROR_INVALID_UTILIZATION_RANGE, ERROR_OPTIMAL_UTILIZATION_TOO_HIGH,
 };
-pub use rates::*;
 pub mod cache;
 pub mod liquidity;
 pub mod view;
@@ -21,7 +19,7 @@ pub mod utils;
 pub trait LiquidityPool:
     storage::Storage
     + common_events::EventsModule
-    + rates::InterestRates
+    + common_rates::InterestRates
     + liquidity::LiquidityModule
     + utils::UtilsModule
     + common_math::SharedMathModule

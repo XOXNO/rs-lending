@@ -23,6 +23,9 @@ path = "../liquidity_layer"
 [dependencies.common-structs]
 path = "../common/structs"
 
+[dependencies.common-rates]
+path = "../common/rates"
+
 [dependencies.common-math]
 path = "../common/math"
 

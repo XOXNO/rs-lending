@@ -23,11 +23,10 @@ pub trait PositionDepositModule:
     + oracle::OracleModule
     + common_events::EventsModule
     + utils::LendingUtilsModule
-    + helpers::math::MathsModule
+    + helpers::MathsModule
     + account::PositionAccountModule
     + emode::EModeModule
     + common_math::SharedMathModule
-    // + vault::PositionVaultModule
     + update::PositionUpdateModule
 {
     /// Processes a deposit operation for a user's position.

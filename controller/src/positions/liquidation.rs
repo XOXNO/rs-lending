@@ -16,7 +16,7 @@ pub trait PositionLiquidationModule:
     + oracle::OracleModule
     + common_events::EventsModule
     + utils::LendingUtilsModule
-    + helpers::math::MathsModule
+    + helpers::MathsModule
     + account::PositionAccountModule
     + repay::PositionRepayModule
     + withdraw::PositionWithdrawModule

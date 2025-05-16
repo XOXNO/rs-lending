@@ -27,3 +27,13 @@ lcov.info
 Cargo.lock
 /proxy/
 /proxies/
+*.json
+**/controller/tests/**
+**/proxies/**
+.git/
+output-docker/
+proxy
+**/wasm/**
+flash_mock
+Cargo.toml
+**.wasm

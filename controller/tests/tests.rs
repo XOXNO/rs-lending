@@ -121,6 +121,9 @@ fn test_edge_case_math_rounding() {
     println!("borrow_amount: {:?}", borrowed); // 100019013258769247676
     assert!(reserves >= revenue);
     let diff = reserves - revenue;
+
+    assert!(diff <= ManagedDecimal::from_raw_units(BigUint::from(1u64), EGLD_DECIMALS));
+    println!("diff: {:?}", diff);
     assert!(diff <= ManagedDecimal::from_raw_units(BigUint::from(1u64), EGLD_DECIMALS));
 }
 

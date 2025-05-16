@@ -19,7 +19,7 @@ pub trait RouterModule:
     + oracle::OracleModule
     + utils::LendingUtilsModule
     + validation::ValidationModule
-    + helpers::math::MathsModule
+    + helpers::MathsModule
     + positions::account::PositionAccountModule
     + common_math::SharedMathModule
 {

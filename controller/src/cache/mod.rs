@@ -24,6 +24,7 @@ where
     pub egld_ticker: ManagedBuffer<C::Api>,
     pub allow_unsafe_price: bool,
     pub flash_loan_ongoing: bool,
+    pub safe_price_view: ManagedAddress<C::Api>,
 }
 
 impl<'a, C> Cache<'a, C>
@@ -42,6 +43,7 @@ where
             egld_provider.max_price_stale_seconds,
         );
         let egld_usd_price = sc_ref.to_decimal_wad(egld_price_feed.price);
+        let safe_price_view = sc_ref.safe_price_view().get();
 
         Cache {
             sc_ref,
@@ -55,6 +57,7 @@ where
             egld_ticker: egld_token_id.into_name(),
             allow_unsafe_price: true,
             flash_loan_ongoing: sc_ref.flash_loan_ongoing().get(),
+            safe_price_view,
         }
     }
 

@@ -10,7 +10,7 @@ pub trait ViewsModule:
     + oracle::OracleModule
     + utils::LendingUtilsModule
     + common_events::EventsModule
-    + helpers::math::MathsModule
+    + helpers::MathsModule
     + common_math::SharedMathModule
 {
     /// Retrieves extended configuration views for multiple assets.

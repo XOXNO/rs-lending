@@ -14,7 +14,7 @@ pub trait PositionUpdateModule:
     + oracle::OracleModule
     + common_events::EventsModule
     + utils::LendingUtilsModule
-    + helpers::math::MathsModule
+    + helpers::MathsModule
     + account::PositionAccountModule
     + common_math::SharedMathModule
 {
@@ -76,18 +76,6 @@ pub trait PositionUpdateModule:
         self.positions(account_nonce, position.position_type.clone())
             .insert(position.asset_id.clone(), position.clone());
     }
-
-    /// Stores an updated position in storage.
-    /// Handles deposit or borrow position types.
-    ///
-    /// # Arguments
-    /// - `account_nonce`: Position NFT nonce.
-    /// - `position`: Updated position.
-    fn remove_position(&self, account_nonce: u64, position: &AccountPosition<Self::Api>) {
-        self.positions(account_nonce, position.position_type.clone())
-            .remove(&position.asset_id);
-    }
-
     /// Updates or removes a borrow position in storage.
     /// Reflects repayment changes in storage.
     ///
@@ -96,7 +84,8 @@ pub trait PositionUpdateModule:
     /// - `position`: Updated borrow position.
     fn update_or_remove_position(&self, account_nonce: u64, position: &AccountPosition<Self::Api>) {
         if position.can_remove() {
-            self.remove_position(account_nonce, position);
+            self.positions(account_nonce, position.position_type.clone())
+                .remove(&position.asset_id);
         } else {
             self.store_updated_position(account_nonce, position);
         }

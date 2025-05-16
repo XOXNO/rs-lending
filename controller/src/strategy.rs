@@ -14,19 +14,17 @@ use crate::{
 #[multiversx_sc::module]
 pub trait SnapModule:
     storage::Storage
-    + helpers::math::MathsModule
+    + helpers::MathsModule
     + oracle::OracleModule
     + validation::ValidationModule
     + utils::LendingUtilsModule
     + common_events::EventsModule
     + common_math::SharedMathModule
-    + helpers::swaps::SwapsModule
     + positions::account::PositionAccountModule
     + positions::supply::PositionDepositModule
     + positions::borrow::PositionBorrowModule
     + positions::withdraw::PositionWithdrawModule
     + positions::repay::PositionRepayModule
-    // + positions::vault::PositionVaultModule
     + positions::emode::EModeModule
     + positions::update::PositionUpdateModule
 {
@@ -426,5 +424,78 @@ pub trait SnapModule:
             caller,
             steps,
         )
+    }
+
+    fn convert_token_from_to(
+        &self,
+        to_token: &EgldOrEsdtTokenIdentifier,
+        from_token: &EgldOrEsdtTokenIdentifier,
+        from_amount: &BigUint,
+        caller: &ManagedAddress,
+        args: ManagedArgBuffer<Self::Api>,
+    ) -> EgldOrEsdtTokenPayment {
+        if to_token == from_token {
+            return EgldOrEsdtTokenPayment::new(to_token.clone(), 0, from_amount.clone());
+        }
+
+        self.swap_tokens(to_token, from_token, from_amount, caller, args)
+    }
+
+    fn swap_tokens(
+        self,
+        wanted_token: &EgldOrEsdtTokenIdentifier,
+        from_token: &EgldOrEsdtTokenIdentifier,
+        from_amount: &BigUint,
+        caller: &ManagedAddress,
+        args: ManagedArgBuffer<Self::Api>,
+    ) -> EgldOrEsdtTokenPayment {
+        let back_transfers = self
+            .tx()
+            .to(self.swap_router().get())
+            .raw_call(ManagedBuffer::new_from_bytes(b"swap"))
+            .arguments_raw(args)
+            .egld_or_single_esdt(from_token, 0, from_amount)
+            .returns(ReturnsBackTransfersReset)
+            .sync_call();
+
+        let mut payments: ManagedVec<EgldOrEsdtTokenPayment<Self::Api>> = ManagedVec::new();
+
+        if back_transfers.total_egld_amount > 0 {
+            payments.push(EgldOrEsdtTokenPayment::new(
+                EgldOrEsdtTokenIdentifier::egld(),
+                0,
+                back_transfers.total_egld_amount,
+            ));
+        }
+
+        for esdt in back_transfers.esdt_payments.iter() {
+            payments.push(EgldOrEsdtTokenPayment::new(
+                EgldOrEsdtTokenIdentifier::esdt(esdt.token_identifier.clone()),
+                esdt.token_nonce,
+                esdt.amount.clone(),
+            ));
+        }
+
+        let mut wanted_result =
+            EgldOrEsdtTokenPayment::new(wanted_token.clone(), 0, BigUint::from(0u32));
+
+        let mut refunds = ManagedVec::new();
+
+        for payment in payments {
+            if payment.token_identifier == *wanted_token && payment.token_nonce == 0 {
+                wanted_result.amount += &payment.amount;
+            } else {
+                refunds.push(payment.clone());
+            }
+        }
+
+        if !refunds.is_empty() {
+            self.tx()
+                .to(caller)
+                .payment(refunds)
+                .transfer_if_not_empty();
+        }
+
+        wanted_result
     }
 }

@@ -3,12 +3,12 @@ multiversx_sc::derive_imports!();
 
 use common_constants::RAY_PRECISION;
 
-use crate::{rates, storage};
+use crate::storage;
 
 /// The ViewModule provides read-only endpoints for retrieving key market metrics.
 #[multiversx_sc::module]
 pub trait ViewModule:
-    rates::InterestRates + storage::Storage + common_math::SharedMathModule
+    storage::Storage + common_math::SharedMathModule + common_rates::InterestRates
 {
     /// Retrieves the current capital utilization of the pool.
     ///
@@ -84,7 +84,12 @@ pub trait ViewModule:
     #[view(getProtocolRevenue)]
     fn get_protocol_revenue(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
         let revenue_scaled = self.revenue().get();
-        self.rescale_half_up(&revenue_scaled, self.params().get().asset_decimals)
+        let supply_index = self.supply_index().get();
+
+        self.rescale_half_up(
+            &self.mul_half_up(&revenue_scaled, &supply_index, RAY_PRECISION),
+            self.params().get().asset_decimals,
+        )
     }
 
     /// Retrieves the total amount supplied to the pool.
@@ -94,9 +99,10 @@ pub trait ViewModule:
     #[view(getSuppliedAmount)]
     fn get_supplied_amount(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
         let supplied_scaled = self.supplied().get();
+        let supply_index = self.supply_index().get();
 
         self.rescale_half_up(
-            &self.mul_half_up(&supplied_scaled, &self.supply_index().get(), RAY_PRECISION),
+            &self.mul_half_up(&supplied_scaled, &supply_index, RAY_PRECISION),
             self.params().get().asset_decimals,
         )
     }
@@ -108,9 +114,10 @@ pub trait ViewModule:
     #[view(getBorrowedAmount)]
     fn get_borrowed_amount(&self) -> ManagedDecimal<Self::Api, NumDecimals> {
         let borrowed_scaled = self.borrowed().get();
+        let borrow_index = self.borrow_index().get();
 
         self.rescale_half_up(
-            &self.mul_half_up(&borrowed_scaled, &self.borrow_index().get(), RAY_PRECISION),
+            &self.mul_half_up(&borrowed_scaled, &borrow_index, RAY_PRECISION),
             self.params().get().asset_decimals,
         )
     }

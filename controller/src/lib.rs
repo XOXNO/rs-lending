@@ -30,7 +30,6 @@ pub trait Controller:
     + positions::liquidation::PositionLiquidationModule
     + positions::update::PositionUpdateModule
     + positions::emode::EModeModule
-    // + positions::vault::PositionVaultModule
     + router::RouterModule
     + config::ConfigModule
     + common_events::EventsModule
@@ -40,9 +39,8 @@ pub trait Controller:
     + utils::LendingUtilsModule
     + views::ViewsModule
     + strategy::SnapModule
-    + helpers::math::MathsModule
+    + helpers::MathsModule
     + common_math::SharedMathModule
-    + helpers::swaps::SwapsModule
     + multiversx_sc_modules::default_issue_callbacks::DefaultIssueCallbacksModule
 {
     /// Initializes the lending pool contract with required addresses.
@@ -168,7 +166,8 @@ pub trait Controller:
             let mut deposit_position = self
                 .get_deposit_position(account_payment.token_nonce, &collateral.token_identifier);
             let feed = self.get_token_price(&deposit_position.asset_id, &mut cache);
-            let amount = deposit_position.make_amount_decimal(&collateral.amount, feed.asset_decimals);
+            let amount =
+                deposit_position.make_amount_decimal(&collateral.amount, feed.asset_decimals);
 
             let _ = self.process_withdrawal(
                 account_payment.token_nonce,
@@ -207,16 +206,17 @@ pub trait Controller:
         let (_, account_nonce, _) = account_payment.into_tuple();
 
         // Sync positions with interest
-        let collaterals = self.positions(account_nonce, AccountPositionType::Deposit).values().collect();
+        let collaterals = self
+            .positions(account_nonce, AccountPositionType::Deposit)
+            .values()
+            .collect();
         // self.sync_deposit_positions_interest(account_payment.token_nonce, &mut cache, true);
 
         let (_, _, ltv_collateral) = self.calculate_collateral_values(&collaterals, &mut cache);
 
         let is_bulk_borrow = borrowed_tokens.len() > 1;
-        let (mut borrows, mut borrow_index_mapper) = self.get_borrow_positions(
-            account_nonce,
-            is_bulk_borrow,
-        );
+        let (mut borrows, mut borrow_index_mapper) =
+            self.get_borrow_positions(account_nonce, is_bulk_borrow);
 
         let e_mode = self.get_e_mode_category(account_attributes.get_emode_id());
         self.ensure_e_mode_not_deprecated(&e_mode);
@@ -389,7 +389,10 @@ pub trait Controller:
         self.reentrancy_guard(cache.flash_loan_ongoing);
         self.require_active_account(account_nonce);
 
-        let collaterals = self.positions(account_nonce, AccountPositionType::Deposit).values().collect();
+        let collaterals = self
+            .positions(account_nonce, AccountPositionType::Deposit)
+            .values()
+            .collect();
 
         let (borrow_positions, _) = self.get_borrow_positions(account_nonce, false);
 
