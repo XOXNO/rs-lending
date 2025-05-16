@@ -52,6 +52,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "common-rates"
+version = "0.0.0"
+dependencies = [
+ "common-constants",
+ "common-math",
+ "common-structs",
+ "multiversx-sc",
+]
+
+[[package]]
 name = "common-structs"
 version = "0.0.0"
 dependencies = [
@@ -95,6 +105,7 @@ dependencies = [
  "common-errors",
  "common-events",
  "common-math",
+ "common-rates",
  "common-structs",
  "multiversx-sc",
 ]

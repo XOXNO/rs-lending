@@ -1,3 +1,4 @@
+#![no_std]
 use common_constants::{RAY_PRECISION, SECONDS_PER_YEAR};
 use common_structs::{MarketIndex, MarketParams};
 
