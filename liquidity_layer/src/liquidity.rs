@@ -528,18 +528,16 @@ pub trait LiquidityModule:
         if cache.bad_debt == cache.zero {
             // No bad debt: entire dust belongs to the protocol, no conversion required
             scaled_to_treasury = user_scaled.clone();
+        } else if current_actual <= cache.bad_debt {
+            // Dust fully (or partially) repays bad debt, nothing left for treasury
+            cache.bad_debt -= &current_actual;
         } else {
-            if current_actual <= cache.bad_debt {
-                // Dust fully (or partially) repays bad debt, nothing left for treasury
-                cache.bad_debt -= &current_actual;
-            } else {
-                // Dust clears bad debt and has a remainder → remainder becomes protocol revenue
-                let remaining_actual = current_actual - cache.bad_debt.clone();
-                cache.bad_debt = cache.zero.clone();
+            // Dust clears bad debt and has a remainder → remainder becomes protocol revenue
+            let remaining_actual = current_actual - cache.bad_debt.clone();
+            cache.bad_debt = cache.zero.clone();
 
-                // Convert remaining_actual to scaled units using current supply index
-                scaled_to_treasury = cache.get_scaled_supply_amount(&remaining_actual);
-            }
+            // Convert remaining_actual to scaled units using current supply index
+            scaled_to_treasury = cache.get_scaled_supply_amount(&remaining_actual);
         }
 
         if scaled_to_treasury > self.ray_zero() {

@@ -146,7 +146,6 @@ pub trait Storage {
     fn flash_loan_ongoing(&self) -> SingleValueMapper<bool>;
 
     /// PROXY STORAGE ///
-
     ///
     /// Retrieves the total scaled amount supplied to the pool.
     /// This value represents the sum of all supplied principals, each divided by the supply index at the time of their deposit.
