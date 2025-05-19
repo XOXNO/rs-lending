@@ -355,9 +355,7 @@ pub trait UtilsModule:
 
                 *amount_to_transfer_net_asset_decimals -= protocol_fee_asset_decimals;
 
-                if protocol_fee_asset_decimals > &cache.zero {
-                    self.internal_add_protocol_revenue(cache, protocol_fee_asset_decimals.clone());
-                }
+                self.internal_add_protocol_revenue(cache, protocol_fee_asset_decimals.clone());
             }
         }
     }
@@ -374,6 +372,10 @@ pub trait UtilsModule:
         cache: &mut Cache<Self>,
         mut amount: ManagedDecimal<Self::Api, NumDecimals>,
     ) {
+        if amount == cache.zero {
+            return;
+        }
+
         if amount <= cache.bad_debt {
             // Entire incoming payment covers part (or all) of bad debt.
             cache.bad_debt -= &amount;

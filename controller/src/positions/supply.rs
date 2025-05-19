@@ -227,6 +227,7 @@ pub trait PositionDepositModule:
         &self,
         require_account_payment: bool,
         return_nft: bool,
+        opt_account_nonce: OptionalValue<u64>,
     ) -> (
         ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
         Option<EsdtTokenPayment<Self::Api>>,
@@ -240,8 +241,9 @@ pub trait PositionDepositModule:
         self.require_non_zero_address(&caller);
 
         let first_payment = payments.get(0);
+        let account_token = self.account().get_token_id();
 
-        if self.account().get_token_id() == first_payment.token_identifier {
+        if account_token == first_payment.token_identifier {
             self.require_active_account(first_payment.token_nonce);
 
             let account_payment = first_payment.clone().unwrap_esdt();
@@ -270,7 +272,27 @@ pub trait PositionDepositModule:
                 ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS
             );
 
-            (payments.clone(), None, caller, None)
+            match opt_account_nonce.into_option() {
+                Some(account_nonce) => {
+                    if account_nonce == 0 {
+                        return (payments.clone(), None, caller, None);
+                    }
+                    self.require_active_account(account_nonce);
+                    let stored_attributes = self.account_attributes(account_nonce).get();
+
+                    return (
+                        payments.clone(),
+                        Some(EsdtTokenPayment::new(
+                            account_token,
+                            account_nonce,
+                            BigUint::from(1u64),
+                        )),
+                        caller,
+                        Some(stored_attributes),
+                    );
+                },
+                None => (payments.clone(), None, caller, None),
+            }
         }
     }
 

@@ -42,14 +42,6 @@ pub trait OracleModule:
     ) -> MarketIndex<Self::Api> {
         let pool_address = cache.get_cached_pool_address(asset_id);
         if simulate {
-            let asset_price = self.get_token_price(asset_id, cache);
-            self.tx()
-                .to(pool_address)
-                .typed(proxy_pool::LiquidityPoolProxy)
-                .update_indexes(asset_price.price)
-                .returns(ReturnsResult)
-                .sync_call()
-        } else {
             let last_timestamp = self.last_timestamp(pool_address.clone()).get();
             let borrowed = self.borrowed(pool_address.clone()).get();
             let current_borrowed_index = self.borrow_index(pool_address.clone()).get();
@@ -67,6 +59,14 @@ pub trait OracleModule:
                 bad_debt,
                 params,
             )
+        } else {
+            let asset_price = self.get_token_price(asset_id, cache);
+            self.tx()
+                .to(pool_address)
+                .typed(proxy_pool::LiquidityPoolProxy)
+                .update_indexes(asset_price.price)
+                .returns(ReturnsResult)
+                .sync_call()
         }
     }
     /// Get token price data

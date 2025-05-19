@@ -47,7 +47,7 @@ pub trait SnapModule:
         require!(collateral_token != debt_token, ERROR_ASSETS_ARE_THE_SAME);
         // Get payments, account, caller and attributes
         let (payments, opt_account, caller, opt_attributes) =
-            self.validate_supply_payment(false, true);
+            self.validate_supply_payment(false, true, OptionalValue::None);
 
         let collateral_config = cache.get_cached_asset_info(collateral_token);
         let mut debt_config = cache.get_cached_asset_info(debt_token);
@@ -184,7 +184,7 @@ pub trait SnapModule:
         self.reentrancy_guard(cache.flash_loan_ongoing);
         // Get payments, account, caller and attributes
         let (mut payments, opt_account, caller, opt_attributes) =
-            self.validate_supply_payment(true, true);
+            self.validate_supply_payment(true, true, OptionalValue::None);
 
         let account = opt_account.unwrap();
 
@@ -253,7 +253,7 @@ pub trait SnapModule:
         cache.allow_unsafe_price = false;
         self.reentrancy_guard(cache.flash_loan_ongoing);
         let (mut payments, opt_account, caller, opt_attributes) =
-            self.validate_supply_payment(true, true);
+            self.validate_supply_payment(true, true, OptionalValue::None);
 
         let account = opt_account.unwrap();
         let account_attributes = opt_attributes.unwrap();
@@ -326,7 +326,7 @@ pub trait SnapModule:
         cache.allow_unsafe_price = false;
         self.reentrancy_guard(cache.flash_loan_ongoing);
         let (mut payments, opt_account, caller, opt_attributes) =
-            self.validate_supply_payment(true, false);
+            self.validate_supply_payment(true, false, OptionalValue::None);
         let account = opt_account.unwrap();
         let account_attributes = opt_attributes.unwrap();
 

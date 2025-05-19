@@ -122,13 +122,16 @@ where
     /// # Payment 
     /// - Accepts minimum 1 payment: optional account NFT and bulk collateral tokens. 
     pub fn supply<
-        Arg0: ProxyArg<OptionalValue<u8>>,
+        Arg0: ProxyArg<OptionalValue<u64>>,
+        Arg1: ProxyArg<OptionalValue<u8>>,
     >(
         self,
-        e_mode_category: Arg0,
+        opt_account_nonce: Arg0,
+        e_mode_category: Arg1,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("supply")
+            .argument(&opt_account_nonce)
             .argument(&e_mode_category)
             .original_result()
     }

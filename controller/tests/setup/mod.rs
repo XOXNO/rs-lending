@@ -356,13 +356,6 @@ impl LendingPoolTestState {
     ) {
         let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
 
-        if let OptionalValue::Some(account_nonce) = account_nonce {
-            vec.push(EsdtTokenPayment::new(
-                ACCOUNT_TOKEN.to_token_identifier(),
-                account_nonce,
-                BigUint::from(1u64),
-            ));
-        }
         let amount_to_transfer = amount.mul(BigUint::from(10u64).pow(asset_decimals as u32));
         vec.push(EsdtTokenPayment::new(
             token_id.to_token_identifier(),
@@ -375,7 +368,13 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .supply(e_mode_category)
+            .supply(
+                match account_nonce.into_option() {
+                    Some(nonce) => OptionalValue::Some(nonce),
+                    None => OptionalValue::Some(0),
+                },
+                e_mode_category,
+            )
             .multi_esdt(vec)
             .run();
     }
@@ -394,13 +393,6 @@ impl LendingPoolTestState {
     ) {
         let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
 
-        if let OptionalValue::Some(account_nonce) = account_nonce {
-            vec.push(EsdtTokenPayment::new(
-                ACCOUNT_TOKEN.to_token_identifier(),
-                account_nonce,
-                BigUint::from(1u64),
-            ));
-        }
         let amount_to_transfer = amount.mul(BigUint::from(10u64).pow(asset_decimals as u32));
         vec.push(EsdtTokenPayment::new(
             token_id.to_token_identifier(),
@@ -413,7 +405,13 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .supply(e_mode_category)
+            .supply(
+                match account_nonce.into_option() {
+                    Some(nonce) => OptionalValue::Some(nonce),
+                    None => OptionalValue::Some(0),
+                },
+                e_mode_category,
+            )
             .multi_esdt(vec)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
@@ -428,23 +426,18 @@ impl LendingPoolTestState {
         _is_vault: bool,
         error_message: &[u8],
     ) {
-        let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
-
-        if let OptionalValue::Some(account_nonce) = account_nonce {
-            vec.push(EsdtTokenPayment::new(
-                ACCOUNT_TOKEN.to_token_identifier(),
-                account_nonce,
-                BigUint::from(1u64),
-            ));
-        }
-
         self.world
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .supply(e_mode_category)
-            .multi_esdt(vec)
+            .supply(
+                match account_nonce.into_option() {
+                    Some(nonce) => OptionalValue::Some(nonce),
+                    None => OptionalValue::Some(0),
+                },
+                e_mode_category,
+            )
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
     }
@@ -460,13 +453,6 @@ impl LendingPoolTestState {
     ) {
         let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
 
-        if let OptionalValue::Some(account_nonce) = account_nonce {
-            vec.push(EsdtTokenPayment::new(
-                ACCOUNT_TOKEN.to_token_identifier(),
-                account_nonce,
-                BigUint::from(1u64),
-            ));
-        }
         vec.extend(assets);
 
         self.world
@@ -474,7 +460,13 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .supply(e_mode_category)
+            .supply(
+                match account_nonce.into_option() {
+                    Some(nonce) => OptionalValue::Some(nonce),
+                    None => OptionalValue::Some(0),
+                },
+                e_mode_category,
+            )
             .multi_esdt(vec)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
@@ -492,7 +484,7 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .supply(e_mode_category)
+            .supply(OptionalValue::Some(0u64), e_mode_category)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
     }
@@ -510,13 +502,6 @@ impl LendingPoolTestState {
     ) {
         let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
 
-        if let OptionalValue::Some(account_nonce) = account_nonce {
-            vec.push(EsdtTokenPayment::new(
-                ACCOUNT_TOKEN.to_token_identifier(),
-                account_nonce,
-                BigUint::from(1u64),
-            ));
-        }
         let amount_to_transfer = amount.mul(BigUint::from(10u64).pow(asset_decimals as u32));
         vec.push(EsdtTokenPayment::new(
             token_id.to_token_identifier(),
@@ -540,7 +525,13 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .supply(e_mode_category)
+            .supply(
+                match account_nonce.into_option() {
+                    Some(nonce) => OptionalValue::Some(nonce),
+                    None => OptionalValue::Some(0),
+                },
+                e_mode_category,
+            )
             .multi_esdt(vec)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();

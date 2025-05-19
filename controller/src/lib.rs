@@ -95,13 +95,14 @@ pub trait Controller:
     /// # Payment
     /// - Accepts minimum 1 payment: optional account NFT and bulk collateral tokens.
     #[payable]
+    #[allow_multiple_var_args]
     #[endpoint(supply)]
-    fn supply(&self, e_mode_category: OptionalValue<u8>) {
+    fn supply(&self, opt_account_nonce: OptionalValue<u64>, e_mode_category: OptionalValue<u8>) {
         let mut cache = Cache::new(self);
         self.reentrancy_guard(cache.flash_loan_ongoing);
         // Validate and extract payment details
         let (collaterals, opt_account, caller, opt_attributes) =
-            self.validate_supply_payment(false, true);
+            self.validate_supply_payment(false, true, opt_account_nonce);
 
         require!(
             !collaterals.is_empty(),

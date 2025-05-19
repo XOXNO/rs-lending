@@ -304,6 +304,7 @@ build_market_template_upgrade_args() {
     args+=("$(to_ray "$(get_config_value "$market_name" "mid_utilization")")")
     args+=("$(to_ray "$(get_config_value "$market_name" "optimal_utilization")")")
     args+=("$(get_config_value "$market_name" "reserve_factor")")
+    args+=("0x0000000000000012")
 
     echo "${args[@]}"
 }
@@ -519,7 +520,7 @@ upgrade_market() {
 
     mxpy contract call ${ADDRESS} --recall-nonce \
     --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
-    --gas-limit=50000000 \
+    --gas-limit=55000000 \
     --function="upgradeLiquidityPool" --arguments "${args[@]}" \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 }
