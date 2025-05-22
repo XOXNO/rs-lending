@@ -1,6 +1,6 @@
 use common_structs::{AccountAttributes, AccountPosition, AccountPositionType};
 
-use crate::{cache::Cache, helpers, oracle, storage, utils, validation};
+use crate::{helpers, oracle, storage, utils, validation};
 
 use super::account;
 
@@ -41,30 +41,6 @@ pub trait PositionUpdateModule:
         }
 
         (updated_positions, position_index_map)
-    }
-
-    /// Fetches token price if requested.
-    /// Supports conditional price updates.
-    ///
-    /// # Arguments
-    /// - `token_id`: Token identifier.
-    /// - `cache`: Mutable storage cache.
-    /// - `should_fetch`: Fetch price flag.
-    ///
-    /// # Returns
-    /// - Optional price value.
-    fn fetch_price_if_needed(
-        &self,
-        token_id: &EgldOrEsdtTokenIdentifier,
-        cache: &mut Cache<Self>,
-        should_fetch: bool,
-    ) -> OptionalValue<ManagedDecimal<Self::Api, NumDecimals>> {
-        if should_fetch {
-            let result = self.get_token_price(token_id, cache);
-            OptionalValue::Some(result.price)
-        } else {
-            OptionalValue::None
-        }
     }
 
     /// Stores an updated position in storage.

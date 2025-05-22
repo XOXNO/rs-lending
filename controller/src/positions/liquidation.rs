@@ -41,7 +41,6 @@ pub trait PositionLiquidationModule:
         &self,
         account_nonce: u64,
         debt_payments: &ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
-        caller: &ManagedAddress,
         cache: &mut Cache<Self>,
     ) -> (
         ManagedVec<MultiValue2<EgldOrEsdtTokenPayment, ManagedDecimal<Self::Api, NumDecimals>>>,
@@ -52,6 +51,9 @@ pub trait PositionLiquidationModule:
                 PriceFeedShort<Self::Api>,
             >,
         >,
+        ManagedVec<EgldOrEsdtTokenPayment>,
+        ManagedDecimal<Self::Api, NumDecimals>,
+        ManagedDecimal<Self::Api, NumDecimals>,
     ) {
         let mut refunds = ManagedVec::new();
         let deposit_positions = self
@@ -86,23 +88,8 @@ pub trait PositionLiquidationModule:
                 &proportional_weighted,
                 &bonus_weighted,
                 &health_factor,
-                OptionalValue::Some(debt_payment_in_egld.clone()),
+                &debt_payment_in_egld,
             );
-
-        if debt_payment_in_egld > max_debt_to_repay {
-            self.process_excess_payment(
-                &mut repaid_tokens,
-                &mut refunds,
-                debt_payment_in_egld - max_debt_to_repay.clone(),
-            );
-        }
-
-        if !refunds.is_empty() {
-            self.tx()
-                .to(caller)
-                .payment(refunds)
-                .transfer_if_not_empty();
-        }
 
         let seized_collaterals = self.calculate_seized_collateral(
             &deposit_positions,
@@ -121,7 +108,20 @@ pub trait PositionLiquidationModule:
             &max_collateral_seized,
         );
 
-        (seized_collaterals, repaid_tokens)
+        let user_paid_more = debt_payment_in_egld > max_debt_to_repay;
+        // User paid more than the max debt to repay, so we need to refund the excess.
+        if user_paid_more {
+            let excess_payment = debt_payment_in_egld - max_debt_to_repay.clone();
+            self.process_excess_payment(&mut repaid_tokens, &mut refunds, excess_payment);
+        }
+
+        (
+            seized_collaterals,
+            repaid_tokens,
+            refunds,
+            max_debt_to_repay,
+            bonus_rate,
+        )
     }
 
     /// Orchestrates the full liquidation process.
@@ -146,8 +146,15 @@ pub trait PositionLiquidationModule:
 
         let account_attributes = self.account_attributes(account_nonce).get();
 
-        let (seized_collaterals, repaid_tokens) =
-            self.execute_liquidation(account_nonce, debt_payments, caller, &mut cache);
+        let (seized_collaterals, repaid_tokens, refunds, _, _) =
+            self.execute_liquidation(account_nonce, debt_payments, &mut cache);
+
+        if !refunds.is_empty() {
+            self.tx()
+                .to(caller)
+                .payment(refunds)
+                .transfer_if_not_empty();
+        }
 
         for debt_payment_data in repaid_tokens {
             let (debt_payment, debt_egld_value, debt_price_feed) = debt_payment_data.into_tuple();
@@ -432,13 +439,13 @@ pub trait PositionLiquidationModule:
         proportion_seized: &ManagedDecimal<Self::Api, NumDecimals>,
         base_liquidation_bonus: &ManagedDecimal<Self::Api, NumDecimals>,
         health_factor: &ManagedDecimal<Self::Api, NumDecimals>,
-        debt_payment: OptionalValue<ManagedDecimal<Self::Api, NumDecimals>>,
+        egld_payment: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> (
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
-        let (max_repayable_debt, bonus) = self.estimate_liquidation_amount(
+        let (estimated_max_repayable_debt, bonus) = self.estimate_liquidation_amount(
             weighted_collateral_in_egld,
             proportion_seized,
             total_collateral_in_egld,
@@ -447,28 +454,18 @@ pub trait PositionLiquidationModule:
             health_factor,
         );
 
-        if debt_payment.is_some() {
-            let payment = debt_payment.into_option().unwrap();
-            let max_debt_repay = if payment > max_repayable_debt {
-                max_repayable_debt
-            } else {
-                payment
-            };
-
-            let max_collateral_seize = self.mul_half_up(
-                &max_debt_repay,
-                &(bonus.clone() + self.bps()),
-                WAD_PRECISION,
-            );
-            (max_debt_repay, max_collateral_seize, bonus)
+        let final_repayment_amount = if egld_payment > &self.wad_zero() {
+            self.get_min(egld_payment.clone(), estimated_max_repayable_debt)
         } else {
-            let max_collateral_seize = self.mul_half_up(
-                &max_repayable_debt,
-                &(bonus.clone() + self.bps()),
-                WAD_PRECISION,
-            );
-            (max_repayable_debt, max_collateral_seize, bonus)
-        }
+            estimated_max_repayable_debt.clone()
+        };
+
+        let liquidation_premium = bonus.clone() + self.bps();
+
+        let collateral_to_seize =
+            self.mul_half_up(&final_repayment_amount, &liquidation_premium, WAD_PRECISION);
+
+        (final_repayment_amount, collateral_to_seize, bonus)
     }
 
     /// Adjusts repayments and refunds for excess payments.

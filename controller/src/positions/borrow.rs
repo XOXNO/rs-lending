@@ -314,9 +314,7 @@ pub trait PositionBorrowModule:
     /// - `borrow_positions`: Current borrow positions.
     /// - `cache`: Mutable storage cache.
     ///
-    /// # Returns
-    /// - Tuple of (USD value, price feed, decimal amount).
-    fn validate_and_get_borrow_amounts(
+    fn validate_ltv_collateral(
         &self,
         ltv_base_amount: &ManagedDecimal<Self::Api, NumDecimals>,
         amount: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -456,7 +454,7 @@ pub trait PositionBorrowModule:
         let amount = self.to_decimal(borrowed_token.amount.clone(), feed.asset_decimals);
 
         // Validate borrow amounts and caps
-        self.validate_and_get_borrow_amounts(ltv_collateral, &amount, borrows, &feed, cache);
+        self.validate_ltv_collateral(ltv_collateral, &amount, borrows, &feed, cache);
         self.validate_borrow_cap(
             &asset_config,
             &amount,

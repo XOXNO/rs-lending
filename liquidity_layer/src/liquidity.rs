@@ -519,31 +519,17 @@ pub trait LiquidityModule:
 
         require!(cache.is_same_asset(&position.asset_id), ERROR_INVALID_ASSET);
 
-        let user_scaled = position.scaled_amount.clone();
-        let current_actual = cache.get_original_supply_amount(&user_scaled);
-
-        // Amount (in scaled units) that will be credited to the treasury
-        let mut scaled_to_treasury = self.ray_zero();
-
         if cache.bad_debt == cache.zero {
-            // No bad debt: entire dust belongs to the protocol, no conversion required
-            scaled_to_treasury = user_scaled.clone();
-        } else if current_actual <= cache.bad_debt {
-            // Dust fully (or partially) repays bad debt, nothing left for treasury
-            cache.bad_debt -= &current_actual;
+            cache.revenue += &position.scaled_amount;
         } else {
-            // Dust clears bad debt and has a remainder → remainder becomes protocol revenue
-            let remaining_actual = current_actual - cache.bad_debt.clone();
-            cache.bad_debt = cache.zero.clone();
+            // Completely remove user's position from the pool.
+            // Will be in case there is a remaining collateral after dust clearing.
+            cache.supplied -= &position.scaled_amount;
 
-            // Convert remaining_actual to scaled units using current supply index
-            scaled_to_treasury = cache.get_scaled_supply_amount(&remaining_actual);
+            // Add the original supply amount to protocol revenue.
+            let original_supply_amount = cache.get_original_supply_amount(&position.scaled_amount);
+            self.internal_add_protocol_revenue(&mut cache, original_supply_amount);
         }
-
-        if scaled_to_treasury > self.ray_zero() {
-            cache.revenue += &scaled_to_treasury;
-        }
-
         // Clear the user's position.
         position.scaled_amount = self.ray_zero();
         position.market_index = cache.supply_index.clone();

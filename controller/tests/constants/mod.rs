@@ -6,6 +6,7 @@ use multiversx_sc_scenario::{
 };
 
 pub const SECONDS_PER_YEAR: u64 = 31_556_926;
+pub const SECONDS_PER_HOUR: u64 = 3_600;
 pub const SECONDS_PER_DAY: u64 = 86_400; // 24 * 60 * 60
 
 pub const DOLLAR_TICKER: &[u8] = b"USD";

@@ -254,17 +254,17 @@ pub trait Controller:
 
         let account_attributes = self.account_attributes(account_nonce).get();
         let caller = self.blockchain().get_caller();
-        for payment in payments.iter() {
-            self.validate_payment(&payment);
+        for payment_raw in payments.iter() {
+            self.validate_payment(&payment_raw);
 
-            let feed = self.get_token_price(&payment.token_identifier, &mut cache);
-            let payment_decimal = self.to_decimal(payment.amount.clone(), feed.asset_decimals);
-            let egld_value = self.get_token_egld_value(&payment_decimal, &feed.price);
+            let feed = self.get_token_price(&payment_raw.token_identifier, &mut cache);
+            let amount = self.to_decimal(payment_raw.amount.clone(), feed.asset_decimals);
+            let egld_value = self.get_token_egld_value(&amount, &feed.price);
 
             self.process_repayment(
                 account_nonce,
-                &payment.token_identifier,
-                &payment_decimal,
+                &payment_raw.token_identifier,
+                &amount,
                 &caller,
                 egld_value,
                 &feed,

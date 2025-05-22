@@ -114,8 +114,8 @@ pub trait LiquidityPool:
         self.bad_debt()
             .set(self.to_decimal(BigUint::zero(), asset_decimals));
 
-        let timestamp = self.blockchain().get_block_timestamp();
-        self.last_timestamp().set(timestamp);
+        let timestamp_seconds = self.blockchain().get_block_timestamp();
+        self.last_timestamp().set(timestamp_seconds * 1000u64);
     }
 
     /// Upgrades the liquidity pool parameters.
@@ -136,6 +136,7 @@ pub trait LiquidityPool:
     /// - `mid_utilization`: New midpoint utilization ratio (`BigUint`), scaled to RAY precision.
     /// - `optimal_utilization`: New optimal utilization ratio (`BigUint`), scaled to RAY precision.
     /// - `reserve_factor`: New fraction of interest reserved as protocol fee (`BigUint`), scaled to BPS precision.
+    /// - `asset_price`: New asset price (`ManagedDecimal<Self::Api, NumDecimals>`).
     ///
     /// ### Returns
     /// - Nothing (void function).

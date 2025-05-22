@@ -1,6 +1,7 @@
+use common_events::MarketIndexView;
 use common_structs::{AccountPositionType, AssetExtendedConfigView};
 
-use crate::{cache::Cache, helpers, oracle, storage, utils};
+use crate::{cache::Cache, helpers, oracle, positions, storage, utils, validation};
 
 multiversx_sc::imports!();
 
@@ -13,7 +14,83 @@ pub trait ViewsModule:
     + helpers::MathsModule
     + common_math::SharedMathModule
     + common_rates::InterestRates
+    + positions::liquidation::PositionLiquidationModule
+    + positions::repay::PositionRepayModule
+    + positions::withdraw::PositionWithdrawModule
+    + positions::update::PositionUpdateModule
+    + positions::borrow::PositionBorrowModule
+    + positions::account::PositionAccountModule
+    + positions::emode::EModeModule
+    + validation::ValidationModule
 {
+    #[view(liquidationEstimations)]
+    fn liquidation_estimations(
+        &self,
+        account_nonce: u64,
+        debt_payments: &ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
+    ) -> (
+        ManagedVec<EgldOrEsdtTokenPayment>,
+        ManagedVec<EgldOrEsdtTokenPayment>,
+        ManagedVec<EgldOrEsdtTokenPayment>,
+        ManagedDecimal<Self::Api, NumDecimals>,
+        ManagedDecimal<Self::Api, NumDecimals>,
+    ) {
+        let mut cache = Cache::new(self);
+        self.require_active_account(account_nonce);
+
+        let (seized_collaterals, _, refunds, max_egld_payment, bonus_rate) =
+            self.execute_liquidation(account_nonce, debt_payments, &mut cache);
+
+        let mut seized_collaterals_view = ManagedVec::new();
+        let mut protocol_fees_views = ManagedVec::new();
+        for collateral in seized_collaterals {
+            let (seized_collateral, protocol_fees) = collateral.into_tuple();
+            let collateral_view = EgldOrEsdtTokenPayment::new(
+                seized_collateral.token_identifier.clone(),
+                seized_collateral.token_nonce.clone(),
+                seized_collateral.amount,
+            );
+            let protocol_fees_view = EgldOrEsdtTokenPayment::new(
+                seized_collateral.token_identifier,
+                seized_collateral.token_nonce,
+                protocol_fees.into_raw_units().clone(),
+            );
+            seized_collaterals_view.push(collateral_view);
+            protocol_fees_views.push(protocol_fees_view);
+        }
+
+        (
+            seized_collaterals_view,
+            protocol_fees_views,
+            refunds,
+            max_egld_payment,
+            bonus_rate,
+        )
+    }
+
+    #[view(getAllMarketIndexes)]
+    fn get_all_market_indexes(
+        &self,
+        assets: MultiValueEncoded<EgldOrEsdtTokenIdentifier>,
+    ) -> ManagedVec<MarketIndexView<Self::Api>> {
+        let mut cache = Cache::new(self);
+        let mut markets = ManagedVec::new();
+        for asset in assets {
+            let indexes = self.update_asset_index(&asset, &mut cache, true);
+            let feed = self.get_token_price(&asset, &mut cache);
+            let usd = self.get_egld_usd_value(&feed.price, &cache.egld_usd_price);
+
+            markets.push(MarketIndexView {
+                asset_id: asset,
+                supply_index: indexes.supply_index,
+                borrow_index: indexes.borrow_index,
+                egld_price: feed.price,
+                usd_price: usd,
+            });
+        }
+        markets
+    }
+
     /// Retrieves extended configuration views for multiple assets.
     /// Includes market addresses and current prices in EGLD and USD.
     ///

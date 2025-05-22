@@ -1,5 +1,5 @@
 #![no_std]
-use common_constants::{RAY_PRECISION, SECONDS_PER_YEAR};
+use common_constants::{MILLISECONDS_PER_YEAR, RAY_PRECISION};
 use common_structs::{MarketIndex, MarketParams};
 
 multiversx_sc::imports!();
@@ -23,14 +23,14 @@ pub trait InterestRates: common_math::SharedMathModule {
     /// - If `mid_utilization < utilization < optimal_utilization`: `base_borrow_rate + slope1 + ((utilization - mid_utilization) * slope2 / (optimal_utilization - mid_utilization))`.
     /// - If `utilization >= optimal_utilization`: `base_borrow_rate + slope1 + slope2 + ((utilization - optimal_utilization) * slope3 / (RAY - optimal_utilization))`.
     /// - The annual rate is then capped at `max_borrow_rate`.
-    /// - The capped annual rate is converted to a per-second rate by dividing by `SECONDS_PER_YEAR`.
+    /// - The capped annual rate is converted to a per-millisecond rate by dividing by `MILLISECONDS_PER_YEAR`.
     ///
     /// # Arguments
     /// - `utilization`: Current pool utilization ratio (`ManagedDecimal<Self::Api, NumDecimals>`), RAY-based.
     /// - `params`: Market parameters (`MarketParams<Self::Api>`) containing rate model configuration.
     ///
     /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: Per-second borrow rate (RAY-based).
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: Per-millisecond borrow rate (RAY-based).
     ///
     /// **Security Tip**: Relies on the caller to provide valid `utilization` and `params` inputs.
     fn calc_borrow_rate(
@@ -75,7 +75,7 @@ pub trait InterestRates: common_math::SharedMathModule {
         // Convert annual rate to per-second rate
         self.div_half_up(
             &capped_rate,
-            &self.to_decimal(BigUint::from(SECONDS_PER_YEAR), 0),
+            &self.to_decimal(BigUint::from(MILLISECONDS_PER_YEAR), 0),
             RAY_PRECISION,
         )
     }

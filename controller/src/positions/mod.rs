@@ -5,5 +5,4 @@ pub mod liquidation;
 pub mod repay;
 pub mod supply;
 pub mod update;
-// pub mod vault;
 pub mod withdraw;

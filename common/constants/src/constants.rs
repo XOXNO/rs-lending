@@ -6,10 +6,9 @@ pub const EGLD_TICKER: &[u8] = b"EGLD";
 pub const WEGLD_TICKER: &[u8] = b"WEGLD";
 pub const USD_TICKER: &[u8] = b"USD";
 
-pub const SECONDS_PER_YEAR: u64 = 31_556_926;
+pub const MILLISECONDS_PER_YEAR: u64 = 31_556_926_000;
 
 pub const SECONDS_PER_MINUTE: u64 = 60;
-pub const SECONDS_PER_HOUR: u64 = 3_600;
 
 pub const RAY: u128 = 1_000_000_000_000_000_000_000_000_000;
 pub const RAY_PRECISION: usize = 27;

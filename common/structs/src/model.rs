@@ -385,3 +385,13 @@ pub struct MarketIndex<M: ManagedTypeApi> {
     pub borrow_index: ManagedDecimal<M, NumDecimals>,
     pub supply_index: ManagedDecimal<M, NumDecimals>,
 }
+
+#[type_abi]
+#[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode, Clone)]
+pub struct MarketIndexView<M: ManagedTypeApi> {
+    pub asset_id: EgldOrEsdtTokenIdentifier<M>,
+    pub supply_index: ManagedDecimal<M, NumDecimals>,
+    pub borrow_index: ManagedDecimal<M, NumDecimals>,
+    pub egld_price: ManagedDecimal<M, NumDecimals>,
+    pub usd_price: ManagedDecimal<M, NumDecimals>,
+}

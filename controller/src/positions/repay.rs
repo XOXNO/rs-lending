@@ -22,50 +22,6 @@ pub trait PositionRepayModule:
     + common_rates::InterestRates
     + emode::EModeModule
 {
-    /// Processes a repayment via the liquidity pool.
-    /// Updates the borrow position accordingly.
-    ///
-    /// # Arguments
-    /// - `account_nonce`: Position NFT nonce.
-    /// - `repay_token_id`: Token being repaid.
-    /// - `repay_amount`: Repayment amount.
-    /// - `caller`: Repayer's address.
-    /// - `borrow_position`: Current borrow position.
-    /// - `feed`: Price data for the token.
-    /// - `position_attributes`: NFT attributes.
-    /// - `cache`: Mutable storage cache.
-    fn process_repayment_through_pool(
-        &self,
-        account_nonce: u64,
-        repay_token_id: &EgldOrEsdtTokenIdentifier,
-        repay_amount: &ManagedDecimal<Self::Api, NumDecimals>,
-        caller: &ManagedAddress,
-        mut borrow_position: AccountPosition<Self::Api>,
-        feed: &PriceFeedShort<Self::Api>,
-        position_attributes: &AccountAttributes<Self::Api>,
-        cache: &mut Cache<Self>,
-    ) {
-        let pool_address = cache.get_cached_pool_address(repay_token_id);
-        borrow_position = self
-            .tx()
-            .to(pool_address)
-            .typed(proxy_pool::LiquidityPoolProxy)
-            .repay(caller, borrow_position.clone(), feed.price.clone())
-            .egld_or_single_esdt(repay_token_id, 0, repay_amount.into_raw_units())
-            .returns(ReturnsResult)
-            .sync_call();
-
-        self.emit_position_update_event(
-            repay_amount,
-            &borrow_position,
-            feed.price.clone(),
-            caller,
-            position_attributes,
-        );
-
-        self.update_or_remove_position(account_nonce, &borrow_position);
-    }
-
     /// Updates isolated debt tracking post-repayment.
     /// Adjusts debt ceiling for isolated positions.
     ///
@@ -134,7 +90,7 @@ pub trait PositionRepayModule:
         cache: &mut Cache<Self>,
         position_attributes: &AccountAttributes<Self::Api>,
     ) {
-        let borrow_position =
+        let mut borrow_position =
             self.validate_borrow_position_existence(account_nonce, repay_token_id);
 
         self.update_isolated_debt_after_repayment(
@@ -143,16 +99,26 @@ pub trait PositionRepayModule:
             position_attributes,
         );
 
-        self.process_repayment_through_pool(
-            account_nonce,
-            repay_token_id,
+        let pool_address = cache.get_cached_pool_address(repay_token_id);
+
+        borrow_position = self
+            .tx()
+            .to(pool_address)
+            .typed(proxy_pool::LiquidityPoolProxy)
+            .repay(caller, borrow_position.clone(), feed.price.clone())
+            .egld_or_single_esdt(repay_token_id, 0, repay_amount.into_raw_units())
+            .returns(ReturnsResult)
+            .sync_call();
+
+        self.emit_position_update_event(
             repay_amount,
+            &borrow_position,
+            feed.price.clone(),
             caller,
-            borrow_position,
-            feed,
             position_attributes,
-            cache,
         );
+
+        self.update_or_remove_position(account_nonce, &borrow_position);
     }
 
     /// Ensures a borrow position exists for repayment.

@@ -26,7 +26,7 @@ where
     pub bad_debt: ManagedDecimal<C::Api, NumDecimals>,
     /// The amount of the asset reserved for protocol revenue (subset of reserves).
     pub revenue: ManagedDecimal<C::Api, NumDecimals>,
-    /// The timestamp of the current block (seconds since Unix epoch).
+    /// The timestamp of the current block (milliseconds since Unix epoch).
     pub timestamp: u64,
     /// The configuration parameters of the pool (e.g., interest rate slopes).
     pub params: MarketParams<C::Api>,
@@ -36,7 +36,7 @@ where
     pub supply_index: ManagedDecimal<C::Api, NumDecimals>,
     /// Zero value with pool-specific asset_decimals for comparisons.
     pub zero: ManagedDecimal<C::Api, NumDecimals>,
-    /// The timestamp of the last state update (seconds since Unix epoch).
+    /// The timestamp of the last state update (milliseconds since Unix epoch).
     pub last_timestamp: u64,
 }
 
@@ -59,13 +59,14 @@ where
     /// **Security Tip**: Assumes storage getters (`supplied()`, etc.) return valid data; no additional validation here.
     pub fn new(sc_ref: &'a C) -> Self {
         let params = sc_ref.params().get();
+        let milliseconds_since_epoch = sc_ref.blockchain().get_block_timestamp() * 1000;
         Cache {
             zero: sc_ref.to_decimal(BigUint::zero(), params.asset_decimals),
             supplied: sc_ref.supplied().get(),
             borrowed: sc_ref.borrowed().get(),
             bad_debt: sc_ref.bad_debt().get(),
             revenue: sc_ref.revenue().get(),
-            timestamp: sc_ref.blockchain().get_block_timestamp(),
+            timestamp: milliseconds_since_epoch,
             params,
             borrow_index: sc_ref.borrow_index().get(),
             supply_index: sc_ref.supply_index().get(),

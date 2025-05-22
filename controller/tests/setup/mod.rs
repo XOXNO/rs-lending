@@ -1,5 +1,5 @@
 use crate::{constants::*, proxys::*};
-use common_constants::{EGLD_TICKER, MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE, SECONDS_PER_HOUR};
+use common_constants::{EGLD_TICKER, MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE};
 
 use multiversx_sc::{
     imports::{MultiValue2, OptionalValue},

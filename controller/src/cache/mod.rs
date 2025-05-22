@@ -59,7 +59,7 @@ where
             allow_unsafe_price: true,
             flash_loan_ongoing: sc_ref.flash_loan_ongoing().get(),
             safe_price_view,
-            current_timestamp: sc_ref.blockchain().get_block_timestamp(),
+            current_timestamp: sc_ref.blockchain().get_block_timestamp() * 1000,
         }
     }
 

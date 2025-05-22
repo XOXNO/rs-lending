@@ -159,12 +159,21 @@ upgrade_all_markets() {
     local markets
     IFS=$'\n' read -d '' -r -a markets < <(jq -r 'keys[]' "$MARKET_CONFIG_FILE" && printf '\0')
     
+    # Get the deployer wallet address and initial nonce
+    local DEPLOYER_WALLET="erd1x45vnu7shhecfz0v03qqfmy8srndch50cdx7m763p743tzlwah0sgzewlm"
+    local NONCE=$(mxpy account get --nonce --address="$DEPLOYER_WALLET" --proxy="$PROXY")
+    
+    echo "Starting batch upgrade with initial nonce: $NONCE"
+    echo "Total markets to upgrade: ${#markets[@]}"
+    
     for market in "${markets[@]}"; do
-        echo "Upgrading market: $market"
-        upgrade_market "$market"
-        # Optionally wait a few seconds to ensure that the tx is processed before sending the next one
-        sleep 10
+        echo "Upgrading market: $market (nonce: $NONCE)"
+        upgrade_market_with_nonce "$market" "$NONCE"
+        # Increment nonce for next transaction
+        ((NONCE++))
     done
+    
+    echo "All market upgrades submitted successfully!"
 }
 
 # Function to convert percentage to RAY (27 decimals)
@@ -519,6 +528,22 @@ upgrade_market() {
     local args=( $(build_market_upgrade_args "$market_name") )
 
     mxpy contract call ${ADDRESS} --recall-nonce \
+    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    --gas-limit=55000000 \
+    --function="upgradeLiquidityPool" --arguments "${args[@]}" \
+    --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
+}
+
+# Function to upgrade market with specific nonce (for batch operations)
+upgrade_market_with_nonce() {
+    local market_name=$1
+    local nonce=$2
+    
+    echo "Token ID: $(get_config_value "$market_name" "token_id")"
+    
+    local args=( $(build_market_upgrade_args "$market_name") )
+
+    mxpy contract call ${ADDRESS} --nonce=${nonce} \
     --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
     --gas-limit=55000000 \
     --function="upgradeLiquidityPool" --arguments "${args[@]}" \

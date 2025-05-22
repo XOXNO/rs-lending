@@ -28,7 +28,7 @@ pub trait MathsModule: common_math::SharedMathModule {
         token_data: &PriceFeedShort<Self::Api>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         self.rescale_half_up(
-            &self.div_half_up(amount_in_egld, &token_data.price, RAY_PRECISION),
+            &self.convert_egld_to_tokens_ray(amount_in_egld, token_data),
             token_data.asset_decimals,
         )
     }
