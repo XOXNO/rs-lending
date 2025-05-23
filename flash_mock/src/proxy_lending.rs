@@ -1200,6 +1200,35 @@ where
             .original_result()
     }
 
+    pub fn liquidation_estimations<
+        Arg0: ProxyArg<u64>,
+        Arg1: ProxyArg<ManagedVec<Env::Api, EgldOrEsdtTokenPayment<Env::Api>>>,
+    >(
+        self,
+        account_nonce: Arg0,
+        debt_payments: Arg1,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, (ManagedVec<Env::Api, EgldOrEsdtTokenPayment<Env::Api>>, ManagedVec<Env::Api, EgldOrEsdtTokenPayment<Env::Api>>, ManagedVec<Env::Api, EgldOrEsdtTokenPayment<Env::Api>>, ManagedDecimal<Env::Api, usize>, ManagedDecimal<Env::Api, usize>)> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("liquidationEstimations")
+            .argument(&account_nonce)
+            .argument(&debt_payments)
+            .original_result()
+    }
+
+    pub fn get_all_market_indexes<
+        Arg0: ProxyArg<MultiValueEncoded<Env::Api, EgldOrEsdtTokenIdentifier<Env::Api>>>,
+    >(
+        self,
+        assets: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedVec<Env::Api, common_structs::MarketIndexView<Env::Api>>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getAllMarketIndexes")
+            .argument(&assets)
+            .original_result()
+    }
+
     /// Retrieves extended configuration views for multiple assets. 
     /// Includes market addresses and current prices in EGLD and USD. 
     ///  

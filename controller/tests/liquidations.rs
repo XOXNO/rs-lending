@@ -107,10 +107,20 @@ fn test_liquidation() {
         );
 
     let borrowed_usdc = state.get_borrow_amount_for_token(2, USDC_TOKEN);
+    let borrowed_egld = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+
+    let borrowed = state.get_total_borrow_in_egld(2);
+    let collateral = state.get_total_collateral_in_egld(2);
+    let collateral_weighted = state.get_liquidation_collateral_available(2);
+    let health_factor = state.get_account_health_factor(2);
+    println!("Total EGLD Borrowed {:?}", borrowed);
+    println!("Total EGLD Deposite {:?}", collateral);
+    println!("Total EGLD Weighted {:?}", collateral_weighted);
+    println!("Health Factor {:?}", health_factor);
     state.liquidate_account_dem(
         &liquidator,
-        &USDC_TOKEN,
-        borrowed_usdc.into_raw_units().clone(),
+        &EGLD_TOKEN,
+        borrowed_egld.into_raw_units().clone(),
         2,
     );
     let borrowed = state.get_total_borrow_in_egld(2);
@@ -121,11 +131,10 @@ fn test_liquidation() {
     println!("Total EGLD Deposite {:?}", collateral);
     println!("Total EGLD Weighted {:?}", collateral_weighted);
     println!("Health Factor {:?}", health_factor);
-    let borrowed_egld = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
     state.liquidate_account_dem(
         &liquidator,
-        &EGLD_TOKEN,
-        borrowed_egld.into_raw_units().clone(),
+        &USDC_TOKEN,
+        borrowed_usdc.into_raw_units().clone(),
         2,
     );
     let borrowed = state.get_total_borrow_in_egld(2);

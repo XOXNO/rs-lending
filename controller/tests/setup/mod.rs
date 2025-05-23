@@ -829,6 +829,27 @@ impl LendingPoolTestState {
             .run();
     }
 
+    pub fn liquidate_account_dem_bulk(
+        &mut self,
+        from: &TestAddress,
+        payments: Vec<(&TestTokenIdentifier, &BigUint<StaticApi>)>,
+        account_nonce: u64,
+    ) {
+        let mut assets = ManagedVec::new();
+        for (token, amount) in payments {
+            let transfer = EsdtTokenPayment::new(token.to_token_identifier(), 0, amount.clone());
+            assets.push(transfer);
+        }
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .liquidate(account_nonce)
+            .multi_esdt(assets)
+            .run();
+    }
+
     // Price aggregator operations
     pub fn change_price(&mut self, from: &[u8], price: u64, timestamp: u64) {
         let oracles = vec![

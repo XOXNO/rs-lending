@@ -74,7 +74,7 @@ pub trait ViewModule:
     /// - `u64`: The time delta in seconds.
     #[view(getDeltaTime)]
     fn get_delta_time(&self) -> u64 {
-        self.blockchain().get_block_timestamp() - self.last_timestamp().get()
+        (self.blockchain().get_block_timestamp() * 1000u64) - self.last_timestamp().get()
     }
 
     /// Retrieves the protocol revenue accrued from borrow interest fees, scaled to the asset's decimals.

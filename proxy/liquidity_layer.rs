@@ -142,6 +142,7 @@ where
     /// - `mid_utilization`: New midpoint utilization ratio (`BigUint`), scaled to RAY precision. 
     /// - `optimal_utilization`: New optimal utilization ratio (`BigUint`), scaled to RAY precision. 
     /// - `reserve_factor`: New fraction of interest reserved as protocol fee (`BigUint`), scaled to BPS precision. 
+    /// - `asset_price`: New asset price (`ManagedDecimal<Self::Api, NumDecimals>`). 
     ///  
     /// ### Returns 
     /// - Nothing (void function). 
