@@ -2250,7 +2250,7 @@ pub fn create_e_mode_category(world: &mut ScenarioWorld, lending_sc: &ManagedAdd
         .typed(proxy_lending_pool::ControllerProxy)
         .add_e_mode_category(
             BigUint::from(LTV),
-            BigUint::from(E_MODE_LIQ_THRESOLD),
+            BigUint::from(E_MODE_LIQ_THRESHOLD),
             BigUint::from(E_MODE_LIQ_BONUS),
         )
         .returns(ReturnsResult)

@@ -1512,7 +1512,7 @@ where
     /// * Tokens must be different 
     ///  
     /// # Arguments 
-    /// * `exisiting_debt_token` - The existing debt token 
+    /// * `existing_debt_token` - The existing debt token 
     /// * `new_debt_amount_raw` - The new debt token amount 
     /// * `new_debt_token` - The new debt token 
     /// * `steps` - Optional swap steps for token conversion 
@@ -1523,14 +1523,14 @@ where
         Arg3: ProxyArg<ManagedArgBuffer<Env::Api>>,
     >(
         self,
-        exisiting_debt_token: Arg0,
+        existing_debt_token: Arg0,
         new_debt_amount_raw: Arg1,
         new_debt_token: Arg2,
         steps: Arg3,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("swapDebt")
-            .argument(&exisiting_debt_token)
+            .argument(&existing_debt_token)
             .argument(&new_debt_amount_raw)
             .argument(&new_debt_token)
             .argument(&steps)

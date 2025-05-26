@@ -161,7 +161,7 @@ pub trait SnapModule:
     /// * Tokens must be different
     ///
     /// # Arguments
-    /// * `exisiting_debt_token` - The existing debt token
+    /// * `existing_debt_token` - The existing debt token
     /// * `new_debt_amount_raw` - The new debt token amount
     /// * `new_debt_token` - The new debt token
     /// * `steps` - Optional swap steps for token conversion
@@ -169,13 +169,13 @@ pub trait SnapModule:
     #[endpoint(swapDebt)]
     fn swap_debt(
         &self,
-        exisiting_debt_token: &EgldOrEsdtTokenIdentifier,
+        existing_debt_token: &EgldOrEsdtTokenIdentifier,
         new_debt_amount_raw: &BigUint,
         new_debt_token: &EgldOrEsdtTokenIdentifier,
         steps: ManagedArgBuffer<Self::Api>,
     ) {
         require!(
-            exisiting_debt_token != new_debt_token,
+            existing_debt_token != new_debt_token,
             ERROR_SWAP_DEBT_NOT_SUPPORTED
         );
 
@@ -190,11 +190,11 @@ pub trait SnapModule:
 
         let account_attributes = opt_attributes.unwrap();
         let mut debt_config = cache.get_cached_asset_info(new_debt_token);
-        let exisiting_debt_config = cache.get_cached_asset_info(exisiting_debt_token);
+        let existing_debt_config = cache.get_cached_asset_info(existing_debt_token);
 
         // Siloed borrowing is not supported for swap debt if one of the tokens is siloed we reject the operation
         require!(
-            !exisiting_debt_config.is_siloed_borrowing() && !debt_config.is_siloed_borrowing(),
+            !existing_debt_config.is_siloed_borrowing() && !debt_config.is_siloed_borrowing(),
             ERROR_SWAP_DEBT_NOT_SUPPORTED
         );
 
@@ -209,7 +209,7 @@ pub trait SnapModule:
         );
 
         let received = self.swap_tokens(
-            exisiting_debt_token,
+            existing_debt_token,
             new_debt_token,
             new_debt_amount_raw,
             &caller,

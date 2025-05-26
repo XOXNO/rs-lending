@@ -25,8 +25,8 @@ pub const WAD: u128 = 1_000_000_000_000_000_000;
 
 pub const LTV: u128 = 7_500; // 75%
 pub const E_MODE_LTV: u128 = 8_000; // 80%
-pub const LIQ_THRESOLD: u128 = 8_000; // 80%
-pub const E_MODE_LIQ_THRESOLD: u128 = 8_500; // 85%
+pub const LIQ_THRESHOLD: u128 = 8_000; // 80%
+pub const E_MODE_LIQ_THRESHOLD: u128 = 8_500; // 85%
 pub const LIQ_BONUS: u128 = 500; // 1%
 pub const E_MODE_LIQ_BONUS: u128 = 500; // 5%
 pub const LIQ_BASE_FEE: u128 = 500; // 1%
@@ -144,7 +144,7 @@ pub fn get_usdc_config() -> SetupConfig {
         config: AssetConfig {
             loan_to_value: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
             liquidation_threshold: ManagedDecimal::from_raw_units(
-                BigUint::from(LIQ_THRESOLD),
+                BigUint::from(LIQ_THRESHOLD),
                 BPS_PRECISION,
             ),
             liquidation_bonus: ManagedDecimal::from_raw_units(
@@ -184,13 +184,13 @@ pub fn get_usdc_config() -> SetupConfig {
 }
 
 pub fn get_egld_config() -> SetupConfig {
-    pub const LIQ_THRESOLD: u128 = 8_000; // 80%
+    pub const LIQ_THRESHOLD: u128 = 8_000; // 80%
     pub const LTV: u128 = 7_500; // 75%
     SetupConfig {
         config: AssetConfig {
             loan_to_value: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
             liquidation_threshold: ManagedDecimal::from_raw_units(
-                BigUint::from(LIQ_THRESOLD),
+                BigUint::from(LIQ_THRESHOLD),
                 BPS_PRECISION,
             ),
             liquidation_bonus: ManagedDecimal::from_raw_units(
@@ -230,13 +230,13 @@ pub fn get_egld_config() -> SetupConfig {
 }
 
 pub fn get_xegld_config() -> SetupConfig {
-    pub const LIQ_THRESOLD: u128 = 7_500; // 80%
+    pub const LIQ_THRESHOLD: u128 = 7_500; // 80%
     pub const LTV: u128 = 7_000; // 75%
     SetupConfig {
         config: AssetConfig {
             loan_to_value: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
             liquidation_threshold: ManagedDecimal::from_raw_units(
-                BigUint::from(LIQ_THRESOLD),
+                BigUint::from(LIQ_THRESHOLD),
                 BPS_PRECISION,
             ),
             liquidation_bonus: ManagedDecimal::from_raw_units(
@@ -276,13 +276,13 @@ pub fn get_xegld_config() -> SetupConfig {
 }
 
 pub fn get_segld_config() -> SetupConfig {
-    pub const LIQ_THRESOLD: u128 = 5_500; // 55%
+    pub const LIQ_THRESHOLD: u128 = 5_500; // 55%
     pub const LTV: u128 = 5_000; // 50%
     SetupConfig {
         config: AssetConfig {
             loan_to_value: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
             liquidation_threshold: ManagedDecimal::from_raw_units(
-                BigUint::from(LIQ_THRESOLD),
+                BigUint::from(LIQ_THRESHOLD),
                 BPS_PRECISION,
             ),
             liquidation_bonus: ManagedDecimal::from_raw_units(
@@ -326,7 +326,7 @@ pub fn get_legld_config() -> SetupConfig {
         config: AssetConfig {
             loan_to_value: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
             liquidation_threshold: ManagedDecimal::from_raw_units(
-                BigUint::from(LIQ_THRESOLD),
+                BigUint::from(LIQ_THRESHOLD),
                 BPS_PRECISION,
             ),
             liquidation_bonus: ManagedDecimal::from_raw_units(
@@ -370,7 +370,7 @@ pub fn get_xoxno_config() -> SetupConfig {
         config: AssetConfig {
             loan_to_value: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
             liquidation_threshold: ManagedDecimal::from_raw_units(
-                BigUint::from(LIQ_THRESOLD),
+                BigUint::from(LIQ_THRESHOLD),
                 BPS_PRECISION,
             ),
             liquidation_bonus: ManagedDecimal::from_raw_units(
@@ -414,7 +414,7 @@ pub fn get_isolated_config() -> SetupConfig {
         config: AssetConfig {
             loan_to_value: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
             liquidation_threshold: ManagedDecimal::from_raw_units(
-                BigUint::from(LIQ_THRESOLD),
+                BigUint::from(LIQ_THRESHOLD),
                 BPS_PRECISION,
             ),
             liquidation_bonus: ManagedDecimal::from_raw_units(
@@ -458,7 +458,7 @@ pub fn get_siloed_config() -> SetupConfig {
         config: AssetConfig {
             loan_to_value: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
             liquidation_threshold: ManagedDecimal::from_raw_units(
-                BigUint::from(LIQ_THRESOLD),
+                BigUint::from(LIQ_THRESHOLD),
                 BPS_PRECISION,
             ),
             liquidation_bonus: ManagedDecimal::from_raw_units(
@@ -502,7 +502,7 @@ pub fn get_capped_config() -> SetupConfig {
         config: AssetConfig {
             loan_to_value: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
             liquidation_threshold: ManagedDecimal::from_raw_units(
-                BigUint::from(LIQ_THRESOLD),
+                BigUint::from(LIQ_THRESHOLD),
                 BPS_PRECISION,
             ),
             liquidation_bonus: ManagedDecimal::from_raw_units(

@@ -217,7 +217,7 @@ where
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getTreasuryAddreess")
+            .raw_call("getTreasuryAddress")
             .original_result()
     }
 
@@ -235,7 +235,7 @@ where
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getBurnerAddreess")
+            .raw_call("getBurnerAddress")
             .original_result()
     }
 
@@ -245,7 +245,7 @@ where
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getUnwrapAddreess")
+            .raw_call("getUnwrapAddress")
             .original_result()
     }
 
@@ -636,7 +636,7 @@ where
             .original_result()
     }
 
-    ///     * Add initial liquidity\n     *  Pair owner could add initail liquidity\n      
+    ///     * Add initial liquidity\n     *  Pair owner could add initial liquidity\n      
     pub fn add_initial_liquidity(
         self,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
