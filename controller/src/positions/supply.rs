@@ -236,7 +236,7 @@ pub trait PositionDepositModule:
     ) {
         let caller = self.blockchain().get_caller();
         let payments = self.call_value().all_transfers();
-        require!(payments.len() >= 1, ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS);
+        require!(!payments.is_empty(), ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS);
 
         self.require_non_zero_address(&caller);
 

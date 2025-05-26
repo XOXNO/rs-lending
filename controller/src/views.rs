@@ -47,7 +47,7 @@ pub trait ViewsModule:
             let (seized_collateral, protocol_fees) = collateral.into_tuple();
             let collateral_view = EgldOrEsdtTokenPayment::new(
                 seized_collateral.token_identifier.clone(),
-                seized_collateral.token_nonce.clone(),
+                seized_collateral.token_nonce,
                 seized_collateral.amount,
             );
             let protocol_fees_view = EgldOrEsdtTokenPayment::new(
