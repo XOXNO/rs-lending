@@ -2,7 +2,7 @@ multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
 use crate::cache::Cache;
-use crate::{helpers, oracle, storage, ERROR_NO_POOL_FOUND, WAD_PRECISION};
+use crate::{helpers, oracle, storage, ERROR_NO_POOL_FOUND};
 use common_errors::*;
 use common_structs::*;
 
@@ -78,20 +78,20 @@ pub trait LendingUtilsModule:
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
-        let mut weighted_collateral = self.wad_zero();
-        let mut total_collateral = self.wad_zero();
-        let mut ltv_collateral = self.wad_zero();
+        let mut weighted_collateral = self.ray_zero();
+        let mut total_collateral = self.ray_zero();
+        let mut ltv_collateral = self.ray_zero();
 
         for position in positions {
             let feed = self.get_token_price(&position.asset_id, cache);
             let amount = self.get_total_amount(&position, &feed, cache);
-            let amount_egld = self.get_token_egld_value(&amount, &feed.price);
+            let amount_egld = self.get_token_egld_value_ray(&amount, &feed.price);
 
             total_collateral += &amount_egld;
             weighted_collateral +=
-                self.mul_half_up(&amount_egld, &position.liquidation_threshold, WAD_PRECISION);
+                self.mul_half_up(&amount_egld, &position.liquidation_threshold, RAY_PRECISION);
             ltv_collateral +=
-                self.mul_half_up(&amount_egld, &position.loan_to_value, WAD_PRECISION);
+                self.mul_half_up(&amount_egld, &position.loan_to_value, RAY_PRECISION);
         }
 
         (weighted_collateral, total_collateral, ltv_collateral)
@@ -111,10 +111,10 @@ pub trait LendingUtilsModule:
         positions: &ManagedVec<AccountPosition<Self::Api>>,
         cache: &mut Cache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        positions.iter().fold(self.wad_zero(), |acc, position| {
+        positions.iter().fold(self.ray_zero(), |acc, position| {
             let feed = self.get_token_price(&position.asset_id, cache);
             let amount = self.get_total_amount(&position, &feed, cache);
-            acc + self.get_token_egld_value(&amount, &feed.price)
+            acc + self.get_token_egld_value_ray(&amount, &feed.price)
         })
     }
 

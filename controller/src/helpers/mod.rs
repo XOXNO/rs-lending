@@ -363,7 +363,7 @@ pub trait MathsModule: common_math::SharedMathModule {
     ) {
         let wad = self.wad();
 
-        let target_best = wad.clone().into_raw_units() * 2u32 / 100u32 + wad.into_raw_units(); // 1.02 WAD
+        let target_best = wad.clone().into_raw_units() / 50u32 + wad.into_raw_units(); // 1.02 WAD
 
         let (safest_debt, safest_bonus, safe_new_hf) = self.simulate_liquidation(
             weighted_collateral_in_egld,
@@ -379,6 +379,7 @@ pub trait MathsModule: common_math::SharedMathModule {
             return (safest_debt, safest_bonus);
         }
 
+        let target_best_second = wad.clone().into_raw_units() / 100u32 + wad.into_raw_units(); // 1.01 WAD
         let (limit_debt, limit_bonus, _) = self.simulate_liquidation(
             weighted_collateral_in_egld,
             proportion_seized,
@@ -386,7 +387,7 @@ pub trait MathsModule: common_math::SharedMathModule {
             total_debt,
             min_bonus,
             current_hf,
-            self.wad(),
+            self.to_decimal_wad(target_best_second),
         );
 
         (limit_debt, limit_bonus)

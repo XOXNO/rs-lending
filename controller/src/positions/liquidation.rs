@@ -63,7 +63,7 @@ pub trait PositionLiquidationModule:
 
         let (borrow_positions, map_debt_indexes) = self.get_borrow_positions(account_nonce, true);
 
-        let (debt_payment_in_egld, mut repaid_tokens) = self.calculate_repayment_amounts(
+        let (debt_payment_in_egld_ray, mut repaid_tokens) = self.calculate_repayment_amounts(
             debt_payments,
             &borrow_positions,
             &mut refunds,
@@ -88,7 +88,7 @@ pub trait PositionLiquidationModule:
                 &proportional_weighted,
                 &bonus_weighted,
                 &health_factor,
-                &debt_payment_in_egld,
+                &debt_payment_in_egld_ray,
             );
 
         let seized_collaterals = self.calculate_seized_collateral(
@@ -108,11 +108,11 @@ pub trait PositionLiquidationModule:
             &max_collateral_seized,
         );
 
-        let user_paid_more = debt_payment_in_egld > max_debt_to_repay_wad;
+        let user_paid_more = debt_payment_in_egld_ray > max_debt_to_repay_ray;
         // User paid more than the max debt to repay, so we need to refund the excess.
         if user_paid_more {
-            let excess_payment = debt_payment_in_egld - max_debt_to_repay_wad.clone();
-            self.process_excess_payment(&mut repaid_tokens, &mut refunds, excess_payment);
+            let excess_payment_ray = debt_payment_in_egld_ray - max_debt_to_repay_ray.clone();
+            self.process_excess_payment(&mut repaid_tokens, &mut refunds, excess_payment_ray);
         }
 
         (
@@ -339,7 +339,7 @@ pub trait PositionLiquidationModule:
             >,
         >,
     ) {
-        let mut total_repaid = self.wad_zero();
+        let mut total_repaid = self.ray_zero();
         let mut repaid_tokens = ManagedVec::new();
         for payment_ref in repayments {
             let token_feed = self.get_token_price(&payment_ref.token_identifier, cache);
@@ -350,9 +350,9 @@ pub trait PositionLiquidationModule:
             );
             let amount_dec = self.to_decimal(payment_ref.amount.clone(), token_feed.asset_decimals);
 
-            let token_egld_amount = self.get_token_egld_value(&amount_dec, &token_feed.price);
+            let token_egld_amount = self.get_token_egld_value_ray(&amount_dec, &token_feed.price);
             let amount = self.get_total_amount(&original_borrow, &token_feed, cache);
-            let borrowed_egld_amount = self.get_token_egld_value(&amount, &token_feed.price);
+            let borrowed_egld_amount = self.get_token_egld_value_ray(&amount, &token_feed.price);
 
             let mut payment = payment_ref.clone();
             if token_egld_amount > borrowed_egld_amount {
@@ -506,30 +506,31 @@ pub trait PositionLiquidationModule:
         let mut remaining_excess = excess_in_egld;
 
         for index in 0..repaid_tokens.len() {
-            if remaining_excess == self.wad_zero() {
+            if remaining_excess == self.ray_zero() {
                 break;
             }
 
-            let (mut debt_payment, mut egld_asset_amount, feed) =
+            let (mut debt_payment, mut egld_asset_amount_ray, feed) =
                 repaid_tokens.get(index).clone().into_tuple();
 
-            if egld_asset_amount >= remaining_excess {
+            if egld_asset_amount_ray >= remaining_excess {
                 let excess_in_original = self.convert_egld_to_tokens(&remaining_excess, &feed);
                 debt_payment.amount -= excess_in_original.into_raw_units();
-                egld_asset_amount -= &remaining_excess;
+                egld_asset_amount_ray -= &remaining_excess;
 
                 refunds.push(EgldOrEsdtTokenPayment::new(
                     debt_payment.token_identifier.clone(),
                     0,
                     excess_in_original.into_raw_units().clone(),
                 ));
-                let _ = repaid_tokens.set(index, (debt_payment, egld_asset_amount, feed).into());
+                let _ =
+                    repaid_tokens.set(index, (debt_payment, egld_asset_amount_ray, feed).into());
 
-                remaining_excess = self.wad_zero();
+                remaining_excess = self.ray_zero();
             } else {
                 refunds.push(debt_payment);
                 repaid_tokens.remove(index);
-                remaining_excess -= egld_asset_amount;
+                remaining_excess -= egld_asset_amount_ray;
             }
         }
     }

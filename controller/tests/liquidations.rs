@@ -1,4 +1,5 @@
-use controller::ERROR_INSUFFICIENT_COLLATERAL;
+use common_constants::RAY;
+use controller::{ERROR_INSUFFICIENT_COLLATERAL, RAY_PRECISION};
 use multiversx_sc::types::{EgldOrEsdtTokenIdentifier, ManagedDecimal, MultiValueEncoded};
 use multiversx_sc_scenario::imports::{BigUint, OptionalValue, TestAddress};
 pub mod constants;
@@ -24,6 +25,15 @@ fn test_liquidation() {
         BigUint::from(100u64),
         EGLD_DECIMALS,
         OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+    state.supply_asset(
+        &supplier,
+        CAPPED_TOKEN,
+        BigUint::from(10u64),
+        CAPPED_DECIMALS,
+        OptionalValue::Some(1),
         OptionalValue::None,
         false,
     );
@@ -82,9 +92,9 @@ fn test_liquidation() {
     println!("Total EGLD Deposit {:?}", collateral);
     println!("Total EGLD Weighted {:?}", collateral_weighted);
     println!("Health Factor {:?}", health_factor);
-    assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
-    assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
-    state.change_timestamp(SECONDS_PER_DAY * 500);
+    assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
+    assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
+    state.change_timestamp(SECONDS_PER_DAY * 440);
     let mut markets = MultiValueEncoded::new();
     markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
     markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
@@ -177,6 +187,16 @@ fn test_liquidation_bulk_repayment() {
     );
 
     state.supply_asset(
+        &supplier,
+        CAPPED_TOKEN,
+        BigUint::from(10u64),
+        CAPPED_DECIMALS,
+        OptionalValue::Some(1),
+        OptionalValue::None,
+        false,
+    );
+
+    state.supply_asset(
         &borrower,
         XEGLD_TOKEN,
         BigUint::from(20u64), // 2500$
@@ -221,9 +241,9 @@ fn test_liquidation_bulk_repayment() {
     println!("Total EGLD Deposit {:?}", collateral);
     println!("Total EGLD Weighted {:?}", collateral_weighted);
     println!("Health Factor {:?}", health_factor);
-    assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
-    assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
-    state.change_timestamp(SECONDS_PER_DAY * 500);
+    assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
+    assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
+    state.change_timestamp(SECONDS_PER_DAY * 440);
     let mut markets = MultiValueEncoded::new();
     markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
     markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
@@ -346,8 +366,8 @@ fn test_liquidation_bad_debt_multi_asset() {
     println!("Total EGLD Deposit {:?}", collateral);
     println!("Total EGLD Weighted {:?}", collateral_weighted);
     println!("Health Factor {:?}", health_factor);
-    assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
-    assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
+    assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
+    assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
     state.change_timestamp(SECONDS_PER_DAY * 1000);
     let mut markets = MultiValueEncoded::new();
     markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
@@ -414,7 +434,7 @@ fn test_liquidation_bad_debt_multi_asset() {
     println!("Total EGLD Weighted {:?}", collateral_weighted);
     println!("Health Factor {:?}", health_factor);
     // Has bad debt
-    assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
+    assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
     state.clean_bad_debt(2);
     let borrowed_after = state.get_total_borrow_in_egld(2);
     let collateral_after = state.get_total_collateral_in_egld(2);
@@ -424,10 +444,10 @@ fn test_liquidation_bad_debt_multi_asset() {
     println!("Total EGLD Deposit {:?}", collateral_after);
     println!("Total EGLD Weighted {:?}", collateral_weighted);
     println!("Health Factor {:?}", health_factor);
-    assert!(borrowed_after == ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
-    assert!(collateral_after == ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
+    assert!(borrowed_after == ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
+    assert!(collateral_after == ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
     assert!(
-        collateral_weighted == ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS)
+        collateral_weighted == ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION)
     );
 }
 
@@ -488,8 +508,8 @@ fn test_liquidation_single_position() {
     println!("Total EGLD Deposit {:?}", collateral);
     println!("Total EGLD Weighted {:?}", collateral_weighted);
     println!("Health Factor {:?}", health_factor);
-    assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
-    assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
+    assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
+    assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
 
     state.change_timestamp(SECONDS_PER_YEAR + SECONDS_PER_DAY * 1500);
     let mut markets = MultiValueEncoded::new();
@@ -522,9 +542,9 @@ fn test_liquidation_single_position() {
     println!("Total EGLD Deposit {:?}", collateral);
     println!("Total EGLD Weighted {:?}", collateral_weighted);
     println!("Health Factor {:?}", health_factor);
-    assert!(borrowed >= ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
-    assert!(collateral >= ManagedDecimal::from_raw_units(BigUint::from(0u64), EGLD_DECIMALS));
-    assert!(health_factor > ManagedDecimal::from_raw_units(BigUint::from(1u64), EGLD_DECIMALS));
+    assert!(borrowed >= ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
+    assert!(collateral >= ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
+    assert!(health_factor > ManagedDecimal::from_raw_units(BigUint::from(1u64), RAY_PRECISION));
     // state.liquidate_account(
     //     &liquidator,
     //     &EGLD_TOKEN,
@@ -625,9 +645,9 @@ fn test_liquidation_and_left_bad_debt() {
 
     println!("collateral_in_egld: {:?}", collateral_in_egld);
     println!("borrow_amount_in_egld: {:?}", borrow_amount_in_egld);
-    assert!(borrow_amount_in_egld > ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS));
+    assert!(borrow_amount_in_egld > ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION));
     assert!(
-        collateral_in_egld < ManagedDecimal::from_raw_units(BigUint::from(WAD / 2), EGLD_DECIMALS)
+        collateral_in_egld < ManagedDecimal::from_raw_units(BigUint::from(RAY / 2), RAY_PRECISION)
     );
 
     // Repay the bad debt, usually the protocol will do this
@@ -641,7 +661,7 @@ fn test_liquidation_and_left_bad_debt() {
     let borrow_amount_in_egld = state.get_total_borrow_in_egld(2);
     println!("borrow_amount_in_egld: {:?}", borrow_amount_in_egld);
     assert!(
-        borrow_amount_in_egld == ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS)
+        borrow_amount_in_egld == ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION)
     );
 }
 

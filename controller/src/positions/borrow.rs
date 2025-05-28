@@ -322,7 +322,7 @@ pub trait PositionBorrowModule:
         feed: &PriceFeedShort<Self::Api>,
         cache: &mut Cache<Self>,
     ) {
-        let egld_amount = self.get_token_egld_value(amount, &feed.price);
+        let egld_amount = self.get_token_egld_value_ray(amount, &feed.price);
         let egld_total_borrowed = self.calculate_total_borrow_in_egld(borrow_positions, cache);
 
         self.validate_borrow_collateral(ltv_base_amount, &egld_total_borrowed, &egld_amount);

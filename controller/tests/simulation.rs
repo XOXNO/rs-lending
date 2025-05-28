@@ -1,3 +1,4 @@
+use common_constants::RAY;
 use controller::WAD_PRECISION;
 use multiversx_sc::types::{
     EgldOrEsdtTokenIdentifier, ManagedDecimal, ManagedMapEncoded, MultiValueEncoded,
@@ -170,8 +171,15 @@ fn test_leave_low_dust_in_market() {
     let reserves = state.get_market_reserves(state.egld_market.clone());
     println!("reserves: {:?}", reserves);
 
-    let diff = reserves - protocol_revenue;
-    println!("dust: {:?}", diff);
+    if reserves < protocol_revenue {
+        let diff = protocol_revenue - reserves;
+        println!("Dust: {:?}", diff);
+        assert!(diff <= ManagedDecimal::from_raw_units(BigUint::from(5u64), WAD_PRECISION));
+    } else {
+        let diff = reserves - protocol_revenue;
+        println!("Dust: {:?}", diff);
+        assert!(diff <= ManagedDecimal::from_raw_units(BigUint::from(5u64), WAD_PRECISION));
+    }
 }
 
 const SEED: u64 = 696969; // Use a fixed seed for reproducible tests
@@ -302,7 +310,7 @@ fn simulate_many_users_random_actions() {
                         state.borrow_asset(
                             &user_addr,
                             EGLD_TOKEN,
-                            available_borrow.into_raw_units().clone() / BigUint::from(WAD),
+                            available_borrow.into_raw_units().clone() / BigUint::from(RAY),
                             nonce,
                             EGLD_DECIMALS,
                         );
