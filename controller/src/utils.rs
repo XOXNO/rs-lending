@@ -144,13 +144,13 @@ pub trait LendingUtilsModule:
             debt_mapper.update(|debt| *debt += amount_in_usd);
         } else {
             debt_mapper.update(|debt| {
-                *debt -= if debt.into_raw_units() > amount_in_usd.into_raw_units() {
+                *debt -= if *debt > amount_in_usd {
                     amount_in_usd
                 } else {
                     debt.clone()
                 };
                 // If dust remains under 1$ globally just erase the tracker
-                if debt.into_raw_units() < self.wad().into_raw_units() {
+                if *debt < self.wad() {
                     *debt = self.wad_zero();
                 }
             });

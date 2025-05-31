@@ -30,7 +30,7 @@ pub trait SnapModule:
     + common_rates::InterestRates
 {
     #[payable]
-    #[endpoint]
+    #[endpoint(multiply)]
     fn multiply(
         &self,
         e_mode_category: u8,

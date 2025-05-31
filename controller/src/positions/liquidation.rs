@@ -351,15 +351,14 @@ pub trait PositionLiquidationModule:
             let amount_dec = self.to_decimal(payment_ref.amount.clone(), token_feed.asset_decimals);
 
             let token_egld_amount = self.get_token_egld_value_ray(&amount_dec, &token_feed.price);
+
             let amount = self.get_total_amount(&original_borrow, &token_feed, cache);
             let borrowed_egld_amount = self.get_token_egld_value_ray(&amount, &token_feed.price);
-
             let mut payment = payment_ref.clone();
             if token_egld_amount > borrowed_egld_amount {
                 let egld_excess = token_egld_amount - borrowed_egld_amount.clone();
                 let original_excess_paid = self.convert_egld_to_tokens(&egld_excess, &token_feed);
                 let token_excess_amount = original_excess_paid.into_raw_units().clone();
-
                 payment.amount -= &token_excess_amount;
 
                 refunds.push(EgldOrEsdtTokenPayment::new(
@@ -504,11 +503,9 @@ pub trait PositionLiquidationModule:
         excess_in_egld: ManagedDecimal<Self::Api, NumDecimals>,
     ) {
         let mut remaining_excess = excess_in_egld;
-
-        for index in 0..repaid_tokens.len() {
-            if remaining_excess == self.ray_zero() {
-                break;
-            }
+        let mut index = repaid_tokens.len();
+        while index > 0 && remaining_excess > self.ray_zero() {
+            index -= 1;
 
             let (mut debt_payment, mut egld_asset_amount_ray, feed) =
                 repaid_tokens.get(index).clone().into_tuple();

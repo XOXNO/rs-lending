@@ -1,6 +1,6 @@
 use common_constants::RAY;
 use controller::{ERROR_INSUFFICIENT_COLLATERAL, RAY_PRECISION};
-use multiversx_sc::types::{EgldOrEsdtTokenIdentifier, ManagedDecimal, MultiValueEncoded};
+use multiversx_sc::{types::{EgldOrEsdtTokenIdentifier, ManagedDecimal, MultiValueEncoded}};
 use multiversx_sc_scenario::imports::{BigUint, OptionalValue, TestAddress};
 pub mod constants;
 pub mod proxys;
@@ -276,9 +276,10 @@ fn test_liquidation_bulk_repayment() {
     println!("Total EGLD Deposit {:?}", collateral);
     println!("Total EGLD Weighted {:?}", collateral_weighted);
     println!("Bulk Health Factor {:?}", health_factor);
+    let usdc_payment = borrowed_usdc.into_raw_units().clone() * 3u64;
     let payments = vec![
-        (&USDC_TOKEN, borrowed_usdc.into_raw_units()),
         (&EGLD_TOKEN, borrowed_egld.into_raw_units()),
+        (&USDC_TOKEN, &usdc_payment),
     ];
     state.liquidate_account_dem_bulk(&liquidator, payments, 2);
     let borrowed = state.get_total_borrow_in_egld(2);
@@ -290,6 +291,142 @@ fn test_liquidation_bulk_repayment() {
     println!("Total EGLD Weighted {:?}", collateral_weighted);
     println!("Bulk Health Factor {:?}", health_factor);
 }
+
+#[test]
+fn test_liquidation_bulk_repayment_refund_case() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    // Setup accounts
+    state.change_timestamp(0);
+    setup_accounts(&mut state, supplier, borrower);
+    // Total Supplied 5000$
+    state.supply_asset(
+        &supplier,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+    state.supply_asset(
+        &supplier,
+        USDC_TOKEN,
+        BigUint::from(1000u64),
+        USDC_DECIMALS,
+        OptionalValue::Some(1),
+        OptionalValue::None,
+        false,
+    );
+
+    state.supply_asset(
+        &supplier,
+        CAPPED_TOKEN,
+        BigUint::from(10u64),
+        CAPPED_DECIMALS,
+        OptionalValue::Some(1),
+        OptionalValue::None,
+        false,
+    );
+
+    state.supply_asset(
+        &borrower,
+        XEGLD_TOKEN,
+        BigUint::from(20u64), // 2500$
+        XEGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    state.supply_asset(
+        &borrower,
+        SEGLD_TOKEN,
+        BigUint::from(80u64), // 2500$
+        SEGLD_DECIMALS,
+        OptionalValue::Some(2),
+        OptionalValue::None,
+        false,
+    );
+
+    state.borrow_asset(
+        &borrower,
+        EGLD_TOKEN,
+        BigUint::from(39u64),
+        2,
+        EGLD_DECIMALS,
+    );
+
+    state.borrow_asset(
+        &borrower,
+        USDC_TOKEN,
+        BigUint::from(1000u64),
+        2,
+        USDC_DECIMALS,
+    );
+
+    // Verify amounts
+    let borrowed = state.get_total_borrow_in_egld(2);
+    let collateral = state.get_total_collateral_in_egld(2);
+    let collateral_weighted = state.get_liquidation_collateral_available(2);
+    let health_factor = state.get_account_health_factor(2);
+    println!("Total EGLD Borrowed {:?}", borrowed);
+    println!("Total EGLD Deposit {:?}", collateral);
+    println!("Total EGLD Weighted {:?}", collateral_weighted);
+    println!("Health Factor {:?}", health_factor);
+    assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
+    assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
+    state.change_timestamp(SECONDS_PER_DAY * 255);
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
+    state.update_markets(&borrower, markets.clone());
+    let health_factor = state.get_account_health_factor(2);
+    println!("Bulk Health Factor {:?}", health_factor);
+
+    let liquidator = TestAddress::new("liquidator");
+    state
+        .world
+        .account(liquidator)
+        .nonce(1)
+        .esdt_balance(
+            USDC_TOKEN,
+            BigUint::from(10000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
+        )
+        .esdt_balance(
+            EGLD_TOKEN,
+            BigUint::from(10000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+        );
+
+    let borrowed_usdc = state.get_borrow_amount_for_token(2, USDC_TOKEN);
+    let borrowed_egld = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+
+    let borrowed = state.get_total_borrow_in_egld(2);
+    let collateral = state.get_total_collateral_in_egld(2);
+    let collateral_weighted = state.get_liquidation_collateral_available(2);
+    let health_factor = state.get_account_health_factor(2);
+    println!("Total EGLD Borrowed {:?}", borrowed);
+    println!("Total EGLD Deposit {:?}", collateral);
+    println!("Total EGLD Weighted {:?}", collateral_weighted);
+    println!("Bulk Health Factor {:?}", health_factor);
+    let usdc_payment = borrowed_usdc.into_raw_units().clone() * 3u64;
+    let payments = vec![
+        (&EGLD_TOKEN, borrowed_egld.into_raw_units()),
+        (&USDC_TOKEN, &usdc_payment),
+    ];
+    state.liquidate_account_dem_bulk(&liquidator, payments, 2);
+    let borrowed = state.get_total_borrow_in_egld(2);
+    let collateral = state.get_total_collateral_in_egld(2);
+    let collateral_weighted = state.get_liquidation_collateral_available(2);
+    let health_factor = state.get_account_health_factor(2);
+    println!("Total EGLD Borrowed {:?}", borrowed);
+    println!("Total EGLD Deposit {:?}", collateral);
+    println!("Total EGLD Weighted {:?}", collateral_weighted);
+    println!("Bulk Health Factor {:?}", health_factor);
+}
+
 
 #[test]
 fn test_liquidation_bad_debt_multi_asset() {

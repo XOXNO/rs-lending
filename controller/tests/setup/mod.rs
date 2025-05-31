@@ -291,6 +291,7 @@ impl LendingPoolTestState {
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
     }
+    
     pub fn add_new_market(
         &mut self,
         token_id: EgldOrEsdtTokenIdentifier<StaticApi>,
@@ -1022,6 +1023,7 @@ impl LendingPoolTestState {
 
         reserves
     }
+    
     pub fn get_market_borrow_rate(
         &mut self,
         market_address: ManagedAddress<StaticApi>,
@@ -1037,6 +1039,7 @@ impl LendingPoolTestState {
 
         borrow_rate
     }
+    
     pub fn get_account_health_factor(
         &mut self,
         account_position: u64,
@@ -1065,6 +1068,7 @@ impl LendingPoolTestState {
 
         can_be_liquidated
     }
+    
     pub fn get_market_supply_rate(
         &mut self,
         market_address: ManagedAddress<StaticApi>,
@@ -2242,6 +2246,7 @@ pub fn setup_template_liquidity_pool(
 
     (template_address_liquidity_pool, liquidity_pool_whitebox)
 }
+
 pub fn create_e_mode_category(world: &mut ScenarioWorld, lending_sc: &ManagedAddress<StaticApi>) {
     world
         .tx()
@@ -2256,6 +2261,7 @@ pub fn create_e_mode_category(world: &mut ScenarioWorld, lending_sc: &ManagedAdd
         .returns(ReturnsResult)
         .run();
 }
+
 pub fn add_asset_to_e_mode_category(
     world: &mut ScenarioWorld,
     lending_sc: &ManagedAddress<StaticApi>,
