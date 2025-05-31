@@ -1,4 +1,4 @@
-use crate::{constants::*, proxys::*};
+use crate::{constants::*, proxys::{proxy_aggregator, proxy_flash_mock, proxy_lending_pool, proxy_liquidity_pool}};
 use common_constants::{EGLD_TICKER, MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE};
 
 use multiversx_sc::{
@@ -22,11 +22,16 @@ use rs_liquid_xoxno::{config::ConfigModule as XoxnoConfigModule, rs_xoxno_proxy}
 use std::ops::Mul;
 use storage::Storage;
 
+use common_structs::{AccountAttributes, OracleProvider};
 use controller::*;
 use multiversx_sc::types::{
     EgldOrEsdtTokenIdentifier, EsdtLocalRole, EsdtTokenPayment, ManagedVec, TestEsdtTransfer,
 };
 use multiversx_sc_scenario::imports::{ExpectMessage, TestAddress};
+
+// ============================================
+// CONSTANTS
+// ============================================
 
 pub static NFT_ROLES: &[EsdtLocalRole] = &[
     EsdtLocalRole::NftCreate,
@@ -35,26 +40,11 @@ pub static NFT_ROLES: &[EsdtLocalRole] = &[
     EsdtLocalRole::NftUpdateAttributes,
 ];
 
-pub fn world() -> ScenarioWorld {
-    let mut blockchain = ScenarioWorld::new();
+// ============================================
+// TEST STATE STRUCTURE
+// ============================================
 
-    blockchain.register_contract(LENDING_POOL_PATH, controller::ContractBuilder);
-    blockchain.register_contract(LIQUIDITY_POOL_PATH, liquidity_layer::ContractBuilder);
-    blockchain.register_contract(PRICE_AGGREGATOR_PATH, price_aggregator::ContractBuilder);
-    blockchain.register_contract(
-        EGLD_LIQUID_STAKING_PATH,
-        rs_liquid_staking_sc::ContractBuilder,
-    );
-    blockchain.register_contract(XOXNO_LIQUID_STAKING_PATH, rs_liquid_xoxno::ContractBuilder);
-    blockchain.register_contract(PAIR_PATH, pair::ContractBuilder);
-
-    blockchain.register_contract(SAFE_PRICE_VIEW_PATH, pair::ContractBuilder);
-
-    blockchain.register_contract(FLASH_MOCK_PATH, flash_mock::ContractBuilder);
-
-    blockchain
-}
-
+/// Main test state structure containing all the smart contract instances and addresses
 pub struct LendingPoolTestState {
     pub world: ScenarioWorld,
     pub lending_pool_whitebox: WhiteboxContract<controller::ContractObj<DebugApi>>,
@@ -83,6 +73,7 @@ impl Default for LendingPoolTestState {
 }
 
 impl LendingPoolTestState {
+    /// Initialize a new test state with all contracts deployed and configured
     pub fn new() -> Self {
         let mut world = world();
         setup_owner(&mut world);
@@ -139,212 +130,11 @@ impl LendingPoolTestState {
         }
     }
 
-    // pub fn calculate_max_leverage(
-    //     &mut self,
-    //     initial_deposit: BigUint<StaticApi>,
-    //     target_hf: BigUint<StaticApi>,
-    //     reserves: BigUint<StaticApi>,
-    //     reservers_factor: BigUint<StaticApi>,
-    // ) -> BigUint<StaticApi> {
-    //     // let max_liquidate_amount = self
-    //     //     .world
-    //     //     .query()
-    //     //     .to(self.lending_sc.clone())
-    //     //     .typed(proxy_lending_pool::ControllerProxy)
-    //     //     .calculate_max_leverage(
-    //     //         &initial_deposit,
-    //     //         &target_hf,
-    //     //         Option::<EModeCategory<StaticApi>>::None,
-    //     //         get_usdc_config().config,
-    //     //         &reserves,
-    //     //         &reservers_factor,
-    //     //     )
-    //     //     .returns(ReturnsResult)
-    //     //     .run();
+    // ============================================
+    // CORE LENDING OPERATIONS
+    // ============================================
 
-    //     // println!("Max Leverage: {:?}", max_liquidate_amount);
-    //     // return max_liquidate_amount;
-    // }
-
-    pub fn edit_asset_config(
-        &mut self,
-        asset: EgldOrEsdtTokenIdentifier<StaticApi>,
-        loan_to_value: &BigUint<StaticApi>,
-        liquidation_threshold: &BigUint<StaticApi>,
-        liquidation_bonus: &BigUint<StaticApi>,
-        liquidation_fees: &BigUint<StaticApi>,
-        is_isolated_asset: bool,
-        isolation_debt_ceiling_usd: &BigUint<StaticApi>,
-        is_siloed_borrowing: bool,
-        is_flashloanable: bool,
-        flashloan_fee: &BigUint<StaticApi>,
-        is_collateralizable: bool,
-        is_borrowable: bool,
-        isolation_borrow_enabled: bool,
-        borrow_cap: &BigUint<StaticApi>,
-        supply_cap: &BigUint<StaticApi>,
-        error_message: Option<&[u8]>,
-    ) {
-        let call = self
-            .world
-            .tx()
-            .from(OWNER_ADDRESS.to_managed_address())
-            .to(&self.lending_sc)
-            .typed(proxy_lending_pool::ControllerProxy)
-            .edit_asset_config(
-                asset,
-                loan_to_value,
-                liquidation_threshold,
-                liquidation_bonus,
-                liquidation_fees,
-                is_isolated_asset,
-                isolation_debt_ceiling_usd,
-                is_siloed_borrowing,
-                is_flashloanable,
-                flashloan_fee,
-                is_collateralizable,
-                is_borrowable,
-                isolation_borrow_enabled,
-                borrow_cap,
-                supply_cap,
-            );
-        if error_message.is_some() {
-            call.returns(ExpectMessage(
-                core::str::from_utf8(error_message.unwrap()).unwrap(),
-            ))
-            .run();
-        } else {
-            call.run();
-        }
-    }
-
-    pub fn get_usd_price(
-        &mut self,
-        token_id: TestTokenIdentifier,
-    ) -> ManagedDecimal<StaticApi, NumDecimals> {
-        self.world
-            .query()
-            .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::ControllerProxy)
-            .get_usd_price(token_id)
-            .returns(ReturnsResult)
-            .run()
-    }
-
-    pub fn get_egld_price(
-        &mut self,
-        token_id: TestTokenIdentifier,
-    ) -> ManagedDecimal<StaticApi, NumDecimals> {
-        self.world
-            .query()
-            .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::ControllerProxy)
-            .get_egld_price(token_id)
-            .returns(ReturnsResult)
-            .run()
-    }
-
-    pub fn flash_loan(
-        &mut self,
-        from: &TestAddress,
-        token: &TestTokenIdentifier,
-        amount: BigUint<StaticApi>,
-        contract: ManagedAddress<StaticApi>,
-        endpoint: ManagedBuffer<StaticApi>,
-        arguments: ManagedArgBuffer<StaticApi>,
-    ) {
-        self.world
-            .tx()
-            .from(from.to_managed_address())
-            .to(&self.lending_sc)
-            .typed(proxy_lending_pool::ControllerProxy)
-            .flash_loan(token, amount, contract, endpoint, arguments)
-            .run();
-    }
-
-    pub fn flash_loan_error(
-        &mut self,
-        from: &TestAddress,
-        token: &TestTokenIdentifier,
-        amount: BigUint<StaticApi>,
-        contract: ManagedAddress<StaticApi>,
-        endpoint: ManagedBuffer<StaticApi>,
-        arguments: ManagedArgBuffer<StaticApi>,
-        error_message: &[u8],
-    ) {
-        self.world
-            .tx()
-            .from(from.to_managed_address())
-            .to(&self.lending_sc)
-            .typed(proxy_lending_pool::ControllerProxy)
-            .flash_loan(token, amount, contract, endpoint, arguments)
-            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
-            .run();
-    }
-
-    pub fn get_usd_price_error(&mut self, token_id: TestTokenIdentifier, error_message: &[u8]) {
-        self.world
-            .query()
-            .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::ControllerProxy)
-            .get_usd_price(token_id)
-            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
-            .run();
-    }
-    
-    pub fn add_new_market(
-        &mut self,
-        token_id: EgldOrEsdtTokenIdentifier<StaticApi>,
-        config: AssetConfig<StaticApi>,
-        max_borrow_rate: u64,
-        base_borrow_rate: u64,
-        slope1: u64,
-        slope2: u64,
-        slope3: u64,
-        mid_utilization: u64,
-        optimal_utilization: u64,
-        reserve_factor: u64,
-        asset_decimals: usize,
-    ) -> ManagedAddress<StaticApi> {
-        let market_address = self
-            .world
-            .tx()
-            .from(OWNER_ADDRESS)
-            .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::ControllerProxy)
-            .create_liquidity_pool(
-                token_id,
-                max_borrow_rate,
-                base_borrow_rate,
-                slope1,
-                slope2,
-                slope3,
-                mid_utilization,
-                optimal_utilization,
-                reserve_factor,
-                config.loan_to_value.into_raw_units(),
-                config.liquidation_threshold.into_raw_units(),
-                config.liquidation_bonus.into_raw_units(),
-                config.liquidation_fees.into_raw_units(),
-                config.is_collateralizable,
-                config.is_borrowable,
-                config.is_isolated_asset,
-                config.isolation_debt_ceiling_usd.into_raw_units(),
-                config.flashloan_fee.into_raw_units(),
-                config.is_siloed_borrowing,
-                config.is_flashloanable,
-                config.isolation_borrow_enabled,
-                asset_decimals,
-                OptionalValue::from(config.borrow_cap),
-                OptionalValue::from(config.supply_cap),
-            )
-            .returns(ReturnsResult)
-            .run();
-
-        market_address
-    }
-
-    // Core lending operations
+    /// Supply asset to the lending pool
     pub fn supply_asset(
         &mut self,
         from: &TestAddress,
@@ -380,7 +170,7 @@ impl LendingPoolTestState {
             .run();
     }
 
-    // Core lending operations
+    /// Supply asset with error expectation
     pub fn supply_asset_error(
         &mut self,
         from: &TestAddress,
@@ -418,7 +208,61 @@ impl LendingPoolTestState {
             .run();
     }
 
-    // Core lending operations
+    /// Supply multiple assets in bulk
+    pub fn supply_bulk(
+        &mut self,
+        from: &TestAddress,
+        account_nonce: OptionalValue<u64>,
+        e_mode_category: OptionalValue<u8>,
+        assets: ManagedVec<StaticApi, EsdtTokenPayment<StaticApi>>,
+    ) {
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .supply(
+                match account_nonce.into_option() {
+                    Some(nonce) => OptionalValue::Some(nonce),
+                    None => OptionalValue::Some(0),
+                },
+                e_mode_category,
+            )
+            .multi_esdt(assets)
+            .run();
+    }
+
+    /// Supply bulk assets with error expectation
+    pub fn supply_bulk_error(
+        &mut self,
+        from: &TestAddress,
+        account_nonce: OptionalValue<u64>,
+        e_mode_category: OptionalValue<u8>,
+        _is_vault: bool,
+        assets: ManagedVec<StaticApi, EsdtTokenPayment<StaticApi>>,
+        error_message: &[u8],
+    ) {
+        let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
+        vec.extend(assets);
+
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .supply(
+                match account_nonce.into_option() {
+                    Some(nonce) => OptionalValue::Some(nonce),
+                    None => OptionalValue::Some(0),
+                },
+                e_mode_category,
+            )
+            .multi_esdt(vec)
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
+    /// Supply empty asset with error expectation
     pub fn supply_empty_asset_error(
         &mut self,
         from: &TestAddress,
@@ -443,36 +287,7 @@ impl LendingPoolTestState {
             .run();
     }
 
-    pub fn supply_bulk_error(
-        &mut self,
-        from: &TestAddress,
-        account_nonce: OptionalValue<u64>,
-        e_mode_category: OptionalValue<u8>,
-        _is_vault: bool,
-        assets: ManagedVec<StaticApi, EsdtTokenPayment<StaticApi>>,
-        error_message: &[u8],
-    ) {
-        let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
-
-        vec.extend(assets);
-
-        self.world
-            .tx()
-            .from(from.to_managed_address())
-            .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::ControllerProxy)
-            .supply(
-                match account_nonce.into_option() {
-                    Some(nonce) => OptionalValue::Some(nonce),
-                    None => OptionalValue::Some(0),
-                },
-                e_mode_category,
-            )
-            .multi_esdt(vec)
-            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
-            .run();
-    }
-
+    /// Supply with no payments error
     pub fn empty_supply_asset_error(
         &mut self,
         from: &TestAddress,
@@ -490,6 +305,7 @@ impl LendingPoolTestState {
             .run();
     }
 
+    /// Supply asset with invalid payment count
     pub fn supply_asset_error_payment_count(
         &mut self,
         from: &TestAddress,
@@ -514,7 +330,6 @@ impl LendingPoolTestState {
             0,
             amount_to_transfer.clone(),
         ));
-
         vec.push(EsdtTokenPayment::new(
             token_id.to_token_identifier(),
             0,
@@ -538,21 +353,7 @@ impl LendingPoolTestState {
             .run();
     }
 
-    pub fn claim_revenue(&mut self, token_id: TestTokenIdentifier) {
-        let mut array = MultiValueEncoded::new();
-        array.push(EgldOrEsdtTokenIdentifier::esdt(
-            token_id.to_token_identifier(),
-        ));
-        self.world
-            .tx()
-            .from(OWNER_ADDRESS)
-            .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::ControllerProxy)
-            .claim_revenue(array)
-            .run();
-    }
-
-    // Withdraw asset
+    /// Withdraw asset from the lending pool
     pub fn withdraw_asset(
         &mut self,
         from: &TestAddress,
@@ -576,6 +377,7 @@ impl LendingPoolTestState {
         let mut array: MultiValueEncoded<StaticApi, EgldOrEsdtTokenPayment<StaticApi>> =
             MultiValueEncoded::new();
         array.push(asset);
+
         self.world
             .tx()
             .from(from.to_managed_address())
@@ -586,6 +388,7 @@ impl LendingPoolTestState {
             .run();
     }
 
+    /// Withdraw asset denominated in base units (no decimal conversion)
     pub fn withdraw_asset_den(
         &mut self,
         from: &TestAddress,
@@ -607,6 +410,7 @@ impl LendingPoolTestState {
         let mut array: MultiValueEncoded<StaticApi, EgldOrEsdtTokenPayment<StaticApi>> =
             MultiValueEncoded::new();
         array.push(asset);
+
         self.world
             .tx()
             .from(from.to_managed_address())
@@ -617,6 +421,30 @@ impl LendingPoolTestState {
             .run();
     }
 
+    /// Withdraw multiple assets
+    pub fn withdraw_assets(
+        &mut self,
+        from: &TestAddress,
+        assets: MultiValueEncoded<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
+        account_nonce: u64,
+    ) {
+        let transfer = EsdtTokenPayment::new(
+            ACCOUNT_TOKEN.to_token_identifier(),
+            account_nonce,
+            BigUint::from(1u64),
+        );
+
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .withdraw(assets)
+            .esdt(transfer)
+            .run();
+    }
+
+    /// Withdraw asset with error expectation
     pub fn withdraw_asset_error(
         &mut self,
         from: &TestAddress,
@@ -641,6 +469,7 @@ impl LendingPoolTestState {
         let mut array: MultiValueEncoded<StaticApi, EgldOrEsdtTokenPayment<StaticApi>> =
             MultiValueEncoded::new();
         array.push(asset);
+
         self.world
             .tx()
             .from(from.to_managed_address())
@@ -652,6 +481,7 @@ impl LendingPoolTestState {
             .run();
     }
 
+    /// Borrow asset from the lending pool
     pub fn borrow_asset(
         &mut self,
         from: &TestAddress,
@@ -668,6 +498,7 @@ impl LendingPoolTestState {
         let mut array: MultiValueEncoded<StaticApi, EgldOrEsdtTokenPayment<StaticApi>> =
             MultiValueEncoded::new();
         array.push(asset);
+
         self.world
             .tx()
             .from(from.to_managed_address())
@@ -678,6 +509,7 @@ impl LendingPoolTestState {
             .run();
     }
 
+    /// Borrow multiple assets
     pub fn borrow_assets(
         &mut self,
         account_nonce: u64,
@@ -694,6 +526,7 @@ impl LendingPoolTestState {
             .run();
     }
 
+    /// Borrow asset with error expectation
     pub fn borrow_asset_error(
         &mut self,
         from: &TestAddress,
@@ -711,6 +544,7 @@ impl LendingPoolTestState {
         let mut array: MultiValueEncoded<StaticApi, EgldOrEsdtTokenPayment<StaticApi>> =
             MultiValueEncoded::new();
         array.push(asset);
+
         self.world
             .tx()
             .from(from.to_managed_address())
@@ -722,6 +556,7 @@ impl LendingPoolTestState {
             .run();
     }
 
+    /// Repay borrowed asset
     pub fn repay_asset(
         &mut self,
         from: &TestAddress,
@@ -730,20 +565,22 @@ impl LendingPoolTestState {
         account_nonce: u64,
         asset_decimals: usize,
     ) {
-        let amount_to_repay = amount.mul(BigUint::from(10u64).pow(asset_decimals as u32));
-
-        let transfer = EsdtTokenPayment::new(token.to_token_identifier(), 0, amount_to_repay);
-
+        let amount_to_transfer = amount.mul(BigUint::from(10u64).pow(asset_decimals as u32));
         self.world
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .repay(account_nonce)
-            .esdt(transfer)
+            .esdt(EsdtTokenPayment::new(
+                token.to_token_identifier(),
+                0,
+                amount_to_transfer,
+            ))
             .run();
     }
 
+    /// Repay asset denominated in base units
     pub fn repay_asset_deno(
         &mut self,
         from: &TestAddress,
@@ -751,18 +588,47 @@ impl LendingPoolTestState {
         amount: BigUint<StaticApi>,
         account_nonce: u64,
     ) {
-        let transfer = EsdtTokenPayment::new(token.to_token_identifier(), 0, amount);
-
         self.world
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .repay(account_nonce)
-            .esdt(transfer)
+            .esdt(EsdtTokenPayment::new(
+                token.to_token_identifier(),
+                0,
+                amount,
+            ))
             .run();
     }
 
+    /// Repay asset with error expectation
+    pub fn repay_asset_error(
+        &mut self,
+        from: &TestAddress,
+        token: &TestTokenIdentifier,
+        amount: BigUint<StaticApi>,
+        account_nonce: u64,
+        asset_decimals: usize,
+        error_message: &[u8],
+    ) {
+        let amount_to_transfer = amount.mul(BigUint::from(10u64).pow(asset_decimals as u32));
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .repay(account_nonce)
+            .esdt(EsdtTokenPayment::new(
+                token.to_token_identifier(),
+                0,
+                amount_to_transfer,
+            ))
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
+    /// Liquidate an account position
     pub fn liquidate_account(
         &mut self,
         from: &TestAddress,
@@ -772,11 +638,12 @@ impl LendingPoolTestState {
         asset_decimals: usize,
     ) {
         let amount_to_transfer = amount.mul(BigUint::from(10u64).pow(asset_decimals as u32));
-        let transfer = EsdtTokenPayment::new(
+        let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
+        vec.push(EsdtTokenPayment::new(
             liquidator_payment.to_token_identifier(),
             0,
             amount_to_transfer,
-        );
+        ));
 
         self.world
             .tx()
@@ -784,10 +651,11 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .liquidate(account_nonce)
-            .esdt(transfer)
+            .multi_esdt(vec)
             .run();
     }
 
+    /// Liquidate account denominated in base units
     pub fn liquidate_account_den(
         &mut self,
         from: &TestAddress,
@@ -795,11 +663,12 @@ impl LendingPoolTestState {
         amount_to_transfer: BigUint<StaticApi>,
         account_nonce: u64,
     ) {
-        let transfer = EsdtTokenPayment::new(
+        let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
+        vec.push(EsdtTokenPayment::new(
             liquidator_payment.to_token_identifier(),
             0,
             amount_to_transfer,
-        );
+        ));
 
         self.world
             .tx()
@@ -807,10 +676,11 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .liquidate(account_nonce)
-            .esdt(transfer)
+            .multi_esdt(vec)
             .run();
     }
 
+    /// Liquidate account with multiple payments
     pub fn liquidate_account_dem(
         &mut self,
         from: &TestAddress,
@@ -818,7 +688,12 @@ impl LendingPoolTestState {
         amount: BigUint<StaticApi>,
         account_nonce: u64,
     ) {
-        let transfer = EsdtTokenPayment::new(liquidator_payment.to_token_identifier(), 0, amount);
+        let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
+        vec.push(EsdtTokenPayment::new(
+            liquidator_payment.to_token_identifier(),
+            0,
+            amount,
+        ));
 
         self.world
             .tx()
@@ -826,284 +701,129 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .liquidate(account_nonce)
-            .esdt(transfer)
+            .multi_esdt(vec)
             .run();
     }
 
+    /// Liquidate account with bulk payments
     pub fn liquidate_account_dem_bulk(
         &mut self,
         from: &TestAddress,
         payments: Vec<(&TestTokenIdentifier, &BigUint<StaticApi>)>,
         account_nonce: u64,
     ) {
-        let mut assets = ManagedVec::new();
+        let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
         for (token, amount) in payments {
-            let transfer = EsdtTokenPayment::new(token.to_token_identifier(), 0, amount.clone());
-            assets.push(transfer);
+            vec.push(EsdtTokenPayment::new(
+                token.to_token_identifier(),
+                0,
+                amount.clone(),
+            ));
         }
+
         self.world
             .tx()
             .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .liquidate(account_nonce)
-            .multi_esdt(assets)
+            .multi_esdt(vec)
             .run();
     }
 
-    // Price aggregator operations
-    pub fn change_price(&mut self, from: &[u8], price: u64, timestamp: u64) {
-        let oracles = vec![
-            ORACLE_ADDRESS_1,
-            ORACLE_ADDRESS_2,
-            ORACLE_ADDRESS_3,
-            ORACLE_ADDRESS_4,
-        ];
-        for oracle in oracles {
-            self.world
-                .tx()
-                .from(oracle)
-                .to(self.price_aggregator_sc.clone())
-                .typed(proxy_aggregator::PriceAggregatorProxy)
-                .submit(
-                    ManagedBuffer::from(from),
-                    ManagedBuffer::from(DOLLAR_TICKER),
-                    timestamp,
-                    BigUint::from(price).mul(BigUint::from(WAD)),
-                )
-                .run();
-        }
-    }
-
-    pub fn change_timestamp(&mut self, timestamp: u64) {
-        self.world.current_block().block_timestamp(timestamp);
-        self.change_price(EGLD_TICKER, EGLD_PRICE_IN_DOLLARS, timestamp);
-        self.change_price(SEGLD_TICKER, SEGLD_PRICE_IN_DOLLARS, timestamp);
-        self.change_price(LEGLD_TICKER, LEGLD_PRICE_IN_DOLLARS, timestamp);
-        self.change_price(USDC_TICKER, USDC_PRICE_IN_DOLLARS, timestamp);
-        self.change_price(XEGLD_TICKER, XEGLD_PRICE_IN_DOLLARS, timestamp);
-        self.change_price(ISOLATED_TICKER, ISOLATED_PRICE_IN_DOLLARS, timestamp);
-        self.change_price(SILOED_TICKER, SILOED_PRICE_IN_DOLLARS, timestamp);
-        self.change_price(CAPPED_TICKER, CAPPED_PRICE_IN_DOLLARS, timestamp);
-        self.change_price(XOXNO_TICKER, XOXNO_PRICE_IN_DOLLARS, timestamp);
-    }
-
-    // Price aggregator operations
-    pub fn submit_price_denom(&mut self, from: &[u8], price: BigUint<StaticApi>, timestamp: u64) {
-        let oracles = vec![
-            ORACLE_ADDRESS_1,
-            ORACLE_ADDRESS_2,
-            ORACLE_ADDRESS_3,
-            ORACLE_ADDRESS_4,
-        ];
-        for oracle in oracles {
-            self.world
-                .tx()
-                .from(oracle)
-                .to(self.price_aggregator_sc.clone())
-                .typed(proxy_aggregator::PriceAggregatorProxy)
-                .submit(
-                    ManagedBuffer::from(from),
-                    ManagedBuffer::from(DOLLAR_TICKER),
-                    timestamp,
-                    &price,
-                )
-                .run();
-        }
-    }
-
-    pub fn get_market_utilization(
+    /// Liquidate account with error expectation
+    pub fn liquidate_account_error(
         &mut self,
-        market_address: ManagedAddress<StaticApi>,
-    ) -> ManagedDecimal<StaticApi, usize> {
-        let utilization_ratio = self
-            .world
-            .query()
-            .to(market_address)
-            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
-            .get_capital_utilisation()
-            .returns(ReturnsResult)
-            .run();
+        from: &TestAddress,
+        liquidator_payment: &TestTokenIdentifier,
+        amount: BigUint<StaticApi>,
+        account_nonce: u64,
+        asset_decimals: usize,
+        error_message: &[u8],
+    ) {
+        let amount_to_transfer = amount.mul(BigUint::from(10u64).pow(asset_decimals as u32));
+        let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
+        vec.push(EsdtTokenPayment::new(
+            liquidator_payment.to_token_identifier(),
+            0,
+            amount_to_transfer,
+        ));
 
-        utilization_ratio
-    }
-
-    pub fn get_market_revenue(
-        &mut self,
-        market_address: ManagedAddress<StaticApi>,
-    ) -> ManagedDecimal<StaticApi, NumDecimals> {
-        let revenue = self
-            .world
-            .query()
-            .to(market_address)
-            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
-            .get_protocol_revenue()
-            .returns(ReturnsResult)
-            .run();
-
-        revenue
-    }
-
-    pub fn get_market_total_debt(
-        &mut self,
-        market_address: ManagedAddress<StaticApi>,
-    ) -> ManagedDecimal<StaticApi, NumDecimals> {
-        let borrowed = self
-            .world
-            .query()
-            .to(market_address)
-            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
-            .borrowed()
-            .returns(ReturnsResult)
-            .run();
-
-        borrowed
-    }
-
-    pub fn get_market_total_deposit(
-        &mut self,
-        market_address: ManagedAddress<StaticApi>,
-    ) -> ManagedDecimal<StaticApi, NumDecimals> {
-        let supplied = self
-            .world
-            .query()
-            .to(market_address)
-            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
-            .supplied()
-            .returns(ReturnsResult)
-            .run();
-
-        supplied
-    }
-
-    pub fn get_market_borrow_index(
-        &mut self,
-        market_address: ManagedAddress<StaticApi>,
-    ) -> ManagedDecimal<StaticApi, NumDecimals> {
-        let borrow_index = self
-            .world
-            .query()
-            .to(market_address)
-            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
-            .borrow_index()
-            .returns(ReturnsResult)
-            .run();
-
-        borrow_index
-    }
-
-    pub fn get_market_supply_index(
-        &mut self,
-        market_address: ManagedAddress<StaticApi>,
-    ) -> ManagedDecimal<StaticApi, NumDecimals> {
-        let supply_index = self
-            .world
-            .query()
-            .to(market_address)
-            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
-            .supply_index()
-            .returns(ReturnsResult)
-            .run();
-
-        supply_index
-    }
-
-    pub fn get_market_reserves(
-        &mut self,
-        market_address: ManagedAddress<StaticApi>,
-    ) -> ManagedDecimal<StaticApi, NumDecimals> {
-        let reserves = self
-            .world
-            .query()
-            .to(market_address)
-            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
-            .get_reserves()
-            .returns(ReturnsResult)
-            .run();
-
-        reserves
-    }
-    
-    pub fn get_market_borrow_rate(
-        &mut self,
-        market_address: ManagedAddress<StaticApi>,
-    ) -> ManagedDecimal<StaticApi, usize> {
-        let borrow_rate = self
-            .world
-            .query()
-            .to(market_address)
-            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
-            .get_borrow_rate()
-            .returns(ReturnsResult)
-            .run();
-
-        borrow_rate
-    }
-    
-    pub fn get_account_health_factor(
-        &mut self,
-        account_position: u64,
-    ) -> ManagedDecimal<StaticApi, NumDecimals> {
-        let health_factor = self
-            .world
-            .query()
+        self.world
+            .tx()
+            .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .get_health_factor(account_position)
-            .returns(ReturnsResult)
+            .liquidate(account_nonce)
+            .multi_esdt(vec)
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
-
-        health_factor
     }
 
-    pub fn can_be_liquidated(&mut self, account_position: u64) -> bool {
-        let can_be_liquidated = self
-            .world
-            .query()
+    /// Execute flash loan
+    pub fn flash_loan(
+        &mut self,
+        from: &TestAddress,
+        token: &TestTokenIdentifier,
+        amount: BigUint<StaticApi>,
+        contract: ManagedAddress<StaticApi>,
+        endpoint: ManagedBuffer<StaticApi>,
+        arguments: ManagedArgBuffer<StaticApi>,
+    ) {
+        self.world
+            .tx()
+            .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .can_be_liquidated(account_position)
-            .returns(ReturnsResult)
+            .flash_loan(
+                token.to_token_identifier(),
+                amount,
+                contract,
+                endpoint,
+                arguments,
+            )
             .run();
-
-        can_be_liquidated
-    }
-    
-    pub fn get_market_supply_rate(
-        &mut self,
-        market_address: ManagedAddress<StaticApi>,
-    ) -> ManagedDecimal<StaticApi, usize> {
-        let supply_rate = self
-            .world
-            .query()
-            .to(market_address)
-            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
-            .get_deposit_rate()
-            .returns(ReturnsResult)
-            .run();
-
-        supply_rate
     }
 
-    pub fn deposit_positions(
+    /// Execute flash loan with error expectation
+    pub fn flash_loan_error(
         &mut self,
-        nonce: u64,
-    ) -> MultiValueEncoded<
-        StaticApi,
-        MultiValue2<EgldOrEsdtTokenIdentifier<StaticApi>, AccountPosition<StaticApi>>,
-    > {
-        let query = self
-            .world
-            .query()
+        from: &TestAddress,
+        token: &TestTokenIdentifier,
+        amount: BigUint<StaticApi>,
+        contract: ManagedAddress<StaticApi>,
+        endpoint: ManagedBuffer<StaticApi>,
+        arguments: ManagedArgBuffer<StaticApi>,
+        error_message: &[u8],
+    ) {
+        self.world
+            .tx()
+            .from(from.to_managed_address())
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .positions(nonce, AccountPositionType::Deposit)
-            .returns(ReturnsResult)
+            .flash_loan(
+                token.to_token_identifier(),
+                amount,
+                contract,
+                endpoint,
+                arguments,
+            )
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
-
-        query
     }
 
+    /// Clean bad debt from an account
+    pub fn clean_bad_debt(&mut self, account_position: u64) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .clean_bad_debt(account_position)
+            .run();
+    }
+
+    /// Update account threshold
     pub fn update_account_threshold(
         &mut self,
         asset_id: EgldOrEsdtTokenIdentifier<StaticApi>,
@@ -1119,16 +839,15 @@ impl LendingPoolTestState {
             .typed(proxy_lending_pool::ControllerProxy)
             .update_account_threshold(asset_id, has_risks, account_nonces);
 
-        if error_message.is_some() {
-            call.returns(ExpectMessage(
-                core::str::from_utf8(error_message.unwrap()).unwrap(),
-            ))
-            .run();
+        if let Some(err_msg) = error_message {
+            call.returns(ExpectMessage(core::str::from_utf8(err_msg).unwrap()))
+                .run();
         } else {
             call.run();
-        };
+        }
     }
 
+    /// Update market indexes
     pub fn update_markets(
         &mut self,
         from: &TestAddress,
@@ -1143,24 +862,861 @@ impl LendingPoolTestState {
             .run();
     }
 
-    // View functions
+    // ============================================
+    // CONFIGURATION ENDPOINTS
+    // ============================================
+
+    /// Register account token
+    pub fn register_account_token(
+        &mut self,
+        token_name: ManagedBuffer<StaticApi>,
+        ticker: ManagedBuffer<StaticApi>,
+        payment_amount: BigUint<StaticApi>,
+    ) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .register_account_token(token_name, ticker)
+            .egld(payment_amount)
+            .run();
+    }
+
+    /// Set token oracle configuration
+    pub fn set_token_oracle(
+        &mut self,
+        market_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
+        decimals: usize,
+        contract_address: &ManagedAddress<StaticApi>,
+        pricing_method: PricingMethod,
+        oracle_type: OracleType,
+        source: ExchangeSource,
+        first_tolerance: BigUint<StaticApi>,
+        last_tolerance: BigUint<StaticApi>,
+        max_price_stale_seconds: u64,
+        one_dex_pair_id: OptionalValue<usize>,
+    ) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .set_token_oracle(
+                market_token.clone(),
+                decimals,
+                contract_address.clone(),
+                pricing_method,
+                oracle_type,
+                source,
+                first_tolerance,
+                last_tolerance,
+                max_price_stale_seconds,
+                one_dex_pair_id,
+            )
+            .run();
+    }
+
+    /// Set token oracle configuration with error
+    pub fn set_token_oracle_error(
+        &mut self,
+        market_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
+        decimals: usize,
+        contract_address: &ManagedAddress<StaticApi>,
+        pricing_method: PricingMethod,
+        oracle_type: OracleType,
+        source: ExchangeSource,
+        first_tolerance: BigUint<StaticApi>,
+        last_tolerance: BigUint<StaticApi>,
+        max_price_stale_seconds: u64,
+        one_dex_pair_id: OptionalValue<usize>,
+        error_message: &[u8],
+    ) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .set_token_oracle(
+                market_token.clone(),
+                decimals,
+                contract_address.clone(),
+                pricing_method,
+                oracle_type,
+                source,
+                first_tolerance,
+                last_tolerance,
+                max_price_stale_seconds,
+                one_dex_pair_id,
+            )
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
+    /// Edit token oracle tolerance
+    pub fn edit_token_oracle_tolerance(
+        &mut self,
+        market_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
+        first_tolerance: BigUint<StaticApi>,
+        last_tolerance: BigUint<StaticApi>,
+    ) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .edit_token_oracle_tolerance(market_token.clone(), first_tolerance, last_tolerance)
+            .run();
+    }
+
+    /// Edit token oracle tolerance with error
+    pub fn edit_token_oracle_tolerance_error(
+        &mut self,
+        market_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
+        first_tolerance: BigUint<StaticApi>,
+        last_tolerance: BigUint<StaticApi>,
+        error_message: &[u8],
+    ) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .edit_token_oracle_tolerance(market_token.clone(), first_tolerance, last_tolerance)
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
+    /// Set price aggregator address
+    pub fn set_aggregator(&mut self, aggregator: ManagedAddress<StaticApi>) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .set_aggregator(aggregator)
+            .run();
+    }
+
+    /// Set price aggregator address with error
+    pub fn set_aggregator_error(&mut self, aggregator: ManagedAddress<StaticApi>, error_message: &[u8]) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .set_aggregator(aggregator)
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
+    /// Set swap router address
+    pub fn set_swap_router(&mut self, address: ManagedAddress<StaticApi>) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .set_swap_router(address)
+            .run();
+    }
+
+    /// Set swap router address with error
+    pub fn set_swap_router_error(&mut self, address: ManagedAddress<StaticApi>, error_message: &[u8]) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .set_swap_router(address)
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
+    /// Set accumulator address
+    pub fn set_accumulator(&mut self, accumulator: ManagedAddress<StaticApi>) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .set_accumulator(accumulator)
+            .run();
+    }
+
+    /// Set accumulator address with error
+    pub fn set_accumulator_error(&mut self, accumulator: ManagedAddress<StaticApi>, error_message: &[u8]) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .set_accumulator(accumulator)
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
+    /// Set safe price view address
+    pub fn set_safe_price_view(&mut self, safe_view_address: ManagedAddress<StaticApi>) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .set_safe_price_view(safe_view_address)
+            .run();
+    }
+
+    /// Set safe price view address with error
+    pub fn set_safe_price_view_error(&mut self, safe_view_address: ManagedAddress<StaticApi>, error_message: &[u8]) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .set_safe_price_view(safe_view_address)
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
+    /// Set liquidity pool template address
+    pub fn set_liquidity_pool_template(&mut self, address: ManagedAddress<StaticApi>) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .set_liquidity_pool_template(address)
+            .run();
+    }
+
+    /// Set liquidity pool template address with error
+    pub fn set_liquidity_pool_template_error(&mut self, address: ManagedAddress<StaticApi>, error_message: &[u8]) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .set_liquidity_pool_template(address)
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
+    // ============================================
+    // MARKET MANAGEMENT ENDPOINTS
+    // ============================================
+
+    /// Claim revenue from a market
+    pub fn claim_revenue(&mut self, token_id: TestTokenIdentifier) {
+        let mut array = MultiValueEncoded::new();
+        array.push(EgldOrEsdtTokenIdentifier::esdt(
+            token_id.to_token_identifier(),
+        ));
+
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .claim_revenue(array)
+            .run();
+    }
+
+    /// Add a new market (create liquidity pool)
+    pub fn add_new_market(
+        &mut self,
+        token_id: EgldOrEsdtTokenIdentifier<StaticApi>,
+        config: AssetConfig<StaticApi>,
+        max_borrow_rate: u64,
+        base_borrow_rate: u64,
+        slope1: u64,
+        slope2: u64,
+        slope3: u64,
+        mid_utilization: u64,
+        optimal_utilization: u64,
+        reserve_factor: u64,
+        asset_decimals: usize,
+    ) -> ManagedAddress<StaticApi> {
+        let pool_address = self
+            .world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .create_liquidity_pool(
+                token_id.clone(),
+                BigUint::from(max_borrow_rate),
+                BigUint::from(base_borrow_rate),
+                BigUint::from(slope1),
+                BigUint::from(slope2),
+                BigUint::from(slope3),
+                BigUint::from(mid_utilization),
+                BigUint::from(optimal_utilization),
+                BigUint::from(reserve_factor),
+                config.loan_to_value.into_raw_units(),
+                config.liquidation_threshold.into_raw_units(),
+                config.liquidation_bonus.into_raw_units(),
+                config.liquidation_fees.into_raw_units(),
+                config.is_collateralizable,
+                config.is_borrowable,
+                config.is_isolated_asset,
+                config.isolation_debt_ceiling_usd.into_raw_units(),
+                config.flashloan_fee.into_raw_units(),
+                config.is_siloed_borrowing,
+                config.is_flashloanable,
+                config.isolation_borrow_enabled,
+                asset_decimals,
+                OptionalValue::from(config.borrow_cap),
+                OptionalValue::from(config.supply_cap),
+            )
+            .returns(ReturnsNewManagedAddress)
+            .run();
+
+        if token_id.is_egld() {
+            world().set_esdt_balance(
+                pool_address.clone(),
+                EGLD_TICKER,
+                &BigUint::from(10u64).pow(asset_decimals as u32) * 100000000u64,
+            );
+        } else {
+            let token_bytes = token_id
+                .as_esdt_option()
+                .unwrap()
+                .as_managed_buffer()
+                .to_boxed_bytes();
+            world().set_esdt_balance(
+                pool_address.clone(),
+                token_bytes.as_slice(),
+                &BigUint::from(10u64).pow(asset_decimals as u32) * 100000000u64,
+            );
+        }
+
+        pool_address
+    }
+
+    /// Create liquidity pool
+    pub fn create_liquidity_pool(
+        &mut self,
+        token_id: EgldOrEsdtTokenIdentifier<StaticApi>,
+        config: AssetConfig<StaticApi>,
+        max_borrow_rate: u64,
+        base_borrow_rate: u64,
+        slope1: u64,
+        slope2: u64,
+        slope3: u64,
+        mid_utilization: u64,
+        optimal_utilization: u64,
+        reserve_factor: u64,
+    ) -> ManagedAddress<StaticApi> {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .create_liquidity_pool(
+                token_id,
+                BigUint::from(max_borrow_rate),
+                BigUint::from(base_borrow_rate),
+                BigUint::from(slope1),
+                BigUint::from(slope2),
+                BigUint::from(slope3),
+                BigUint::from(mid_utilization),
+                BigUint::from(optimal_utilization),
+                BigUint::from(reserve_factor),
+                config.loan_to_value.into_raw_units(),
+                config.liquidation_threshold.into_raw_units(),
+                config.liquidation_bonus.into_raw_units(),
+                config.liquidation_fees.into_raw_units(),
+                config.is_collateralizable,
+                config.is_borrowable,
+                config.is_isolated_asset,
+                config.isolation_debt_ceiling_usd.into_raw_units(),
+                config.flashloan_fee.into_raw_units(),
+                config.is_siloed_borrowing,
+                config.is_flashloanable,
+                config.isolation_borrow_enabled,
+                18usize, // Default decimals, should be passed as parameter
+                OptionalValue::from(config.borrow_cap),
+                OptionalValue::from(config.supply_cap),
+            )
+            .returns(ReturnsNewManagedAddress)
+            .run()
+    }
+
+    /// Upgrade liquidity pool configuration
+    pub fn upgrade_liquidity_pool(
+        &mut self,
+        base_asset: &EgldOrEsdtTokenIdentifier<StaticApi>,
+        max_borrow_rate: BigUint<StaticApi>,
+        base_borrow_rate: BigUint<StaticApi>,
+        slope1: BigUint<StaticApi>,
+        slope2: BigUint<StaticApi>,
+        slope3: BigUint<StaticApi>,
+        mid_utilization: BigUint<StaticApi>,
+        optimal_utilization: BigUint<StaticApi>,
+        reserve_factor: BigUint<StaticApi>,
+    ) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .upgrade_liquidity_pool(
+                base_asset.clone(),
+                max_borrow_rate,
+                base_borrow_rate,
+                slope1,
+                slope2,
+                slope3,
+                mid_utilization,
+                optimal_utilization,
+                reserve_factor,
+            )
+            .run();
+    }
+
+    /// Edit asset configuration
+    pub fn edit_asset_config(
+        &mut self,
+        asset: EgldOrEsdtTokenIdentifier<StaticApi>,
+        loan_to_value: &BigUint<StaticApi>,
+        liquidation_threshold: &BigUint<StaticApi>,
+        liquidation_bonus: &BigUint<StaticApi>,
+        liquidation_fees: &BigUint<StaticApi>,
+        is_isolated_asset: bool,
+        isolation_debt_ceiling_usd: &BigUint<StaticApi>,
+        is_siloed_borrowing: bool,
+        is_flashloanable: bool,
+        flashloan_fee: &BigUint<StaticApi>,
+        is_collateralizable: bool,
+        is_borrowable: bool,
+        isolation_borrow_enabled: bool,
+        borrow_cap: &BigUint<StaticApi>,
+        supply_cap: &BigUint<StaticApi>,
+        error_message: Option<&[u8]>,
+    ) {
+        let call = self
+            .world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .edit_asset_config(
+                asset,
+                loan_to_value.clone(),
+                liquidation_threshold.clone(),
+                liquidation_bonus.clone(),
+                liquidation_fees.clone(),
+                is_isolated_asset,
+                isolation_debt_ceiling_usd.clone(),
+                is_siloed_borrowing,
+                is_flashloanable,
+                flashloan_fee.clone(),
+                is_collateralizable,
+                is_borrowable,
+                isolation_borrow_enabled,
+                borrow_cap.clone(),
+                supply_cap.clone(),
+            );
+
+        if let Some(err_msg) = error_message {
+            call.returns(ExpectMessage(core::str::from_utf8(err_msg).unwrap()))
+                .run();
+        } else {
+            call.run();
+        }
+    }
+
+    // ============================================
+    // E-MODE CONFIGURATION
+    // ============================================
+
+    /// Add e-mode category
+    pub fn add_e_mode_category(
+        &mut self,
+        ltv: BigUint<StaticApi>,
+        liquidation_threshold: BigUint<StaticApi>,
+        liquidation_bonus: BigUint<StaticApi>,
+    ) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(&self.lending_sc)
+            .typed(proxy_lending_pool::ControllerProxy)
+            .add_e_mode_category(ltv, liquidation_threshold, liquidation_bonus)
+            .run();
+    }
+
+    /// Add e-mode category with error
+    pub fn add_e_mode_category_error(
+        &mut self,
+        ltv: BigUint<StaticApi>,
+        liquidation_threshold: BigUint<StaticApi>,
+        liquidation_bonus: BigUint<StaticApi>,
+        error_message: &[u8],
+    ) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(&self.lending_sc)
+            .typed(proxy_lending_pool::ControllerProxy)
+            .add_e_mode_category(ltv, liquidation_threshold, liquidation_bonus)
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
+    /// Edit e-mode category
+    pub fn edit_e_mode_category(&mut self, category: EModeCategory<StaticApi>) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(&self.lending_sc)
+            .typed(proxy_lending_pool::ControllerProxy)
+            .edit_e_mode_category(category)
+            .run();
+    }
+
+    /// Edit e-mode category with error
+    pub fn edit_e_mode_category_error(&mut self, category: EModeCategory<StaticApi>, error_message: &[u8]) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(&self.lending_sc)
+            .typed(proxy_lending_pool::ControllerProxy)
+            .edit_e_mode_category(category)
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
+    /// Remove e-mode category
+    pub fn remove_e_mode_category(&mut self, category_id: u8) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(&self.lending_sc)
+            .typed(proxy_lending_pool::ControllerProxy)
+            .remove_e_mode_category(category_id)
+            .run();
+    }
+
+    /// Remove e-mode category with error
+    pub fn remove_e_mode_category_error(&mut self, category_id: u8, error_message: &[u8]) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(&self.lending_sc)
+            .typed(proxy_lending_pool::ControllerProxy)
+            .remove_e_mode_category(category_id)
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
+    /// Add asset to e-mode category
+    pub fn add_asset_to_e_mode_category(
+        &mut self,
+        asset: EgldOrEsdtTokenIdentifier<StaticApi>,
+        category_id: u8,
+        can_be_collateral: bool,
+        can_be_borrowed: bool,
+    ) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(&self.lending_sc)
+            .typed(proxy_lending_pool::ControllerProxy)
+            .add_asset_to_e_mode_category(asset, category_id, can_be_collateral, can_be_borrowed)
+            .run();
+    }
+
+    /// Add asset to e-mode category with error
+    pub fn add_asset_to_e_mode_category_error(
+        &mut self,
+        asset: EgldOrEsdtTokenIdentifier<StaticApi>,
+        category_id: u8,
+        can_be_collateral: bool,
+        can_be_borrowed: bool,
+        error_message: &[u8],
+    ) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(&self.lending_sc)
+            .typed(proxy_lending_pool::ControllerProxy)
+            .add_asset_to_e_mode_category(asset, category_id, can_be_collateral, can_be_borrowed)
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
+    /// Edit asset in e-mode category
+    pub fn edit_asset_in_e_mode_category(
+        &mut self,
+        asset: EgldOrEsdtTokenIdentifier<StaticApi>,
+        category_id: u8,
+        config: EModeAssetConfig,
+    ) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(&self.lending_sc)
+            .typed(proxy_lending_pool::ControllerProxy)
+            .edit_asset_in_e_mode_category(asset, category_id, config)
+            .run();
+    }
+
+    /// Edit asset in e-mode category with error
+    pub fn edit_asset_in_e_mode_category_error(
+        &mut self,
+        asset: EgldOrEsdtTokenIdentifier<StaticApi>,
+        category_id: u8,
+        config: EModeAssetConfig,
+        error_message: &[u8],
+    ) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(&self.lending_sc)
+            .typed(proxy_lending_pool::ControllerProxy)
+            .edit_asset_in_e_mode_category(asset, category_id, config)
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
+    /// Remove asset from e-mode category
+    pub fn remove_asset_from_e_mode_category(
+        &mut self,
+        asset: EgldOrEsdtTokenIdentifier<StaticApi>,
+        category_id: u8,
+    ) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(&self.lending_sc)
+            .typed(proxy_lending_pool::ControllerProxy)
+            .remove_asset_from_e_mode_category(asset, category_id)
+            .run();
+    }
+
+    /// Remove asset from e-mode category with error
+    pub fn remove_asset_from_e_mode_category_error(
+        &mut self,
+        asset: EgldOrEsdtTokenIdentifier<StaticApi>,
+        category_id: u8,
+        error_message: &[u8],
+    ) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(&self.lending_sc)
+            .typed(proxy_lending_pool::ControllerProxy)
+            .remove_asset_from_e_mode_category(asset, category_id)
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
+    // ============================================
+    // STRATEGY ENDPOINTS
+    // ============================================
+
+    /// Multiply position (leverage)
+    pub fn multiply(
+        &mut self,
+        from: &TestAddress,
+        e_mode_category: u8,
+        collateral_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
+        debt_to_flash_loan: BigUint<StaticApi>,
+        debt_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
+        mode: PositionMode,
+        steps: ManagedArgBuffer<StaticApi>,
+        steps_payment: OptionalValue<ManagedArgBuffer<StaticApi>>,
+        payments: ManagedVec<StaticApi, EsdtTokenPayment<StaticApi>>,
+    ) {
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(&self.lending_sc)
+            .typed(proxy_lending_pool::ControllerProxy)
+            .multiply(
+                e_mode_category,
+                collateral_token,
+                debt_to_flash_loan,
+                debt_token,
+                mode,
+                steps,
+                steps_payment,
+            )
+            .multi_esdt(payments)
+            .run();
+    }
+
+    /// Swap debt
+    pub fn swap_debt(
+        &mut self,
+        from: &TestAddress,
+        existing_debt_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
+        new_debt_amount_raw: &BigUint<StaticApi>,
+        new_debt_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
+        steps: ManagedArgBuffer<StaticApi>,
+        account_payment: EsdtTokenPayment<StaticApi>,
+    ) {
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(&self.lending_sc)
+            .typed(proxy_lending_pool::ControllerProxy)
+            .swap_debt(
+                existing_debt_token,
+                new_debt_amount_raw,
+                new_debt_token,
+                steps,
+            )
+            .esdt(account_payment)
+            .run();
+    }
+
+    /// Swap collateral
+    pub fn swap_collateral(
+        &mut self,
+        from: &TestAddress,
+        current_collateral: &EgldOrEsdtTokenIdentifier<StaticApi>,
+        from_amount: BigUint<StaticApi>,
+        new_collateral: &EgldOrEsdtTokenIdentifier<StaticApi>,
+        steps: ManagedArgBuffer<StaticApi>,
+        account_payment: EsdtTokenPayment<StaticApi>,
+    ) {
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(&self.lending_sc)
+            .typed(proxy_lending_pool::ControllerProxy)
+            .swap_collateral(current_collateral, from_amount, new_collateral, steps)
+            .esdt(account_payment)
+            .run();
+    }
+
+    /// Repay debt with collateral
+    pub fn repay_debt_with_collateral(
+        &mut self,
+        from: &TestAddress,
+        from_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
+        from_amount: BigUint<StaticApi>,
+        to_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
+        close_position: bool,
+        steps: OptionalValue<ManagedArgBuffer<StaticApi>>,
+        account_payment: EsdtTokenPayment<StaticApi>,
+    ) {
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(&self.lending_sc)
+            .typed(proxy_lending_pool::ControllerProxy)
+            .repay_debt_with_collateral(from_token, from_amount, to_token, close_position, steps)
+            .esdt(account_payment)
+            .run();
+    }
+
+    // ============================================
+    // VIEW FUNCTIONS - PRICES AND HEALTH
+    // ============================================
+
+    /// Get USD price
+    pub fn get_usd_price(
+        &mut self,
+        token_id: TestTokenIdentifier,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .get_usd_price(token_id)
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get EGLD price
+    pub fn get_egld_price(
+        &mut self,
+        token_id: TestTokenIdentifier,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .get_egld_price(token_id)
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get USD price with error
+    pub fn get_usd_price_error(&mut self, token_id: TestTokenIdentifier, error_message: &[u8]) {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .get_usd_price(token_id)
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
+    // /// Get safe price by timestamp offset
+    // pub fn get_safe_price_by_timestamp_offset(
+    //     &mut self,
+    //     token_id: EgldOrEsdtTokenIdentifier<StaticApi>,
+    //     offset: u64,
+    // ) -> BigUint<StaticApi> {
+    //     self.world
+    //         .query()
+    //         .to(self.lending_sc.clone())
+    //         .typed(proxy_lending_pool::ControllerProxy)
+    //         .get_safe_price_by_timestamp_offset(token_id, offset)
+    //         .returns(ReturnsResult)
+    //         .run()
+    // }
+
+    /// Can be liquidated check
+    pub fn can_be_liquidated(&mut self, account_position: u64) -> bool {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .can_be_liquidated(account_position)
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get account health factor
+    pub fn get_account_health_factor(
+        &mut self,
+        account_position: u64,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .get_health_factor(account_position)
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    // ============================================
+    // VIEW FUNCTIONS - ACCOUNT POSITIONS
+    // ============================================
+
+    /// Get collateral amount for token
     pub fn get_collateral_amount_for_token(
         &mut self,
         account_position: u64,
         token_id: TestTokenIdentifier,
     ) -> ManagedDecimal<StaticApi, NumDecimals> {
-        let collateral_amount = self
-            .world
+        self.world
             .query()
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .get_collateral_amount_for_token(account_position, token_id)
             .returns(ReturnsResult)
-            .run();
-
-        collateral_amount
+            .run()
     }
 
+    /// Get collateral amount for non-existing token
     pub fn get_collateral_amount_for_token_non_existing(
         &mut self,
         account_position: u64,
@@ -1176,23 +1732,22 @@ impl LendingPoolTestState {
             .run();
     }
 
+    /// Get borrow amount for token
     pub fn get_borrow_amount_for_token(
         &mut self,
         account_position: u64,
         token_id: TestTokenIdentifier,
     ) -> ManagedDecimal<StaticApi, NumDecimals> {
-        let token_amount = self
-            .world
+        self.world
             .query()
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .get_borrow_amount_for_token(account_position, token_id)
             .returns(ReturnsResult)
-            .run();
-
-        token_amount
+            .run()
     }
 
+    /// Get borrow amount for non-existing token
     pub fn get_borrow_amount_for_token_non_existing(
         &mut self,
         account_position: u64,
@@ -1208,6 +1763,166 @@ impl LendingPoolTestState {
             .run();
     }
 
+    /// Get total borrow in EGLD
+    pub fn get_total_borrow_in_egld(
+        &mut self,
+        account_position: u64,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .get_total_borrow_in_egld(account_position)
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get total borrow in EGLD (big)
+    pub fn get_total_borrow_in_egld_big(
+        &mut self,
+        account_position: u64,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        self.get_total_borrow_in_egld(account_position)
+    }
+
+    /// Get total collateral in EGLD
+    pub fn get_total_collateral_in_egld(
+        &mut self,
+        account_position: u64,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .get_total_collateral_in_egld(account_position)
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get total collateral in EGLD (big)
+    pub fn get_total_collateral_in_egld_big(
+        &mut self,
+        account_position: u64,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        self.get_total_collateral_in_egld(account_position)
+    }
+
+    /// Get LTV collateral in EGLD
+    pub fn get_ltv_collateral_in_egld(
+        &mut self,
+        account_position: u64,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .get_ltv_collateral_in_egld(account_position)
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get liquidation collateral available
+    pub fn get_liquidation_collateral_available(
+        &mut self,
+        account_position: u64,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .get_liquidation_collateral_available(account_position)
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get deposit positions
+    pub fn deposit_positions(
+        &mut self,
+        nonce: u64,
+    ) -> MultiValueEncoded<
+        StaticApi,
+        MultiValue2<EgldOrEsdtTokenIdentifier<StaticApi>, AccountPosition<StaticApi>>,
+    > {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .positions(nonce, AccountPositionType::Deposit)
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get borrow positions
+    pub fn borrow_positions(
+        &mut self,
+        nonce: u64,
+    ) -> MultiValueEncoded<
+        StaticApi,
+        MultiValue2<EgldOrEsdtTokenIdentifier<StaticApi>, AccountPosition<StaticApi>>,
+    > {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .positions(nonce, AccountPositionType::Borrow)
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get liquidation estimations
+    pub fn liquidation_estimations(
+        &mut self,
+        account_nonce: u64,
+        debt_payments: ManagedVec<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
+    ) -> (
+        ManagedVec<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
+        ManagedVec<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
+        ManagedVec<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
+        ManagedDecimal<StaticApi, NumDecimals>,
+        ManagedDecimal<StaticApi, NumDecimals>,
+    ) {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .liquidation_estimations(account_nonce, debt_payments)
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    // ============================================
+    // VIEW FUNCTIONS - MARKET DATA
+    // ============================================
+
+    /// Get all market indexes
+    pub fn get_all_market_indexes(
+        &mut self,
+        assets: MultiValueEncoded<StaticApi, EgldOrEsdtTokenIdentifier<StaticApi>>,
+    ) -> ManagedVec<StaticApi, MarketIndexView<StaticApi>> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .get_all_market_indexes(assets)
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get all markets
+    pub fn get_all_markets(
+        &mut self,
+        assets: MultiValueEncoded<StaticApi, EgldOrEsdtTokenIdentifier<StaticApi>>,
+    ) -> ManagedVec<StaticApi, AssetExtendedConfigView<StaticApi>> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .get_all_markets(assets)
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get used isolated asset debt in USD
     pub fn get_used_isolated_asset_debt_usd(
         &mut self,
         token_id: &TestTokenIdentifier,
@@ -1221,113 +1936,337 @@ impl LendingPoolTestState {
             .run()
     }
 
-    pub fn get_total_borrow_in_egld_big(
-        &mut self,
-        account_position: u64,
-    ) -> ManagedDecimal<StaticApi, NumDecimals> {
-        let borrow_amount = self
-            .world
-            .query()
-            .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::ControllerProxy)
-            .get_total_borrow_in_egld(account_position)
-            .returns(ReturnsResult)
-            .run();
+    // ============================================
+    // VIEW FUNCTIONS - STORAGE GETTERS
+    // ============================================
 
-        borrow_amount
-    }
-
-    pub fn get_total_borrow_in_egld(
-        &mut self,
-        account_position: u64,
-    ) -> ManagedDecimal<StaticApi, NumDecimals> {
-        let borrow_amount = self
-            .world
-            .query()
-            .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::ControllerProxy)
-            .get_total_borrow_in_egld(account_position)
-            .returns(ReturnsResult)
-            .run();
-
-        borrow_amount
-    }
-
-    pub fn get_total_collateral_in_egld_big(
-        &mut self,
-        account_position: u64,
-    ) -> ManagedDecimal<StaticApi, NumDecimals> {
-        let collateral_amount_egld = self
-            .world
-            .query()
-            .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::ControllerProxy)
-            .get_total_collateral_in_egld(account_position)
-            .returns(ReturnsResult)
-            .run();
-
-        collateral_amount_egld
-    }
-
-    pub fn clean_bad_debt(&mut self, account_position: u64) {
+    /// Get pools list
+    pub fn get_pools(&mut self) -> MultiValueEncoded<StaticApi, ManagedAddress<StaticApi>> {
         self.world
-            .tx()
-            .from(OWNER_ADDRESS.to_managed_address())
-            .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::ControllerProxy)
-            .clean_bad_debt(account_position)
-            .run();
-    }
-
-    pub fn get_ltv_collateral_in_egld(
-        &mut self,
-        account_position: u64,
-    ) -> ManagedDecimal<StaticApi, NumDecimals> {
-        let get_ltv_collateral_in_egld = self
-            .world
             .query()
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .get_ltv_collateral_in_egld(account_position)
+            .pools()
             .returns(ReturnsResult)
-            .run();
-
-        get_ltv_collateral_in_egld
+            .run()
     }
 
-    pub fn get_total_collateral_in_egld(
-        &mut self,
-        account_position: u64,
-    ) -> ManagedDecimal<StaticApi, NumDecimals> {
-        let collateral_amount_egld = self
-            .world
+    /// Get account data
+    pub fn get_account(&mut self, account_nonce: u64) -> AccountAttributes<StaticApi> {
+        self.world
             .query()
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .get_total_collateral_in_egld(account_position)
+            .account_attributes(account_nonce)
             .returns(ReturnsResult)
-            .run();
-
-        collateral_amount_egld
+            .run()
     }
 
-    pub fn get_liquidation_collateral_available(
-        &mut self,
-        account_position: u64,
-    ) -> ManagedDecimal<StaticApi, NumDecimals> {
-        let liquidation_collateral_available = self
-            .world
+    /// Get account nonce for address
+    pub fn get_last_account_nonce(&mut self) -> u64 {
+        self.world
             .query()
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .get_liquidation_collateral_available(account_position)
+            .account_nonce()
             .returns(ReturnsResult)
-            .run();
+            .run()
+    }
 
-        liquidation_collateral_available
+    /// Get all accounts
+    pub fn get_accounts(&mut self) -> MultiValueEncoded<StaticApi, u64> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .accounts()
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get account attributes
+    pub fn get_account_attributes(&mut self, account_nonce: u64) -> AccountAttributes<StaticApi> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .account_attributes(account_nonce)
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    pub fn get_market_borrow_index(
+        &mut self,
+        market_address: ManagedAddress<StaticApi>,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        self.world
+            .query()
+            .to(market_address)
+            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
+            .borrow_index()
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    pub fn get_market_supply_index(
+        &mut self,
+        market_address: ManagedAddress<StaticApi>,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        self.world
+            .query()
+            .to(market_address)
+            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
+            .supply_index()
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    pub fn get_market_supplied(
+        &mut self,
+        market_address: ManagedAddress<StaticApi>,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        self.world
+            .query()
+            .to(market_address)
+            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
+            .supplied()
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get positions
+    pub fn get_positions(
+        &mut self,
+        account_nonce: u64,
+        position_type: AccountPositionType,
+    ) -> MultiValueEncoded<
+        StaticApi,
+        MultiValue2<EgldOrEsdtTokenIdentifier<StaticApi>, AccountPosition<StaticApi>>,
+    > {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .positions(account_nonce, position_type)
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get liquidity pool template address
+    pub fn get_liq_pool_template_address(&mut self) -> ManagedAddress<StaticApi> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .liq_pool_template_address()
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get accumulator address
+    pub fn get_accumulator_address(&mut self) -> ManagedAddress<StaticApi> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .accumulator_address()
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get pool address for asset
+    pub fn get_pool_address(
+        &mut self,
+        asset: EgldOrEsdtTokenIdentifier<StaticApi>,
+    ) -> ManagedAddress<StaticApi> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .pools_map(asset)
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get price aggregator address
+    pub fn get_price_aggregator_address(&mut self) -> ManagedAddress<StaticApi> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .price_aggregator_address()
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get safe price address
+    pub fn get_safe_price_address(&mut self) -> ManagedAddress<StaticApi> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .safe_price_view()
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get EGLD wrapper address
+    pub fn get_egld_wrapper_address(&mut self) -> ManagedAddress<StaticApi> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .wegld_wrapper()
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get swap router address
+    pub fn get_swap_router_address(&mut self) -> ManagedAddress<StaticApi> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .swap_router()
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get asset configuration
+    pub fn get_asset_config(
+        &mut self,
+        asset: EgldOrEsdtTokenIdentifier<StaticApi>,
+    ) -> AssetConfig<StaticApi> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .asset_config(asset)
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get last e-mode category ID
+    pub fn last_e_mode_category_id(&mut self) -> u8 {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .last_e_mode_category_id()
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get e-modes
+    pub fn get_e_modes(
+        &mut self,
+    ) -> MultiValueEncoded<StaticApi, MultiValue2<u8, EModeCategory<StaticApi>>> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .e_mode_category()
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get asset e-modes
+    pub fn get_asset_e_modes(
+        &mut self,
+        asset: EgldOrEsdtTokenIdentifier<StaticApi>,
+    ) -> MultiValueEncoded<StaticApi, u8> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .asset_e_modes(asset)
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get e-modes assets
+    pub fn get_e_modes_assets(
+        &mut self,
+        category_id: u8,
+    ) -> MultiValueEncoded<
+        StaticApi,
+        MultiValue2<EgldOrEsdtTokenIdentifier<StaticApi>, EModeAssetConfig>,
+    > {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .e_mode_assets(category_id)
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get isolated asset debt in USD
+    pub fn get_isolated_asset_debt_usd(
+        &mut self,
+        asset: EgldOrEsdtTokenIdentifier<StaticApi>,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .isolated_asset_debt_usd(asset)
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get token oracle
+    pub fn get_token_oracle(
+        &mut self,
+        token: EgldOrEsdtTokenIdentifier<StaticApi>,
+    ) -> OracleProvider<StaticApi> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .token_oracle(token)
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Check if flash loan is ongoing
+    pub fn is_flash_loan_ongoing(&mut self) -> bool {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .flash_loan_ongoing()
+            .returns(ReturnsResult)
+            .run()
     }
 }
 
+// ============================================
+// SETUP FUNCTIONS
+// ============================================
+
+/// Initialize the world with registered contracts
+pub fn world() -> ScenarioWorld {
+    let mut blockchain = ScenarioWorld::new();
+
+    blockchain.register_contract(LENDING_POOL_PATH, controller::ContractBuilder);
+    blockchain.register_contract(LIQUIDITY_POOL_PATH, liquidity_layer::ContractBuilder);
+    blockchain.register_contract(PRICE_AGGREGATOR_PATH, price_aggregator::ContractBuilder);
+    blockchain.register_contract(
+        EGLD_LIQUID_STAKING_PATH,
+        rs_liquid_staking_sc::ContractBuilder,
+    );
+    blockchain.register_contract(XOXNO_LIQUID_STAKING_PATH, rs_liquid_xoxno::ContractBuilder);
+    blockchain.register_contract(PAIR_PATH, pair::ContractBuilder);
+
+    blockchain.register_contract(SAFE_PRICE_VIEW_PATH, pair::ContractBuilder);
+
+    blockchain.register_contract(FLASH_MOCK_PATH, flash_mock::ContractBuilder);
+
+    blockchain
+}
+
+/// Setup the lending pool
 pub fn setup_lending_pool(
     world: &mut ScenarioWorld,
     template_address_liquidity_pool: &ManagedAddress<StaticApi>,
@@ -1490,6 +2429,8 @@ pub fn setup_lending_pool(
         xoxno_market,
     )
 }
+
+/// Set oracle token data
 pub fn set_oracle_token_data(
     world: &mut ScenarioWorld,
     xegld_liquid_staking_sc: &ManagedAddress<StaticApi>,
@@ -1817,6 +2758,7 @@ pub fn set_oracle_token_data(
         .run();
 }
 
+/// Deploy pair smart contract
 pub fn deploy_pair_sc(
     world: &mut ScenarioWorld,
     first_token: &TestTokenIdentifier,
@@ -1909,6 +2851,7 @@ pub fn deploy_pair_sc(
     sc.clone()
 }
 
+/// Calculate optimal liquidity for a pair
 pub fn calculate_optimal_liquidity(
     first_token_price_usd: u64,
     second_token_price_usd: u64,
@@ -1932,6 +2875,7 @@ pub fn calculate_optimal_liquidity(
     (first_amount, second_amount)
 }
 
+/// Setup flash mock contract
 pub fn setup_flash_mock(world: &mut ScenarioWorld) -> ManagedAddress<StaticApi> {
     let flash_mock = world
         .tx()
@@ -1945,6 +2889,7 @@ pub fn setup_flash_mock(world: &mut ScenarioWorld) -> ManagedAddress<StaticApi> 
     flash_mock
 }
 
+/// Setup price aggregator
 pub fn setup_price_aggregator(
     world: &mut ScenarioWorld,
 ) -> (
@@ -1986,6 +2931,7 @@ pub fn setup_price_aggregator(
         &price_aggregator_sc,
         EGLD_TICKER,
         EGLD_PRICE_IN_DOLLARS,
+        0u64,
     );
 
     submit_price(
@@ -1993,6 +2939,7 @@ pub fn setup_price_aggregator(
         &price_aggregator_sc,
         SEGLD_TICKER,
         SEGLD_PRICE_IN_DOLLARS,
+        0u64,
     );
 
     submit_price(
@@ -2000,6 +2947,7 @@ pub fn setup_price_aggregator(
         &price_aggregator_sc,
         LEGLD_TICKER,
         LEGLD_PRICE_IN_DOLLARS,
+        0u64,
     );
 
     submit_price(
@@ -2007,6 +2955,7 @@ pub fn setup_price_aggregator(
         &price_aggregator_sc,
         USDC_TICKER,
         USDC_PRICE_IN_DOLLARS,
+        0u64,
     );
 
     submit_price(
@@ -2014,24 +2963,28 @@ pub fn setup_price_aggregator(
         &price_aggregator_sc,
         XEGLD_TICKER,
         XEGLD_PRICE_IN_DOLLARS,
+        0u64,
     );
     submit_price(
         world,
         &price_aggregator_sc,
         ISOLATED_TICKER,
         ISOLATED_PRICE_IN_DOLLARS,
+        0u64,
     );
     submit_price(
         world,
         &price_aggregator_sc,
         SILOED_TICKER,
         SILOED_PRICE_IN_DOLLARS,
+        0u64,
     );
     submit_price(
         world,
         &price_aggregator_sc,
         CAPPED_TICKER,
         CAPPED_PRICE_IN_DOLLARS,
+        0u64,
     );
 
     submit_price(
@@ -2039,11 +2992,13 @@ pub fn setup_price_aggregator(
         &price_aggregator_sc,
         XOXNO_TICKER,
         XOXNO_PRICE_IN_DOLLARS,
+        0u64,
     );
 
     (price_aggregator_sc, price_aggregator_whitebox)
 }
 
+/// Setup EGLD liquid staking
 pub fn setup_egld_liquid_staking(
     world: &mut ScenarioWorld,
 ) -> (
@@ -2129,6 +3084,7 @@ pub fn setup_egld_liquid_staking(
     (egld_liquid_staking_sc, egld_liquid_staking_whitebox)
 }
 
+/// Setup XOXNO liquid staking
 pub fn setup_xoxno_liquid_staking(
     world: &mut ScenarioWorld,
 ) -> (
@@ -2186,11 +3142,13 @@ pub fn setup_xoxno_liquid_staking(
     (xoxno_liquid_staking_sc, xoxno_liquid_staking_whitebox)
 }
 
+/// Submit price to aggregator
 pub fn submit_price(
     world: &mut ScenarioWorld,
     price_aggregator_sc: &ManagedAddress<StaticApi>,
     from: &[u8],
     price: u64,
+    timestamp: u64,
 ) {
     let oracles = vec![
         ORACLE_ADDRESS_1,
@@ -2208,13 +3166,14 @@ pub fn submit_price(
             .submit(
                 ManagedBuffer::from(from),
                 ManagedBuffer::from(DOLLAR_TICKER),
-                0u64,
+                timestamp,
                 BigUint::from(price).mul(BigUint::from(WAD)),
             )
             .run();
     }
 }
 
+/// Setup template liquidity pool
 pub fn setup_template_liquidity_pool(
     world: &mut ScenarioWorld,
 ) -> (
@@ -2247,6 +3206,7 @@ pub fn setup_template_liquidity_pool(
     (template_address_liquidity_pool, liquidity_pool_whitebox)
 }
 
+/// Create e-mode category
 pub fn create_e_mode_category(world: &mut ScenarioWorld, lending_sc: &ManagedAddress<StaticApi>) {
     world
         .tx()
@@ -2262,6 +3222,7 @@ pub fn create_e_mode_category(world: &mut ScenarioWorld, lending_sc: &ManagedAdd
         .run();
 }
 
+/// Add asset to e-mode category
 pub fn add_asset_to_e_mode_category(
     world: &mut ScenarioWorld,
     lending_sc: &ManagedAddress<StaticApi>,
@@ -2280,6 +3241,7 @@ pub fn add_asset_to_e_mode_category(
         .run();
 }
 
+/// Setup market
 pub fn setup_market(
     world: &mut ScenarioWorld,
     lending_sc: &ManagedAddress<StaticApi>,
@@ -2323,7 +3285,11 @@ pub fn setup_market(
     market_address
 }
 
-// Helper function for account setup
+// ============================================
+// HELPER FUNCTIONS FOR ACCOUNT SETUP
+// ============================================
+
+/// Setup accounts for testing
 pub fn setup_accounts(
     state: &mut LendingPoolTestState,
     supplier: TestAddress,
@@ -2412,6 +3378,7 @@ pub fn setup_accounts(
         );
 }
 
+/// Setup single account
 pub fn setup_account(state: &mut LendingPoolTestState, account: TestAddress) {
     state
         .world
@@ -2455,6 +3422,7 @@ pub fn setup_account(state: &mut LendingPoolTestState, account: TestAddress) {
         );
 }
 
+/// Setup owner account
 pub fn setup_owner(world: &mut ScenarioWorld) {
     world
         .account(OWNER_ADDRESS)
@@ -2501,10 +3469,179 @@ pub fn setup_owner(world: &mut ScenarioWorld) {
         );
 }
 
+/// Setup flasher account
 pub fn setup_flasher(world: &mut ScenarioWorld, flash: ManagedAddress<StaticApi>) {
     world.set_esdt_balance(
         flash,
         EGLD_TOKEN.as_bytes(),
         BigUint::from(100000000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
     );
+}
+
+// ============================================
+// HELPER FUNCTIONS FOR MARKET OPERATIONS
+// ============================================
+
+impl LendingPoolTestState {
+    /// Change the blockchain timestamp
+    pub fn change_timestamp(&mut self, timestamp: u64) {
+        self.world.current_block().block_timestamp(timestamp);
+        let aggregator = &self.price_aggregator_sc;
+        submit_price(
+            &mut self.world,
+            aggregator,
+            EGLD_TICKER,
+            EGLD_PRICE_IN_DOLLARS,
+            timestamp,
+        );
+        submit_price(
+            &mut self.world,
+            aggregator,
+            SEGLD_TICKER,
+            SEGLD_PRICE_IN_DOLLARS,
+            timestamp,
+        );
+        submit_price(
+            &mut self.world,
+            aggregator,
+            LEGLD_TICKER,
+            LEGLD_PRICE_IN_DOLLARS,
+            timestamp,
+        );
+        submit_price(
+            &mut self.world,
+            aggregator,
+            USDC_TICKER,
+            USDC_PRICE_IN_DOLLARS,
+            timestamp,
+        );
+        submit_price(
+            &mut self.world,
+            aggregator,
+            XEGLD_TICKER,
+            XEGLD_PRICE_IN_DOLLARS,
+            timestamp,
+        );
+        submit_price(
+            &mut self.world,
+            aggregator,
+            ISOLATED_TICKER,
+            ISOLATED_PRICE_IN_DOLLARS,
+            timestamp,
+        );
+        submit_price(
+            &mut self.world,
+            aggregator,
+            SILOED_TICKER,
+            SILOED_PRICE_IN_DOLLARS,
+            timestamp,
+        );
+        submit_price(
+            &mut self.world,
+            aggregator,
+            CAPPED_TICKER,
+            CAPPED_PRICE_IN_DOLLARS,
+            timestamp,
+        );
+        submit_price(
+            &mut self.world,
+            aggregator,
+            XOXNO_TICKER,
+            XOXNO_PRICE_IN_DOLLARS,
+            timestamp,
+        );
+    }
+
+    // Price aggregator operations
+    pub fn change_price(&mut self, from: &[u8], price: u64, timestamp: u64) {
+        let oracles = vec![
+            ORACLE_ADDRESS_1,
+            ORACLE_ADDRESS_2,
+            ORACLE_ADDRESS_3,
+            ORACLE_ADDRESS_4,
+        ];
+        for oracle in oracles {
+            self.world
+                .tx()
+                .from(oracle)
+                .to(self.price_aggregator_sc.clone())
+                .typed(proxy_aggregator::PriceAggregatorProxy)
+                .submit(
+                    ManagedBuffer::from(from),
+                    ManagedBuffer::from(DOLLAR_TICKER),
+                    timestamp,
+                    BigUint::from(price).mul(BigUint::from(WAD)),
+                )
+                .run();
+        }
+    }
+    /// Get market utilization rate
+    pub fn get_market_utilization(
+        &mut self,
+        market_address: ManagedAddress<StaticApi>,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        self.world
+            .query()
+            .to(market_address)
+            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
+            .get_capital_utilisation()
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get market borrow rate
+    pub fn get_market_borrow_rate(
+        &mut self,
+        market_address: ManagedAddress<StaticApi>,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        self.world
+            .query()
+            .to(market_address)
+            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
+            .get_borrow_rate()
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get market supply rate
+    pub fn get_market_supply_rate(
+        &mut self,
+        market_address: ManagedAddress<StaticApi>,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        self.world
+            .query()
+            .to(market_address)
+            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
+            .get_deposit_rate()
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get market reserves
+    pub fn get_market_reserves(
+        &mut self,
+        market_address: ManagedAddress<StaticApi>,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        self.world
+            .query()
+            .to(market_address)
+            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
+            .get_reserves()
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get market revenue
+    pub fn get_market_revenue(
+        &mut self,
+        market_address: ManagedAddress<StaticApi>,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        self.world
+            .query()
+            .to(market_address)
+            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
+            .get_protocol_revenue()
+            .returns(ReturnsResult)
+            .run()
+    }
 }

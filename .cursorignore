@@ -28,7 +28,7 @@ Cargo.lock
 /proxy/
 /proxies/
 *.json
-**/controller/tests/**
+# **/controller/tests/**
 **/proxies/**
 .git/
 output-docker/

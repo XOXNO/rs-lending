@@ -307,7 +307,7 @@ fn test_withdrawal_with_interest_one_user_prior_update() {
     let supply_index = state.get_market_supply_index(state.egld_market.clone());
     println!("reserve: {}", reserve);
     println!("revenue: {}", revenue);
-    let total_deposit = state.get_market_total_deposit(state.egld_market.clone());
+    let total_deposit = state.get_market_supplied(state.egld_market.clone());
     println!("total_deposit: {}", total_deposit);
     println!("borrow_index: {}", borrow_index);
     println!("supply_index: {}", supply_index);
