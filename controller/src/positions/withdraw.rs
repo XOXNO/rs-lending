@@ -186,6 +186,6 @@ pub trait PositionWithdrawModule:
             "Token {} is not available for this account",
             token_id
         );
-        opt_deposit_position.unwrap()
+        unsafe { opt_deposit_position.unwrap_unchecked() }
     }
 }

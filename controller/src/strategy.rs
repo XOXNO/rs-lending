@@ -84,12 +84,13 @@ pub trait SnapModule:
             } else {
                 //Swap token
                 require!(steps_payment.is_some(), ERROR_MULTIPLY_REQUIRE_EXTRA_STEPS);
+                let steps_payment = unsafe { steps_payment.into_option().unwrap_unchecked() };
                 self.convert_token_from_to(
                     collateral_token,
                     &initial_payment.token_identifier,
                     &initial_payment.amount,
                     &caller,
-                    steps_payment.into_option().unwrap(),
+                    steps_payment,
                 );
                 // let collateral_received =
                 //     self.to_decimal(received.amount, collateral_price_feed.asset_decimals);
@@ -186,9 +187,9 @@ pub trait SnapModule:
         let (mut payments, opt_account, caller, opt_attributes) =
             self.validate_supply_payment(true, true, OptionalValue::None);
 
-        let account = opt_account.unwrap();
+        let account = unsafe { opt_account.unwrap_unchecked() };
 
-        let account_attributes = opt_attributes.unwrap();
+        let account_attributes = unsafe { opt_attributes.unwrap_unchecked() };
         let mut debt_config = cache.get_cached_asset_info(new_debt_token);
         let existing_debt_config = cache.get_cached_asset_info(existing_debt_token);
 
@@ -255,8 +256,8 @@ pub trait SnapModule:
         let (mut payments, opt_account, caller, opt_attributes) =
             self.validate_supply_payment(true, true, OptionalValue::None);
 
-        let account = opt_account.unwrap();
-        let account_attributes = opt_attributes.unwrap();
+        let account = unsafe { opt_account.unwrap_unchecked() };
+        let account_attributes = unsafe { opt_attributes.unwrap_unchecked() };
 
         require!(
             !account_attributes.is_isolated(),
@@ -327,8 +328,8 @@ pub trait SnapModule:
         self.reentrancy_guard(cache.flash_loan_ongoing);
         let (mut payments, opt_account, caller, opt_attributes) =
             self.validate_supply_payment(true, false, OptionalValue::None);
-        let account = opt_account.unwrap();
-        let account_attributes = opt_attributes.unwrap();
+        let account = unsafe { opt_account.unwrap_unchecked() };
+        let account_attributes = unsafe { opt_attributes.unwrap_unchecked() };
 
         let received = self.common_swap_collateral(
             from_token,

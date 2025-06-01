@@ -288,7 +288,7 @@ impl<M: ManagedTypeApi> AccountAttributes<M> {
 
     #[inline]
     pub fn get_isolated_token(&self) -> EgldOrEsdtTokenIdentifier<M> {
-        self.isolated_token.clone().into_option().unwrap()
+        unsafe { self.isolated_token.clone().into_option().unwrap_unchecked() }
     }
 }
 

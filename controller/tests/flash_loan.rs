@@ -65,6 +65,24 @@ fn flash_loan_no_repayment() {
 }
 
 #[test]
+fn flash_loan_no_amount() {
+    let mut state = LendingPoolTestState::new();
+    let supplier: TestAddress<'_> = TestAddress::new("supplier");
+    let borrower: TestAddress<'_> = TestAddress::new("borrower");
+    setup_accounts(&mut state, supplier, borrower);
+
+    state.flash_loan_error(
+        &OWNER_ADDRESS,
+        &EGLD_TOKEN,
+        BigUint::from(0u64),
+        state.flash_mock.clone(),
+        ManagedBuffer::from("flashNoRepay"),
+        ManagedArgBuffer::new(),
+        ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO,
+    );
+}
+
+#[test]
 fn flash_loan_repayment_some() {
     let mut state = LendingPoolTestState::new();
     let supplier: TestAddress<'_> = TestAddress::new("supplier");

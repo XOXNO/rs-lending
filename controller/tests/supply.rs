@@ -1,6 +1,5 @@
 use controller::{
-    ERROR_BULK_SUPPLY_NOT_SUPPORTED, ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS,
-    ERROR_MIX_ISOLATED_COLLATERAL, ERROR_SUPPLY_CAP,
+    ERROR_ACCOUNT_NOT_IN_THE_MARKET, ERROR_BULK_SUPPLY_NOT_SUPPORTED, ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS, ERROR_MIX_ISOLATED_COLLATERAL, ERROR_SUPPLY_CAP
 };
 use multiversx_sc::types::{EsdtTokenPayment, ManagedVec};
 use multiversx_sc_scenario::{
@@ -13,6 +12,28 @@ pub mod setup;
 use constants::*;
 use setup::*;
 use std::ops::Mul;
+
+#[test]
+fn test_supply_inactive_nonce_error() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    // Setup accounts
+    state.change_timestamp(0);
+    setup_accounts(&mut state, supplier, borrower);
+    // Test supply
+    state.supply_asset_error(
+        &supplier,
+        CAPPED_TOKEN,
+        BigUint::from(150u64),
+        CAPPED_DECIMALS,
+        OptionalValue::Some(1),
+        OptionalValue::None,
+        false,
+        ERROR_ACCOUNT_NOT_IN_THE_MARKET,
+    );
+}
 
 #[test]
 fn test_basic_supply_capped_error() {

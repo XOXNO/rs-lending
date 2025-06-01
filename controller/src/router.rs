@@ -84,8 +84,8 @@ pub trait RouterModule:
         flashloan_enabled: bool,
         can_borrow_in_isolation: bool,
         asset_decimals: usize,
-        borrow_cap: OptionalValue<BigUint>,
-        supply_cap: OptionalValue<BigUint>,
+        borrow_cap: BigUint,
+        supply_cap: BigUint,
     ) -> ManagedAddress {
         require!(
             self.pools_map(&base_asset).is_empty(),
@@ -124,8 +124,16 @@ pub trait RouterModule:
             liquidation_threshold: self.to_decimal_bps(liquidation_threshold),
             liquidation_bonus: self.to_decimal_bps(liquidation_base_bonus),
             liquidation_fees: self.to_decimal_bps(liquidation_max_fee),
-            borrow_cap: borrow_cap.into_option(),
-            supply_cap: supply_cap.into_option(),
+            borrow_cap: if borrow_cap == BigUint::zero() {
+                None
+            } else {
+                Some(borrow_cap)
+            },
+            supply_cap: if supply_cap == BigUint::zero() {
+                None
+            } else {
+                Some(supply_cap)
+            },
             is_collateralizable: can_be_collateral,
             is_borrowable: can_be_borrowed,
             e_mode_enabled: false,

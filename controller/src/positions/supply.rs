@@ -382,7 +382,7 @@ pub trait PositionDepositModule:
             self.get_token_e_mode_config(account_attributes.get_emode_id(), asset_id);
         self.apply_e_mode_to_asset_config(asset_config, &e_mode_category, asset_emode_config);
 
-        let mut dp = dp_option.unwrap();
+        let mut dp = unsafe { dp_option.unwrap_unchecked() };
 
         if has_risks {
             if dp.liquidation_threshold != asset_config.liquidation_threshold {

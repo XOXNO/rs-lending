@@ -37,7 +37,8 @@ pub trait PositionUpdateModule:
                 position_index_map.put(&asset_id, &safe_index);
             }
 
-            updated_positions.push(borrow_positions_map.get(&asset_id).unwrap());
+            updated_positions
+                .push(unsafe { borrow_positions_map.get(&asset_id).unwrap_unchecked() });
         }
 
         (updated_positions, position_index_map)

@@ -74,7 +74,10 @@ pub trait ConfigModule:
         let mapper = self.token_oracle(market_token);
 
         require!(mapper.is_empty(), ERROR_ORACLE_TOKEN_EXISTING);
-
+        let one_dex_id = match one_dex_pair_id {
+            OptionalValue::Some(id) => id,
+            OptionalValue::None => 0,
+        };
         let first_token_id = match source {
             ExchangeSource::LXOXNO => {
                 let token_id = self
@@ -87,12 +90,12 @@ pub trait ConfigModule:
                 EgldOrEsdtTokenIdentifier::esdt(token_id)
             },
             ExchangeSource::Onedex => {
-                require!(one_dex_pair_id.is_some(), ERROR_INVALID_ONEDEX_PAIR_ID);
+                require!(one_dex_id > 0, ERROR_INVALID_ONEDEX_PAIR_ID);
                 let token_id = self
                     .tx()
                     .to(contract_address)
                     .typed(proxy_onedex::OneDexProxy)
-                    .pair_first_token_id(one_dex_pair_id.clone().into_option().unwrap())
+                    .pair_first_token_id(one_dex_id)
                     .returns(ReturnsResult)
                     .sync_call_readonly();
                 EgldOrEsdtTokenIdentifier::esdt(token_id)
@@ -130,7 +133,7 @@ pub trait ConfigModule:
                     .tx()
                     .to(contract_address)
                     .typed(proxy_onedex::OneDexProxy)
-                    .pair_second_token_id(one_dex_pair_id.clone().into_option().unwrap())
+                    .pair_second_token_id(one_dex_id)
                     .returns(ReturnsResult)
                     .sync_call_readonly();
                 EgldOrEsdtTokenIdentifier::esdt(token_id)
@@ -154,7 +157,7 @@ pub trait ConfigModule:
             price_decimals: decimals,
             pricing_method,
             tolerance,
-            onedex_pair_id: one_dex_pair_id.clone().into_option().unwrap_or(0),
+            onedex_pair_id: one_dex_id,
             max_price_stale_seconds,
         };
 
@@ -371,7 +374,7 @@ pub trait ConfigModule:
         for asset in &assets {
             self.remove_asset_from_e_mode_category(asset.clone_value(), category_id);
         }
-        let mut old_info = map.get(&category_id).unwrap();
+        let mut old_info = unsafe { map.get(&category_id).unwrap_unchecked() };
         old_info.is_deprecated = true;
 
         self.update_e_mode_category_event(&old_info);
@@ -497,7 +500,7 @@ pub trait ConfigModule:
         let mut asset_e_modes = self.asset_e_modes(&asset);
         asset_e_modes.swap_remove(&category_id);
 
-        self.update_e_mode_asset_event(&asset, &config.unwrap(), category_id);
+        self.update_e_mode_asset_event(&asset, &unsafe { config.unwrap_unchecked() }, category_id);
         if asset_e_modes.is_empty() {
             let mut asset_data = self.asset_config(&asset).get();
             asset_data.e_mode_enabled = false;

@@ -357,8 +357,8 @@ where
         Arg19: ProxyArg<bool>,
         Arg20: ProxyArg<bool>,
         Arg21: ProxyArg<usize>,
-        Arg22: ProxyArg<OptionalValue<BigUint<Env::Api>>>,
-        Arg23: ProxyArg<OptionalValue<BigUint<Env::Api>>>,
+        Arg22: ProxyArg<BigUint<Env::Api>>,
+        Arg23: ProxyArg<BigUint<Env::Api>>,
     >(
         self,
         base_asset: Arg0,

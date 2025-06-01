@@ -1166,8 +1166,8 @@ impl LendingPoolTestState {
                 config.is_flashloanable,
                 config.isolation_borrow_enabled,
                 asset_decimals,
-                OptionalValue::from(config.borrow_cap),
-                OptionalValue::from(config.supply_cap),
+                config.borrow_cap.unwrap_or(BigUint::zero()),
+                config.supply_cap.unwrap_or(BigUint::zero()),
             )
             .returns(ReturnsNewManagedAddress)
             .run();
@@ -1236,11 +1236,75 @@ impl LendingPoolTestState {
                 config.is_flashloanable,
                 config.isolation_borrow_enabled,
                 18usize, // Default decimals, should be passed as parameter
-                OptionalValue::from(config.borrow_cap),
-                OptionalValue::from(config.supply_cap),
+                config.borrow_cap.unwrap_or(BigUint::zero()),
+                config.supply_cap.unwrap_or(BigUint::zero()),
             )
             .returns(ReturnsNewManagedAddress)
             .run()
+    }
+
+    /// Create liquidity pool with error
+    pub fn create_liquidity_pool_error(
+        &mut self,
+        token_id: EgldOrEsdtTokenIdentifier<StaticApi>,
+        max_borrow_rate: BigUint<StaticApi>,
+        base_borrow_rate: BigUint<StaticApi>,
+        slope1: BigUint<StaticApi>,
+        slope2: BigUint<StaticApi>,
+        slope3: BigUint<StaticApi>,
+        mid_utilization: BigUint<StaticApi>,
+        optimal_utilization: BigUint<StaticApi>,
+        reserve_factor: BigUint<StaticApi>,
+        ltv: BigUint<StaticApi>,
+        liquidation_threshold: BigUint<StaticApi>,
+        liquidation_bonus: BigUint<StaticApi>,
+        liquidation_fees: BigUint<StaticApi>,
+        is_collateralizable: bool,
+        is_borrowable: bool,
+        is_isolated_asset: bool,
+        isolation_debt_ceiling_usd: BigUint<StaticApi>,
+        flashloan_fee: BigUint<StaticApi>,
+        is_siloed_borrowing: bool,
+        is_flashloanable: bool,
+        isolation_borrow_enabled: bool,
+        asset_decimals: usize,
+        borrow_cap: BigUint<StaticApi>,
+        supply_cap: BigUint<StaticApi>,
+        error_message: &[u8],
+    ) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .create_liquidity_pool(
+                token_id,
+                max_borrow_rate,
+                base_borrow_rate,
+                slope1,
+                slope2,
+                slope3,
+                mid_utilization,
+                optimal_utilization,
+                reserve_factor,
+                ltv,
+                liquidation_threshold,
+                liquidation_bonus,
+                liquidation_fees,
+                is_collateralizable,
+                is_borrowable,
+                is_isolated_asset,
+                isolation_debt_ceiling_usd,
+                flashloan_fee,
+                is_siloed_borrowing,
+                is_flashloanable,
+                isolation_borrow_enabled,
+                asset_decimals,
+                borrow_cap,
+                supply_cap,
+            )
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
     }
 
     /// Upgrade liquidity pool configuration
@@ -3276,8 +3340,8 @@ pub fn setup_market(
             config.config.is_flashloanable,
             config.config.isolation_borrow_enabled,
             config.asset_decimals,
-            OptionalValue::from(config.config.borrow_cap),
-            OptionalValue::from(config.config.supply_cap),
+            config.config.borrow_cap.unwrap_or(BigUint::zero()),
+            config.config.supply_cap.unwrap_or(BigUint::zero()),
         )
         .returns(ReturnsResult)
         .run();
@@ -3427,6 +3491,7 @@ pub fn setup_owner(world: &mut ScenarioWorld) {
     world
         .account(OWNER_ADDRESS)
         .nonce(1)
+        .balance(BigUint::from(100000000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32))
         .esdt_balance(
             WEGLD_TOKEN,
             BigUint::from(100000000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),

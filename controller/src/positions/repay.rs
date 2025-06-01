@@ -141,6 +141,6 @@ pub trait PositionRepayModule:
             "Borrowed token {} is not available for this account",
             token_id
         );
-        position.unwrap()
+        unsafe { position.unwrap_unchecked() }
     }
 }

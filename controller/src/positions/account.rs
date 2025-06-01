@@ -103,7 +103,7 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
         opt_isolated_token: Option<EgldOrEsdtTokenIdentifier>,
     ) -> (u64, AccountAttributes<Self::Api>) {
         match opt_account {
-            Some(account) => (account.token_nonce, opt_attributes.unwrap()),
+            Some(account) => (account.token_nonce, unsafe { opt_attributes.unwrap_unchecked() }),
             None => {
                 let (payment, account_attributes) = self.create_account_nft(
                     caller,

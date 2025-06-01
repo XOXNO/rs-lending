@@ -477,7 +477,7 @@ pub trait OracleModule:
         if token_id.is_egld() || token_id.clone().into_name() == cache.egld_ticker {
             return cache.egld_ticker.clone();
         }
-        let result = token_id.as_esdt_option().unwrap().ticker();
+        let result = unsafe { token_id.as_esdt_option().unwrap_unchecked().ticker() };
         if result == ManagedBuffer::new_from_bytes(WEGLD_TICKER) {
             cache.egld_ticker.clone()
         } else {
