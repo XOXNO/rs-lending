@@ -10,38 +10,45 @@ pub mod setup;
 use constants::*;
 use setup::*;
 
-// E-Mode Tests
+/// Tests basic supply and borrow operations within E-Mode category.
+/// 
+/// Covers:
+/// - Controller::supply with E-Mode category selection
+/// - Controller::borrow within same E-Mode category
+/// - E-Mode allowing higher capital efficiency
+/// - Successful operations with compatible E-Mode assets
 #[test]
-fn test_basic_supply_and_borrow_with_e_mode() {
+fn emode_supply_and_borrow_same_category_success() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
 
-    // Setup accounts
     state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
-    // Test supply
+    
+    // Supplier provides XEGLD liquidity with E-Mode category 1
     state.supply_asset(
         &supplier,
         XEGLD_TOKEN,
         BigUint::from(100u64),
         EGLD_DECIMALS,
         OptionalValue::None,
-        OptionalValue::Some(1),
+        OptionalValue::Some(1), // E-Mode category 1
         false,
     );
 
-    // Test borrow
+    // Borrower supplies EGLD as collateral with E-Mode category 1
     state.supply_asset(
         &borrower,
         EGLD_TOKEN,
         BigUint::from(100u64),
         EGLD_DECIMALS,
         OptionalValue::None,
-        OptionalValue::Some(1),
+        OptionalValue::Some(1), // E-Mode category 1
         false,
     );
 
+    // Borrower takes XEGLD loan (compatible in same E-Mode)
     state.borrow_asset(
         &borrower,
         XEGLD_TOKEN,
@@ -50,7 +57,7 @@ fn test_basic_supply_and_borrow_with_e_mode() {
         EGLD_DECIMALS,
     );
 
-    // Verify amounts
+    // Verify positions exist
     let borrowed = state.get_borrow_amount_for_token(2, XEGLD_TOKEN);
     let collateral = state.get_collateral_amount_for_token(2, EGLD_TOKEN);
 
@@ -58,35 +65,49 @@ fn test_basic_supply_and_borrow_with_e_mode() {
     assert!(collateral > ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS));
 }
 
+/// Tests supply attempt with invalid E-Mode category.
+/// 
+/// Covers:
+/// - Controller::supply E-Mode validation
+/// - Asset compatibility with E-Mode categories
+/// - ERROR_EMODE_CATEGORY_NOT_FOUND error condition
 #[test]
-fn test_e_mode_category_not_found_at_supply_error() {
+fn emode_supply_incompatible_asset_category_error() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
 
     setup_accounts(&mut state, supplier, borrower);
-    // Test borrow
+    
+    // Attempt to supply USDC with E-Mode category 1 (USDC not compatible)
     state.supply_asset_error(
         &borrower,
         USDC_TOKEN,
         BigUint::from(100u64),
         USDC_DECIMALS,
         OptionalValue::None,
-        OptionalValue::Some(1),
+        OptionalValue::Some(1), // E-Mode category 1 doesn't support USDC
         false,
         ERROR_EMODE_CATEGORY_NOT_FOUND,
     );
 }
 
+/// Tests borrow restriction when collateral is isolated asset.
+/// 
+/// Covers:
+/// - Controller::borrow with isolated collateral
+/// - E-Mode interaction with isolated assets
+/// - ERROR_ASSET_NOT_BORROWABLE_IN_ISOLATION error condition
+/// - Isolation mode borrowing restrictions
 #[test]
-fn test_e_mode_asset_not_supported_as_collateral_error() {
+fn emode_borrow_with_isolated_collateral_error() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
 
     setup_accounts(&mut state, supplier, borrower);
 
-    // Test borrow
+    // Borrower supplies isolated asset as collateral
     state.supply_asset(
         &borrower,
         ISOLATED_TOKEN,
@@ -97,6 +118,7 @@ fn test_e_mode_asset_not_supported_as_collateral_error() {
         false,
     );
 
+    // Attempt to borrow EGLD (not allowed with isolated collateral)
     state.borrow_asset_error(
         &borrower,
         EGLD_TOKEN,
@@ -107,25 +129,32 @@ fn test_e_mode_asset_not_supported_as_collateral_error() {
     );
 }
 
+/// Tests borrow attempt for asset not supported in active E-Mode category.
+/// 
+/// Covers:
+/// - Controller::borrow E-Mode category validation
+/// - Cross-category borrowing restriction
+/// - ERROR_EMODE_CATEGORY_NOT_FOUND for incompatible assets
 #[test]
-fn test_borrow_asset_not_supported_in_e_mode_error() {
+fn emode_borrow_asset_outside_category_error() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
 
     setup_accounts(&mut state, supplier, borrower);
 
-    // Test borrow
+    // Borrower supplies EGLD with E-Mode category 1
     state.supply_asset(
         &borrower,
         EGLD_TOKEN,
         BigUint::from(100u64),
         EGLD_DECIMALS,
         OptionalValue::None,
-        OptionalValue::Some(1),
+        OptionalValue::Some(1), // E-Mode category 1
         false,
     );
 
+    // Attempt to borrow USDC (not in E-Mode category 1)
     state.borrow_asset_error(
         &borrower,
         USDC_TOKEN,
@@ -136,25 +165,32 @@ fn test_borrow_asset_not_supported_in_e_mode_error() {
     );
 }
 
+/// Tests borrow attempt for non-borrowable asset within E-Mode.
+/// 
+/// Covers:
+/// - Controller::borrow with non-borrowable assets
+/// - E-Mode respecting asset borrowability settings
+/// - ERROR_ASSET_NOT_BORROWABLE error condition
 #[test]
-fn test_borrow_asset_not_borrowable_in_e_mode_error() {
+fn emode_borrow_non_borrowable_asset_error() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
 
     setup_accounts(&mut state, supplier, borrower);
 
-    // Test borrow
+    // Borrower supplies EGLD with E-Mode category 1
     state.supply_asset(
         &borrower,
         EGLD_TOKEN,
         BigUint::from(100u64),
         EGLD_DECIMALS,
         OptionalValue::None,
-        OptionalValue::Some(1),
+        OptionalValue::Some(1), // E-Mode category 1
         false,
     );
 
+    // Attempt to borrow LEGLD (not borrowable)
     state.borrow_asset_error(
         &borrower,
         LEGLD_TOKEN,
@@ -164,5 +200,3 @@ fn test_borrow_asset_not_borrowable_in_e_mode_error() {
         ERROR_ASSET_NOT_BORROWABLE,
     );
 }
-
-// E-Mode Tests End

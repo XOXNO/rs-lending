@@ -20,11 +20,17 @@ use setup::*;
 // ORACLE CONFIGURATION TESTS
 // ============================================
 
+/// Tests oracle configuration for already existing token fails.
+/// 
+/// Covers:
+/// - Oracle configuration validation
+/// - Duplicate oracle prevention
+/// - ERROR_ORACLE_TOKEN_EXISTING error condition
 #[test]
-fn test_set_token_oracle_already_exists_error() {
+fn oracle_set_token_oracle_already_exists_error() {
     let mut state = LendingPoolTestState::new();
 
-    // Try to set oracle for a token that already has one (EGLD)
+    // Attempt to set oracle for EGLD which already has one
     let oracle_address = TestAddress::new("oracle").to_managed_address();
 
     state.set_token_oracle_error(
@@ -42,8 +48,14 @@ fn test_set_token_oracle_already_exists_error() {
     );
 }
 
+/// Tests oracle configuration with Onedex requires pair ID.
+/// 
+/// Covers:
+/// - Onedex exchange source validation
+/// - Pair ID requirement for Onedex
+/// - ERROR_INVALID_ONEDEX_PAIR_ID error condition
 #[test]
-fn test_set_token_oracle_onedex_missing_pair_id_error() {
+fn oracle_set_token_oracle_onedex_missing_pair_id_error() {
     let mut state = LendingPoolTestState::new();
 
     let new_token = TestTokenIdentifier::new("ONEDEXTOKEN-123456");
@@ -59,16 +71,22 @@ fn test_set_token_oracle_onedex_missing_pair_id_error() {
         BigUint::from(MIN_FIRST_TOLERANCE),
         BigUint::from(MIN_LAST_TOLERANCE),
         3600u64,
-        OptionalValue::None,
+        OptionalValue::None, // Missing pair ID
         ERROR_INVALID_ONEDEX_PAIR_ID,
     );
 }
 
+/// Tests successful oracle tolerance update.
+/// 
+/// Covers:
+/// - Oracle tolerance modification
+/// - Tolerance values persistence
+/// - Successful configuration update
 #[test]
-fn test_edit_token_oracle_tolerance_success() {
+fn oracle_edit_tolerance_success() {
     let mut state = LendingPoolTestState::new();
 
-    // Edit tolerance for existing oracle (EGLD)
+    // Update tolerance for existing EGLD oracle
     state.edit_token_oracle_tolerance(
         &EgldOrEsdtTokenIdentifier::egld(),
         BigUint::from(MIN_FIRST_TOLERANCE * 2),
@@ -77,18 +95,21 @@ fn test_edit_token_oracle_tolerance_success() {
 
     // Verify tolerance was updated
     let oracle = state.get_token_oracle(EgldOrEsdtTokenIdentifier::egld());
-    // Check that the tolerance values were updated (comparing with the original MIN values)
     assert!(
         oracle.tolerance.first_upper_ratio
             > ManagedDecimal::from_raw_units(BigUint::from(MIN_FIRST_TOLERANCE), 4)
     );
 }
 
+/// Tests oracle tolerance update for non-existent token fails.
+/// 
+/// Covers:
+/// - Oracle existence validation
+/// - ERROR_ORACLE_TOKEN_NOT_FOUND error condition
 #[test]
-fn test_edit_token_oracle_tolerance_not_found_error() {
+fn oracle_edit_tolerance_token_not_found_error() {
     let mut state = LendingPoolTestState::new();
 
-    // Try to edit tolerance for non-existent oracle
     let new_token = TestTokenIdentifier::new("NOTOKEN-123456");
 
     state.edit_token_oracle_tolerance_error(
@@ -98,39 +119,54 @@ fn test_edit_token_oracle_tolerance_not_found_error() {
         ERROR_ORACLE_TOKEN_NOT_FOUND,
     );
 }
+
+/// Tests oracle tolerance update with first tolerance too low fails.
+/// 
+/// Covers:
+/// - First tolerance minimum validation
+/// - ERROR_UNEXPECTED_FIRST_TOLERANCE error condition
 #[test]
-fn test_edit_token_oracle_tolerance_first_tolerance_too_low_error() {
+fn oracle_edit_tolerance_first_tolerance_too_low_error() {
     let mut state = LendingPoolTestState::new();
 
-    // Try to edit tolerance for non-existent oracle
     state.edit_token_oracle_tolerance_error(
         &EgldOrEsdtTokenIdentifier::egld(),
-        BigUint::from(MIN_FIRST_TOLERANCE - 1),
+        BigUint::from(MIN_FIRST_TOLERANCE - 1), // Below minimum
         BigUint::from(MIN_LAST_TOLERANCE),
         ERROR_UNEXPECTED_FIRST_TOLERANCE,
     );
 }
+
+/// Tests oracle tolerance update with last tolerance too low fails.
+/// 
+/// Covers:
+/// - Last tolerance minimum validation
+/// - ERROR_UNEXPECTED_LAST_TOLERANCE error condition
 #[test]
-fn test_edit_token_oracle_tolerance_last_tolerance_too_low_error() {
+fn oracle_edit_tolerance_last_tolerance_too_low_error() {
     let mut state = LendingPoolTestState::new();
 
-    // Try to edit tolerance for non-existent oracle
     state.edit_token_oracle_tolerance_error(
         &EgldOrEsdtTokenIdentifier::egld(),
         BigUint::from(MIN_FIRST_TOLERANCE),
-        BigUint::from(MIN_LAST_TOLERANCE - 1),
+        BigUint::from(MIN_LAST_TOLERANCE - 1), // Below minimum
         ERROR_UNEXPECTED_LAST_TOLERANCE,
     );
 }
 
+/// Tests oracle tolerance update with invalid anchor tolerances fails.
+/// 
+/// Covers:
+/// - Anchor tolerance relationship validation
+/// - First tolerance must be <= last tolerance
+/// - ERROR_UNEXPECTED_ANCHOR_TOLERANCES error condition
 #[test]
-fn test_edit_token_oracle_tolerance_anchor_tolerances_error() {
+fn oracle_edit_tolerance_invalid_anchor_error() {
     let mut state = LendingPoolTestState::new();
 
-    // Try to edit tolerance for non-existent oracle
     state.edit_token_oracle_tolerance_error(
         &EgldOrEsdtTokenIdentifier::egld(),
-        BigUint::from(1001u64),
+        BigUint::from(1001u64), // First tolerance greater than last
         BigUint::from(1000u64),
         ERROR_UNEXPECTED_ANCHOR_TOLERANCES,
     );
@@ -140,108 +176,148 @@ fn test_edit_token_oracle_tolerance_anchor_tolerances_error() {
 // ADDRESS CONFIGURATION TESTS
 // ============================================
 
+/// Tests successful price aggregator address update.
+/// 
+/// Covers:
+/// - Price aggregator configuration
+/// - Address update verification
 #[test]
-fn test_set_aggregator_success() {
+fn address_set_aggregator_success() {
     let mut state = LendingPoolTestState::new();
 
-    // Set a new aggregator address
     let new_aggregator = state.price_aggregator_sc.clone();
     state.set_aggregator(new_aggregator.clone());
 
-    // Verify aggregator was set
+    // Verify aggregator was updated
     let aggregator = state.get_price_aggregator_address();
     assert_eq!(aggregator, new_aggregator);
 }
 
+/// Tests price aggregator zero address validation.
+/// 
+/// Covers:
+/// - Zero address validation
+/// - ERROR_INVALID_AGGREGATOR error condition
 #[test]
-fn test_set_aggregator_zero_address_error() {
+fn address_set_aggregator_zero_address_error() {
     let mut state = LendingPoolTestState::new();
 
-    // Try to set zero address
     state.set_aggregator_error(ManagedAddress::zero(), ERROR_INVALID_AGGREGATOR);
 }
 
+/// Tests successful swap router address update.
+/// 
+/// Covers:
+/// - Swap router configuration
+/// - Address update verification
 #[test]
-fn test_set_swap_router_success() {
+fn address_set_swap_router_success() {
     let mut state = LendingPoolTestState::new();
 
-    // Set a new swap router address
-    let new_router = state.price_aggregator_sc.clone(); // Using an existing SC address
+    let new_router = state.price_aggregator_sc.clone();
     state.set_swap_router(new_router.clone());
 
-    // Verify swap router was set
+    // Verify router was updated
     let router = state.get_swap_router_address();
     assert_eq!(router, new_router);
 }
 
+/// Tests swap router zero address validation.
+/// 
+/// Covers:
+/// - Zero address validation
+/// - ERROR_INVALID_AGGREGATOR error condition
 #[test]
-fn test_set_swap_router_zero_address_error() {
+fn address_set_swap_router_zero_address_error() {
     let mut state = LendingPoolTestState::new();
 
-    // Try to set zero address
     state.set_swap_router_error(ManagedAddress::zero(), ERROR_INVALID_AGGREGATOR);
 }
 
+/// Tests successful accumulator address update.
+/// 
+/// Covers:
+/// - Accumulator configuration
+/// - Address update verification
 #[test]
-fn test_set_accumulator_success() {
+fn address_set_accumulator_success() {
     let mut state = LendingPoolTestState::new();
 
-    // Set a new accumulator address
-    let new_accumulator = state.price_aggregator_sc.clone(); // Using an existing SC address
+    let new_accumulator = state.price_aggregator_sc.clone();
     state.set_accumulator(new_accumulator.clone());
 
-    // Verify accumulator was set
+    // Verify accumulator was updated
     let accumulator = state.get_accumulator_address();
     assert_eq!(accumulator, new_accumulator);
 }
 
+/// Tests accumulator zero address validation.
+/// 
+/// Covers:
+/// - Zero address validation
+/// - ERROR_INVALID_AGGREGATOR error condition
 #[test]
-fn test_set_accumulator_zero_address_error() {
+fn address_set_accumulator_zero_address_error() {
     let mut state = LendingPoolTestState::new();
 
-    // Try to set zero address
     state.set_accumulator_error(ManagedAddress::zero(), ERROR_INVALID_AGGREGATOR);
 }
 
+/// Tests successful safe price view address update.
+/// 
+/// Covers:
+/// - Safe price view configuration
+/// - Address update verification
 #[test]
-fn test_set_safe_price_view_success() {
+fn address_set_safe_price_view_success() {
     let mut state = LendingPoolTestState::new();
 
-    // Set a new safe price view address
-    let new_safe_view = state.price_aggregator_sc.clone(); // Using an existing SC address
+    let new_safe_view = state.price_aggregator_sc.clone();
     state.set_safe_price_view(new_safe_view.clone());
 
-    // Verify safe price view was set
+    // Verify safe price view was updated
     let safe_view = state.get_safe_price_address();
     assert_eq!(safe_view, new_safe_view);
 }
 
+/// Tests safe price view zero address validation.
+/// 
+/// Covers:
+/// - Zero address validation
+/// - ERROR_INVALID_AGGREGATOR error condition
 #[test]
-fn test_set_safe_price_view_zero_address_error() {
+fn address_set_safe_price_view_zero_address_error() {
     let mut state = LendingPoolTestState::new();
 
-    // Try to set zero address
     state.set_safe_price_view_error(ManagedAddress::zero(), ERROR_INVALID_AGGREGATOR);
 }
 
+/// Tests successful liquidity pool template address update.
+/// 
+/// Covers:
+/// - Liquidity pool template configuration
+/// - Address update verification
 #[test]
-fn test_set_liquidity_pool_template_success() {
+fn address_set_liquidity_pool_template_success() {
     let mut state = LendingPoolTestState::new();
 
-    // Set a new liquidity pool template address
     let new_template = state.template_address_liquidity_pool.clone();
     state.set_liquidity_pool_template(new_template.clone());
 
-    // Verify template was set
+    // Verify template was updated
     let template = state.get_liq_pool_template_address();
     assert_eq!(template, new_template);
 }
 
+/// Tests liquidity pool template zero address validation.
+/// 
+/// Covers:
+/// - Zero address validation
+/// - ERROR_INVALID_LIQUIDITY_POOL_TEMPLATE error condition
 #[test]
-fn test_set_liquidity_pool_template_zero_address_error() {
+fn address_set_liquidity_pool_template_zero_address_error() {
     let mut state = LendingPoolTestState::new();
 
-    // Try to set zero address
     state.set_liquidity_pool_template_error(
         ManagedAddress::zero(),
         ERROR_INVALID_LIQUIDITY_POOL_TEMPLATE,
@@ -252,27 +328,37 @@ fn test_set_liquidity_pool_template_zero_address_error() {
 // E-MODE CONFIGURATION TESTS
 // ============================================
 
+/// Tests successful E-Mode category creation.
+/// 
+/// Covers:
+/// - E-Mode category addition
+/// - Category ID auto-increment
+/// - Risk parameters configuration
 #[test]
-fn test_add_e_mode_category_success() {
+fn emode_add_category_success() {
     let mut state = LendingPoolTestState::new();
 
-    // Add a new e-mode category
     state.add_e_mode_category(
         BigUint::from(8500u64), // 85% LTV
         BigUint::from(9000u64), // 90% liquidation threshold
         BigUint::from(200u64),  // 2% liquidation bonus
     );
 
-    // Verify category was added
+    // Verify category was added with ID 2
     let last_category_id = state.last_e_mode_category_id();
-    assert_eq!(last_category_id, 2); // Should be 2 since we already have category 1
+    assert_eq!(last_category_id, 2);
 }
 
+/// Tests successful E-Mode category update.
+/// 
+/// Covers:
+/// - E-Mode category modification
+/// - Risk parameters update
+/// - Category persistence
 #[test]
-fn test_edit_e_mode_category_success() {
+fn emode_edit_category_success() {
     let mut state = LendingPoolTestState::new();
 
-    // Edit existing e-mode category
     let category = EModeCategory {
         category_id: 1,
         loan_to_value: ManagedDecimal::from_raw_units(BigUint::from(8000u64), BPS_PRECISION),
@@ -295,13 +381,17 @@ fn test_edit_e_mode_category_success() {
     assert!(found);
 }
 
+/// Tests E-Mode category update for non-existent category fails.
+/// 
+/// Covers:
+/// - Category existence validation
+/// - ERROR_EMODE_CATEGORY_NOT_FOUND error condition
 #[test]
-fn test_edit_e_mode_category_not_found_error() {
+fn emode_edit_category_not_found_error() {
     let mut state = LendingPoolTestState::new();
 
-    // Try to edit non-existent category
     let category = EModeCategory {
-        category_id: 99,
+        category_id: 99, // Non-existent
         loan_to_value: ManagedDecimal::from_raw_units(BigUint::from(8000u64), BPS_PRECISION),
         liquidation_threshold: ManagedDecimal::from_raw_units(
             BigUint::from(8500u64),
@@ -314,11 +404,17 @@ fn test_edit_e_mode_category_not_found_error() {
     state.edit_e_mode_category_error(category, ERROR_EMODE_CATEGORY_NOT_FOUND);
 }
 
+/// Tests successful E-Mode category deprecation.
+/// 
+/// Covers:
+/// - E-Mode category removal
+/// - Category deprecation flag
+/// - Soft delete functionality
 #[test]
-fn test_remove_e_mode_category_success() {
+fn emode_remove_category_success() {
     let mut state = LendingPoolTestState::new();
 
-    // Add a new category first
+    // Add category first
     state.add_e_mode_category(
         BigUint::from(8500u64),
         BigUint::from(9000u64),
@@ -328,7 +424,7 @@ fn test_remove_e_mode_category_success() {
     // Remove the category
     state.remove_e_mode_category(2);
 
-    // Verify category was marked as deprecated
+    // Verify category was deprecated
     let e_modes = state.get_e_modes();
     let found = e_modes.into_iter().find(|item| {
         let (id, _) = item.clone().into_tuple();
@@ -339,19 +435,28 @@ fn test_remove_e_mode_category_success() {
     assert!(category.is_deprecated);
 }
 
+/// Tests E-Mode category removal for non-existent category fails.
+/// 
+/// Covers:
+/// - Category existence validation
+/// - ERROR_EMODE_CATEGORY_NOT_FOUND error condition
 #[test]
-fn test_remove_e_mode_category_not_found_error() {
+fn emode_remove_category_not_found_error() {
     let mut state = LendingPoolTestState::new();
 
-    // Try to remove non-existent category
     state.remove_e_mode_category_error(99, ERROR_EMODE_CATEGORY_NOT_FOUND);
 }
 
+/// Tests successful asset addition to E-Mode category.
+/// 
+/// Covers:
+/// - Asset to E-Mode category mapping
+/// - Asset configuration in E-Mode
+/// - Multiple category support
 #[test]
-fn test_add_asset_to_e_mode_category_success() {
+fn emode_add_asset_to_category_success() {
     let mut state = LendingPoolTestState::new();
 
-    // Add USDC to e-mode category 1
     state.add_asset_to_e_mode_category(
         EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_token_identifier()),
         1,
@@ -366,25 +471,33 @@ fn test_add_asset_to_e_mode_category_success() {
     assert!(asset_e_modes.into_iter().any(|id| id == 1));
 }
 
+/// Tests asset addition to non-existent E-Mode category fails.
+/// 
+/// Covers:
+/// - Category existence validation
+/// - ERROR_EMODE_CATEGORY_NOT_FOUND error condition
 #[test]
-fn test_add_asset_to_e_mode_category_not_found_error() {
+fn emode_add_asset_to_invalid_category_error() {
     let mut state = LendingPoolTestState::new();
 
-    // Try to add asset to non-existent category
     state.add_asset_to_e_mode_category_error(
         EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_token_identifier()),
-        99,
+        99, // Non-existent category
         true,
         true,
         ERROR_EMODE_CATEGORY_NOT_FOUND,
     );
 }
 
+/// Tests adding unsupported asset to E-Mode category fails.
+/// 
+/// Covers:
+/// - Asset existence validation
+/// - ERROR_ASSET_NOT_SUPPORTED error condition
 #[test]
-fn test_add_asset_to_e_mode_category_asset_not_supported_error() {
+fn emode_add_unsupported_asset_error() {
     let mut state = LendingPoolTestState::new();
 
-    // Try to add non-existent asset
     let new_token = TestTokenIdentifier::new("NOASSET-123456");
     state.add_asset_to_e_mode_category_error(
         EgldOrEsdtTokenIdentifier::esdt(new_token.to_token_identifier()),
@@ -395,11 +508,16 @@ fn test_add_asset_to_e_mode_category_asset_not_supported_error() {
     );
 }
 
+/// Tests adding already existing asset to E-Mode category fails.
+/// 
+/// Covers:
+/// - Duplicate asset prevention
+/// - ERROR_ASSET_ALREADY_SUPPORTED_IN_EMODE error condition
 #[test]
-fn test_add_asset_to_e_mode_category_already_supported_error() {
+fn emode_add_duplicate_asset_error() {
     let mut state = LendingPoolTestState::new();
 
-    // Try to add EGLD which is already in category 1
+    // EGLD is already in category 1
     state.add_asset_to_e_mode_category_error(
         EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
         1,
@@ -409,13 +527,17 @@ fn test_add_asset_to_e_mode_category_already_supported_error() {
     );
 }
 
+/// Tests successful asset configuration update in E-Mode category.
+/// 
+/// Covers:
+/// - Asset configuration modification
+/// - Collateral/borrow flag updates
 #[test]
-fn test_edit_asset_in_e_mode_category_success() {
+fn emode_edit_asset_in_category_success() {
     let mut state = LendingPoolTestState::new();
 
-    // Edit EGLD in e-mode category 1
     let config = EModeAssetConfig {
-        is_collateralizable: false,
+        is_collateralizable: false, // Change from true
         is_borrowable: true,
     };
 
@@ -439,11 +561,15 @@ fn test_edit_asset_in_e_mode_category_success() {
     assert!(!found_config.unwrap().is_collateralizable);
 }
 
+/// Tests asset edit in non-existent E-Mode category fails.
+/// 
+/// Covers:
+/// - Category existence validation
+/// - ERROR_EMODE_CATEGORY_NOT_FOUND error condition
 #[test]
-fn test_edit_asset_in_e_mode_category_not_found_error() {
+fn emode_edit_asset_invalid_category_error() {
     let mut state = LendingPoolTestState::new();
 
-    // Try to edit asset in non-existent category
     let config = EModeAssetConfig {
         is_collateralizable: false,
         is_borrowable: true,
@@ -451,22 +577,27 @@ fn test_edit_asset_in_e_mode_category_not_found_error() {
 
     state.edit_asset_in_e_mode_category_error(
         EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
-        99,
+        99, // Non-existent category
         config,
         ERROR_EMODE_CATEGORY_NOT_FOUND,
     );
 }
 
+/// Tests editing non-existent asset in E-Mode category fails.
+/// 
+/// Covers:
+/// - Asset existence in category validation
+/// - ERROR_ASSET_NOT_SUPPORTED_IN_EMODE error condition
 #[test]
-fn test_edit_asset_in_e_mode_category_asset_not_supported_error() {
+fn emode_edit_missing_asset_error() {
     let mut state = LendingPoolTestState::new();
 
-    // Try to edit USDC which is not in category 1
     let config = EModeAssetConfig {
         is_collateralizable: false,
         is_borrowable: true,
     };
 
+    // USDC not in category 1
     state.edit_asset_in_e_mode_category_error(
         EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_token_identifier()),
         1,
@@ -475,11 +606,15 @@ fn test_edit_asset_in_e_mode_category_asset_not_supported_error() {
     );
 }
 
+/// Tests successful asset removal from E-Mode category.
+/// 
+/// Covers:
+/// - Asset removal from category
+/// - Category asset list update
 #[test]
-fn test_remove_asset_from_e_mode_category_success() {
+fn emode_remove_asset_from_category_success() {
     let mut state = LendingPoolTestState::new();
 
-    // Remove EGLD from e-mode category 1
     state.remove_asset_from_e_mode_category(
         EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
         1,
@@ -492,23 +627,31 @@ fn test_remove_asset_from_e_mode_category_success() {
     assert!(!asset_e_modes.into_iter().any(|id| id == 1));
 }
 
+/// Tests asset removal from non-existent E-Mode category fails.
+/// 
+/// Covers:
+/// - Category existence validation
+/// - ERROR_EMODE_CATEGORY_NOT_FOUND error condition
 #[test]
-fn test_remove_asset_from_e_mode_category_not_found_error() {
+fn emode_remove_asset_invalid_category_error() {
     let mut state = LendingPoolTestState::new();
 
-    // Try to remove asset from non-existent category
     state.remove_asset_from_e_mode_category_error(
         EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
-        99,
+        99, // Non-existent category
         ERROR_EMODE_CATEGORY_NOT_FOUND,
     );
 }
 
+/// Tests removing unsupported asset from E-Mode category fails.
+/// 
+/// Covers:
+/// - Asset existence validation
+/// - ERROR_ASSET_NOT_SUPPORTED error condition
 #[test]
-fn test_remove_asset_from_e_mode_category_asset_not_supported_error() {
+fn emode_remove_unsupported_asset_error() {
     let mut state = LendingPoolTestState::new();
 
-    // Try to remove non-existent asset
     let new_token = TestTokenIdentifier::new("NOASSET-123456");
     state.remove_asset_from_e_mode_category_error(
         EgldOrEsdtTokenIdentifier::esdt(new_token.to_token_identifier()),
@@ -517,11 +660,16 @@ fn test_remove_asset_from_e_mode_category_asset_not_supported_error() {
     );
 }
 
+/// Tests removing non-existent asset from E-Mode category fails.
+/// 
+/// Covers:
+/// - Asset membership validation
+/// - ERROR_ASSET_NOT_SUPPORTED_IN_EMODE error condition
 #[test]
-fn test_remove_asset_from_e_mode_category_asset_not_in_category_error() {
+fn emode_remove_missing_asset_error() {
     let mut state = LendingPoolTestState::new();
 
-    // Try to remove USDC which is not in category 1
+    // USDC not in category 1
     state.remove_asset_from_e_mode_category_error(
         EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_token_identifier()),
         1,
@@ -533,11 +681,16 @@ fn test_remove_asset_from_e_mode_category_asset_not_in_category_error() {
 // ASSET CONFIGURATION TESTS
 // ============================================
 
+/// Tests successful asset configuration update.
+/// 
+/// Covers:
+/// - Asset risk parameters update
+/// - All configuration fields
+/// - Value persistence
 #[test]
-fn test_edit_asset_config_success() {
+fn asset_edit_config_success() {
     let mut state = LendingPoolTestState::new();
 
-    // Edit EGLD asset config
     state.edit_asset_config(
         EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
         &BigUint::from(7000u64), // 70% LTV
@@ -562,15 +715,18 @@ fn test_edit_asset_config_success() {
         EGLD_TOKEN.to_token_identifier(),
     ));
     let ltv_value = config.loan_to_value.into_raw_units().clone();
-    let expected = BigUint::from(7000u64);
-    assert_eq!(ltv_value, expected);
+    assert_eq!(ltv_value, BigUint::from(7000u64));
 }
 
+/// Tests asset configuration for non-existent asset fails.
+/// 
+/// Covers:
+/// - Asset existence validation
+/// - ERROR_ASSET_NOT_SUPPORTED error condition
 #[test]
-fn test_edit_asset_config_asset_not_supported_error() {
+fn asset_edit_config_unsupported_asset_error() {
     let mut state = LendingPoolTestState::new();
 
-    // Try to edit config for non-existent asset
     let new_token = TestTokenIdentifier::new("NOASSET-123456");
     state.edit_asset_config(
         EgldOrEsdtTokenIdentifier::esdt(new_token.to_token_identifier()),
@@ -592,15 +748,19 @@ fn test_edit_asset_config_asset_not_supported_error() {
     );
 }
 
+/// Tests asset configuration with invalid liquidation threshold fails.
+/// 
+/// Covers:
+/// - Liquidation threshold > LTV validation
+/// - ERROR_INVALID_LIQUIDATION_THRESHOLD error condition
 #[test]
-fn test_edit_asset_config_invalid_liquidation_threshold_error() {
+fn asset_edit_config_invalid_liquidation_threshold_error() {
     let mut state = LendingPoolTestState::new();
 
-    // Try to set liquidation threshold lower than LTV
     state.edit_asset_config(
         EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
         &BigUint::from(8000u64), // 80% LTV
-        &BigUint::from(7000u64), // 70% liquidation threshold (invalid)
+        &BigUint::from(7000u64), // 70% liquidation threshold (invalid - less than LTV)
         &BigUint::from(500u64),
         &BigUint::from(100u64),
         false,
@@ -616,22 +776,29 @@ fn test_edit_asset_config_invalid_liquidation_threshold_error() {
         Some(ERROR_INVALID_LIQUIDATION_THRESHOLD),
     );
 }
+
 // ============================================
 // COMPLEX SCENARIO TESTS
 // ============================================
 
+/// Tests complete E-Mode category lifecycle.
+/// 
+/// Covers:
+/// - Full E-Mode category management flow
+/// - Category creation, asset management, and removal
+/// - State consistency throughout lifecycle
 #[test]
-fn test_complete_e_mode_lifecycle() {
+fn emode_complete_lifecycle_scenario() {
     let mut state = LendingPoolTestState::new();
 
-    // 1. Add a new e-mode category
+    // 1. Create new E-Mode category
     state.add_e_mode_category(
         BigUint::from(9000u64), // 90% LTV
         BigUint::from(9500u64), // 95% liquidation threshold
         BigUint::from(100u64),  // 1% liquidation bonus
     );
 
-    // 2. Add USDC to the new category
+    // 2. Add asset to category
     state.add_asset_to_e_mode_category(
         EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_token_identifier()),
         2,
@@ -639,7 +806,7 @@ fn test_complete_e_mode_lifecycle() {
         true,
     );
 
-    // 3. Edit the asset configuration in the category
+    // 3. Modify asset configuration
     let config = EModeAssetConfig {
         is_collateralizable: true,
         is_borrowable: false,
@@ -650,13 +817,13 @@ fn test_complete_e_mode_lifecycle() {
         config,
     );
 
-    // 4. Remove the asset from the category
+    // 4. Remove asset from category
     state.remove_asset_from_e_mode_category(
         EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_token_identifier()),
         2,
     );
 
-    // 5. Remove the category
+    // 5. Deprecate category
     state.remove_e_mode_category(2);
 
     // Verify final state
@@ -670,18 +837,24 @@ fn test_complete_e_mode_lifecycle() {
     assert!(category.is_deprecated);
 }
 
+/// Tests E-Mode category removal with multiple assets.
+/// 
+/// Covers:
+/// - Category removal impact on multiple assets
+/// - Automatic asset removal from deprecated category
+/// - State consistency after bulk operations
 #[test]
-fn test_remove_e_mode_category_with_multiple_assets() {
+fn emode_remove_category_with_multiple_assets_scenario() {
     let mut state = LendingPoolTestState::new();
 
-    // 1. Add a new e-mode category
+    // 1. Create category
     state.add_e_mode_category(
-        BigUint::from(8500u64), // 85% LTV
-        BigUint::from(9000u64), // 90% liquidation threshold
-        BigUint::from(200u64),  // 2% liquidation bonus
+        BigUint::from(8500u64),
+        BigUint::from(9000u64),
+        BigUint::from(200u64),
     );
 
-    // 2. Add multiple assets to the category
+    // 2. Add multiple assets
     state.add_asset_to_e_mode_category(
         EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_token_identifier()),
         2,
@@ -718,10 +891,10 @@ fn test_remove_e_mode_category_with_multiple_assets() {
     assert!(isolated_e_modes.into_iter().any(|id| id == 2));
     assert!(siloed_e_modes.into_iter().any(|id| id == 2));
 
-    // 3. Remove the category (should remove all assets from it)
+    // 3. Remove category
     state.remove_e_mode_category(2);
 
-    // Verify category was marked as deprecated
+    // Verify category deprecated
     let e_modes = state.get_e_modes();
     let found = e_modes.into_iter().find(|item| {
         let (id, _) = item.clone().into_tuple();
@@ -731,7 +904,7 @@ fn test_remove_e_mode_category_with_multiple_assets() {
     let (_, category) = found.unwrap().into_tuple();
     assert!(category.is_deprecated);
 
-    // Verify all assets were removed from the category
+    // Verify assets removed from category
     let usdc_e_modes_after = state.get_asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
         USDC_TOKEN.to_token_identifier(),
     ));
@@ -746,29 +919,36 @@ fn test_remove_e_mode_category_with_multiple_assets() {
     assert!(!isolated_e_modes_after.into_iter().any(|id| id == 2));
     assert!(!siloed_e_modes_after.into_iter().any(|id| id == 2));
 
-    // Verify the category's asset list is empty
+    // Verify category asset list is empty
     let e_mode_assets = state.get_e_modes_assets(2);
     assert_eq!(e_mode_assets.len(), 0);
 }
+
+/// Tests asset configuration with zero caps handling.
+/// 
+/// Covers:
+/// - Supply/borrow cap configuration
+/// - Zero cap interpretation as None
+/// - Cap update and removal
 #[test]
-fn test_edit_asset_config_with_zero_caps() {
+fn asset_edit_config_zero_caps_scenario() {
     let mut state = LendingPoolTestState::new();
 
-    // First, set non-zero caps
+    // Set non-zero caps
     state.edit_asset_config(
         EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
-        &BigUint::from(7500u64),    // 75% LTV
-        &BigUint::from(8000u64),    // 80% liquidation threshold
-        &BigUint::from(500u64),     // 5% liquidation bonus
-        &BigUint::from(100u64),     // 1% liquidation fees
-        false,                      // not isolated
-        &BigUint::zero(),           // no debt ceiling
-        false,                      // not siloed
-        true,                       // flashloanable
-        &BigUint::from(10u64),      // 0.1% flash loan fee
-        true,                       // collateralizable
-        true,                       // borrowable
-        false,                      // isolation borrow not enabled
+        &BigUint::from(7500u64),
+        &BigUint::from(8000u64),
+        &BigUint::from(500u64),
+        &BigUint::from(100u64),
+        false,
+        &BigUint::zero(),
+        false,
+        true,
+        &BigUint::from(10u64),
+        true,
+        true,
+        false,
         &BigUint::from(1000000u64), // 1M borrow cap
         &BigUint::from(2000000u64), // 2M supply cap
         None,
@@ -783,34 +963,34 @@ fn test_edit_asset_config_with_zero_caps() {
     assert_eq!(config.borrow_cap.unwrap(), BigUint::from(1000000u64));
     assert_eq!(config.supply_cap.unwrap(), BigUint::from(2000000u64));
 
-    // Now set caps to zero (should result in None)
+    // Set caps to zero (removes caps)
     state.edit_asset_config(
         EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
-        &BigUint::from(7500u64), // 75% LTV
-        &BigUint::from(8000u64), // 80% liquidation threshold
-        &BigUint::from(500u64),  // 5% liquidation bonus
-        &BigUint::from(100u64),  // 1% liquidation fees
-        false,                   // not isolated
-        &BigUint::zero(),        // no debt ceiling
-        false,                   // not siloed
-        true,                    // flashloanable
-        &BigUint::from(10u64),   // 0.1% flash loan fee
-        true,                    // collateralizable
-        true,                    // borrowable
-        false,                   // isolation borrow not enabled
-        &BigUint::zero(),        // zero borrow cap
-        &BigUint::zero(),        // zero supply cap
+        &BigUint::from(7500u64),
+        &BigUint::from(8000u64),
+        &BigUint::from(500u64),
+        &BigUint::from(100u64),
+        false,
+        &BigUint::zero(),
+        false,
+        true,
+        &BigUint::from(10u64),
+        true,
+        true,
+        false,
+        &BigUint::zero(), // Zero borrow cap
+        &BigUint::zero(), // Zero supply cap
         None,
     );
 
-    // Verify caps were set to None
+    // Verify caps removed
     let config_after = state.get_asset_config(EgldOrEsdtTokenIdentifier::esdt(
         EGLD_TOKEN.to_token_identifier(),
     ));
     assert!(config_after.borrow_cap.is_none());
     assert!(config_after.supply_cap.is_none());
 
-    // Verify other values remained the same
+    // Verify other values unchanged
     let ltv_value = config_after.loan_to_value.into_raw_units().clone();
     assert_eq!(ltv_value, BigUint::from(7500u64));
 }

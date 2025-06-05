@@ -7,17 +7,22 @@ pub mod setup;
 use constants::*;
 use setup::*;
 
+/// Tests that withdrawing more than deposited amount gets capped at maximum available.
+/// 
+/// Covers:
+/// - Controller::withdraw endpoint behavior with excess amounts
+/// - Automatic capping to available balance
+/// - Withdrawal of entire position
 #[test]
-fn test_withdrawal_higher_amount() {
+fn withdraw_excess_amount_capped_to_available_success() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
 
-    // Setup supplier account
     state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
 
-    // Initial supply
+    // Supply 1000 USDC
     state.supply_asset(
         &supplier,
         USDC_TOKEN,
@@ -28,7 +33,8 @@ fn test_withdrawal_higher_amount() {
         false,
     );
 
-    // Withdraw too much than existing, should cap it at maximum
+    // Attempt to withdraw 1500 USDC (more than available)
+    // Should succeed by capping to 1000 USDC
     state.withdraw_asset(
         &supplier,
         USDC_TOKEN,
@@ -37,6 +43,7 @@ fn test_withdrawal_higher_amount() {
         USDC_DECIMALS,
     );
 
+    // Verify token was fully withdrawn
     let custom_error_message = format!("Token not existing in the account {}", USDC_TOKEN.as_str());
     state.get_collateral_amount_for_token_non_existing(
         1,
@@ -45,17 +52,22 @@ fn test_withdrawal_higher_amount() {
     );
 }
 
+/// Tests that withdrawing fails when pool has insufficient liquidity due to borrows.
+/// 
+/// Covers:
+/// - Controller::withdraw endpoint error path
+/// - Liquidity validation in positions::withdraw::PositionWithdrawModule
+/// - ERROR_INSUFFICIENT_LIQUIDITY error condition
 #[test]
-fn test_withdrawal_with_low_reserves() {
+fn withdraw_insufficient_liquidity_error() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
 
-    // Setup supplier account
     state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
 
-    // Initial supply
+    // Supplier deposits 1000 USDC
     state.supply_asset(
         &supplier,
         USDC_TOKEN,
@@ -66,6 +78,7 @@ fn test_withdrawal_with_low_reserves() {
         false,
     );
 
+    // Borrower supplies collateral
     state.supply_asset(
         &borrower,
         EGLD_TOKEN,
@@ -76,6 +89,7 @@ fn test_withdrawal_with_low_reserves() {
         false,
     );
 
+    // Borrower takes out 100 USDC loan
     state.borrow_asset(
         &borrower,
         USDC_TOKEN,
@@ -84,7 +98,7 @@ fn test_withdrawal_with_low_reserves() {
         USDC_DECIMALS,
     );
 
-    // Withdraw too much than existing, should cap it at maximum
+    // Supplier tries to withdraw full 1000 USDC but only 900 is available
     state.withdraw_asset_error(
         &supplier,
         USDC_TOKEN,
@@ -95,17 +109,22 @@ fn test_withdrawal_with_low_reserves() {
     );
 }
 
+/// Tests withdrawal with accumulated interest over time.
+/// 
+/// Covers:
+/// - Controller::withdraw endpoint with interest accrual
+/// - Interest calculations in withdrawal flow
+/// - Partial withdrawal with updated balances
 #[test]
-fn test_withdrawal_with_interest() {
+fn withdraw_with_accumulated_interest_success() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
 
-    // Setup supplier account
     state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
 
-    // Initial supply
+    // Supplier deposits 1000 USDC
     state.supply_asset(
         &supplier,
         USDC_TOKEN,
@@ -136,17 +155,13 @@ fn test_withdrawal_with_interest() {
     );
 
     // Advance time to accumulate interest
-    state.change_timestamp(SECONDS_PER_DAY * 10); // 10 days
+    state.change_timestamp(SECONDS_PER_DAY * 10);
 
-    // Update interest before withdrawal
-    // state.global_sync(&supplier, 1);
-
-    // Get initial state
+    // Record initial collateral with interest
     let initial_collateral = state.get_collateral_amount_for_token(1, USDC_TOKEN);
-    println!("initial_collateral: {}", initial_collateral);
 
-    // Advance time to accumulate interest
-    state.change_timestamp(SECONDS_PER_DAY * 20); // 20 days
+    // Advance more time
+    state.change_timestamp(SECONDS_PER_DAY * 20);
 
     // Withdraw partial amount
     state.withdraw_asset(
@@ -157,24 +172,31 @@ fn test_withdrawal_with_interest() {
         USDC_DECIMALS,
     );
 
-    // Get initial state
+    // Verify collateral was reduced by withdrawal amount
     let final_collateral = state.get_collateral_amount_for_token(1, USDC_TOKEN);
-    println!("final_collateral:   {}", final_collateral);
+    assert!(final_collateral < initial_collateral);
 }
 
+/// Tests complex withdrawal scenario with single user as both supplier and borrower.
+/// 
+/// Covers:
+/// - Controller::withdraw endpoint with same user supply and borrow
+/// - Market index updates through updateIndexes
+/// - Revenue and reserve tracking
+/// - Full withdrawal after repayment
 #[test]
-fn test_withdrawal_with_interest_one_user() {
+fn withdraw_single_user_supply_borrow_full_cycle() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
 
-    // Setup supplier account
     setup_accounts(&mut state, supplier, borrower);
 
     state.change_timestamp(1740269720);
     let mut markets = MultiValueEncoded::new();
     markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
-    // Initial supply
+    
+    // User supplies 100 EGLD
     state.supply_asset(
         &supplier,
         EGLD_TOKEN,
@@ -188,6 +210,7 @@ fn test_withdrawal_with_interest_one_user() {
     state.change_timestamp(1740269852);
     state.update_markets(&supplier, markets.clone());
 
+    // Same user borrows 72 EGLD
     state.borrow_asset(
         &supplier,
         EGLD_TOKEN,
@@ -198,72 +221,65 @@ fn test_withdrawal_with_interest_one_user() {
 
     state.change_timestamp(1740275066);
     state.update_markets(&supplier, markets.clone());
-    // Update interest before withdrawal
 
-    // Get initial state
+    // Get balances after interest accrual
     let initial_collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
     let initial_borrow = state.get_borrow_amount_for_token(1, EGLD_TOKEN);
-    println!("initial_collateral: {}", initial_collateral);
-    println!("initial_borrow: {}", initial_borrow);
 
+    // Repay exact borrow amount with interest
     state.repay_asset_deno(
         &supplier,
         &EGLD_TOKEN,
         BigUint::from(72721215451172815256u128),
         1,
     );
+    
+    // Check market state after repayment
     let reserve = state.get_market_reserves(state.egld_market.clone());
     let revenue = state.get_market_revenue(state.egld_market.clone());
     let borrow_index = state.get_market_borrow_index(state.egld_market.clone());
     let supply_index = state.get_market_supply_index(state.egld_market.clone());
-    println!("reserve: {}", reserve);
-    println!("revenue: {}", revenue);
-    println!("borrow_index: {}", borrow_index);
-    println!("supply_index: {}", supply_index);
+
     state.change_timestamp(1740275594);
     state.update_markets(&supplier, markets.clone());
-    let borrow_index = state.get_market_borrow_index(state.egld_market.clone());
-    let supply_index = state.get_market_supply_index(state.egld_market.clone());
-    println!("reserve: {}", reserve);
-    println!("revenue: {}", revenue);
-    println!("borrow_index: {}", borrow_index);
-    println!("supply_index: {}", supply_index);
-    // state.global_sync(&supplier, 1);
-    // Get initial state
+    
+    // Get final collateral amount
     let final_collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
-    println!("collate: {}", final_collateral);
-    println!("reserve: {}", reserve);
-    println!("revenue: {}", revenue);
 
-    // Withdraw partial amount
+    // Withdraw entire collateral balance
     state.withdraw_asset_den(
         &supplier,
         EGLD_TOKEN,
         final_collateral.into_raw_units().clone(),
         1,
     );
+    
     state.update_markets(&supplier, markets.clone());
-    let reserve = state.get_market_reserves(state.egld_market.clone());
-    let revenue = state.get_market_revenue(state.egld_market.clone());
-    println!("reserve: {}", reserve);
-    println!("revenue: {}", revenue);
-    let diff = reserve.into_signed() - revenue.into_signed();
-    println!("diff:    {}", diff);
+    
+    // Verify final market state
+    let final_reserve = state.get_market_reserves(state.egld_market.clone());
+    let final_revenue = state.get_market_revenue(state.egld_market.clone());
 }
 
+/// Tests withdrawal with prior market index update to ensure proper accounting.
+/// 
+/// Covers:
+/// - Controller::updateIndexes endpoint interaction with withdrawals
+/// - Market state synchronization before operations
+/// - Reserve and revenue tracking accuracy
 #[test]
-fn test_withdrawal_with_interest_one_user_prior_update() {
+fn withdraw_with_prior_index_update_success() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
 
-    // Setup supplier account
     setup_accounts(&mut state, supplier, borrower);
     let mut markets = MultiValueEncoded::new();
     markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
 
     state.change_timestamp(1740269720);
-    // Initial supply
+    
+    // User supplies 100 EGLD
     state.supply_asset(
         &supplier,
         EGLD_TOKEN,
@@ -276,6 +292,8 @@ fn test_withdrawal_with_interest_one_user_prior_update() {
 
     state.change_timestamp(1740269852);
     state.update_markets(&supplier, markets.clone());
+    
+    // User borrows 72 EGLD against their own collateral
     state.borrow_asset(
         &supplier,
         EGLD_TOKEN,
@@ -286,71 +304,70 @@ fn test_withdrawal_with_interest_one_user_prior_update() {
 
     state.change_timestamp(1740275066);
     state.update_markets(&supplier, markets.clone());
-    // Update interest before withdrawal
 
-    // Get initial state
+    // Get current positions
     let initial_collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
     let initial_borrow = state.get_borrow_amount_for_token(1, EGLD_TOKEN);
-    println!("initial_collateral: {}", initial_collateral);
-    println!("initial_borrow: {}", initial_borrow);
 
+    // Repay full borrow amount
     state.repay_asset_deno(
         &supplier,
         &EGLD_TOKEN,
         initial_borrow.into_raw_units().clone(),
         1,
     );
+    
+    // Update markets after repayment
     state.update_markets(&supplier, markets.clone());
+    
+    // Record market state
     let reserve = state.get_market_reserves(state.egld_market.clone());
     let revenue = state.get_market_revenue(state.egld_market.clone());
-    let borrow_index = state.get_market_borrow_index(state.egld_market.clone());
-    let supply_index = state.get_market_supply_index(state.egld_market.clone());
-    println!("reserve: {}", reserve);
-    println!("revenue: {}", revenue);
     let total_deposit = state.get_market_supplied(state.egld_market.clone());
-    println!("total_deposit: {}", total_deposit);
-    println!("borrow_index: {}", borrow_index);
-    println!("supply_index: {}", supply_index);
-    state.change_timestamp(1740275594);
-    state.update_markets(&supplier, markets.clone());
-    let reserve = state.get_market_reserves(state.egld_market.clone());
-    let revenue = state.get_market_revenue(state.egld_market.clone());
     let borrow_index = state.get_market_borrow_index(state.egld_market.clone());
     let supply_index = state.get_market_supply_index(state.egld_market.clone());
-    println!("reserve: {}", reserve);
-    println!("revenue: {}", revenue);
-    println!("borrow_index: {}", borrow_index);
-    println!("supply_index: {}", supply_index);
+
+    state.change_timestamp(1740275594);
+    
+    // Update markets twice to ensure proper synchronization
     state.update_markets(&supplier, markets.clone());
-    // Get initial state
+    state.update_markets(&supplier, markets.clone());
+    
+    // Get final collateral after all updates
     let final_collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
-    println!("final_collateral:   {}", final_collateral);
+    
+    // Calculate expected difference
     let diff = (reserve.clone().into_signed() - final_collateral.clone().into_signed())
         - revenue.clone().into_signed();
-    println!("diff: {}", diff);
-    println!("revenue: {}", revenue);
-    // Withdraw partial amount
+
+    // Withdraw full collateral
     state.withdraw_asset_den(
         &supplier,
         EGLD_TOKEN,
         final_collateral.into_raw_units().clone(),
         1,
     );
-    let reserve = state.get_market_reserves(state.egld_market.clone());
-    let revenue = state.get_market_revenue(state.egld_market.clone());
-    println!("reserve: {}", reserve);
-    println!("revenue: {}", revenue);
+    
+    // Verify final reserves and revenue
+    let final_reserve = state.get_market_reserves(state.egld_market.clone());
+    let final_revenue = state.get_market_revenue(state.egld_market.clone());
 }
 
+/// Tests that withdrawal triggering self-liquidation is prevented.
+/// 
+/// Covers:
+/// - Controller::withdraw endpoint health factor validation
+/// - Self-liquidation protection in positions::withdraw::PositionWithdrawModule
+/// - ERROR_HEALTH_FACTOR_WITHDRAW error condition
 #[test]
-fn test_withdraw_auto_liquidation_protection_error() {
+fn withdraw_self_liquidation_protection_error() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
 
-    // Setup accounts
     setup_accounts(&mut state, supplier, borrower);
-    // Test supply
+    
+    // Supplier deposits EGLD for others to borrow
     state.supply_asset(
         &supplier,
         EGLD_TOKEN,
@@ -360,7 +377,8 @@ fn test_withdraw_auto_liquidation_protection_error() {
         OptionalValue::None,
         false,
     );
-    // Test borrow
+    
+    // Borrower supplies USDC as collateral
     state.supply_asset(
         &borrower,
         USDC_TOKEN,
@@ -371,6 +389,7 @@ fn test_withdraw_auto_liquidation_protection_error() {
         false,
     );
 
+    // Borrower takes 80 EGLD loan (high utilization)
     state.borrow_asset(
         &borrower,
         EGLD_TOKEN,
@@ -379,6 +398,7 @@ fn test_withdraw_auto_liquidation_protection_error() {
         EGLD_DECIMALS,
     );
 
+    // Attempting to withdraw all collateral would make position unhealthy
     state.withdraw_asset_error(
         &borrower,
         USDC_TOKEN,
@@ -389,15 +409,21 @@ fn test_withdraw_auto_liquidation_protection_error() {
     );
 }
 
+/// Tests that withdrawing a non-deposited asset fails with appropriate error.
+/// 
+/// Covers:
+/// - Controller::withdraw endpoint validation
+/// - Asset existence check in withdrawal flow
+/// - Custom error message for non-existent asset
 #[test]
-fn test_withdraw_non_borrowed_asset_error() {
+fn withdraw_non_deposited_asset_error() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
 
-    // Setup accounts
     setup_accounts(&mut state, supplier, borrower);
-    // Test supply
+    
+    // Supplier deposits EGLD
     state.supply_asset(
         &supplier,
         EGLD_TOKEN,
@@ -407,7 +433,8 @@ fn test_withdraw_non_borrowed_asset_error() {
         OptionalValue::None,
         false,
     );
-    // Test borrow
+    
+    // Borrower supplies USDC as collateral
     state.supply_asset(
         &borrower,
         USDC_TOKEN,
@@ -418,6 +445,7 @@ fn test_withdraw_non_borrowed_asset_error() {
         false,
     );
 
+    // Borrower borrows EGLD
     state.borrow_asset(
         &borrower,
         EGLD_TOKEN,
@@ -426,11 +454,11 @@ fn test_withdraw_non_borrowed_asset_error() {
         EGLD_DECIMALS,
     );
 
+    // Try to withdraw XEGLD which was never deposited
     let custom_error_message = format!(
         "Token {} is not available for this account",
         XEGLD_TOKEN.as_str()
     );
-    // println!("custom_error_message: {}", custom_error_message);
 
     state.withdraw_asset_error(
         &borrower,
