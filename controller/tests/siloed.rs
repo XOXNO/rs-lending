@@ -7,15 +7,21 @@ pub mod setup;
 use constants::*;
 use setup::*;
 
+/// Tests successful borrowing of siloed asset as only debt position.
+/// 
+/// Covers:
+/// - Controller::borrow with siloed asset
+/// - Siloed asset allowed as sole borrowing position
+/// - Normal borrowing flow for siloed assets
 #[test]
-fn test_borrow_asset_as_siloed_normal_case() {
+fn siloed_borrow_as_only_debt_success() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
 
     setup_accounts(&mut state, supplier, borrower);
 
-    // First supply a normal asset not siloed
+    // Borrower supplies regular collateral
     state.supply_asset(
         &borrower,
         EGLD_TOKEN,
@@ -26,6 +32,7 @@ fn test_borrow_asset_as_siloed_normal_case() {
         false,
     );
 
+    // Supplier provides siloed token liquidity
     state.supply_asset(
         &supplier,
         SILOED_TOKEN,
@@ -36,7 +43,7 @@ fn test_borrow_asset_as_siloed_normal_case() {
         false,
     );
 
-    // Then borrow the siloed asset
+    // Borrower takes siloed asset loan (allowed as only debt)
     state.borrow_asset(
         &borrower,
         SILOED_TOKEN,
@@ -45,19 +52,27 @@ fn test_borrow_asset_as_siloed_normal_case() {
         SILOED_DECIMALS,
     );
 
+    // Verify siloed debt position exists
     let borrow_amount = state.get_borrow_amount_for_token(1, SILOED_TOKEN);
     assert!(borrow_amount > ManagedDecimal::from_raw_units(BigUint::zero(), SILOED_DECIMALS));
 }
 
+/// Tests that siloed asset cannot be borrowed when other debts exist.
+/// 
+/// Covers:
+/// - Controller::borrow siloed asset validation
+/// - Existing debt check for siloed borrowing
+/// - ERROR_ASSET_NOT_BORROWABLE_IN_SILOED error condition
+/// - Multiple debt position scenarios
 #[test]
-fn test_borrow_asset_as_siloed_with_another_asset_error() {
+fn siloed_borrow_with_existing_debts_error() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
 
     setup_accounts(&mut state, supplier, borrower);
 
-    // Test borrow
+    // Borrower supplies collateral
     state.supply_asset(
         &borrower,
         EGLD_TOKEN,
@@ -68,6 +83,7 @@ fn test_borrow_asset_as_siloed_with_another_asset_error() {
         false,
     );
 
+    // Supplier provides liquidity for multiple assets
     state.supply_asset(
         &supplier,
         SILOED_TOKEN,
@@ -98,6 +114,7 @@ fn test_borrow_asset_as_siloed_with_another_asset_error() {
         false,
     );
 
+    // Borrower takes regular loan first
     state.borrow_asset(
         &borrower,
         EGLD_TOKEN,
@@ -106,6 +123,7 @@ fn test_borrow_asset_as_siloed_with_another_asset_error() {
         EGLD_DECIMALS,
     );
 
+    // Attempt to borrow siloed asset (should fail - already has debt)
     state.borrow_asset_error(
         &borrower,
         SILOED_TOKEN,
@@ -115,7 +133,7 @@ fn test_borrow_asset_as_siloed_with_another_asset_error() {
         ERROR_ASSET_NOT_BORROWABLE_IN_SILOED,
     );
 
-    // Cover the error when there are more assets borrowed and early throw
+    // Add another debt position
     state.borrow_asset(
         &borrower,
         USDC_TOKEN,
@@ -124,6 +142,7 @@ fn test_borrow_asset_as_siloed_with_another_asset_error() {
         USDC_DECIMALS,
     );
 
+    // Verify siloed borrowing still blocked with multiple debts
     state.borrow_asset_error(
         &borrower,
         SILOED_TOKEN,
@@ -134,14 +153,22 @@ fn test_borrow_asset_as_siloed_with_another_asset_error() {
     );
 }
 
+/// Tests that regular assets cannot be borrowed after siloed debt.
+/// 
+/// Covers:
+/// - Controller::borrow validation with existing siloed debt
+/// - Siloed debt exclusivity enforcement
+/// - ERROR_ASSET_NOT_BORROWABLE_IN_SILOED for regular assets
+/// - Reverse scenario of siloed borrowing restrictions
 #[test]
-fn test_borrow_asset_then_borrow_siloed_asset_error() {
+fn siloed_prevents_additional_borrows_error() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
 
     setup_accounts(&mut state, supplier, borrower);
 
+    // Borrower supplies significant collateral
     state.supply_asset(
         &borrower,
         USDC_TOKEN,
@@ -152,7 +179,7 @@ fn test_borrow_asset_then_borrow_siloed_asset_error() {
         false,
     );
 
-    // Test borrow
+    // Supplier provides liquidity for multiple assets
     state.supply_asset(
         &supplier,
         EGLD_TOKEN,
@@ -173,6 +200,7 @@ fn test_borrow_asset_then_borrow_siloed_asset_error() {
         false,
     );
 
+    // Borrower takes siloed loan first
     state.borrow_asset(
         &borrower,
         SILOED_TOKEN,
@@ -181,6 +209,7 @@ fn test_borrow_asset_then_borrow_siloed_asset_error() {
         SILOED_DECIMALS,
     );
 
+    // Attempt to borrow regular asset (should fail - has siloed debt)
     state.borrow_asset_error(
         &borrower,
         EGLD_TOKEN,

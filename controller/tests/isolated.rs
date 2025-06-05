@@ -10,15 +10,21 @@ pub mod setup;
 use constants::*;
 use setup::*;
 
-// Isolation Tests
+/// Tests that isolated assets cannot be used with E-Mode.
+/// 
+/// Covers:
+/// - Controller::supply validation for isolated assets
+/// - E-Mode incompatibility with isolated assets
+/// - ERROR_EMODE_CATEGORY_NOT_FOUND error condition
 #[test]
-fn test_supply_isolated_asset_with_e_mode_error() {
+fn isolated_supply_with_emode_incompatible_error() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
 
     setup_accounts(&mut state, supplier, borrower);
-    // Test supply
+    
+    // First supply a regular asset with E-Mode
     state.supply_asset(
         &supplier,
         XEGLD_TOKEN,
@@ -29,7 +35,7 @@ fn test_supply_isolated_asset_with_e_mode_error() {
         false,
     );
 
-    // Test borrow
+    // Attempt to supply isolated asset with E-Mode (should fail)
     state.supply_asset_error(
         &supplier,
         ISOLATED_TOKEN,
@@ -38,17 +44,25 @@ fn test_supply_isolated_asset_with_e_mode_error() {
         OptionalValue::Some(1),
         OptionalValue::None,
         false,
-        ERROR_EMODE_CATEGORY_NOT_FOUND, // ERROR_CANNOT_USE_EMODE_WITH_ISOLATED_ASSETS,
+        ERROR_EMODE_CATEGORY_NOT_FOUND,
     );
 }
 
+/// Tests that isolated collateral cannot be mixed with other collateral types.
+/// 
+/// Covers:
+/// - Controller::supply validation for collateral mixing
+/// - Isolated asset exclusivity requirement
+/// - ERROR_MIX_ISOLATED_COLLATERAL error condition
 #[test]
-fn test_mix_isolated_collateral_with_others_error() {
+fn isolated_mix_with_regular_collateral_error() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
 
     setup_accounts(&mut state, supplier, borrower);
+    
+    // First supply isolated asset
     state.supply_asset(
         &supplier,
         ISOLATED_TOKEN,
@@ -59,7 +73,7 @@ fn test_mix_isolated_collateral_with_others_error() {
         false,
     );
 
-    // Supply non isolated asset
+    // Attempt to supply non-isolated asset (should fail)
     state.supply_asset_error(
         &supplier,
         XEGLD_TOKEN,
@@ -72,15 +86,22 @@ fn test_mix_isolated_collateral_with_others_error() {
     );
 }
 
+/// Tests borrowing against isolated collateral with debt ceiling tracking.
+/// 
+/// Covers:
+/// - Controller::borrow with isolated collateral
+/// - Debt ceiling tracking for isolated assets
+/// - Controller::repay updating debt ceiling
+/// - Full repayment clearing debt ceiling usage
 #[test]
-fn test_borrow_asset_as_isolated_debt_celling_case() {
+fn isolated_borrow_within_debt_ceiling_success() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
 
     setup_accounts(&mut state, supplier, borrower);
 
-    // First supply a normal asset not siloed
+    // Supply liquidity for borrowing
     state.supply_asset(
         &supplier,
         USDC_TOKEN,
@@ -91,17 +112,18 @@ fn test_borrow_asset_as_isolated_debt_celling_case() {
         false,
     );
 
+    // Borrower supplies isolated asset as collateral
     state.supply_asset(
         &borrower,
         ISOLATED_TOKEN,
-        BigUint::from(100u64), // $500 deposit
+        BigUint::from(100u64), // $500 collateral value
         ISOLATED_DECIMALS,
         OptionalValue::None,
         OptionalValue::None,
         false,
     );
 
-    // Then borrow the siloed asset
+    // Borrow against isolated collateral
     state.borrow_asset(
         &borrower,
         USDC_TOKEN,
@@ -109,34 +131,40 @@ fn test_borrow_asset_as_isolated_debt_celling_case() {
         2,
         USDC_DECIMALS,
     );
-    let total_egld_borrow = state.get_borrow_amount_for_token(2, USDC_TOKEN);
-    println!("total_Egld_borrow: {:?}", total_egld_borrow);
-    let borrow_amount = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
-    println!("borrow_amount: {:?}", borrow_amount);
-    assert!(borrow_amount > ManagedDecimal::from_raw_units(BigUint::zero(), ISOLATED_DECIMALS));
+    
+    // Verify debt ceiling usage is tracked
+    let debt_usage = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
+    assert!(debt_usage > ManagedDecimal::from_raw_units(BigUint::zero(), ISOLATED_DECIMALS));
 
+    // Repay more than owed (overpayment)
     state.repay_asset(
         &borrower,
         &USDC_TOKEN,
-        // Over repay
-        BigUint::from(1000u64), // $1000 borrow
+        BigUint::from(1000u64), // $1000 repayment
         2,
         USDC_DECIMALS,
     );
-    let borrow_amount = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
-    println!("borrow_amount: {:?}", borrow_amount);
-    assert!(borrow_amount == ManagedDecimal::from_raw_units(BigUint::zero(), ISOLATED_DECIMALS));
+    
+    // Verify debt ceiling usage is cleared
+    let final_debt_usage = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
+    assert!(final_debt_usage == ManagedDecimal::from_raw_units(BigUint::zero(), ISOLATED_DECIMALS));
 }
 
+/// Tests borrowing against isolated collateral hitting debt ceiling limit.
+/// 
+/// Covers:
+/// - Controller::borrow debt ceiling validation
+/// - Isolated asset debt ceiling enforcement
+/// - ERROR_DEBT_CEILING_REACHED error condition
 #[test]
-fn test_borrow_asset_as_isolated_debt_celling_case_error_limit_reached() {
+fn isolated_borrow_exceeds_debt_ceiling_error() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
 
     setup_accounts(&mut state, supplier, borrower);
 
-    // First supply a normal asset not siloed
+    // Supply liquidity for borrowing
     state.supply_asset(
         &supplier,
         USDC_TOKEN,
@@ -147,36 +175,43 @@ fn test_borrow_asset_as_isolated_debt_celling_case_error_limit_reached() {
         false,
     );
 
+    // Borrower supplies large isolated asset position
     state.supply_asset(
         &borrower,
         ISOLATED_TOKEN,
-        BigUint::from(1000u64), // $5000 deposit
+        BigUint::from(1000u64), // $5000 collateral value
         ISOLATED_DECIMALS,
         OptionalValue::None,
         OptionalValue::None,
         false,
     );
 
-    // Then borrow the siloed asset
+    // Attempt to borrow beyond debt ceiling ($1000 limit)
     state.borrow_asset_error(
         &borrower,
         USDC_TOKEN,
-        BigUint::from(1001u64), // $1001 borrow
+        BigUint::from(1001u64), // $1001 borrow exceeds ceiling
         2,
         USDC_DECIMALS,
         ERROR_DEBT_CEILING_REACHED,
     );
 }
 
+/// Tests debt ceiling tracking with interest accrual on isolated collateral.
+/// 
+/// Covers:
+/// - Controller::updateIndexes impact on isolated debt tracking
+/// - Interest accrual vs principal tracking for debt ceiling
+/// - Partial repayment with interest consideration
 #[test]
-fn test_borrow_asset_as_isolated_debt_celling_case_with_debt_interest() {
+fn isolated_debt_ceiling_with_interest_accrual() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
 
     setup_accounts(&mut state, supplier, borrower);
 
-    // First supply a normal asset not siloed
+    // Supply liquidity
     state.supply_asset(
         &supplier,
         USDC_TOKEN,
@@ -187,17 +222,18 @@ fn test_borrow_asset_as_isolated_debt_celling_case_with_debt_interest() {
         false,
     );
 
+    // Supply isolated collateral
     state.supply_asset(
         &borrower,
         ISOLATED_TOKEN,
-        BigUint::from(100u64), // $500 deposit
+        BigUint::from(100u64), // $500 collateral
         ISOLATED_DECIMALS,
         OptionalValue::None,
         OptionalValue::None,
         false,
     );
 
-    // Then borrow the siloed asset
+    // Borrow against isolated collateral
     state.borrow_asset(
         &borrower,
         USDC_TOKEN,
@@ -206,44 +242,53 @@ fn test_borrow_asset_as_isolated_debt_celling_case_with_debt_interest() {
         USDC_DECIMALS,
     );
 
-    let borrow_amount = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
-
-    println!("Borrow {:?}", borrow_amount);
-    assert!(borrow_amount > ManagedDecimal::from_raw_units(BigUint::zero(), ISOLATED_DECIMALS));
+    // Verify initial debt ceiling usage
+    let initial_debt_usage = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
+    assert!(initial_debt_usage > ManagedDecimal::from_raw_units(BigUint::zero(), ISOLATED_DECIMALS));
+    
+    // Advance time for interest accrual
     state.change_timestamp(SECONDS_PER_DAY);
 
+    // Update market indexes
     let mut markets = MultiValueEncoded::new();
     markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
     state.update_markets(&borrower, markets.clone());
-    let borrow_amount = state.get_borrow_amount_for_token(2, USDC_TOKEN);
-    println!("Borrow {:?}", borrow_amount);
+    
+    // Partial repayment (less than total with interest)
     state.repay_asset(
         &borrower,
         &USDC_TOKEN,
-        BigUint::from(90u64), // $100 borrow
+        BigUint::from(90u64), // $90 partial repayment
         2,
         USDC_DECIMALS,
     );
-    let borrow_amount = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
-
-    println!("Borrow {:?}", borrow_amount);
-    // Higher due to interest that was paid and not counted as repaid principal asset global debt
-    assert!(borrow_amount > ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION));
+    
+    // Verify debt ceiling usage still exists (interest not fully covered)
+    let final_debt_usage = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
+    assert!(final_debt_usage > ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION));
 }
 
+/// Tests liquidation impact on isolated asset debt ceiling.
+/// 
+/// Covers:
+/// - Controller::liquidate with isolated collateral
+/// - Debt ceiling reduction through liquidation
+/// - Controller::cleanBadDebt clearing debt ceiling
+/// - Bad debt scenario with isolated assets
 #[test]
-fn test_borrow_asset_as_isolated_debt_celling_liquidation_debt_paid() {
+fn isolated_liquidation_reduces_debt_ceiling() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
     let liquidator = TestAddress::new("liquidator");
+    
     setup_accounts(&mut state, supplier, borrower);
     state.world.account(liquidator).nonce(1).esdt_balance(
         USDC_TOKEN,
         BigUint::from(20000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
     );
 
-    // First supply a normal asset not siloed
+    // Supply liquidity
     state.supply_asset(
         &supplier,
         USDC_TOKEN,
@@ -254,43 +299,37 @@ fn test_borrow_asset_as_isolated_debt_celling_liquidation_debt_paid() {
         false,
     );
 
+    // Supply isolated collateral
     state.supply_asset(
         &borrower,
         ISOLATED_TOKEN,
-        BigUint::from(200u64), // $1000 deposit
+        BigUint::from(200u64), // $1000 collateral
         ISOLATED_DECIMALS,
         OptionalValue::None,
         OptionalValue::None,
         false,
     );
 
-    // Then borrow the siloed asset
+    // Borrow close to liquidation threshold
     state.borrow_asset(
         &borrower,
         USDC_TOKEN,
-        BigUint::from(700u64), // $750 borrow
+        BigUint::from(700u64), // $700 borrow
         2,
         USDC_DECIMALS,
     );
-    let total_collateral = state.get_total_collateral_in_egld(2);
-    let total_debt = state.get_borrow_amount_for_token(2, USDC_TOKEN);
-    println!("total_collateral: {:?}", total_collateral);
-    println!("total_debt: {:?}", total_debt);
-    let borrow_amount_first = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
-    println!("borrow_amount: {:?}", borrow_amount_first);
-    assert!(
-        borrow_amount_first > ManagedDecimal::from_raw_units(BigUint::zero(), ISOLATED_DECIMALS)
-    );
+    
+    // Record initial debt ceiling usage
+    let initial_debt_usage = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
+    assert!(initial_debt_usage > ManagedDecimal::from_raw_units(BigUint::zero(), ISOLATED_DECIMALS));
+    
+    // Advance time significantly to make position unhealthy
     state.change_timestamp(SECONDS_PER_DAY * 1600);
     let mut markets = MultiValueEncoded::new();
     markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
     state.update_markets(&borrower, markets.clone());
-    let total_collateral = state.get_total_collateral_in_egld(2);
-    let total_debt = state.get_borrow_amount_for_token(2, USDC_TOKEN);
-    println!("total_collateral: {:?}", total_collateral);
-    println!("total_debt: {:?}", total_debt);
-    let health_factor = state.get_account_health_factor(2);
-    println!("health_factor: {:?}", health_factor);
+    
+    // Liquidate position
     state.liquidate_account(
         &liquidator,
         &USDC_TOKEN,
@@ -298,34 +337,37 @@ fn test_borrow_asset_as_isolated_debt_celling_liquidation_debt_paid() {
         2,
         USDC_DECIMALS,
     );
-    let borrow_amount = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
-    println!("borrow_amount: {:?}", borrow_amount);
-    let total_debt = state.get_borrow_amount_for_token(2, USDC_TOKEN);
-    println!("total_debt: {:?}", total_debt);
-    let health_factor = state.get_account_health_factor(2);
-    println!("health_factor: {:?}", health_factor);
-    let total_collateral = state.get_total_collateral_in_egld(2);
-    println!("total_collateral: {:?}", total_collateral);
-    // // Higher due to interest that was paid and not counted as repaid principal asset global debt
-    assert!(borrow_amount < borrow_amount_first);
+    
+    // Verify debt ceiling reduced after liquidation
+    let post_liquidation_usage = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
+    assert!(post_liquidation_usage < initial_debt_usage);
+    
+    // Clean remaining bad debt
     state.clean_bad_debt(2);
-    let borrow_amount = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
-    println!("borrow_amount: {:?}", borrow_amount);
+    
+    // Verify debt ceiling fully cleared
+    let final_debt_usage = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
     assert_eq!(
-        borrow_amount,
+        final_debt_usage,
         ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS)
-    )
+    );
 }
 
+/// Tests supply attempt with non-collateralizable asset in E-Mode.
+/// 
+/// Covers:
+/// - Controller::supply validation for asset support
+/// - E-Mode respecting collateralization settings
+/// - ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL error condition
 #[test]
-fn test_borrow_asset_not_supported_in_isolation_error() {
+fn isolated_non_collateralizable_asset_with_emode_error() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
 
     setup_accounts(&mut state, supplier, borrower);
 
-    // Test borrow
+    // Attempt to supply non-collateralizable asset with E-Mode
     state.supply_asset_error(
         &borrower,
         SEGLD_TOKEN,
@@ -337,4 +379,3 @@ fn test_borrow_asset_not_supported_in_isolation_error() {
         ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL,
     );
 }
-// Isolation Tests End
