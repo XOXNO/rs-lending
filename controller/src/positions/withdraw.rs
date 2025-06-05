@@ -97,7 +97,7 @@ pub trait PositionWithdrawModule:
         liquidation_fee: Option<ManagedDecimal<Self::Api, NumDecimals>>,
         feed: &PriceFeedShort<Self::Api>,
     ) -> EgldOrEsdtTokenPayment<Self::Api> {
-        let (position_updated, back_transfers) = self
+        let (back_transfers, position_updated) = self
             .tx()
             .to(pool_address)
             .typed(proxy_pool::LiquidityPoolProxy)
@@ -109,8 +109,8 @@ pub trait PositionWithdrawModule:
                 liquidation_fee,
                 feed.price.clone(),
             )
-            .returns(ReturnsResult)
             .returns(ReturnsBackTransfers)
+            .returns(ReturnsResult)
             .sync_call();
 
         *deposit_position = position_updated;
@@ -157,7 +157,7 @@ pub trait PositionWithdrawModule:
         // Burn NFT if position is fully closed
         if deposit_positions_count == 0 && borrow_positions_count == 0 {
             self.account()
-                .nft_burn(account_payment.token_nonce, &BigUint::from(1u64));
+                .nft_burn(account_payment.token_nonce, &account_payment.amount);
             self.accounts().swap_remove(&account_payment.token_nonce);
             self.account_attributes(account_payment.token_nonce).clear();
         } else {

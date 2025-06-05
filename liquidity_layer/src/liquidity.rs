@@ -619,8 +619,7 @@ pub trait LiquidityModule:
                 cache.revenue = cache.zero.clone();
             } else {
                 // Partial withdrawal – compute exact scaled portion of what we transferred.
-                let amount_ray = self.rescale_half_up(&amount_to_transfer, RAY_PRECISION);
-                let scaled_burn = self.div_half_up(&amount_ray, &cache.supply_index, RAY_PRECISION);
+                let scaled_burn = cache.get_scaled_supply_amount(&amount_to_transfer);
                 cache.revenue -= &scaled_burn;
                 cache.supplied -= &scaled_burn;
             }

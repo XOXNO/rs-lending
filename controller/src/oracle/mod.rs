@@ -69,6 +69,7 @@ pub trait OracleModule:
                 .sync_call()
         }
     }
+    
     /// Get token price data
     /// Retrieves price data with caching; handles EGLD/WEGLD cases early and errors if token is not found.
     fn get_token_price(
@@ -180,7 +181,7 @@ pub trait OracleModule:
             &tolerances.first_upper_ratio,
             &tolerances.first_lower_ratio,
         ) {
-            off_chain_lp_price
+            safe_lp_price
         } else if self.is_within_anchor(
             &safe_lp_price,
             &off_chain_lp_price,

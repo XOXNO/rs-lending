@@ -59,14 +59,14 @@ where
     /// **Security Tip**: Assumes storage getters (`supplied()`, etc.) return valid data; no additional validation here.
     pub fn new(sc_ref: &'a C) -> Self {
         let params = sc_ref.params().get();
-        let milliseconds_since_epoch = sc_ref.blockchain().get_block_timestamp() * 1000;
+        let ms_time = sc_ref.blockchain().get_block_timestamp() * 1000;
         Cache {
             zero: sc_ref.to_decimal(BigUint::zero(), params.asset_decimals),
             supplied: sc_ref.supplied().get(),
             borrowed: sc_ref.borrowed().get(),
             bad_debt: sc_ref.bad_debt().get(),
             revenue: sc_ref.revenue().get(),
-            timestamp: milliseconds_since_epoch,
+            timestamp: ms_time,
             params,
             borrow_index: sc_ref.borrow_index().get(),
             supply_index: sc_ref.supply_index().get(),

@@ -338,10 +338,6 @@ pub trait PositionDepositModule:
     ) {
         match &asset_info.supply_cap {
             Some(supply_cap) => {
-                if supply_cap == &0 {
-                    return;
-                }
-
                 let pool = cache.get_cached_pool_address(&deposit_payment.token_identifier);
                 let index = cache.get_cached_market_index(&deposit_payment.token_identifier);
                 let total_supply_scaled = self.supplied(pool.clone()).get();

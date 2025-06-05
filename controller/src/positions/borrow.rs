@@ -262,10 +262,6 @@ pub trait PositionBorrowModule:
     ) {
         match &asset_config.borrow_cap {
             Some(borrow_cap) => {
-                if borrow_cap == &BigUint::zero() {
-                    return;
-                }
-
                 let pool = cache.get_cached_pool_address(asset);
                 let total_borrow_scaled = self.borrowed(pool.clone()).get();
                 let index = cache.get_cached_market_index(asset);
