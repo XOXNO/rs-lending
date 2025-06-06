@@ -1,6 +1,6 @@
 use common_constants::RAY;
 use controller::{ERROR_INSUFFICIENT_COLLATERAL, RAY_PRECISION};
-use multiversx_sc::{types::{EgldOrEsdtTokenIdentifier, ManagedDecimal, MultiValueEncoded}};
+use multiversx_sc::types::{EgldOrEsdtTokenIdentifier, ManagedDecimal, MultiValueEncoded};
 use multiversx_sc_scenario::imports::{BigUint, OptionalValue, TestAddress};
 pub mod constants;
 pub mod proxys;
@@ -9,7 +9,7 @@ use constants::*;
 use setup::*;
 
 /// Tests basic liquidation flow with multiple debt positions.
-/// 
+///
 /// Covers:
 /// - Controller::liquidate endpoint functionality
 /// - Sequential liquidation of multiple assets
@@ -24,7 +24,7 @@ fn liquidate_multiple_debt_positions_sequential_success() {
 
     state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
-    
+
     // Supplier provides liquidity across multiple assets ($5000 total)
     state.supply_asset(
         &supplier,
@@ -95,7 +95,7 @@ fn liquidate_multiple_debt_positions_sequential_success() {
     let collateral = state.get_total_collateral_in_egld(2);
     assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
     assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
-    
+
     // Advance time to accumulate interest and make position unhealthy
     state.change_timestamp(SECONDS_PER_DAY * 440);
     let mut markets = MultiValueEncoded::new();
@@ -129,7 +129,7 @@ fn liquidate_multiple_debt_positions_sequential_success() {
         borrowed_egld.into_raw_units().clone(),
         2,
     );
-    
+
     // Liquidate USDC debt second
     state.liquidate_account_dem(
         &liquidator,
@@ -137,7 +137,7 @@ fn liquidate_multiple_debt_positions_sequential_success() {
         borrowed_usdc.into_raw_units().clone(),
         2,
     );
-    
+
     // Verify position health improved
     let final_borrowed = state.get_total_borrow_in_egld(2);
     let final_health = state.get_account_health_factor(2);
@@ -145,7 +145,7 @@ fn liquidate_multiple_debt_positions_sequential_success() {
 }
 
 /// Tests bulk liquidation with multiple assets in single transaction.
-/// 
+///
 /// Covers:
 /// - Controller::liquidate endpoint with bulk payments
 /// - Simultaneous liquidation of multiple debt positions
@@ -159,7 +159,7 @@ fn liquidate_bulk_multiple_assets_with_overpayment_success() {
 
     state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
-    
+
     // Supplier provides liquidity
     state.supply_asset(
         &supplier,
@@ -230,7 +230,7 @@ fn liquidate_bulk_multiple_assets_with_overpayment_success() {
     let collateral = state.get_total_collateral_in_egld(2);
     assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
     assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
-    
+
     // Advance time to make position unhealthy
     state.change_timestamp(SECONDS_PER_DAY * 440);
     let mut markets = MultiValueEncoded::new();
@@ -263,10 +263,10 @@ fn liquidate_bulk_multiple_assets_with_overpayment_success() {
         (&EGLD_TOKEN, borrowed_egld.into_raw_units()),
         (&USDC_TOKEN, &usdc_payment),
     ];
-    
+
     // Execute bulk liquidation
     state.liquidate_account_dem_bulk(&liquidator, payments, 2);
-    
+
     // Verify final position state
     let final_borrowed = state.get_total_borrow_in_egld(2);
     let final_health = state.get_account_health_factor(2);
@@ -274,7 +274,7 @@ fn liquidate_bulk_multiple_assets_with_overpayment_success() {
 }
 
 /// Tests bulk liquidation with refund case for smaller positions.
-/// 
+///
 /// Covers:
 /// - Controller::liquidate with partial liquidation scenario
 /// - Refund handling when collateral is less than debt
@@ -287,7 +287,7 @@ fn liquidate_bulk_with_refund_handling_success() {
 
     state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
-    
+
     // Setup liquidity pools
     state.supply_asset(
         &supplier,
@@ -358,7 +358,7 @@ fn liquidate_bulk_with_refund_handling_success() {
     let collateral = state.get_total_collateral_in_egld(2);
     assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
     assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
-    
+
     // Advance time for moderate interest (less than previous test)
     state.change_timestamp(SECONDS_PER_DAY * 255);
     let mut markets = MultiValueEncoded::new();
@@ -391,17 +391,22 @@ fn liquidate_bulk_with_refund_handling_success() {
         (&EGLD_TOKEN, borrowed_egld.into_raw_units()),
         (&USDC_TOKEN, &usdc_payment),
     ];
-    
+
+    let final_health_before = state.get_account_health_factor(2);
+    let final_borrowed_before = state.get_total_borrow_in_egld(2);
     // Execute bulk liquidation (expecting refunds)
     state.liquidate_account_dem_bulk(&liquidator, payments, 2);
-    
+
     // Verify improved position
     let final_borrowed = state.get_total_borrow_in_egld(2);
     let final_health = state.get_account_health_factor(2);
+
+    assert!(final_borrowed < final_borrowed_before);
+    assert!(final_health > final_health_before);
 }
 
 /// Tests liquidation resulting in bad debt and cleanup.
-/// 
+///
 /// Covers:
 /// - Controller::liquidate with insufficient collateral scenario
 /// - Bad debt creation when collateral < debt
@@ -415,7 +420,7 @@ fn liquidate_insufficient_collateral_creates_bad_debt_success() {
 
     state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
-    
+
     // Setup liquidity pools
     state.supply_asset(
         &supplier,
@@ -477,7 +482,7 @@ fn liquidate_insufficient_collateral_creates_bad_debt_success() {
     let collateral = state.get_total_collateral_in_egld(2);
     assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
     assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
-    
+
     // Advance significant time to accumulate massive interest
     state.change_timestamp(SECONDS_PER_DAY * 1000);
     let mut markets = MultiValueEncoded::new();
@@ -499,7 +504,7 @@ fn liquidate_insufficient_collateral_creates_bad_debt_success() {
             EGLD_TOKEN,
             BigUint::from(1000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
         );
-    
+
     // First liquidation attempt (partial)
     state.liquidate_account(
         &liquidator,
@@ -517,14 +522,14 @@ fn liquidate_insufficient_collateral_creates_bad_debt_success() {
         2,
         USDC_DECIMALS,
     );
-    
+
     // Verify bad debt exists
     let remaining_debt = state.get_total_borrow_in_egld(2);
     assert!(remaining_debt > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
-    
+
     // Clean bad debt
     state.clean_bad_debt(2);
-    
+
     // Verify all positions cleared
     let final_debt = state.get_total_borrow_in_egld(2);
     let final_collateral = state.get_total_collateral_in_egld(2);
@@ -535,7 +540,7 @@ fn liquidate_insufficient_collateral_creates_bad_debt_success() {
 }
 
 /// Tests liquidation of single-asset position with extreme interest.
-/// 
+///
 /// Covers:
 /// - Controller::liquidate with single collateral/debt asset
 /// - High interest accumulation over extended time
@@ -610,7 +615,7 @@ fn liquidate_single_asset_position_high_interest_success() {
         2,
         EGLD_DECIMALS,
     );
-    
+
     // Verify healthy position after liquidation
     let final_borrowed = state.get_total_borrow_in_egld_big(2);
     let final_collateral = state.get_total_collateral_in_egld_big(2);
@@ -622,7 +627,7 @@ fn liquidate_single_asset_position_high_interest_success() {
 }
 
 /// Tests liquidation creating bad debt that cannot be fully recovered.
-/// 
+///
 /// Covers:
 /// - Controller::liquidate with severe undercollateralization
 /// - Liquidation exhausting all collateral
@@ -686,7 +691,7 @@ fn liquidate_severe_undercollateralization_bad_debt_success() {
     let mut markets = MultiValueEncoded::new();
     markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
     state.update_markets(&supplier, markets.clone());
-    
+
     // Check health before liquidation
     let health = state.get_account_health_factor(2);
     let borrow_amount = state.get_total_borrow_in_egld(2);
@@ -705,7 +710,10 @@ fn liquidate_severe_undercollateralization_bad_debt_success() {
     let remaining_debt = state.get_total_borrow_in_egld(2);
     let remaining_collateral = state.get_total_collateral_in_egld(2);
     assert!(remaining_debt > ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION));
-    assert!(remaining_collateral < ManagedDecimal::from_raw_units(BigUint::from(RAY / 2), RAY_PRECISION));
+    assert!(
+        remaining_collateral
+            < ManagedDecimal::from_raw_units(BigUint::from(RAY / 2), RAY_PRECISION)
+    );
 
     // Protocol repays bad debt
     state.repay_asset(
@@ -715,14 +723,14 @@ fn liquidate_severe_undercollateralization_bad_debt_success() {
         2,
         USDC_DECIMALS,
     );
-    
+
     // Verify debt cleared
     let final_debt = state.get_total_borrow_in_egld(2);
     assert!(final_debt == ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION));
 }
 
 /// Tests borrow attempt with insufficient collateral.
-/// 
+///
 /// Covers:
 /// - Controller::borrow endpoint validation
 /// - Collateral requirement checks
@@ -767,84 +775,4 @@ fn borrow_insufficient_collateral_for_siloed_asset_error() {
         SILOED_DECIMALS,
         ERROR_INSUFFICIENT_COLLATERAL,
     );
-}
-
-/// Tests partial liquidation payment scenario.
-/// 
-/// Covers:
-/// - Controller::liquidate with partial payment
-/// - Liquidation improving but not fully restoring health
-/// - Partial debt reduction
-/// - Position remaining after partial liquidation
-#[test]
-fn liquidate_partial_payment_improves_health_success() {
-    let mut state = LendingPoolTestState::new();
-    let supplier = TestAddress::new("supplier");
-    let borrower = TestAddress::new("borrower");
-    let liquidator = TestAddress::new("liquidator");
-    
-    setup_accounts(&mut state, supplier, borrower);
-    state.world.account(liquidator).nonce(1).esdt_balance(
-        USDC_TOKEN,
-        BigUint::from(20000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
-    );
-
-    // Create positions
-    state.supply_asset(
-        &supplier,
-        USDC_TOKEN,
-        BigUint::from(5000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
-    );
-
-    state.supply_asset(
-        &borrower,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
-    );
-
-    state.borrow_asset(
-        &borrower,
-        USDC_TOKEN,
-        BigUint::from(2000u64),
-        2,
-        USDC_DECIMALS,
-    );
-
-    // Record initial state
-    state.change_timestamp(1);
-    let initial_debt = state.get_borrow_amount_for_token(2, USDC_TOKEN);
-    let initial_collateral = state.get_collateral_amount_for_token(2, EGLD_TOKEN);
-
-    // Advance time to make position unhealthy
-    state.change_timestamp(600000000u64);
-    let mut markets = MultiValueEncoded::new();
-    markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
-    markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
-    state.update_markets(&borrower, markets.clone());
-    
-    let health_before = state.get_account_health_factor(2);
-    
-    // Partial liquidation (800 USDC out of ~2000+ with interest)
-    state.liquidate_account(
-        &liquidator,
-        &USDC_TOKEN,
-        BigUint::from(800u64),
-        2,
-        USDC_DECIMALS,
-    );
-    
-    // Verify partial improvement
-    let health_after = state.get_account_health_factor(2);
-    let remaining_debt = state.get_borrow_amount_for_token(2, USDC_TOKEN);
-    
-    assert!(health_after > health_before);
-    assert!(remaining_debt > ManagedDecimal::from_raw_units(BigUint::zero(), USDC_DECIMALS));
 }

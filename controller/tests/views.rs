@@ -1,6 +1,9 @@
 use common_constants::RAY;
 use controller::{BPS_PRECISION, RAY_PRECISION, WAD_PRECISION};
-use multiversx_sc::types::{EgldOrEsdtTokenIdentifier, EgldOrEsdtTokenPayment, ManagedDecimal, ManagedVec, MultiValueEncoded};
+use multiversx_sc::types::{
+    EgldOrEsdtTokenIdentifier, EgldOrEsdtTokenPayment, ManagedDecimal, ManagedVec,
+    MultiValueEncoded,
+};
 use multiversx_sc_scenario::imports::{BigUint, OptionalValue, TestAddress};
 pub mod constants;
 pub mod proxys;
@@ -9,7 +12,7 @@ use constants::*;
 use setup::*;
 
 /// Tests basic market views and price calculations.
-/// 
+///
 /// Covers:
 /// - Market utilization calculation
 /// - Borrow and supply rate views
@@ -23,7 +26,7 @@ fn views_basic_market_metrics_success() {
     let borrower = TestAddress::new("borrower");
 
     setup_accounts(&mut state, supplier, borrower);
-    
+
     // Supply $4000 worth of EGLD
     state.supply_asset(
         &supplier,
@@ -54,16 +57,14 @@ fn views_basic_market_metrics_success() {
         2,
         EGLD_DECIMALS,
     );
-    
+
     // Test market views
     let utilisation = state.get_market_utilization(state.egld_market.clone());
-    let borrow_rate = state.get_market_borrow_rate(state.egld_market.clone());
-    let deposit_rate = state.get_market_supply_rate(state.egld_market.clone());
-    
+
     // Test price views
     let usd_price = state.get_usd_price(EGLD_TOKEN);
     let egld_price = state.get_egld_price(EGLD_TOKEN);
-    
+
     // Test position views
     let borrowed = state.get_total_borrow_in_egld(2);
     let collateral = state.get_total_collateral_in_egld(2);
@@ -78,7 +79,7 @@ fn views_basic_market_metrics_success() {
             RAY_PRECISION
         )
     );
-    
+
     // Verify EGLD price
     assert_eq!(
         usd_price,
@@ -88,7 +89,7 @@ fn views_basic_market_metrics_success() {
         egld_price,
         ManagedDecimal::from_raw_units(BigUint::from(1000000000000000000u128), WAD_PRECISION)
     );
-    
+
     // Verify position data exists
     assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION));
     assert!(collateral > ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION));
@@ -97,7 +98,7 @@ fn views_basic_market_metrics_success() {
 }
 
 /// Tests liquidation estimation view for complex scenarios.
-/// 
+///
 /// Covers:
 /// - Liquidation estimation calculations
 /// - Seized collateral calculation
@@ -188,7 +189,7 @@ fn views_liquidation_estimation_unhealthy_position() {
     let can_liquidate = state.can_be_liquidated(2);
     let health_after = state.get_account_health_factor(2);
     assert!(can_liquidate);
-    assert!(health_after < ManagedDecimal::from_raw_units(BigUint::from(1u64), RAY_PRECISION));
+    assert!(health_after < ManagedDecimal::from_raw_units(BigUint::from(RAY), RAY_PRECISION));
 
     // Prepare partial liquidation payments
     let borrowed_egld = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
@@ -207,7 +208,7 @@ fn views_liquidation_estimation_unhealthy_position() {
     ));
 
     // Get liquidation estimations
-    let (seized_collaterals, protocol_fees, refunds, max_egld_payment, bonus_rate) = 
+    let (seized_collaterals, protocol_fees, refunds, max_egld_payment, bonus_rate) =
         state.liquidation_estimations(2, debt_payments);
 
     // Verify estimations
@@ -218,7 +219,7 @@ fn views_liquidation_estimation_unhealthy_position() {
 }
 
 /// Tests market index and market data views for multiple assets.
-/// 
+///
 /// Covers:
 /// - get_all_market_indexes view
 /// - get_all_markets view
@@ -272,11 +273,15 @@ fn views_all_markets_data_retrieval() {
     // Test market indexes view
     let market_indexes = state.get_all_market_indexes(assets.clone());
     assert_eq!(market_indexes.len(), 3);
-    
+
     // Verify all indexes initialized properly
     for index in &market_indexes {
-        assert!(index.supply_index >= ManagedDecimal::from_raw_units(BigUint::from(RAY), RAY_PRECISION));
-        assert!(index.borrow_index >= ManagedDecimal::from_raw_units(BigUint::from(RAY), RAY_PRECISION));
+        assert!(
+            index.supply_index >= ManagedDecimal::from_raw_units(BigUint::from(RAY), RAY_PRECISION)
+        );
+        assert!(
+            index.borrow_index >= ManagedDecimal::from_raw_units(BigUint::from(RAY), RAY_PRECISION)
+        );
         assert!(index.egld_price > ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION));
         assert!(index.usd_price > ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION));
     }
@@ -284,17 +289,21 @@ fn views_all_markets_data_retrieval() {
     // Test all markets view
     let markets = state.get_all_markets(assets);
     assert_eq!(markets.len(), 3);
-    
+
     // Verify market data
     for market in &markets {
         assert!(!market.market_contract_address.is_zero());
-        assert!(market.price_in_egld > ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION));
-        assert!(market.price_in_usd > ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION));
+        assert!(
+            market.price_in_egld > ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION)
+        );
+        assert!(
+            market.price_in_usd > ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION)
+        );
     }
 }
 
 /// Tests position-specific views for collateral and borrow amounts.
-/// 
+///
 /// Covers:
 /// - get_collateral_amount_for_token view
 /// - get_borrow_amount_for_token view
@@ -354,7 +363,7 @@ fn views_position_data_and_aggregates() {
     let usdc_collateral = state.get_collateral_amount_for_token(2, USDC_TOKEN);
     let xegld_collateral = state.get_collateral_amount_for_token(2, XEGLD_TOKEN);
     let egld_borrow = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
-    
+
     // Verify individual amounts
     assert_eq!(
         usdc_collateral,
@@ -383,20 +392,22 @@ fn views_position_data_and_aggregates() {
     let total_collateral_egld = state.get_total_collateral_in_egld(2);
     let liquidation_collateral = state.get_liquidation_collateral_available(2);
     let ltv_collateral = state.get_ltv_collateral_in_egld(2);
-    
+
     // Verify relationships
     assert!(total_borrow_egld > ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION));
     assert!(total_collateral_egld > ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION));
-    assert!(liquidation_collateral > ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION));
+    assert!(
+        liquidation_collateral > ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION)
+    );
     assert!(ltv_collateral > ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION));
-    
+
     // Verify expected relationships
     assert!(ltv_collateral < liquidation_collateral); // LTV more conservative
     assert!(liquidation_collateral < total_collateral_egld); // Weighted less than total
 }
 
 /// Tests price views for various tokens with tolerance checks.
-/// 
+///
 /// Covers:
 /// - get_usd_price view
 /// - get_egld_price view
@@ -406,47 +417,54 @@ fn views_position_data_and_aggregates() {
 #[test]
 fn views_token_prices_accuracy() {
     let mut state = LendingPoolTestState::new();
-    
+
     // Test various token prices
     let tokens = vec![
         (EGLD_TOKEN, EGLD_PRICE_IN_DOLLARS),
         (USDC_TOKEN, USDC_PRICE_IN_DOLLARS),
         (SEGLD_TOKEN, SEGLD_PRICE_IN_DOLLARS),
     ];
-    
+
     for (token, expected_usd) in tokens {
         let usd_price = state.get_usd_price(token);
         let egld_price = state.get_egld_price(token);
-        
+
         // Verify USD price within 1% tolerance
         let expected_usd_decimal = ManagedDecimal::from_raw_units(
             BigUint::from(expected_usd) * BigUint::from(10u64).pow(WAD_PRECISION as u32),
-            WAD_PRECISION
+            WAD_PRECISION,
         );
-        
+
         let diff = if usd_price > expected_usd_decimal {
             usd_price.clone() - expected_usd_decimal.clone()
         } else {
             expected_usd_decimal.clone() - usd_price.clone()
         };
-        
+
         let tolerance = expected_usd_decimal.clone() / 100usize;
-        assert!(diff < tolerance, "Price deviation too large for {:?}", token);
-        
+        assert!(
+            diff < tolerance,
+            "Price deviation too large for {:?}",
+            token
+        );
+
         // Verify EGLD price is positive
         assert!(egld_price > ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION));
     }
-    
+
     // Test EGLD self-price (should be exactly 1.0)
     let egld_in_egld = state.get_egld_price(EGLD_TOKEN);
     assert_eq!(
         egld_in_egld,
-        ManagedDecimal::from_raw_units(BigUint::from(10u64).pow(WAD_PRECISION as u32), WAD_PRECISION)
+        ManagedDecimal::from_raw_units(
+            BigUint::from(10u64).pow(WAD_PRECISION as u32),
+            WAD_PRECISION
+        )
     );
 }
 
 /// Tests view error cases for non-existent positions.
-/// 
+///
 /// Covers:
 /// - Error handling for non-existent collateral
 /// - View validation for missing data
@@ -454,9 +472,9 @@ fn views_token_prices_accuracy() {
 fn views_error_handling_non_existent_data() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
-    
+
     setup_account(&mut state, supplier);
-    
+
     // Create minimal position
     state.supply_asset(
         &supplier,
@@ -478,7 +496,7 @@ fn views_error_handling_non_existent_data() {
 }
 
 /// Tests complex liquidation estimation with bad debt scenario.
-/// 
+///
 /// Covers:
 /// - Complex multi-asset liquidation estimation
 /// - Bad debt scenario handling
@@ -583,7 +601,13 @@ fn views_complex_liquidation_bad_debt_scenario() {
     let health_factor = state.get_account_health_factor(2);
     let can_liquidate = state.can_be_liquidated(2);
     assert!(can_liquidate);
-    assert!(health_factor < ManagedDecimal::from_raw_units(BigUint::from(10u64).pow(WAD_PRECISION as u32), WAD_PRECISION));
+    assert!(
+        health_factor
+            < ManagedDecimal::from_raw_units(
+                BigUint::from(10u64).pow(WAD_PRECISION as u32),
+                WAD_PRECISION
+            )
+    );
 
     // Prepare full liquidation attempt
     let borrowed_egld = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
@@ -608,13 +632,25 @@ fn views_complex_liquidation_bad_debt_scenario() {
     ));
 
     // Get liquidation estimations
-    let (seized_collaterals, protocol_fees, refunds, max_egld_payment, bonus_rate) = 
+    let (seized_collaterals, protocol_fees, refunds, max_egld_payment, bonus_rate) =
         state.liquidation_estimations(2, debt_payments);
 
+    // Full refund of the last paid debt since it was overpaid
+    assert_eq!(
+        refunds.get(0).amount,
+        borrowed_capped.into_raw_units().clone()
+    );
+    // Partial refund of the second paid debt since it was overpaid
+    assert_eq!(
+        refunds.get(1).amount,
+        borrowed_usdc.into_raw_units().clone()
+    );
+    // Partial refund of the first paid debt since it was underpaid
+    assert!(refunds.get(2).amount < borrowed_egld.into_raw_units().clone());
     // Verify complex liquidation results
     assert_eq!(seized_collaterals.len(), 2); // Both collateral types seized
     assert_eq!(protocol_fees.len(), 2); // Fees for each seized asset
-    assert_eq!(refunds.len(), 0); // No refunds in bad debt scenario
+    assert_eq!(refunds.len(), 3); // Refunds from the last to the first asset
     assert!(max_egld_payment > ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION));
     assert!(bonus_rate > ManagedDecimal::from_raw_units(BigUint::from(100u64), BPS_PRECISION));
 }

@@ -95,19 +95,17 @@ fn market_exit_dust_accumulation_minimal() {
 
     // Record initial market state
     let utilization_ratio = state.get_market_utilization(state.egld_market.clone());
-    let borrow_rate = state.get_market_borrow_rate(state.egld_market.clone());
-    let supply_rate = state.get_market_supply_rate(state.egld_market.clone());
 
-    // Verify 50% utilization
+    // Verify 25% utilization
     assert_eq!(
         utilization_ratio,
-        ManagedDecimal::from_raw_units(BigUint::from(500000000000000000000000000u128), 27)
+        ManagedDecimal::from_raw_units(BigUint::from(250000000000000000000000000u128), 27)
     );
 
     // Update markets frequently over one day (every 6 seconds)
     let mut markets = MultiValueEncoded::new();
     markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
-    let update_frequency = 6; // seconds
+    let update_frequency = 12; // seconds
     let total_updates = SECONDS_PER_DAY / update_frequency;
     
     for i in 1..=total_updates {

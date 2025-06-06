@@ -1,7 +1,10 @@
+use common_constants::EGLD_TICKER;
+use common_constants::RAY;
 use controller::{
     AccountAttributes, PositionMode, ERROR_HEALTH_FACTOR_WITHDRAW,
-    ERROR_INVALID_LIQUIDATION_THRESHOLD,
+    ERROR_INVALID_LIQUIDATION_THRESHOLD, ERROR_UN_SAFE_PRICE_NOT_ALLOWED,
 };
+use multiversx_sc::sc_print;
 use multiversx_sc::types::{
     EgldOrEsdtTokenIdentifier, ManagedDecimal, ManagedOption, MultiValueEncoded,
 };
@@ -16,7 +19,7 @@ use constants::*;
 use setup::*;
 
 /// Tests edge case math rounding when borrowing equals supply.
-/// 
+///
 /// Covers:
 /// - Interest accrual precision with 100% utilization
 /// - Revenue and reserves calculation accuracy
@@ -65,7 +68,7 @@ fn edge_case_100_percent_utilization_rounding() {
     let mut markets = MultiValueEncoded::new();
     markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
     markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
-    
+
     let borrowed = state.get_borrow_amount_for_token(1, EGLD_TOKEN);
     let collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
     let utilization = state.get_market_utilization(state.egld_market.clone());
@@ -74,9 +77,8 @@ fn edge_case_100_percent_utilization_rounding() {
     assert!(collateral > ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS));
     assert_eq!(
         utilization,
-        ManagedDecimal::from_raw_units(BigUint::from(10u64).pow(27), 27) // 100% in RAY
+        ManagedDecimal::from_raw_units(BigUint::from(RAY), 27) // 100% in RAY
     );
-
     // Advance time to accrue interest
     state.change_timestamp(1111u64);
     state.update_markets(&supplier, markets.clone());
@@ -91,7 +93,7 @@ fn edge_case_100_percent_utilization_rounding() {
     assert!(borrowed_after > borrowed);
     assert!(collateral_after > collateral);
     assert!(revenue > ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS));
-    
+
     // Reserves should be zero initially
     assert_eq!(
         reserves,
@@ -99,12 +101,15 @@ fn edge_case_100_percent_utilization_rounding() {
     );
 
     // Full repayment
-    state.repay_asset_deno(&supplier, &EGLD_TOKEN, borrowed_after.into_raw_units().clone(), 1);
+    state.repay_asset_deno(
+        &supplier,
+        &EGLD_TOKEN,
+        borrowed_after.into_raw_units().clone(),
+        1,
+    );
 
     // Check post-repayment state
     let collateral_final = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
-    let utilization_final = state.get_market_utilization(state.egld_market.clone());
-    let revenue_final = state.get_market_revenue(state.egld_market.clone());
 
     // Full withdrawal
     state.withdraw_asset_den(
@@ -113,20 +118,19 @@ fn edge_case_100_percent_utilization_rounding() {
         collateral_final.into_raw_units().clone(),
         1,
     );
-    
+
     // Verify final state
     let reserves_final = state.get_market_reserves(state.egld_market.clone());
     let revenue_post_withdraw = state.get_market_revenue(state.egld_market.clone());
 
     assert!(reserves_final >= revenue_post_withdraw);
     let diff = reserves_final - revenue_post_withdraw;
-    
     // Rounding error should be minimal (less than 1 wei)
     assert!(diff <= ManagedDecimal::from_raw_units(BigUint::from(1u64), EGLD_DECIMALS));
 }
 
 /// Tests edge case math rounding with overpayment on repayment.
-/// 
+///
 /// Covers:
 /// - Overpayment handling in repay function
 /// - Reserve accumulation from excess payment
@@ -174,7 +178,7 @@ fn edge_case_overpayment_reserve_accumulation() {
     let mut markets = MultiValueEncoded::new();
     markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
     markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
-    
+
     // Advance time for interest
     state.change_timestamp(1111u64);
     state.update_markets(&supplier, markets.clone());
@@ -198,31 +202,37 @@ fn edge_case_overpayment_reserve_accumulation() {
         1,
         EGLD_DECIMALS,
     );
-    
+
     // Verify borrow no longer exists
     let custom_error_message = format!("Token not existing in the account {}", EGLD_TOKEN.as_str());
     state.get_borrow_amount_for_token_non_existing(1, EGLD_TOKEN, custom_error_message.as_bytes());
-    
+
     // Check reserves accumulated from overpayment
     let collateral_after = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
     let utilization_after = state.get_market_utilization(state.egld_market.clone());
     let revenue_after = state.get_market_revenue(state.egld_market.clone());
     let reserves_after = state.get_market_reserves(state.egld_market.clone());
 
-    assert!(reserves_after >= collateral_after + revenue_after, "Reserves are not enough");
+    assert!(
+        reserves_after >= collateral_after + revenue_after,
+        "Reserves are not enough"
+    );
 
     // Partial withdrawal
     state.withdraw_asset(&supplier, EGLD_TOKEN, BigUint::from(1u64), 1, EGLD_DECIMALS);
-    
+
     // Update markets and verify consistency
     state.update_markets(&supplier, markets.clone());
-    
+
     let reserves_final = state.get_market_reserves(state.egld_market.clone());
     let revenue_final = state.get_market_revenue(state.egld_market.clone());
     let collateral_final = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
-    
-    assert!(reserves_final >= collateral_final.clone() + revenue_final, "Reserves are not enough");
-    
+
+    assert!(
+        reserves_final >= collateral_final.clone() + revenue_final,
+        "Reserves are not enough"
+    );
+
     // Full withdrawal
     state.withdraw_asset_den(
         &supplier,
@@ -230,7 +240,7 @@ fn edge_case_overpayment_reserve_accumulation() {
         collateral_final.into_raw_units().clone(),
         1,
     );
-    
+
     // Final state verification
     let reserves_end = state.get_market_reserves(state.egld_market.clone());
     let revenue_end = state.get_market_revenue(state.egld_market.clone());
@@ -238,7 +248,7 @@ fn edge_case_overpayment_reserve_accumulation() {
 }
 
 /// Tests complete market exit with multiple participants.
-/// 
+///
 /// Covers:
 /// - Full repayment and withdrawal flow
 /// - Account token burning on full exit
@@ -252,7 +262,7 @@ fn market_complete_exit_multi_user() {
     let borrower = TestAddress::new("borrower");
 
     setup_accounts(&mut state, supplier, borrower);
-    
+
     // Supplier provides liquidity
     state.supply_asset(
         &supplier,
@@ -317,7 +327,7 @@ fn market_complete_exit_multi_user() {
                 isolated_token: ManagedOption::none(),
             },
         );
-    
+
     // Borrower repays full debt
     let borrow_amount = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
     state.repay_asset_deno(
@@ -326,11 +336,11 @@ fn market_complete_exit_multi_user() {
         borrow_amount.into_raw_units().clone(),
         2,
     );
-    
+
     // Verify borrow no longer exists
     let custom_error_message = format!("Token not existing in the account {}", EGLD_TOKEN.as_str());
     state.get_borrow_amount_for_token_non_existing(2, EGLD_TOKEN, custom_error_message.as_bytes());
-    
+
     // Update markets significantly later
     state.change_timestamp(1000000u64);
     state.update_markets(&borrower, markets.clone());
@@ -343,7 +353,7 @@ fn market_complete_exit_multi_user() {
         supplied_collateral.into_raw_units().clone(),
         2,
     );
-    
+
     // Verify collateral removed
     let custom_error_message = format!("Token not existing in the account {}", USDC_TOKEN.as_str());
     state.get_collateral_amount_for_token_non_existing(
@@ -351,7 +361,7 @@ fn market_complete_exit_multi_user() {
         USDC_TOKEN,
         custom_error_message.as_bytes(),
     );
-    
+
     // Verify account token burned after full exit
     state
         .world
@@ -388,14 +398,14 @@ fn market_complete_exit_multi_user() {
     let supplied_collateral = state.get_collateral_amount_for_token(3, EGLD_TOKEN);
     let reserves = state.get_market_reserves(state.egld_market.clone());
     let revenue = state.get_market_revenue(state.egld_market.clone());
-    
+
     state.withdraw_asset_den(
         &OWNER_ADDRESS,
         EGLD_TOKEN,
         supplied_collateral.into_raw_units().clone(),
         3,
     );
-    
+
     state.get_collateral_amount_for_token_non_existing(
         3,
         EGLD_TOKEN,
@@ -409,7 +419,7 @@ fn market_complete_exit_multi_user() {
 }
 
 /// Tests interest accrual over long time period.
-/// 
+///
 /// Covers:
 /// - Yearly interest accumulation
 /// - High utilization rate impact
@@ -435,7 +445,7 @@ fn interest_accrual_long_term_high_utilization() {
         OptionalValue::None,
         false,
     );
-    
+
     // Borrower supplies large collateral
     state.supply_asset(
         &borrower,
@@ -446,7 +456,7 @@ fn interest_accrual_long_term_high_utilization() {
         OptionalValue::None,
         false,
     );
-    
+
     // Borrow 80% of supply (high utilization)
     state.borrow_asset(
         &borrower,
@@ -459,14 +469,14 @@ fn interest_accrual_long_term_high_utilization() {
     // Record initial amounts
     let initial_borrow = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
     let initial_supply = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
-    
+
     let mut markets = MultiValueEncoded::new();
     markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
-    
+
     // Check initial market state
     let utilization = state.get_market_utilization(state.egld_market.clone());
     let borrow_rate = state.get_market_borrow_rate(state.egld_market.clone());
-    
+
     // Advance one year
     state.change_timestamp(SECONDS_PER_YEAR);
     state.update_markets(&supplier, markets.clone());
@@ -477,7 +487,7 @@ fn interest_accrual_long_term_high_utilization() {
 
     assert!(final_borrow > initial_borrow);
     assert!(final_supply > initial_supply);
-    
+
     // Full repayment
     state.repay_asset_deno(
         &borrower,
@@ -490,13 +500,13 @@ fn interest_accrual_long_term_high_utilization() {
     let final_supply_after_repay = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
     let reserves = state.get_market_reserves(state.egld_market.clone());
     let revenue = state.get_market_revenue(state.egld_market.clone());
-    
+
     // Supply should have grown from interest
     assert!(final_supply_after_repay > initial_supply);
 }
 
 /// Tests interest accrual with multiple suppliers entering at different times.
-/// 
+///
 /// Covers:
 /// - Fair interest distribution among suppliers
 /// - Time-weighted interest accumulation
@@ -524,6 +534,16 @@ fn interest_accrual_multiple_suppliers_different_times() {
         OptionalValue::None,
         false,
     );
+    // First supplier enters
+    state.supply_asset(
+        &supplier2,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
 
     // Borrower provides collateral and borrows
     state.supply_asset(
@@ -535,6 +555,7 @@ fn interest_accrual_multiple_suppliers_different_times() {
         OptionalValue::None,
         false,
     );
+
     state.borrow_asset(
         &borrower,
         EGLD_TOKEN,
@@ -576,9 +597,8 @@ fn interest_accrual_multiple_suppliers_different_times() {
     // Supplier1 should have earned more interest (longer time)
     let supplier1_interest = supplier1_final.clone() - supplier1_initial.clone();
     let supplier2_interest = supplier2_final.clone() - supplier2_initial.clone();
-    
-    assert!(supplier1_interest > supplier2_interest);
 
+    assert!(supplier1_interest > supplier2_interest);
     // Borrower repays debt
     state.repay_asset_deno(
         &borrower,
@@ -600,29 +620,29 @@ fn interest_accrual_multiple_suppliers_different_times() {
         supplier2_final.into_raw_units().clone(),
         2,
     );
-
     // Verify clean exit
     let reserves = state.get_market_reserves(state.egld_market.clone());
     let revenue = state.get_market_revenue(state.egld_market.clone());
     assert!(reserves >= revenue);
 }
 
-/// Tests oracle price feed for LP tokens.
-/// 
+/// Tests oracle price validation with second tolerance bounds.
+///
 /// Covers:
-/// - LP token price calculation
-/// - Oracle integration for composite assets
+/// - Price within last_upper_ratio/last_lower_ratio bounds
+/// - Average price calculation when in second tolerance
+/// - Successful operations with averaged prices
 #[test]
-fn oracle_lp_token_price_feed() {
+fn oracle_price_second_tolerance_averaging_success() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
 
     setup_account(&mut state, supplier);
 
-    // Supply LP token
+    // Initial supply at normal price
     state.supply_asset(
         &supplier,
-        LP_EGLD_TOKEN,
+        EGLD_TOKEN,
         BigUint::from(100u64),
         EGLD_DECIMALS,
         OptionalValue::None,
@@ -630,16 +650,285 @@ fn oracle_lp_token_price_feed() {
         false,
     );
 
-    // Verify LP token price calculations
-    let usd_price = state.get_usd_price(LP_EGLD_TOKEN);
-    let egld_price = state.get_egld_price(LP_EGLD_TOKEN);
-    
-    assert!(usd_price > ManagedDecimal::from_raw_units(BigUint::zero(), 18));
-    assert!(egld_price > ManagedDecimal::from_raw_units(BigUint::zero(), 18));
+    // Change price to be within second tolerance bounds
+    // Base price: $40 (from EGLD_PRICE_IN_DOLLARS)
+    // First tolerance: 0.5% = $0.20
+    // Last tolerance: 1.5% = $0.60
+    // New price: $41 (2.5% increase - between first and last tolerance)
+    state.change_price(EGLD_TICKER, 41, 0);
+
+    // Operations should succeed with averaged price
+    state.supply_asset(
+        &supplier,
+        EGLD_TOKEN,
+        BigUint::from(50u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+}
+
+/// Tests oracle unsafe price allowed for supply operations.
+///
+/// Covers:
+/// - Unsafe price acceptance for supply endpoint
+/// - Supply succeeds even with extreme price deviations
+#[test]
+fn oracle_unsafe_price_supply_allowed() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+
+    setup_account(&mut state, supplier);
+
+    // Change price drastically to trigger unsafe price
+    // Base price: $40
+    // Last tolerance: 1.5% = $0.60
+    // New price: $50 (25% increase - way outside tolerances)
+    state.change_price(EGLD_TICKER, 50, 0);
+
+    // Supply should still succeed despite unsafe price
+    state.supply_asset(
+        &supplier,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    // Verify supply was successful
+    let collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    assert!(collateral > ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS));
+}
+
+/// Tests oracle unsafe price NOT allowed for borrow operations.
+///
+/// Covers:
+/// - ERROR_UN_SAFE_PRICE_NOT_ALLOWED for borrow with unsafe prices
+/// - Protection against oracle manipulation during borrows
+#[test]
+fn oracle_unsafe_price_borrow_rejected_when_not_egld_position() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    setup_accounts(&mut state, supplier, borrower);
+
+    // Setup initial positions at normal prices
+    state.supply_asset(
+        &supplier,
+        XOXNO_TOKEN,
+        BigUint::from(100u64),
+        XOXNO_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    state.supply_asset(
+        &borrower,
+        XEGLD_TOKEN,
+        BigUint::from(100u64),
+        XEGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    // Change XOXNO price drastically down
+    // Base price: $1
+    // New price: $10 (90% increase - way outside tolerances)
+    state.change_price(XOXNO_TICKER, 10, 0);
+
+    // Borrow should fail due to unsafe price
+    state.borrow_asset_error(
+        &borrower,
+        XOXNO_TOKEN,
+        BigUint::from(20u64),
+        2,
+        XOXNO_DECIMALS,
+        ERROR_UN_SAFE_PRICE_NOT_ALLOWED,
+    );
+}
+
+/// Tests oracle unsafe price NOT allowed for borrow operations, but allowed when the position is EGLD base full
+///
+/// Covers:
+/// - Protection against oracle manipulation during borrows
+#[test]
+fn oracle_unsafe_price_borrow_allowed_when_egld_position() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    setup_accounts(&mut state, supplier, borrower);
+
+    // Setup initial positions at normal prices
+    state.supply_asset(
+        &supplier,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    state.supply_asset(
+        &borrower,
+        XEGLD_TOKEN,
+        BigUint::from(100u64),
+        XEGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    // Change EGLD price drastically down
+    // Base price: $40
+    // New price: $10 (75% decrease - way outside tolerances)
+    state.change_price(EGLD_TICKER, 10, 0);
+
+    // Borrow should fail due to unsafe price
+    state.borrow_asset(
+        &borrower,
+        EGLD_TOKEN,
+        BigUint::from(20u64),
+        2,
+        EGLD_DECIMALS,
+    );
+}
+
+/// Tests oracle unsafe price NOT allowed for withdraw operations.
+///
+/// Covers:
+/// - ERROR_UN_SAFE_PRICE_NOT_ALLOWED for withdraw with unsafe prices
+/// - Protection against oracle manipulation during withdrawals
+#[test]
+fn oracle_unsafe_price_withdraw_rejected() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    setup_accounts(&mut state, supplier, borrower);
+
+    // Setup positions
+    state.supply_asset(
+        &supplier,
+        XEGLD_TOKEN,
+        BigUint::from(100u64),
+        XEGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    state.supply_asset(
+        &borrower,
+        XOXNO_TOKEN,
+        BigUint::from(100u64),
+        XOXNO_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    // Borrow to create a leveraged position
+    state.borrow_asset(
+        &borrower,
+        XEGLD_TOKEN,
+        BigUint::from(1u64),
+        2,
+        XEGLD_DECIMALS,
+    );
+
+    // Change collateral price drastically down
+    // Base price for XOXNO: $1
+    // New price: $10 (90% drop - way outside tolerances)
+    state.change_price(XOXNO_TICKER, 10, 0);
+
+    // Withdrawal should fail due to unsafe price
+    state.withdraw_asset_error(
+        &borrower,
+        XOXNO_TOKEN,
+        BigUint::from(20u64),
+        2,
+        XOXNO_DECIMALS,
+        ERROR_UN_SAFE_PRICE_NOT_ALLOWED,
+    );
+}
+
+/// Tests oracle unsafe price allowed for repay operations.
+///
+/// Covers:
+/// - Repay succeeds even with unsafe prices
+/// - Protocol accepts funds regardless of price deviations
+#[test]
+fn oracle_unsafe_price_repay_allowed() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    setup_accounts(&mut state, supplier, borrower);
+
+    // Setup initial positions
+    state.supply_asset(
+        &supplier,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    state.supply_asset(
+        &borrower,
+        XOXNO_TOKEN,
+        BigUint::from(10000u64),
+        XOXNO_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    state.borrow_asset(
+        &borrower,
+        EGLD_TOKEN,
+        BigUint::from(30u64),
+        2,
+        EGLD_DECIMALS,
+    );
+
+    // Change price drastically
+    // Base price for XOXNO: $1
+    // New price: $2 (100% increase - extreme deviation)
+    state.change_price(XOXNO_TICKER, 2, 0);
+
+    // Repay should succeed despite unsafe price
+    state.repay_asset(
+        &borrower,
+        &EGLD_TOKEN,
+        BigUint::from(10u64),
+        2,
+        EGLD_DECIMALS,
+    );
+
+    // Verify repayment was successful
+    let remaining_borrow = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+    assert!(
+        remaining_borrow
+            < ManagedDecimal::from_raw_units(
+                BigUint::from(30u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+                EGLD_DECIMALS
+            )
+    );
 }
 
 /// Tests updating asset configuration after supply exists.
-/// 
+///
 /// Covers:
 /// - Dynamic configuration updates
 /// - Impact on existing positions
@@ -711,11 +1000,17 @@ fn configuration_update_with_existing_supply() {
 
     // Verify interest accrual with new rates
     let borrow_amount = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
-    assert!(borrow_amount > ManagedDecimal::from_raw_units(BigUint::from(50u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32), EGLD_DECIMALS));
+    assert!(
+        borrow_amount
+            > ManagedDecimal::from_raw_units(
+                BigUint::from(50u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+                EGLD_DECIMALS
+            )
+    );
 }
 
 /// Tests safe configuration updates via endpoint with validation.
-/// 
+///
 /// Covers:
 /// - Endpoint-based configuration updates
 /// - Parameter validation ranges
@@ -762,7 +1057,7 @@ fn configuration_update_endpoint_safe_values() {
     let config = get_egld_config();
     state.edit_asset_config(
         EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
-        &BigUint::from(7500u64), // 75% loan_to_value  
+        &BigUint::from(7500u64), // 75% loan_to_value
         &BigUint::from(8000u64), // 80% liquidation_threshold
         &BigUint::from(500u64),  // 5% liquidation_bonus
         &BigUint::from(1800u64), // 18% reserve_factor
@@ -781,7 +1076,7 @@ fn configuration_update_endpoint_safe_values() {
 }
 
 /// Tests risky configuration updates without existing borrows.
-/// 
+///
 /// Covers:
 /// - High-risk parameter changes
 /// - LTV and liquidation threshold updates
@@ -828,7 +1123,7 @@ fn configuration_update_risky_values_no_borrows() {
 }
 
 /// Tests risky configuration updates with existing borrows (allowed case).
-/// 
+///
 /// Covers:
 /// - Risky updates validation with active borrows
 /// - Health factor preservation after changes
@@ -908,13 +1203,13 @@ fn configuration_update_risky_values_with_borrows_allowed() {
     // Verify health factor still safe
     let health_after = state.get_account_health_factor(2);
     assert!(health_after >= ManagedDecimal::from_raw_units(BigUint::from(1u64), 27));
-    
+
     // Health should decrease due to lower collateral value
     assert!(health_after < health_before);
 }
 
 /// Tests risky configuration updates that would harm health factor.
-/// 
+///
 /// Covers:
 /// - Configuration change rejection when health factor at risk
 /// - Validation of liquidation threshold changes
@@ -990,7 +1285,7 @@ fn configuration_update_risky_values_health_factor_violation() {
 }
 
 /// Tests invalid LTV configuration.
-/// 
+///
 /// Covers:
 /// - LTV higher than liquidation threshold validation
 /// - Configuration consistency rules
@@ -1019,4 +1314,168 @@ fn configuration_update_invalid_ltv_threshold_relationship() {
         &config.config.supply_cap.unwrap_or(BigUint::from(0u64)),
         Some(ERROR_INVALID_LIQUIDATION_THRESHOLD),
     );
+}
+
+/// Tests oracle price validation with second tolerance bounds for multiple assets.
+///
+/// Covers:
+/// - Price within last_upper_ratio/last_lower_ratio bounds for multiple assets
+/// - Average price calculation when both XOXNO and EGLD are in second tolerance
+/// - Successful operations with averaged prices for multiple assets
+#[test]
+fn oracle_price_second_tolerance_xoxno_egld_averaging() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    setup_accounts(&mut state, supplier, borrower);
+
+    // Supply initial liquidity
+
+    state.supply_asset(
+        &supplier,
+        XOXNO_TOKEN,
+        BigUint::from(10000u64),
+        XOXNO_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    state.supply_asset(
+        &borrower,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    let get_usd_price_before = state.get_usd_price(XOXNO_TOKEN);
+    // Change both prices to be within second tolerance bounds
+    // XOXNO - Base price: $1
+    // First tolerance: 0.5% = $0.005
+    // Last tolerance: 1.5% = $0.015
+    // New price: $1.01 (1% increase - between first and last tolerance)
+    let nominator = BigUint::from(10u64).pow(16u32);
+    let new_price = BigUint::from(101u64) * nominator;
+    state.change_price_denominated(XOXNO_TICKER, new_price.clone(), 0); // Using 101 cents = $1.01
+    let get_usd_price = state.get_usd_price(XOXNO_TOKEN);
+    // Result second bound as average price
+    assert!(get_usd_price > get_usd_price_before && get_usd_price.into_raw_units() < &new_price);
+    
+    // Borrow should succeed with averaged prices
+    state.borrow_asset(
+        &borrower,
+        XOXNO_TOKEN,
+        BigUint::from(20u64),
+        2,
+        XOXNO_DECIMALS,
+    );
+
+    // Verify borrow was successful
+    let borrowed = state.get_borrow_amount_for_token(2, XOXNO_TOKEN);
+    assert_eq!(
+        borrowed,
+        ManagedDecimal::from_raw_units(
+            BigUint::from(20u64) * BigUint::from(10u64).pow(XOXNO_DECIMALS as u32),
+            XOXNO_DECIMALS
+        )
+    );
+}
+/// Tests oracle price validation with first tolerance bounds for multiple assets.
+///
+/// Covers:
+/// - Price within first_upper_ratio/first_lower_ratio bounds for multiple assets
+/// - Average price calculation when both USDC and EGLD are in first tolerance
+/// - Successful operations with averaged prices for multiple assets
+#[test]
+fn oracle_price_first_tolerance_lp_egld_averaging() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    setup_accounts(&mut state, supplier, borrower);
+
+    state.supply_asset(
+        &supplier,
+        LP_EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+}
+
+/// Tests oracle price validation with second tolerance bounds for multiple assets.
+///
+/// Covers:
+/// - Price within last_upper_ratio/last_lower_ratio bounds for multiple assets
+/// - Average price calculation when both USDC and EGLD are in second tolerance
+/// - Successful operations with averaged prices for multiple assets
+#[test]
+fn oracle_price_second_tolerance_lp_egld_averaging() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    setup_accounts(&mut state, supplier, borrower);
+
+    // Supply initial liquidity
+    let nominator = BigUint::from(10u64).pow(16u32);
+    let new_price = BigUint::from(102u64) * nominator;
+    state.change_price_denominated(USDC_TICKER, new_price.clone(), 0); // Using 101 cents = $1.01
+
+    state.supply_asset(
+        &supplier,
+        LP_EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+}
+
+/// Tests oracle price validation with out of tolerance bounds for multiple assets.
+///
+/// Covers:
+/// - Price outside last_upper_ratio/last_lower_ratio bounds for multiple assets
+/// - Average price calculation when both USDC and EGLD are out of tolerance
+/// - Unsuccessful operations with averaged prices for multiple assets
+#[test]
+fn oracle_price_out_of_tolerance_lp_egld_averaging() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    setup_accounts(&mut state, supplier, borrower);
+
+    // Supply initial liquidity
+    let nominator = BigUint::from(10u64).pow(16u32);
+    let new_price = BigUint::from(104u64) * nominator;
+    state.change_price_denominated(USDC_TICKER, new_price.clone(), 0); // Using 101 cents = $1.01
+
+    state.supply_asset(
+        &supplier,
+        LP_EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    state.borrow_asset_error(
+        &supplier,
+        LP_EGLD_TOKEN,
+        BigUint::from(20u64),
+        1,
+        EGLD_DECIMALS,
+        ERROR_UN_SAFE_PRICE_NOT_ALLOWED,
+    );
+    
+    
 }

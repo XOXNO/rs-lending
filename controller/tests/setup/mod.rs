@@ -1,4 +1,7 @@
-use crate::{constants::*, proxys::{proxy_aggregator, proxy_flash_mock, proxy_lending_pool, proxy_liquidity_pool}};
+use crate::{
+    constants::*,
+    proxys::{proxy_aggregator, proxy_flash_mock, proxy_lending_pool, proxy_liquidity_pool},
+};
 use common_constants::{EGLD_TICKER, MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE};
 
 use multiversx_sc::{
@@ -999,7 +1002,11 @@ impl LendingPoolTestState {
     }
 
     /// Set price aggregator address with error
-    pub fn set_aggregator_error(&mut self, aggregator: ManagedAddress<StaticApi>, error_message: &[u8]) {
+    pub fn set_aggregator_error(
+        &mut self,
+        aggregator: ManagedAddress<StaticApi>,
+        error_message: &[u8],
+    ) {
         self.world
             .tx()
             .from(OWNER_ADDRESS)
@@ -1022,7 +1029,11 @@ impl LendingPoolTestState {
     }
 
     /// Set swap router address with error
-    pub fn set_swap_router_error(&mut self, address: ManagedAddress<StaticApi>, error_message: &[u8]) {
+    pub fn set_swap_router_error(
+        &mut self,
+        address: ManagedAddress<StaticApi>,
+        error_message: &[u8],
+    ) {
         self.world
             .tx()
             .from(OWNER_ADDRESS)
@@ -1045,7 +1056,11 @@ impl LendingPoolTestState {
     }
 
     /// Set accumulator address with error
-    pub fn set_accumulator_error(&mut self, accumulator: ManagedAddress<StaticApi>, error_message: &[u8]) {
+    pub fn set_accumulator_error(
+        &mut self,
+        accumulator: ManagedAddress<StaticApi>,
+        error_message: &[u8],
+    ) {
         self.world
             .tx()
             .from(OWNER_ADDRESS)
@@ -1068,7 +1083,11 @@ impl LendingPoolTestState {
     }
 
     /// Set safe price view address with error
-    pub fn set_safe_price_view_error(&mut self, safe_view_address: ManagedAddress<StaticApi>, error_message: &[u8]) {
+    pub fn set_safe_price_view_error(
+        &mut self,
+        safe_view_address: ManagedAddress<StaticApi>,
+        error_message: &[u8],
+    ) {
         self.world
             .tx()
             .from(OWNER_ADDRESS)
@@ -1091,7 +1110,11 @@ impl LendingPoolTestState {
     }
 
     /// Set liquidity pool template address with error
-    pub fn set_liquidity_pool_template_error(&mut self, address: ManagedAddress<StaticApi>, error_message: &[u8]) {
+    pub fn set_liquidity_pool_template_error(
+        &mut self,
+        address: ManagedAddress<StaticApi>,
+        error_message: &[u8],
+    ) {
         self.world
             .tx()
             .from(OWNER_ADDRESS)
@@ -1441,7 +1464,11 @@ impl LendingPoolTestState {
     }
 
     /// Edit e-mode category with error
-    pub fn edit_e_mode_category_error(&mut self, category: EModeCategory<StaticApi>, error_message: &[u8]) {
+    pub fn edit_e_mode_category_error(
+        &mut self,
+        category: EModeCategory<StaticApi>,
+        error_message: &[u8],
+    ) {
         self.world
             .tx()
             .from(OWNER_ADDRESS)
@@ -2811,7 +2838,7 @@ pub fn set_oracle_token_data(
             XOXNO_TOKEN.to_token_identifier(),
             XOXNO_DECIMALS as u8,
             &wegld_xoxno_pair_sc,
-            PricingMethod::Aggregator,
+            PricingMethod::Mix,
             OracleType::Normal,
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
@@ -3617,6 +3644,34 @@ impl LendingPoolTestState {
         );
     }
 
+    // Price aggregator operations
+    pub fn change_price_denominated(
+        &mut self,
+        from: &[u8],
+        price: BigUint<StaticApi>,
+        timestamp: u64,
+    ) {
+        let oracles = vec![
+            ORACLE_ADDRESS_1,
+            ORACLE_ADDRESS_2,
+            ORACLE_ADDRESS_3,
+            ORACLE_ADDRESS_4,
+        ];
+        for oracle in oracles {
+            self.world
+                .tx()
+                .from(oracle)
+                .to(self.price_aggregator_sc.clone())
+                .typed(proxy_aggregator::PriceAggregatorProxy)
+                .submit(
+                    ManagedBuffer::from(from),
+                    ManagedBuffer::from(DOLLAR_TICKER),
+                    timestamp,
+                    price.clone(),
+                )
+                .run();
+        }
+    }
     // Price aggregator operations
     pub fn change_price(&mut self, from: &[u8], price: u64, timestamp: u64) {
         let oracles = vec![
