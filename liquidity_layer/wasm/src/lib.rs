@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           27
+// Endpoints:                           26
 // Async Callback (empty):               1
-// Total number of exported functions:  30
+// Total number of exported functions:  29
 
 #![no_std]
 
@@ -35,7 +35,6 @@ multiversx_sc_wasm_adapter::endpoints! {
         repay => repay
         flashLoan => flash_loan
         createStrategy => create_strategy
-        addProtocolRevenue => add_protocol_revenue
         addBadDebt => add_bad_debt
         seizeDustCollateral => seize_dust_collateral
         claimRevenue => claim_revenue

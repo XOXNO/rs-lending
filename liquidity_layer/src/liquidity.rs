@@ -82,9 +82,8 @@ pub trait LiquidityModule:
 
         self.global_sync(&mut cache);
 
-        let scaled_amount = cache.get_scaled_supply_amount(&amount);
+        let scaled_amount = cache.scaled_supply(&amount);
         position.scaled_amount += &scaled_amount;
-        position.market_index = cache.supply_index.clone();
         cache.supplied += scaled_amount;
 
         self.emit_market_update(&cache, price);
@@ -130,9 +129,8 @@ pub trait LiquidityModule:
         require!(cache.is_same_asset(&position.asset_id), ERROR_INVALID_ASSET);
         require!(cache.has_reserves(amount), ERROR_INSUFFICIENT_LIQUIDITY);
 
-        let scaled_amount = cache.get_scaled_borrow_amount(amount);
+        let scaled_amount = cache.scaled_borrow(amount);
         position.scaled_amount += &scaled_amount;
-        position.market_index = cache.borrow_index.clone();
 
         cache.borrowed += scaled_amount;
 
@@ -209,7 +207,6 @@ pub trait LiquidityModule:
         // 5. Update pool and position state by subtracting the determined scaled amount
         cache.supplied -= &scaled_withdrawal_amount_gross;
         position.scaled_amount -= &scaled_withdrawal_amount_gross;
-        position.market_index = cache.supply_index.clone();
 
         // 6. Send the net amount
         self.send_asset(&cache, &amount_to_transfer_net, initial_caller);
@@ -264,7 +261,6 @@ pub trait LiquidityModule:
         // 5. Subtract the determined scaled repayment amount from the position's scaled amount
 
         position.scaled_amount -= &amount_to_repay_scaled;
-        position.market_index = cache.borrow_index.clone();
 
         // 6. Subtract the same scaled amount from the total pool borrowed
         cache.borrowed -= &amount_to_repay_scaled;
@@ -394,10 +390,9 @@ pub trait LiquidityModule:
 
         let effective_initial_debt = strategy_amount.clone() + strategy_fee.clone();
 
-        let scaled_amount_to_add = cache.get_scaled_borrow_amount(&effective_initial_debt);
+        let scaled_amount_to_add = cache.scaled_borrow(&effective_initial_debt);
 
         position.scaled_amount += &scaled_amount_to_add;
-        position.market_index = cache.borrow_index.clone();
 
         cache.borrowed += scaled_amount_to_add;
 
@@ -408,37 +403,6 @@ pub trait LiquidityModule:
         self.send_asset(&cache, strategy_amount, &self.blockchain().get_caller());
 
         position
-    }
-
-    /// Adds external revenue to the pool, such as from vault liquidations or other sources.
-    /// It will first pay the bad debt and then add the remaining amount to revenue and reserves.
-    ///
-    /// **Purpose**: Increases protocol revenue and reserves with funds from external sources.
-    ///
-    /// **Process**:
-    /// 1. Retrieves and validates the payment `amount`.
-    /// 2. If `amount` is less than or equal to `cache.bad_debt`, it reduces `cache.bad_debt` by `amount`.
-    /// 3. Otherwise, `cache.bad_debt` is cleared, and the `remaining_amount` (after covering bad debt) is added to `cache.revenue` (rescaled to RAY).
-    /// 4. Pool reserves are implicitly increased by the incoming payment.
-    /// 5. Emits a market state event.
-    ///
-    /// # Arguments
-    /// - `price`: The asset price for market update (`ManagedDecimal<Self::Api, NumDecimals>`).
-    ///
-    /// **Security Considerations**: Validates the asset via `get_payment_amount` to ensure compatibility with the pool.
-    /// Can only be called by the owner (via controller contract).
-    #[payable]
-    #[only_owner]
-    #[endpoint(addProtocolRevenue)]
-    fn add_protocol_revenue(&self, price: &ManagedDecimal<Self::Api, NumDecimals>) {
-        let mut cache = Cache::new(self);
-        self.global_sync(&mut cache);
-
-        let amount = self.get_payment_amount(&cache);
-
-        self.internal_add_protocol_revenue(&mut cache, amount);
-
-        self.emit_market_update(&cache, price);
     }
 
     /// Adds bad debt to the pool, such as from liquidations.
@@ -473,14 +437,13 @@ pub trait LiquidityModule:
 
         require!(cache.is_same_asset(&position.asset_id), ERROR_INVALID_ASSET);
 
-        let current_debt_actual = cache.get_original_borrow_amount(&position.scaled_amount);
+        let current_debt_actual = cache.original_borrow(&position.scaled_amount);
 
         cache.bad_debt += &current_debt_actual;
 
         cache.borrowed -= &position.scaled_amount;
 
         position.scaled_amount = self.ray_zero();
-        position.market_index = cache.borrow_index.clone();
 
         self.emit_market_update(&cache, price);
 
@@ -527,12 +490,11 @@ pub trait LiquidityModule:
             cache.supplied -= &position.scaled_amount;
 
             // Add the original supply amount to protocol revenue.
-            let original_supply_amount = cache.get_original_supply_amount(&position.scaled_amount);
+            let original_supply_amount = cache.original_supply(&position.scaled_amount);
             self.internal_add_protocol_revenue(&mut cache, original_supply_amount);
         }
         // Clear the user's position.
         position.scaled_amount = self.ray_zero();
-        position.market_index = cache.supply_index.clone();
 
         self.emit_market_update(&cache, price);
 
@@ -619,7 +581,7 @@ pub trait LiquidityModule:
                 cache.revenue = cache.zero.clone();
             } else {
                 // Partial withdrawal – compute exact scaled portion of what we transferred.
-                let scaled_burn = cache.get_scaled_supply_amount(&amount_to_transfer);
+                let scaled_burn = cache.scaled_supply(&amount_to_transfer);
                 cache.revenue -= &scaled_burn;
                 cache.supplied -= &scaled_burn;
             }

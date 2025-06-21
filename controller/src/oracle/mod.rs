@@ -78,7 +78,6 @@ pub trait OracleModule:
         cache: &mut Cache<Self>,
     ) -> PriceFeedShort<Self::Api> {
         let ticker = self.get_token_ticker(token_id, cache);
-        sc_print!("ticker: {}", ticker);
         if ticker == cache.egld_ticker {
             return PriceFeedShort {
                 asset_decimals: WAD_PRECISION,
@@ -96,8 +95,6 @@ pub trait OracleModule:
         let data = oracle_data.get();
 
         let price = self.find_price_feed(&data, token_id, cache);
-        sc_print!("price: {}", price);
-        sc_print!("data.price_decimals: {}", data.price_decimals);
         let feed = PriceFeedShort {
             asset_decimals: data.price_decimals,
             price,

@@ -613,35 +613,6 @@ where
             .original_result()
     }
 
-    /// Adds external revenue to the pool, such as from vault liquidations or other sources. 
-    /// It will first pay the bad debt and then add the remaining amount to revenue and reserves. 
-    ///  
-    /// **Purpose**: Increases protocol revenue and reserves with funds from external sources. 
-    ///  
-    /// **Process**: 
-    /// 1. Retrieves and validates the payment `amount`. 
-    /// 2. If `amount` is less than or equal to `cache.bad_debt`, it reduces `cache.bad_debt` by `amount`. 
-    /// 3. Otherwise, `cache.bad_debt` is cleared, and the `remaining_amount` (after covering bad debt) is added to `cache.revenue` (rescaled to RAY). 
-    /// 4. Pool reserves are implicitly increased by the incoming payment. 
-    /// 5. Emits a market state event. 
-    ///  
-    /// # Arguments 
-    /// - `price`: The asset price for market update (`ManagedDecimal<Self::Api, NumDecimals>`). 
-    ///  
-    /// **Security Considerations**: Validates the asset via `get_payment_amount` to ensure compatibility with the pool. 
-    /// Can only be called by the owner (via controller contract). 
-    pub fn add_protocol_revenue<
-        Arg0: ProxyArg<ManagedDecimal<Env::Api, usize>>,
-    >(
-        self,
-        price: Arg0,
-    ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
-        self.wrapped_tx
-            .raw_call("addProtocolRevenue")
-            .argument(&price)
-            .original_result()
-    }
-
     /// Adds bad debt to the pool, such as from liquidations. 
     ///  
     /// **Purpose**: Increases protocol bad debt. 

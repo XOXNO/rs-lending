@@ -113,7 +113,6 @@ pub trait PositionDepositModule:
                     token_id.clone(),
                     self.ray_zero(),
                     account_nonce,
-                    self.ray(),
                     asset_info.liquidation_threshold.clone(),
                     asset_info.liquidation_bonus.clone(),
                     asset_info.liquidation_fees.clone(),

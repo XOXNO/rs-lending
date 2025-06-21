@@ -3,7 +3,6 @@ multiversx_sc::derive_imports!();
 
 use crate::{cache::Cache, storage, view};
 
-use common_constants::RAY_PRECISION;
 use common_errors::{
     ERROR_INVALID_ASSET, ERROR_INVALID_FLASHLOAN_REPAYMENT, ERROR_WITHDRAW_AMOUNT_LESS_THAN_FEE,
 };
@@ -73,7 +72,7 @@ pub trait UtilsModule:
             cache.bad_debt = new_bad_debt;
 
             if protocol_fee_ray > self.ray_zero() {
-                let fee_scaled = cache.get_scaled_supply_amount(&protocol_fee_ray);
+                let fee_scaled = cache.scaled_supply(&protocol_fee_ray);
                 cache.revenue += &fee_scaled;
                 cache.supplied += &fee_scaled; // mint to total supply
             }
@@ -255,14 +254,14 @@ pub trait UtilsModule:
         ManagedDecimal<Self::Api, NumDecimals>, // scaled_withdrawal_amount_gross
         ManagedDecimal<Self::Api, NumDecimals>, // amount_to_withdraw_gross
     ) {
-        let current_supply_actual = cache.get_original_supply_amount(position_scaled_amount);
+        let current_supply_actual = cache.original_supply(position_scaled_amount);
 
         if *requested_amount_actual >= current_supply_actual {
             // Full withdrawal
             (position_scaled_amount.clone(), current_supply_actual)
         } else {
             // Partial withdrawal
-            let requested_scaled = cache.get_scaled_supply_amount(requested_amount_actual);
+            let requested_scaled = cache.scaled_supply(requested_amount_actual);
             (requested_scaled, requested_amount_actual.clone())
         }
     }
@@ -302,7 +301,7 @@ pub trait UtilsModule:
         ManagedDecimal<Self::Api, NumDecimals>, // scaled_amount_to_repay
         ManagedDecimal<Self::Api, NumDecimals>, // over_paid_amount_actual
     ) {
-        let current_debt_actual = cache.get_original_borrow_amount(position_scaled_amount);
+        let current_debt_actual = cache.original_borrow(position_scaled_amount);
 
         if *payment_amount_actual >= current_debt_actual {
             // Full repayment or overpayment
@@ -310,7 +309,7 @@ pub trait UtilsModule:
             (position_scaled_amount.clone(), over_paid)
         } else {
             // Partial repayment
-            let payment_scaled = cache.get_scaled_borrow_amount(payment_amount_actual);
+            let payment_scaled = cache.scaled_borrow(payment_amount_actual);
             (payment_scaled, cache.zero.clone())
         }
     }
@@ -385,7 +384,7 @@ pub trait UtilsModule:
             cache.bad_debt = cache.zero.clone();
 
             // Convert remainder directly to scaled units – precision handled inside math helper.
-            let fee_scaled = self.div_half_up(&amount, &cache.supply_index, RAY_PRECISION);
+            let fee_scaled = cache.scaled_supply(&amount);
 
             // Mint to treasury and total supply.
             cache.revenue += &fee_scaled;

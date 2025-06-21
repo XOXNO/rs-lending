@@ -144,8 +144,8 @@ where
         if self.supplied == self.sc_ref.ray_zero() {
             self.sc_ref.ray_zero()
         } else {
-            let total_borrowed = self.get_original_borrow_amount(&self.borrowed);
-            let total_supplied = self.get_original_supply_amount(&self.supplied);
+            let total_borrowed = self.original_borrow(&self.borrowed);
+            let total_supplied = self.original_supply(&self.supplied);
             self.sc_ref
                 .div_half_up(&total_borrowed, &total_supplied, RAY_PRECISION)
         }
@@ -203,7 +203,7 @@ where
         self.params.asset_id == *asset
     }
 
-    pub fn get_scaled_supply_amount(
+    pub fn scaled_supply(
         &self,
         amount: &ManagedDecimal<C::Api, NumDecimals>,
     ) -> ManagedDecimal<C::Api, NumDecimals> {
@@ -211,7 +211,7 @@ where
             .div_half_up(amount, &self.supply_index, RAY_PRECISION)
     }
 
-    pub fn get_scaled_borrow_amount(
+    pub fn scaled_borrow(
         &self,
         amount: &ManagedDecimal<C::Api, NumDecimals>,
     ) -> ManagedDecimal<C::Api, NumDecimals> {
@@ -219,7 +219,7 @@ where
             .div_half_up(amount, &self.borrow_index, RAY_PRECISION)
     }
 
-    pub fn get_original_supply_amount(
+    pub fn original_supply(
         &self,
         scaled_amount: &ManagedDecimal<C::Api, NumDecimals>,
     ) -> ManagedDecimal<C::Api, NumDecimals> {
@@ -230,7 +230,7 @@ where
         )
     }
 
-    pub fn get_original_borrow_amount(
+    pub fn original_borrow(
         &self,
         scaled_amount: &ManagedDecimal<C::Api, NumDecimals>,
     ) -> ManagedDecimal<C::Api, NumDecimals> {

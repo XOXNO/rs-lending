@@ -238,7 +238,6 @@ pub trait PositionBorrowModule:
                 token_id.clone(),
                 self.ray_zero(),
                 account_nonce,
-                self.ray(),
                 borrow_asset_config.liquidation_threshold.clone(),
                 borrow_asset_config.liquidation_bonus.clone(),
                 borrow_asset_config.liquidation_fees.clone(),
