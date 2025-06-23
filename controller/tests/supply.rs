@@ -6,7 +6,7 @@ use controller::{
 use multiversx_sc::types::{EsdtTokenPayment, ManagedVec};
 use multiversx_sc_scenario::{
     api::StaticApi,
-    imports::{BigUint, OptionalValue, TestAddress, TestTokenIdentifier},
+    imports::{BigUint, OptionalValue, TestAddress},
 };
 pub mod constants;
 pub mod proxys;

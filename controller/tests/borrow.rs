@@ -4,7 +4,7 @@ use multiversx_sc::types::{
 };
 use multiversx_sc_scenario::{
     api::StaticApi,
-    imports::{BigUint, OptionalValue, TestAddress, TestTokenIdentifier},
+    imports::{BigUint, OptionalValue, TestAddress},
 };
 pub mod constants;
 pub mod proxys;

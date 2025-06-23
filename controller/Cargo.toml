@@ -7,6 +7,7 @@ publish = false
 
 [lib]
 path = "src/lib.rs"
+doctest = false
 
 [dependencies.multiversx-sc-modules]
 version = "0.57.0"

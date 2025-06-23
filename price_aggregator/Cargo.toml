@@ -28,6 +28,7 @@ edition = "2021"
 
 [lib]
 path = "src/lib.rs"
+doctest = false
 
 [dev-dependencies.multiversx-sc-scenario]
 version = "0.57.0"

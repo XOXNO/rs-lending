@@ -208,7 +208,7 @@ fn views_liquidation_estimation_unhealthy_position() {
     ));
 
     // Get liquidation estimations
-    let (seized_collaterals, protocol_fees, refunds, max_egld_payment, bonus_rate) =
+    let (seized_collaterals, protocol_fees, _, max_egld_payment, bonus_rate) =
         state.liquidation_estimations(2, debt_payments);
 
     // Verify estimations

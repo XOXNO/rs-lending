@@ -4,7 +4,6 @@ use controller::{
     AccountAttributes, PositionMode, ERROR_HEALTH_FACTOR_WITHDRAW,
     ERROR_INVALID_LIQUIDATION_THRESHOLD, ERROR_UN_SAFE_PRICE_NOT_ALLOWED,
 };
-use multiversx_sc::sc_print;
 use multiversx_sc::types::{
     EgldOrEsdtTokenIdentifier, ManagedDecimal, ManagedOption, MultiValueEncoded,
 };
@@ -183,9 +182,6 @@ fn edge_case_overpayment_reserve_accumulation() {
     state.change_timestamp(1111u64);
     state.update_markets(&supplier, markets.clone());
 
-    let borrowed = state.get_borrow_amount_for_token(1, EGLD_TOKEN);
-    let collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
-    let revenue = state.get_market_revenue(state.egld_market.clone());
     let reserves = state.get_market_reserves(state.egld_market.clone());
 
     // Verify initial reserves are zero
@@ -209,7 +205,6 @@ fn edge_case_overpayment_reserve_accumulation() {
 
     // Check reserves accumulated from overpayment
     let collateral_after = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
-    let utilization_after = state.get_market_utilization(state.egld_market.clone());
     let revenue_after = state.get_market_revenue(state.egld_market.clone());
     let reserves_after = state.get_market_reserves(state.egld_market.clone());
 
@@ -396,9 +391,6 @@ fn market_complete_exit_multi_user() {
 
     // Owner withdraws remaining funds
     let supplied_collateral = state.get_collateral_amount_for_token(3, EGLD_TOKEN);
-    let reserves = state.get_market_reserves(state.egld_market.clone());
-    let revenue = state.get_market_revenue(state.egld_market.clone());
-
     state.withdraw_asset_den(
         &OWNER_ADDRESS,
         EGLD_TOKEN,
@@ -473,10 +465,6 @@ fn interest_accrual_long_term_high_utilization() {
     let mut markets = MultiValueEncoded::new();
     markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
 
-    // Check initial market state
-    let utilization = state.get_market_utilization(state.egld_market.clone());
-    let borrow_rate = state.get_market_borrow_rate(state.egld_market.clone());
-
     // Advance one year
     state.change_timestamp(SECONDS_PER_YEAR);
     state.update_markets(&supplier, markets.clone());
@@ -498,8 +486,6 @@ fn interest_accrual_long_term_high_utilization() {
 
     // Verify final state
     let final_supply_after_repay = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
-    let reserves = state.get_market_reserves(state.egld_market.clone());
-    let revenue = state.get_market_revenue(state.egld_market.clone());
 
     // Supply should have grown from interest
     assert!(final_supply_after_repay > initial_supply);

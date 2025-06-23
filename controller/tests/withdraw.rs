@@ -222,10 +222,6 @@ fn withdraw_single_user_supply_borrow_full_cycle() {
     state.change_timestamp(1740275066);
     state.update_markets(&supplier, markets.clone());
 
-    // Get balances after interest accrual
-    let initial_collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
-    let initial_borrow = state.get_borrow_amount_for_token(1, EGLD_TOKEN);
-
     // Repay exact borrow amount with interest
     state.repay_asset_deno(
         &supplier,
@@ -233,12 +229,6 @@ fn withdraw_single_user_supply_borrow_full_cycle() {
         BigUint::from(72721215451172815256u128),
         1,
     );
-
-    // Check market state after repayment
-    let reserve = state.get_market_reserves(state.egld_market.clone());
-    let revenue = state.get_market_revenue(state.egld_market.clone());
-    let borrow_index = state.get_market_borrow_index(state.egld_market.clone());
-    let supply_index = state.get_market_supply_index(state.egld_market.clone());
 
     state.change_timestamp(1740275594);
     state.update_markets(&supplier, markets.clone());
@@ -255,10 +245,6 @@ fn withdraw_single_user_supply_borrow_full_cycle() {
     );
 
     state.update_markets(&supplier, markets.clone());
-
-    // Verify final market state
-    let final_reserve = state.get_market_reserves(state.egld_market.clone());
-    let final_revenue = state.get_market_revenue(state.egld_market.clone());
 }
 
 /// Tests withdrawal with prior market index update to ensure proper accounting.
@@ -306,7 +292,6 @@ fn withdraw_with_prior_index_update_success() {
     state.update_markets(&supplier, markets.clone());
 
     // Get current positions
-    let initial_collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
     let initial_borrow = state.get_borrow_amount_for_token(1, EGLD_TOKEN);
 
     // Repay full borrow amount
@@ -320,13 +305,6 @@ fn withdraw_with_prior_index_update_success() {
     // Update markets after repayment
     state.update_markets(&supplier, markets.clone());
 
-    // Record market state
-    let reserve = state.get_market_reserves(state.egld_market.clone());
-    let revenue = state.get_market_revenue(state.egld_market.clone());
-    let total_deposit = state.get_market_supplied(state.egld_market.clone());
-    let borrow_index = state.get_market_borrow_index(state.egld_market.clone());
-    let supply_index = state.get_market_supply_index(state.egld_market.clone());
-
     state.change_timestamp(1740275594);
 
     // Update markets twice to ensure proper synchronization
@@ -336,10 +314,6 @@ fn withdraw_with_prior_index_update_success() {
     // Get final collateral after all updates
     let final_collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
 
-    // Calculate expected difference
-    let diff = (reserve.clone().into_signed() - final_collateral.clone().into_signed())
-        - revenue.clone().into_signed();
-
     // Withdraw full collateral
     state.withdraw_asset_den(
         &supplier,
@@ -347,10 +321,6 @@ fn withdraw_with_prior_index_update_success() {
         final_collateral.into_raw_units().clone(),
         1,
     );
-
-    // Verify final reserves and revenue
-    let final_reserve = state.get_market_reserves(state.egld_market.clone());
-    let final_revenue = state.get_market_revenue(state.egld_market.clone());
 }
 
 /// Tests that withdrawal triggering self-liquidation is prevented.

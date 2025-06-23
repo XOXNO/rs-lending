@@ -140,7 +140,6 @@ fn liquidate_multiple_debt_positions_sequential_success() {
 
     // Verify position health improved
     let final_borrowed = state.get_total_borrow_in_egld(2);
-    let final_health = state.get_account_health_factor(2);
     assert!(final_borrowed < borrowed);
 }
 
@@ -269,7 +268,6 @@ fn liquidate_bulk_multiple_assets_with_overpayment_success() {
 
     // Verify final position state
     let final_borrowed = state.get_total_borrow_in_egld(2);
-    let final_health = state.get_account_health_factor(2);
     assert!(final_borrowed < borrowed);
 }
 
@@ -595,8 +593,6 @@ fn liquidate_single_asset_position_high_interest_success() {
     // Verify initial state
     let borrowed = state.get_total_borrow_in_egld(2);
     let collateral = state.get_total_collateral_in_egld(2);
-    let utilization = state.get_market_utilization(state.egld_market.clone());
-    let health_factor = state.get_account_health_factor(2);
 
     assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
     assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
@@ -691,11 +687,6 @@ fn liquidate_severe_undercollateralization_bad_debt_success() {
     let mut markets = MultiValueEncoded::new();
     markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
     state.update_markets(&supplier, markets.clone());
-
-    // Check health before liquidation
-    let health = state.get_account_health_factor(2);
-    let borrow_amount = state.get_total_borrow_in_egld(2);
-    let collateral_amount = state.get_total_collateral_in_egld(2);
 
     // Attempt liquidation with large amount
     state.liquidate_account(

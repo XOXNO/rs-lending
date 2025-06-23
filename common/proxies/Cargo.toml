@@ -6,6 +6,7 @@ edition = "2021"
 
 [lib]
 path = "src/mod.rs"
+doctest = false
 
 [dependencies.multiversx-sc]
 version = "0.57.0"
