@@ -67,6 +67,11 @@ pub const USDC_TICKER: &[u8] = b"USDC";
 pub const USDC_PRICE_IN_DOLLARS: u64 = 1; // $1
 pub const USDC_DECIMALS: usize = 6;
 
+pub const DAI_TOKEN: TestTokenIdentifier = TestTokenIdentifier::new("DAI-abcdef");
+pub const DAI_TICKER: &[u8] = b"DAI";
+pub const DAI_PRICE_IN_DOLLARS: u64 = 1; // $1
+pub const DAI_DECIMALS: usize = 18;
+
 pub const XEGLD_TOKEN: TestTokenIdentifier = TestTokenIdentifier::new("XEGLD-abcdef");
 pub const UNSTAKE_TOKEN: TestTokenIdentifier = TestTokenIdentifier::new("UNSTAKE-abcdef");
 pub const XEGLD_TICKER: &[u8] = b"XEGLD";

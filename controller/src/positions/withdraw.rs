@@ -22,20 +22,42 @@ pub trait PositionWithdrawModule:
     + update::PositionUpdateModule
 {
     /// Processes a withdrawal from a deposit position.
-    /// Handles vault or market withdrawals with validations.
+    ///
+    /// **Purpose**: Orchestrates the complete withdrawal flow, handling both regular
+    /// withdrawals and liquidation scenarios with proper validation and position updates.
+    ///
+    /// **Methodology**:
+    /// 1. Retrieves pool address for the deposit asset
+    /// 2. Executes withdrawal through liquidity pool with amount validation
+    /// 3. Handles liquidation fees if applicable
+    /// 4. Emits position update event for monitoring
+    /// 5. Updates or removes position based on remaining balance
+    ///
+    /// **Security Considerations**:
+    /// - Amount validation performed at pool level to account for accrued interest
+    /// - Liquidation fee handling ensures proper protocol revenue
+    /// - Position state consistency maintained across updates
+    ///
+    /// **Mathematical Operations** (performed in pool):
+    /// ```
+    /// withdrawal_amount = min(requested_amount, position_balance_with_interest)
+    /// scaled_withdrawal = withdrawal_amount * supply_index / RAY_PRECISION
+    /// new_position_balance = old_balance - scaled_withdrawal
+    /// ```
     ///
     /// # Arguments
-    /// - `account_nonce`: Position NFT nonce.
-    /// - `withdraw_payment`: Withdrawal payment details.
-    /// - `caller`: Withdrawer's address.
-    /// - `is_liquidation`: Liquidation flag.
-    /// - `liquidation_fee`: Optional fee for liquidation.
-    /// - `cache`: Mutable storage cache.
-    /// - `position_attributes`: NFT attributes.
-    /// - `is_swap`: Swap operation flag.
+    /// - `account_nonce`: Position NFT nonce for storage operations
+    /// - `amount`: Withdrawal amount in asset's decimal format
+    /// - `caller`: Withdrawer's address for token transfer
+    /// - `is_liquidation`: Flag indicating liquidation scenario
+    /// - `liquidation_fee`: Optional fee amount for liquidation revenue
+    /// - `cache`: Storage cache for pool address lookup
+    /// - `position_attributes`: Position attributes for event emission
+    /// - `deposit_position`: Mutable deposit position to update
+    /// - `feed`: Price feed for valuation and decimal conversion
     ///
     /// # Returns
-    /// - Updated deposit position.
+    /// - `EgldOrEsdtTokenPayment` containing actual withdrawn tokens
     fn process_withdrawal(
         &self,
         account_nonce: u64,
@@ -76,17 +98,44 @@ pub trait PositionWithdrawModule:
 
     /// Executes a market withdrawal via the liquidity pool.
     ///
+    /// **Purpose**: Performs the core cross-contract call to execute withdrawal
+    /// through the appropriate liquidity pool, handling interest accrual and fees.
+    ///
+    /// **Methodology**:
+    /// 1. Makes synchronous call to pool's withdraw function
+    /// 2. Passes withdrawal parameters including liquidation context
+    /// 3. Receives back transfers and updated position state
+    /// 4. Processes returned tokens and validates amounts
+    ///
+    /// **Security Considerations**:
+    /// - Trusted interaction with verified pool contracts
+    /// - Proper handling of back transfers to prevent token loss
+    /// - Validation of returned token types against expected asset
+    ///
+    /// **Transfer Processing**:
+    /// - Aggregates ESDT transfers matching position asset
+    /// - Handles EGLD transfers for native token positions
+    /// - Validates transfer consistency with position asset type
+    ///
+    /// **Mathematical Operations** (performed in pool):
+    /// ```
+    /// available_amount = position.scaled_amount * supply_index / RAY_PRECISION
+    /// actual_withdrawal = min(requested_amount, available_amount)
+    /// if liquidation: protocol_fee = actual_withdrawal * liquidation_fee
+    /// user_receives = actual_withdrawal - protocol_fee
+    /// ```
+    ///
     /// # Arguments
-    /// - `pool_address`: Pool address.
-    /// - `caller`: Withdrawer's address.
-    /// - `amount`: Withdrawal amount.
-    /// - `deposit_position`: Mutable deposit position.
-    /// - `is_liquidation`: Liquidation flag.
-    /// - `liquidation_fee`: Optional fee.
-    /// - `feed`: Price data for the token.
+    /// - `pool_address`: Verified liquidity pool contract address
+    /// - `caller`: Withdrawer's address for token transfer destination
+    /// - `amount`: Requested withdrawal amount in asset decimals
+    /// - `deposit_position`: Mutable position to update with new state
+    /// - `is_liquidation`: Flag for liquidation fee application
+    /// - `liquidation_fee`: Optional fee percentage for protocol revenue
+    /// - `feed`: Price feed for pool-side validation
     ///
     /// # Returns
-    /// - Updated deposit position.
+    /// - `EgldOrEsdtTokenPayment` with actual tokens transferred to user
     fn process_market_withdrawal(
         &self,
         pool_address: ManagedAddress,
@@ -135,13 +184,33 @@ pub trait PositionWithdrawModule:
     }
 
     /// Manages the position NFT after withdrawal.
-    /// Burns NFT if position is fully closed, otherwise transfers it.
+    ///
+    /// **Purpose**: Handles NFT lifecycle management by either burning empty positions
+    /// or returning active positions to the user after withdrawal operations.
+    ///
+    /// **Methodology**:
+    /// 1. Counts remaining deposit and borrow positions
+    /// 2. If no positions remain: burns NFT and clears storage
+    /// 3. If positions remain: transfers NFT back to caller
+    ///
+    /// **Position Lifecycle Rules**:
+    /// - NFT represents active lending position
+    /// - Burned when all deposits and borrows are closed
+    /// - Returned to user when any positions remain active
+    ///
+    /// **Storage Cleanup**:
+    /// - Removes account from active accounts set
+    /// - Clears account attributes storage
+    /// - Burns NFT to reclaim storage
+    ///
+    /// **Security Considerations**:
+    /// - Proper validation of position closure before burning
+    /// - Safe storage cleanup to prevent orphaned data
+    /// - NFT transfer validation for active positions
     ///
     /// # Arguments
-    /// - `amount`: NFT token amount.
-    /// - `token_nonce`: NFT nonce.
-    /// - `token_identifier`: NFT identifier.
-    /// - `caller`: Withdrawer's address.
+    /// - `account_payment`: Account NFT payment containing nonce and amount
+    /// - `caller`: Withdrawer's address for NFT return
     fn manage_account_after_withdrawal(
         &self,
         account_payment: &EsdtTokenPayment<Self::Api>,
@@ -167,12 +236,25 @@ pub trait PositionWithdrawModule:
 
     /// Retrieves a deposit position for a token.
     ///
+    /// **Purpose**: Safely fetches an existing deposit position with validation
+    /// to ensure the position exists before withdrawal operations.
+    ///
+    /// **Methodology**:
+    /// - Attempts to retrieve position from storage mapping
+    /// - Validates position exists for the specified token
+    /// - Returns position for further processing
+    ///
+    /// **Security Considerations**:
+    /// - Prevents withdrawal attempts on non-existent positions
+    /// - Provides clear error messaging for invalid requests
+    /// - Uses unsafe unwrap only after existence validation
+    ///
     /// # Arguments
-    /// - `account_nonce`: Position NFT nonce.
-    /// - `token_id`: Token identifier.
+    /// - `account_nonce`: Position NFT nonce for storage lookup
+    /// - `token_id`: Token identifier to find position for
     ///
     /// # Returns
-    /// - Deposit position.
+    /// - `AccountPosition` containing the validated deposit position
     fn get_deposit_position(
         &self,
         account_nonce: u64,

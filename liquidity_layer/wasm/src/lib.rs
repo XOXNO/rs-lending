@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           26
+// Endpoints:                           25
 // Async Callback (empty):               1
-// Total number of exported functions:  29
+// Total number of exported functions:  28
 
 #![no_std]
 
@@ -23,7 +23,6 @@ multiversx_sc_wasm_adapter::endpoints! {
         getSuppliedScaled => supplied
         getRevenueScaled => revenue
         getBorrowedScaled => borrowed
-        getBadDebt => bad_debt
         getParams => params
         getBorrowIndex => borrow_index
         getSupplyIndex => supply_index

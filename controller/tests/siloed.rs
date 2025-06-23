@@ -8,7 +8,7 @@ use constants::*;
 use setup::*;
 
 /// Tests successful borrowing of siloed asset as only debt position.
-/// 
+///
 /// Covers:
 /// - Controller::borrow with siloed asset
 /// - Siloed asset allowed as sole borrowing position
@@ -58,7 +58,7 @@ fn siloed_borrow_as_only_debt_success() {
 }
 
 /// Tests that siloed asset cannot be borrowed when other debts exist.
-/// 
+///
 /// Covers:
 /// - Controller::borrow siloed asset validation
 /// - Existing debt check for siloed borrowing
@@ -154,7 +154,7 @@ fn siloed_borrow_with_existing_debts_error() {
 }
 
 /// Tests that regular assets cannot be borrowed after siloed debt.
-/// 
+///
 /// Covers:
 /// - Controller::borrow validation with existing siloed debt
 /// - Siloed debt exclusivity enforcement

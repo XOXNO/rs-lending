@@ -181,3 +181,6 @@ pub static ERROR_WITHDRAW_TOKEN_RECEIVED: &[u8] = b"Wrong token received during 
 
 pub static ERROR_WITHDRAW_AMOUNT_LESS_THAN_FEE: &[u8] =
     b"Withdraw amount less than liquidation fee.";
+
+pub static ERROR_POSITION_LIMIT_EXCEEDED: &[u8] =
+    b"Position limit exceeded. Maximum positions per NFT reached.";

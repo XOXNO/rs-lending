@@ -10,7 +10,7 @@ use setup::*;
 use std::ops::Mul;
 
 /// Tests successful flash loan execution with full repayment.
-/// 
+///
 /// Covers:
 /// - Controller::flashLoan endpoint functionality
 /// - Flash loan callback execution
@@ -22,7 +22,7 @@ fn flash_loan_full_repayment_success() {
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
     setup_accounts(&mut state, supplier, borrower);
-    
+
     // Supply liquidity to enable flash loan
     state.supply_asset(
         &supplier,
@@ -46,7 +46,7 @@ fn flash_loan_full_repayment_success() {
 }
 
 /// Tests flash loan failure when borrower doesn't repay.
-/// 
+///
 /// Covers:
 /// - Controller::flashLoan error handling
 /// - Repayment validation after callback
@@ -58,7 +58,7 @@ fn flash_loan_no_repayment_error() {
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
     setup_accounts(&mut state, supplier, borrower);
-    
+
     // Supply liquidity to enable flash loan
     state.supply_asset(
         &supplier,
@@ -83,7 +83,7 @@ fn flash_loan_no_repayment_error() {
 }
 
 /// Tests flash loan validation for zero amount.
-/// 
+///
 /// Covers:
 /// - Controller::flashLoan input validation
 /// - Zero amount check
@@ -108,7 +108,7 @@ fn flash_loan_zero_amount_error() {
 }
 
 /// Tests flash loan failure with partial repayment.
-/// 
+///
 /// Covers:
 /// - Controller::flashLoan partial repayment validation
 /// - Exact repayment requirement
@@ -119,7 +119,7 @@ fn flash_loan_partial_repayment_error() {
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
     setup_accounts(&mut state, supplier, borrower);
-    
+
     // Supply liquidity to enable flash loan
     state.supply_asset(
         &supplier,
@@ -144,7 +144,7 @@ fn flash_loan_partial_repayment_error() {
 }
 
 /// Tests flash loan validation for empty endpoint name.
-/// 
+///
 /// Covers:
 /// - Controller::flashLoan endpoint validation
 /// - Empty endpoint rejection
@@ -166,7 +166,7 @@ fn flash_loan_empty_endpoint_error() {
 }
 
 /// Tests flash loan protection against built-in function calls.
-/// 
+///
 /// Covers:
 /// - Controller::flashLoan security validation
 /// - Built-in function blocking
@@ -175,7 +175,7 @@ fn flash_loan_empty_endpoint_error() {
 #[test]
 fn flash_loan_builtin_functions_blocked_error() {
     let mut state = LendingPoolTestState::new();
-    
+
     // List of built-in functions that should be blocked
     let restricted_endpoints = [
         "ChangeOwnerAddress",

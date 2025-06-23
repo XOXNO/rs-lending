@@ -111,9 +111,6 @@ pub trait LiquidityPool:
 
         self.revenue().set(self.ray_zero());
 
-        self.bad_debt()
-            .set(self.to_decimal(BigUint::zero(), asset_decimals));
-
         let timestamp_seconds = self.blockchain().get_block_timestamp();
         self.last_timestamp().set(timestamp_seconds * 1000u64);
     }

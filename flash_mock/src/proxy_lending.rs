@@ -301,39 +301,101 @@ where
             .original_result()
     }
 
-    /// Creates a new liquidity pool for an asset with specified parameters. 
-    /// Initializes the pool and configures lending/borrowing settings. 
+    /// Deploys a complete liquidity pool with comprehensive asset configuration. 
+    ///  
+    /// **Purpose**: Creates a new lending market for an asset by deploying a liquidity pool 
+    /// and configuring all necessary risk parameters, interest rate models, and operational 
+    /// settings. This is the primary governance function for onboarding new assets. 
+    ///  
+    /// **How it works**: 
+    /// 1. **Pre-deployment validation**: 
+    ///    - Ensures asset doesn't already have a pool 
+    ///    - Validates asset identifier format 
+    ///    - Confirms liquidation threshold > LTV ratio 
+    ///  
+    /// 2. **Pool deployment**: 
+    ///    - Deploys new pool from secure template 
+    ///    - Initializes with interest rate model parameters 
+    ///    - Registers pool address in protocol mapping 
+    ///  
+    /// 3. **Asset configuration**: 
+    ///    - Sets up comprehensive risk parameters 
+    ///    - Configures lending/borrowing permissions 
+    ///    - Establishes supply/borrow caps and isolation settings 
+    ///    - Initializes isolated debt tracking 
+    ///  
+    /// 4. **Event emission**: 
+    ///    - Emits market creation event for transparency 
+    ///    - Includes all configuration parameters for auditing 
+    ///  
+    /// **Interest rate model parameters**: 
+    /// ``` 
+    /// utilization_rate = total_borrows / total_supply 
+    ///  
+    /// if utilization <= optimal_utilization: 
+    ///     rate = base_rate + (utilization * slope1 / optimal_utilization) 
+    /// elif utilization <= mid_utilization: 
+    ///     rate = base_rate + slope1 + ((utilization - optimal) * slope2 / (mid - optimal)) 
+    /// else: 
+    ///     rate = base_rate + slope1 + slope2 + ((utilization - mid) * slope3 / (100% - mid)) 
+    ///  
+    /// borrow_rate = min(calculated_rate, max_borrow_rate) 
+    /// ``` 
+    ///  
+    /// **Risk parameter validation**: 
+    /// - **LTV < Liquidation Threshold**: Ensures safety buffer between borrowing and liquidation 
+    /// - **Valid asset identifier**: Prevents deployment for invalid tokens 
+    /// - **Reasonable parameter bounds**: Protects against extreme risk configurations 
+    ///  
+    /// **Asset configuration mechanics**: 
+    /// - **Isolation mode**: Assets can be restricted to isolation-only usage 
+    /// - **Siloed borrowing**: Prevents borrowing multiple assets simultaneously 
+    /// - **Supply/Borrow caps**: Limits maximum exposure to prevent concentration risk 
+    /// - **Flash loan settings**: Configures flash loan availability and fees 
+    ///  
+    /// **Security considerations**: 
+    /// - Template-based deployment ensures consistent security standards 
+    /// - Comprehensive parameter validation prevents misconfiguration 
+    /// - Asset uniqueness check prevents duplicate markets 
+    /// - Owner-only access ensures governance control 
+    ///  
+    /// **Governance impact**: 
+    /// Creates new lending market with immediate availability for users. 
+    /// All parameters can be adjusted later through edit functions. 
     ///  
     /// # Arguments 
-    /// - `base_asset`: Token identifier (EGLD or ESDT) of the asset. 
-    /// - `max_borrow_rate`: Maximum borrow rate. 
-    /// - `base_borrow_rate`: Base borrow rate. 
-    /// - `slope1`, `slope2`, `slope3`: Interest rate slopes for utilization levels. 
-    /// - `mid_utilization`, `optimal_utilization`: Utilization thresholds for rate calculations. 
-    /// - `reserve_factor`: Fraction of interest reserved for the protocol. 
-    /// - `ltv`: Loan-to-value ratio in BPS. 
-    /// - `liquidation_threshold`: Liquidation threshold in BPS. 
-    /// - `liquidation_base_bonus`: Base liquidation bonus in BPS. 
-    /// - `liquidation_max_fee`: Maximum liquidation fee in BPS. 
-    /// - `can_be_collateral`: Flag for collateral usability. 
-    /// - `can_be_borrowed`: Flag for borrowability. 
-    /// - `is_isolated`: Flag for isolated asset status. 
-    /// - `debt_ceiling_usd`: Debt ceiling in USD for isolated assets. 
-    /// - `flash_loan_fee`: Flash loan fee in BPS. 
-    /// - `is_siloed`: Flag for siloed borrowing. 
-    /// - `flashloan_enabled`: Flag for flash loan support. 
-    /// - `can_borrow_in_isolation`: Flag for borrowing in isolation mode. 
-    /// - `asset_decimals`: Number of decimals for the asset. 
-    /// - `borrow_cap`: Optional borrow cap (`None` if unspecified). 
-    /// - `supply_cap`: Optional supply cap (`None` if unspecified). 
+    /// - `base_asset`: Token identifier for the new market asset 
+    /// - `max_borrow_rate`: Interest rate ceiling (basis points) 
+    /// - `base_borrow_rate`: Minimum interest rate (basis points) 
+    /// - `slope1`: Rate increase slope for 0% to optimal utilization 
+    /// - `slope2`: Rate increase slope for optimal to mid utilization   
+    /// - `slope3`: Rate increase slope for mid to 100% utilization 
+    /// - `mid_utilization`: Mid-range utilization threshold (basis points) 
+    /// - `optimal_utilization`: Target utilization rate (basis points) 
+    /// - `reserve_factor`: Protocol fee percentage (basis points) 
+    /// - `ltv`: Maximum loan-to-value ratio (basis points) 
+    /// - `liquidation_threshold`: Liquidation trigger threshold (basis points) 
+    /// - `liquidation_base_bonus`: Base liquidator reward (basis points) 
+    /// - `liquidation_max_fee`: Maximum liquidation fee (basis points) 
+    /// - `can_be_collateral`: Whether asset can secure loans 
+    /// - `can_be_borrowed`: Whether asset can be borrowed 
+    /// - `is_isolated`: Whether asset restricted to isolation mode 
+    /// - `debt_ceiling_usd`: Maximum USD debt against isolated collateral 
+    /// - `flash_loan_fee`: Flash loan fee percentage (basis points) 
+    /// - `is_siloed`: Whether borrowing prevents other asset borrows 
+    /// - `flashloan_enabled`: Whether flash loans are supported 
+    /// - `can_borrow_in_isolation`: Whether other assets borrowable in isolation 
+    /// - `asset_decimals`: Token decimal precision 
+    /// - `borrow_cap`: Maximum total borrows (0 = unlimited) 
+    /// - `supply_cap`: Maximum total supply (0 = unlimited) 
     ///  
     /// # Returns 
-    /// - `ManagedAddress`: Address of the newly created liquidity pool. 
+    /// Address of the newly deployed liquidity pool contract 
     ///  
     /// # Errors 
-    /// - `ERROR_ASSET_ALREADY_SUPPORTED`: If the asset already has a pool. 
-    /// - `ERROR_INVALID_TICKER`: If the asset identifier is invalid. 
-    /// - `ERROR_INVALID_LIQUIDATION_THRESHOLD`: If threshold is invalid. 
+    /// - `ERROR_ASSET_ALREADY_SUPPORTED`: Asset already has an active pool 
+    /// - `ERROR_INVALID_TICKER`: Invalid asset identifier format 
+    /// - `ERROR_INVALID_LIQUIDATION_THRESHOLD`: Threshold not greater than LTV 
     pub fn create_liquidity_pool<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
@@ -466,14 +528,69 @@ where
             .original_result()
     }
 
-    /// Claims revenue from multiple liquidity pools and deposits it into the accumulator. 
-    /// Collects protocol revenue from interest and fees. 
+    /// Collects protocol revenue from liquidity pools and routes to accumulator. 
+    ///  
+    /// **Purpose**: Harvests accumulated protocol fees and interest spreads from 
+    /// multiple liquidity pools in a single transaction for gas efficiency. 
+    /// Routes collected revenue to the accumulator for proper distribution. 
+    ///  
+    /// **How it works**: 
+    /// 1. **Initialization**: Creates cache and validates accumulator address exists 
+    /// 2. **Multi-asset iteration**: Processes each specified asset sequentially 
+    /// 3. **Revenue claiming**: Calls each pool's claim_revenue with latest price 
+    /// 4. **Revenue routing**: Deposits non-zero revenue into accumulator contract 
+    /// 5. **Gas optimization**: Batches multiple claims in single transaction 
+    ///  
+    /// **Revenue sources collected**: 
+    /// - **Interest rate spread**: Difference between borrow and supply rates 
+    /// - **Reserve factor**: Percentage of interest reserved for protocol 
+    /// - **Liquidation fees**: Fees collected during position liquidations 
+    /// - **Flash loan fees**: Fees from flash loan operations 
+    ///  
+    /// **Price-aware collection**: 
+    /// Passes latest oracle price to each pool for accurate revenue calculation: 
+    /// ``` 
+    /// revenue_value = pool_balance * latest_price 
+    /// revenue_amount = calculate_claimable_amount(revenue_value) 
+    /// ``` 
+    ///  
+    /// **Zero-revenue optimization**: 
+    /// Only deposits revenue into accumulator if amount > 0, preventing 
+    /// unnecessary transactions and gas costs for pools with no accrued revenue. 
+    ///  
+    /// **Multi-asset efficiency**: 
+    /// - Single transaction processes multiple assets 
+    /// - Cached price feeds reduce oracle query costs 
+    /// - Batched accumulator deposits minimize transaction overhead 
+    /// - Early termination for zero-revenue assets 
+    ///  
+    /// **Security considerations**: 
+    /// - Owner-only access ensures governance control over revenue collection 
+    /// - Accumulator address validation prevents revenue loss 
+    /// - Latest price usage prevents stale price manipulation 
+    /// - Cache consistency ensures accurate revenue calculations 
+    ///  
+    /// **Revenue flow pattern**: 
+    /// ``` 
+    /// 1. Liquidity pools accumulate fees over time 
+    /// 2. Governance calls claim_revenue with asset list 
+    /// 3. Each pool calculates claimable revenue amount 
+    /// 4. Revenue transferred from pools to accumulator 
+    /// 5. Accumulator handles distribution per protocol rules 
+    /// ``` 
+    ///  
+    /// **Governance considerations**: 
+    /// Regular revenue collection ensures protocol sustainability and proper 
+    /// fee distribution to stakeholders. Frequency affects gas costs vs revenue timing. 
     ///  
     /// # Arguments 
-    /// - `assets`: List of token identifiers (EGLD or ESDT) to claim revenue from. 
+    /// - `assets`: Collection of token identifiers to claim revenue from 
+    ///  
+    /// # Returns 
+    /// Nothing - transfers revenue from pools to accumulator 
     ///  
     /// # Errors 
-    /// - `ERROR_NO_ACCUMULATOR_FOUND`: If no accumulator address is set. 
+    /// - `ERROR_NO_ACCUMULATOR_FOUND`: Accumulator address not configured 
     pub fn claim_revenue<
         Arg0: ProxyArg<MultiValueEncoded<Env::Api, EgldOrEsdtTokenIdentifier<Env::Api>>>,
     >(
@@ -487,15 +604,36 @@ where
             .original_result()
     }
 
-    /// Registers a new NFT token for tracking account positions. 
-    /// Issues an ESDT token with non-fungible properties. 
+    /// Registers a new NFT token for tracking account positions in the lending protocol. 
+    ///  
+    /// **Purpose**: Creates a dynamic NFT collection used to represent user positions 
+    /// as transferable tokens. Each NFT contains position data including deposits, 
+    /// borrows, and risk parameters. 
+    ///  
+    /// **How it works**: 
+    /// 1. Issues a new ESDT token with DynamicNFT properties 
+    /// 2. Sets all necessary roles for minting/burning position NFTs 
+    /// 3. Enables position tracking and transferability 
+    ///  
+    /// **Security checks**: 
+    /// - Only contract owner can register account tokens 
+    /// - Requires EGLD payment for token issuance (protocol fee) 
+    /// - Validates token name and ticker parameters 
+    ///  
+    /// **Governance considerations**: 
+    /// This is a one-time setup function that establishes the position tracking 
+    /// mechanism. Once set, users can mint position NFTs representing their 
+    /// lending/borrowing activities. 
     ///  
     /// # Arguments 
-    /// - `token_name`: Name of the NFT token. 
-    /// - `ticker`: Ticker symbol for the NFT token. 
+    /// - `token_name`: Human-readable name for the position NFT collection 
+    /// - `ticker`: Short ticker symbol for the NFT collection 
     ///  
-    /// # Notes 
-    /// - Requires EGLD payment for issuance. 
+    /// # Returns 
+    /// Nothing - sets up the account token for future position minting 
+    ///  
+    /// # Payment Required 
+    /// - EGLD payment for ESDT token issuance (amount determined by protocol) 
     pub fn register_account_token<
         Arg0: ProxyArg<ManagedBuffer<Env::Api>>,
         Arg1: ProxyArg<ManagedBuffer<Env::Api>>,
@@ -698,16 +836,54 @@ where
             .original_result()
     }
 
-    /// Adds a new e-mode category with risk parameters. 
-    /// Creates an efficiency mode for optimized asset usage. 
+    /// Creates a new efficiency mode (e-mode) category with optimized risk parameters. 
+    ///  
+    /// **Purpose**: E-mode categories allow users to achieve higher capital efficiency 
+    /// when using correlated assets (e.g., different stablecoins or ETH derivatives). 
+    /// Categories group assets with similar risk profiles for optimized lending terms. 
+    ///  
+    /// **How it works**: 
+    /// 1. Increments the global e-mode category counter 
+    /// 2. Converts risk parameters from basis points to decimal representation 
+    /// 3. Creates EModeCategory struct with new ID and parameters 
+    /// 4. Stores the category and emits configuration event 
+    ///  
+    /// **Risk parameter conversion**: 
+    /// All parameters are converted using `to_decimal_bps()` formula: 
+    /// ``` 
+    /// decimal_value = bps_value / 10000 
+    /// ``` 
+    /// This converts basis points (1 bps = 0.01%) to decimal representation. 
+    ///  
+    /// **E-mode benefits**: 
+    /// - Higher LTV ratios for correlated assets 
+    /// - Lower liquidation thresholds (safer for protocol) 
+    /// - Optimized capital utilization for users 
+    /// - Reduced risk through asset correlation 
+    ///  
+    /// **Security considerations**: 
+    /// - Only owner can create e-mode categories (governance control) 
+    /// - Risk parameters must be carefully calibrated for asset correlations 
+    /// - Categories cannot be deleted, only deprecated 
+    /// - Assets must be explicitly added to categories after creation 
+    ///  
+    /// **Governance impact**: 
+    /// E-mode categories affect user capital efficiency and protocol risk. 
+    /// Parameters should reflect actual asset correlations and market conditions. 
     ///  
     /// # Arguments 
-    /// - `ltv`: Loan-to-value ratio in BPS. 
-    /// - `liquidation_threshold`: Liquidation threshold in BPS. 
-    /// - `liquidation_bonus`: Liquidation bonus in BPS. 
+    /// - `ltv`: Loan-to-value ratio in basis points (e.g., 8000 = 80%) 
+    /// - `liquidation_threshold`: Liquidation threshold in basis points (e.g., 8500 = 85%) 
+    /// - `liquidation_bonus`: Liquidation bonus in basis points (e.g., 500 = 5%) 
     ///  
-    /// # Notes 
-    /// - Assigns a new category ID automatically. 
+    /// # Returns 
+    /// Nothing - creates new e-mode category with auto-assigned ID 
+    ///  
+    /// # Mathematical formulas 
+    /// - **LTV**: Maximum borrowing capacity = collateral_value * ltv 
+    /// - **Liquidation threshold**: Position becomes liquidatable when health_factor < 1 
+    ///   where health_factor = (collateral * threshold) / debt 
+    /// - **Liquidation bonus**: Additional reward for liquidators = liquidated_amount * bonus 
     pub fn add_e_mode_category<
         Arg0: ProxyArg<BigUint<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
@@ -936,6 +1112,41 @@ where
             .argument(&isolation_borrow_enabled)
             .argument(&borrow_cap)
             .argument(&supply_cap)
+            .original_result()
+    }
+
+    /// Sets the position limits for NFT accounts. 
+    /// Configures maximum number of borrow and supply positions per NFT. 
+    ///  
+    /// **Purpose**: Controls the maximum number of positions an NFT can hold to optimize 
+    /// gas costs during liquidations and prevent excessive complexity in position management. 
+    ///  
+    /// **Gas Optimization**: By limiting positions per NFT, liquidation operations remain 
+    /// within reasonable gas limits, preventing failed liquidations due to gas constraints. 
+    ///  
+    /// **Default Configuration**: 10 borrow positions + 10 supply positions = 20 total positions 
+    ///  
+    /// # Arguments 
+    /// - `max_borrow_positions`: Maximum number of borrow positions per NFT 
+    /// - `max_supply_positions`: Maximum number of supply positions per NFT   
+    ///  
+    /// # Security 
+    /// - Only contract owner can modify position limits 
+    /// - Changes affect new positions only, existing positions remain valid 
+    /// - Limits are enforced in supply and borrow operations 
+    pub fn set_position_limits<
+        Arg0: ProxyArg<u8>,
+        Arg1: ProxyArg<u8>,
+    >(
+        self,
+        max_borrow_positions: Arg0,
+        max_supply_positions: Arg1,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("setPositionLimits")
+            .argument(&max_borrow_positions)
+            .argument(&max_supply_positions)
             .original_result()
     }
 
@@ -1197,6 +1408,18 @@ where
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("isFlashLoanOngoing")
+            .original_result()
+    }
+
+    /// Get the position limits configuration 
+    /// This storage mapper holds the maximum number of borrow and supply positions per NFT 
+    /// Used to optimize gas costs during liquidations and prevent excessive position complexity 
+    pub fn position_limits(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::PositionLimits> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getPositionLimits")
             .original_result()
     }
 
@@ -1474,6 +1697,51 @@ where
             .original_result()
     }
 
+    /// **MULTIPLY STRATEGY: Flash Loan Leverage Position Creation** 
+    ///  
+    /// # Purpose and Scope 
+    /// Creates leveraged positions by borrowing debt tokens via flash loan, swapping them to collateral tokens, 
+    /// and depositing the collateral to create or enhance an existing position. This strategy allows users to 
+    /// increase their exposure to an asset without having the full collateral amount upfront. 
+    ///  
+    /// # Methodology and Process 
+    /// 1. **Flash Loan Initiation**: Borrows `debt_to_flash_loan` amount of debt tokens from liquidity layer 
+    /// 2. **Token Conversion**: Swaps the borrowed debt tokens to collateral tokens using the swap router 
+    /// 3. **Collateral Supply**: Deposits the received collateral tokens to the lending pool 
+    /// 4. **Position Management**: Creates or updates the user's position with new collateral and debt 
+    /// 5. **Health Validation**: Ensures the final position maintains healthy collateralization ratio 
+    ///  
+    /// # Mathematical Formula 
+    /// Final Leverage = (Initial Collateral + Borrowed Amount * Swap Rate) / Initial Collateral 
+    /// Health Factor = (Collateral Value * Liquidation Threshold) / Total Debt Value 
+    /// Where Health Factor must be > 1.0 for position safety 
+    ///  
+    /// # Security Checks Implemented 
+    /// - **Reentrancy Protection**: Guards against flash loan reentrancy attacks 
+    /// - **Token Validation**: Ensures collateral and debt tokens are different assets 
+    /// - **Payment Validation**: Validates initial payment amounts and token types 
+    /// - **Position Mode Validation**: Ensures position is in leverage mode (not Normal/None) 
+    /// - **Health Factor Validation**: Verifies position remains healthy after leverage 
+    /// - **Asset Configuration**: Validates both tokens are properly configured in the protocol 
+    /// - **E-Mode Compatibility**: Ensures tokens are compatible with efficiency mode if specified 
+    ///  
+    /// # Arguments 
+    /// - `e_mode_category`: Efficiency mode category for correlated assets (0 for disabled) 
+    /// - `collateral_token`: Token to be used as collateral after swap 
+    /// - `debt_to_flash_loan`: Amount of debt token to borrow via flash loan 
+    /// - `debt_token`: Token to be borrowed and swapped to collateral 
+    /// - `mode`: Position mode (must be leverage-compatible, not Normal/None) 
+    /// - `steps`: Swap router steps for debt token to collateral token conversion 
+    /// - `steps_payment`: Optional swap steps if initial payment needs conversion 
+    ///  
+    /// # Returns 
+    /// - Creates or updates leveraged position with increased collateral and debt 
+    /// - Emits position creation/update events through the lending protocol 
+    ///  
+    /// # Risk Considerations 
+    /// - High slippage during swaps can reduce effective leverage and affect health factor 
+    /// - Flash loan failure will revert entire transaction, protecting user funds 
+    /// - Position becomes liquidatable if collateral value drops significantly 
     pub fn multiply<
         Arg0: ProxyArg<u8>,
         Arg1: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
@@ -1504,18 +1772,50 @@ where
             .original_result()
     }
 
-    /// Swaps debt token 
+    /// **SWAP DEBT STRATEGY: Convert Debt Position Between Different Tokens** 
     ///  
-    /// # Requirements 
-    /// * Account must have sufficient collateral 
-    /// * Position must remain healthy after operation 
-    /// * Tokens must be different 
+    /// # Purpose and Scope 
+    /// Converts existing debt from one token type to another while maintaining the same collateral. 
+    /// This strategy allows users to change their debt exposure without affecting their collateral positions, 
+    /// useful for interest rate arbitrage, risk management, or taking advantage of better borrowing conditions. 
+    ///  
+    /// # Methodology and Process 
+    /// 1. **Flash Loan Creation**: Borrows the new debt token amount from liquidity layer 
+    /// 2. **Token Swap**: Converts new debt tokens to existing debt tokens via swap router 
+    /// 3. **Debt Repayment**: Uses swapped tokens plus any provided payments to repay existing debt 
+    /// 4. **Position Update**: Updates the debt position to reflect the new debt token type 
+    /// 5. **Health Validation**: Ensures position remains healthy after the debt conversion 
+    ///  
+    /// # Mathematical Formula 
+    /// Debt Conversion Rate = (Existing Debt Amount * Existing Token Price) / (New Token Price * (1 - Slippage)) 
+    /// New Health Factor = (Total Collateral Value * Liquidation Threshold) / New Debt Value 
+    /// Where New Health Factor must remain > 1.0 
+    ///  
+    /// # Security Checks Implemented 
+    /// - **Reentrancy Protection**: Guards against flash loan reentrancy attacks 
+    /// - **Token Differentiation**: Ensures existing and new debt tokens are different 
+    /// - **Account Validation**: Verifies caller owns the position being modified 
+    /// - **Siloed Borrowing Check**: Prevents debt swaps involving siloed (restricted) tokens 
+    /// - **Payment Validation**: Validates any additional payments for debt coverage 
+    /// - **Health Factor Validation**: Ensures position remains healthy post-swap 
+    /// - **Slippage Protection**: Built into swap router to prevent excessive value loss 
     ///  
     /// # Arguments 
-    /// * `existing_debt_token` - The existing debt token 
-    /// * `new_debt_amount_raw` - The new debt token amount 
-    /// * `new_debt_token` - The new debt token 
-    /// * `steps` - Optional swap steps for token conversion 
+    /// - `existing_debt_token`: Current debt token to be repaid and replaced 
+    /// - `new_debt_amount_raw`: Amount of new debt token to borrow (raw units) 
+    /// - `new_debt_token`: New debt token type to replace existing debt 
+    /// - `steps`: Swap router configuration for token conversion path 
+    ///  
+    /// # Returns 
+    /// - Updates debt position with new token type and amount 
+    /// - Maintains existing collateral positions unchanged 
+    /// - Emits debt swap events through the lending protocol 
+    ///  
+    /// # Risk Considerations 
+    /// - Swap slippage may require additional payments to fully repay existing debt 
+    /// - Interest rate changes between tokens affect ongoing borrowing costs 
+    /// - Market volatility during swap execution can impact final debt amounts 
+    /// - Position may become liquidatable if swap results in higher debt value 
     pub fn swap_debt<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
@@ -1537,6 +1837,50 @@ where
             .original_result()
     }
 
+    /// **SWAP COLLATERAL STRATEGY: Convert Collateral Between Different Token Types** 
+    ///  
+    /// # Purpose and Scope 
+    /// Converts existing collateral from one token type to another while maintaining the same debt positions. 
+    /// This strategy enables portfolio rebalancing, risk management, and optimization of collateral efficiency 
+    /// without affecting existing borrowing positions. 
+    ///  
+    /// # Methodology and Process 
+    /// 1. **Collateral Withdrawal**: Withdraws specified amount of current collateral from the position 
+    /// 2. **Token Conversion**: Swaps the withdrawn collateral to the new collateral token via swap router 
+    /// 3. **Collateral Redeposit**: Deposits the converted tokens back as new collateral 
+    /// 4. **Position Update**: Updates collateral composition while preserving debt positions 
+    /// 5. **Health Validation**: Ensures position maintains healthy collateralization after swap 
+    ///  
+    /// # Mathematical Formula 
+    /// Collateral Conversion Rate = (Withdrawn Amount * Current Token Price) / (New Token Price * (1 - Slippage)) 
+    /// New Health Factor = (New Collateral Value * New Liquidation Threshold) / Total Debt Value 
+    /// Where New Health Factor must remain > 1.0 
+    ///  
+    /// # Security Checks Implemented 
+    /// - **Reentrancy Protection**: Guards against flash loan reentrancy attacks 
+    /// - **Account Validation**: Verifies caller owns the position being modified 
+    /// - **Isolation Mode Check**: Prevents collateral swaps in isolated asset positions 
+    /// - **New Asset Validation**: Ensures target collateral is not an isolated asset 
+    /// - **Withdrawal Validation**: Confirms sufficient collateral balance for withdrawal 
+    /// - **Health Factor Validation**: Ensures position remains healthy post-swap 
+    /// - **Payment Validation**: Validates any additional payments provided 
+    ///  
+    /// # Arguments 
+    /// - `current_collateral`: Existing collateral token to be converted 
+    /// - `from_amount`: Amount of current collateral to convert (raw units) 
+    /// - `new_collateral`: Target collateral token type 
+    /// - `steps`: Swap router configuration for token conversion path 
+    ///  
+    /// # Returns 
+    /// - Updates collateral position with new token type and converted amount 
+    /// - Maintains existing debt positions unchanged 
+    /// - Emits collateral swap events through the lending protocol 
+    ///  
+    /// # Risk Considerations 
+    /// - Swap slippage reduces effective collateral value and may impact health factor 
+    /// - Different liquidation thresholds between tokens affect position safety 
+    /// - Market volatility during swap execution can impact final collateral amounts 
+    /// - Position may become liquidatable if swap results in insufficient collateral value 
     pub fn swap_collateral<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
@@ -1558,23 +1902,52 @@ where
             .original_result()
     }
 
-    /// Repays debt using collateral assets 
+    /// **REPAY DEBT WITH COLLATERAL STRATEGY: Liquidate Collateral to Repay Debt** 
+    ///  
+    /// # Purpose and Scope 
+    /// Converts collateral assets to debt tokens for automatic debt repayment, enabling users to reduce 
+    /// their debt burden without external token sources. This strategy is particularly useful for 
+    /// deleveraging positions, managing liquidation risk, or closing positions entirely. 
+    ///  
+    /// # Methodology and Process 
+    /// 1. **Collateral Withdrawal**: Withdraws specified amount of collateral from the user's position 
+    /// 2. **Token Conversion**: Swaps withdrawn collateral to debt tokens via swap router 
+    /// 3. **Debt Repayment**: Uses converted tokens plus any additional payments to repay outstanding debt 
+    /// 4. **Position Closure**: If `close_position` is true and all debt is repaid, withdraws remaining collateral and burns position NFT 
+    /// 5. **Health Validation**: Ensures position remains healthy after debt reduction (if not fully closed) 
+    ///  
+    /// # Mathematical Formula 
+    /// Debt Repayment Amount = (Withdrawn Collateral * Collateral Price * (1 - Slippage)) / Debt Token Price 
+    /// Remaining Health Factor = (Remaining Collateral Value * Liquidation Threshold) / Remaining Debt Value 
+    /// For partial repayment, Remaining Health Factor must be > 1.0 
+    ///  
+    /// # Security Checks Implemented 
+    /// - **Reentrancy Protection**: Guards against flash loan reentrancy attacks 
+    /// - **Account Validation**: Verifies caller owns the position being modified 
+    /// - **Collateral Sufficiency**: Ensures sufficient collateral balance for withdrawal 
+    /// - **Payment Validation**: Validates any additional payments provided for debt coverage 
+    /// - **Health Factor Validation**: Ensures position remains healthy after partial repayment 
+    /// - **Position Closure Validation**: Verifies all debt is repaid before position closure 
+    /// - **Asset Validation**: Confirms both collateral and debt tokens are properly configured 
     ///  
     /// # Arguments 
-    /// * `from_token` - The collateral token to use for repayment 
-    /// * `from_amount` - Amount of collateral to use 
-    /// * `to_token` - The debt token to repay 
-    /// * `close_position` - A flag to refund all collaterals when the full debt is fully repaid and burn the position NFT 
-    /// * `limits` - Optional price limits for the swap 
-    ///  
-    /// # Requirements 
-    /// * Account must have sufficient collateral 
-    /// * Position must remain healthy after operation 
-    /// * Tokens must be different 
+    /// - `from_token`: Collateral token to be converted for debt repayment 
+    /// - `from_amount`: Amount of collateral to withdraw and convert (raw units) 
+    /// - `to_token`: Debt token to be repaid with converted collateral 
+    /// - `close_position`: Flag to close entire position if all debt is repaid (burns NFT and withdraws remaining collateral) 
+    /// - `steps`: Optional swap router configuration for collateral to debt token conversion 
     ///  
     /// # Returns 
-    /// * Success if debt is repaid and position remains healthy 
-    /// * Error if any requirements are not met 
+    /// - Reduces debt position by the amount repaid through collateral conversion 
+    /// - Reduces collateral position by the amount withdrawn for conversion 
+    /// - If `close_position` and debt fully repaid: burns position NFT and returns all remaining collateral 
+    /// - Emits debt repayment and position update events through the lending protocol 
+    ///  
+    /// # Risk Considerations 
+    /// - Swap slippage may result in insufficient debt tokens to fully repay intended amount 
+    /// - Market volatility during conversion affects final repayment effectiveness 
+    /// - Position may become liquidatable if remaining collateral is insufficient after partial repayment 
+    /// - Closing positions requires complete debt repayment; partial closure is not supported 
     pub fn repay_debt_with_collateral<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,

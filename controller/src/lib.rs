@@ -70,6 +70,12 @@ pub trait Controller:
         self.accumulator_address().set(accumulator_address);
         self.wegld_wrapper().set(wegld_address);
         self.swap_router().set(swap_router_address);
+
+        // Initialize default position limits for gas optimization during liquidations
+        self.position_limits().set(PositionLimits {
+            max_borrow_positions: 10,
+            max_supply_positions: 10,
+        });
     }
 
     #[upgrade]
@@ -223,8 +229,16 @@ pub trait Controller:
         let e_mode = self.get_e_mode_category(account_attributes.get_emode_id());
         self.ensure_e_mode_not_deprecated(&e_mode);
 
+        // Validate position limits for all new borrow positions in this transaction
+        let borrowed_tokens_vec = borrowed_tokens.to_vec();
+        self.validate_bulk_position_limits(
+            account_nonce,
+            AccountPositionType::Borrow,
+            &borrowed_tokens_vec,
+        );
+
         // Process each borrow
-        for borrowed_token in borrowed_tokens {
+        for borrowed_token in borrowed_tokens_vec {
             self.process_borrow(
                 &mut cache,
                 account_nonce,

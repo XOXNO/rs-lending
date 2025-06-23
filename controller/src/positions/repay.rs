@@ -23,15 +23,30 @@ pub trait PositionRepayModule:
     + emode::EModeModule
 {
     /// Updates isolated debt tracking post-repayment.
-    /// Adjusts debt ceiling for isolated positions.
+    ///
+    /// **Purpose**: Reduces the tracked debt amount for isolated collateral positions
+    /// after successful repayment, maintaining accurate debt ceiling accounting.
+    ///
+    /// **Methodology**:
+    /// 1. Checks if position is in isolation mode
+    /// 2. Converts repayment amount from EGLD to USD value
+    /// 3. Decreases global isolated debt tracking for the collateral token
+    ///
+    /// **Security Considerations**:
+    /// - Only processes debt reduction for confirmed isolated positions
+    /// - Uses current EGLD/USD price for accurate value conversion
+    /// - Maintains debt ceiling integrity across repayments
+    ///
+    /// **Mathematical Operations**:
+    /// ```
+    /// usd_value = repay_amount_egld * egld_usd_price / USD_PRECISION
+    /// isolated_debt[token] -= usd_value
+    /// ```
     ///
     /// # Arguments
-    /// - `account_nonce`: Position NFT nonce.
-    /// - `position`: Borrow position.
-    /// - `feed`: Price data for the token.
-    /// - `repay_amount`: Repayment amount in EGLD.
-    /// - `cache`: Mutable storage cache.
-    /// - `position_attributes`: NFT attributes.
+    /// - `repay_amount`: Repayment amount in EGLD denomination
+    /// - `cache`: Storage cache for EGLD/USD price access
+    /// - `position_attributes`: Position attributes containing isolation token
     fn update_isolated_debt_after_repayment(
         &self,
         repay_amount: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -48,6 +63,35 @@ pub trait PositionRepayModule:
         }
     }
 
+    /// Clears all isolated debt for a position being fully repaid.
+    ///
+    /// **Purpose**: Removes all tracked isolated debt when a borrow position
+    /// is completely closed, ensuring accurate debt ceiling accounting.
+    ///
+    /// **Methodology**:
+    /// 1. Calculates total position debt including accrued interest
+    /// 2. Converts debt to EGLD value using current price
+    /// 3. Converts EGLD to USD for debt ceiling tracking
+    /// 4. Removes full amount from isolated debt tracking
+    ///
+    /// **Security Considerations**:
+    /// - Uses current market prices for accurate valuation
+    /// - Includes accrued interest in debt calculation
+    /// - Maintains debt ceiling integrity
+    ///
+    /// **Mathematical Operations**:
+    /// ```
+    /// total_debt = position.scaled_amount * borrow_index / RAY_PRECISION
+    /// egld_value = total_debt * asset_price / RAY_PRECISION
+    /// usd_value = egld_value * egld_usd_price / USD_PRECISION
+    /// isolated_debt[token] -= usd_value
+    /// ```
+    ///
+    /// # Arguments
+    /// - `position`: Borrow position being cleared
+    /// - `feed`: Price feed for debt valuation
+    /// - `position_attributes`: Position attributes with isolation settings
+    /// - `cache`: Storage cache for price and index access
     fn clear_position_isolated_debt(
         &self,
         position: &mut AccountPosition<Self::Api>,
@@ -68,17 +112,39 @@ pub trait PositionRepayModule:
     }
 
     /// Manages the full repayment process.
-    /// Validates and updates positions after repayment.
+    ///
+    /// **Purpose**: Orchestrates the complete repayment flow including debt validation,
+    /// isolated debt tracking updates, and position state management.
+    ///
+    /// **Methodology**:
+    /// 1. Validates borrow position exists for the specified token
+    /// 2. Updates isolated debt tracking if position is isolated
+    /// 3. Executes repayment through liquidity pool contract
+    /// 4. Emits position update event for monitoring
+    /// 5. Updates or removes position based on remaining debt
+    ///
+    /// **Security Checks**:
+    /// - Position existence validation prevents invalid repayments
+    /// - Isolated debt tracking maintains ceiling accuracy
+    /// - Cross-contract interaction with verified pool addresses
+    ///
+    /// **Mathematical Operations** (performed in pool):
+    /// ```
+    /// interest_accrued = position.scaled_amount * (borrow_index - position.last_index)
+    /// total_debt = position.amount + interest_accrued
+    /// repayment_applied = min(repay_amount, total_debt)
+    /// new_debt = total_debt - repayment_applied
+    /// ```
     ///
     /// # Arguments
-    /// - `account_nonce`: Position NFT nonce.
-    /// - `repay_token_id`: Token being repaid.
-    /// - `repay_amount`: Repayment amount.
-    /// - `caller`: Repayer's address.
-    /// - `repay_amount_in_egld`: EGLD value of repayment.
-    /// - `feed`: Price data for the token.
-    /// - `cache`: Mutable storage cache.
-    /// - `position_attributes`: NFT attributes.
+    /// - `account_nonce`: Position NFT nonce for storage operations
+    /// - `repay_token_id`: Token identifier being repaid
+    /// - `repay_amount`: Repayment amount in asset decimals
+    /// - `caller`: Repayer's address for token transfer
+    /// - `repay_amount_in_egld`: EGLD value for isolated debt tracking
+    /// - `feed`: Price feed for valuation
+    /// - `cache`: Storage cache for pool address lookup
+    /// - `position_attributes`: Position attributes for isolation handling
     fn process_repayment(
         &self,
         account_nonce: u64,
@@ -123,12 +189,25 @@ pub trait PositionRepayModule:
 
     /// Ensures a borrow position exists for repayment.
     ///
+    /// **Purpose**: Validates that a borrow position exists for the specified token
+    /// before allowing repayment operations, preventing invalid transactions.
+    ///
+    /// **Methodology**:
+    /// - Retrieves borrow positions mapping for the account
+    /// - Attempts to find position for the specified token
+    /// - Validates position exists with clear error messaging
+    ///
+    /// **Security Considerations**:
+    /// - Prevents repayment attempts on non-existent debt
+    /// - Provides clear error messaging for debugging
+    /// - Uses unsafe unwrap only after existence validation
+    ///
     /// # Arguments
-    /// - `account_nonce`: Position NFT nonce.
-    /// - `token_id`: Borrowed token identifier.
+    /// - `account_nonce`: Position NFT nonce for storage lookup
+    /// - `token_id`: Borrowed token identifier to validate
     ///
     /// # Returns
-    /// - Validated borrow position.
+    /// - `AccountPosition` containing the validated borrow position
     fn validate_borrow_position_existence(
         &self,
         account_nonce: u64,
@@ -138,7 +217,7 @@ pub trait PositionRepayModule:
         let position = borrow_positions.get(token_id);
         require!(
             position.is_some(),
-            "Borrowed token {} is not available for this account",
+            "No borrow position exists for token {} in this account",
             token_id
         );
         unsafe { position.unwrap_unchecked() }

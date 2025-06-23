@@ -21,7 +21,7 @@ use setup::*;
 // ============================================
 
 /// Tests oracle configuration for already existing token fails.
-/// 
+///
 /// Covers:
 /// - Oracle configuration validation
 /// - Duplicate oracle prevention
@@ -49,7 +49,7 @@ fn oracle_set_token_oracle_already_exists_error() {
 }
 
 /// Tests oracle configuration with Onedex requires pair ID.
-/// 
+///
 /// Covers:
 /// - Onedex exchange source validation
 /// - Pair ID requirement for Onedex
@@ -77,7 +77,7 @@ fn oracle_set_token_oracle_onedex_missing_pair_id_error() {
 }
 
 /// Tests successful oracle tolerance update.
-/// 
+///
 /// Covers:
 /// - Oracle tolerance modification
 /// - Tolerance values persistence
@@ -102,7 +102,7 @@ fn oracle_edit_tolerance_success() {
 }
 
 /// Tests oracle tolerance update for non-existent token fails.
-/// 
+///
 /// Covers:
 /// - Oracle existence validation
 /// - ERROR_ORACLE_TOKEN_NOT_FOUND error condition
@@ -121,7 +121,7 @@ fn oracle_edit_tolerance_token_not_found_error() {
 }
 
 /// Tests oracle tolerance update with first tolerance too low fails.
-/// 
+///
 /// Covers:
 /// - First tolerance minimum validation
 /// - ERROR_UNEXPECTED_FIRST_TOLERANCE error condition
@@ -138,7 +138,7 @@ fn oracle_edit_tolerance_first_tolerance_too_low_error() {
 }
 
 /// Tests oracle tolerance update with last tolerance too low fails.
-/// 
+///
 /// Covers:
 /// - Last tolerance minimum validation
 /// - ERROR_UNEXPECTED_LAST_TOLERANCE error condition
@@ -155,7 +155,7 @@ fn oracle_edit_tolerance_last_tolerance_too_low_error() {
 }
 
 /// Tests oracle tolerance update with invalid anchor tolerances fails.
-/// 
+///
 /// Covers:
 /// - Anchor tolerance relationship validation
 /// - First tolerance must be <= last tolerance
@@ -177,7 +177,7 @@ fn oracle_edit_tolerance_invalid_anchor_error() {
 // ============================================
 
 /// Tests successful price aggregator address update.
-/// 
+///
 /// Covers:
 /// - Price aggregator configuration
 /// - Address update verification
@@ -194,7 +194,7 @@ fn address_set_aggregator_success() {
 }
 
 /// Tests price aggregator zero address validation.
-/// 
+///
 /// Covers:
 /// - Zero address validation
 /// - ERROR_INVALID_AGGREGATOR error condition
@@ -206,7 +206,7 @@ fn address_set_aggregator_zero_address_error() {
 }
 
 /// Tests successful swap router address update.
-/// 
+///
 /// Covers:
 /// - Swap router configuration
 /// - Address update verification
@@ -223,7 +223,7 @@ fn address_set_swap_router_success() {
 }
 
 /// Tests swap router zero address validation.
-/// 
+///
 /// Covers:
 /// - Zero address validation
 /// - ERROR_INVALID_AGGREGATOR error condition
@@ -235,7 +235,7 @@ fn address_set_swap_router_zero_address_error() {
 }
 
 /// Tests successful accumulator address update.
-/// 
+///
 /// Covers:
 /// - Accumulator configuration
 /// - Address update verification
@@ -252,7 +252,7 @@ fn address_set_accumulator_success() {
 }
 
 /// Tests accumulator zero address validation.
-/// 
+///
 /// Covers:
 /// - Zero address validation
 /// - ERROR_INVALID_AGGREGATOR error condition
@@ -264,7 +264,7 @@ fn address_set_accumulator_zero_address_error() {
 }
 
 /// Tests successful safe price view address update.
-/// 
+///
 /// Covers:
 /// - Safe price view configuration
 /// - Address update verification
@@ -281,7 +281,7 @@ fn address_set_safe_price_view_success() {
 }
 
 /// Tests safe price view zero address validation.
-/// 
+///
 /// Covers:
 /// - Zero address validation
 /// - ERROR_INVALID_AGGREGATOR error condition
@@ -293,7 +293,7 @@ fn address_set_safe_price_view_zero_address_error() {
 }
 
 /// Tests successful liquidity pool template address update.
-/// 
+///
 /// Covers:
 /// - Liquidity pool template configuration
 /// - Address update verification
@@ -310,7 +310,7 @@ fn address_set_liquidity_pool_template_success() {
 }
 
 /// Tests liquidity pool template zero address validation.
-/// 
+///
 /// Covers:
 /// - Zero address validation
 /// - ERROR_INVALID_LIQUIDITY_POOL_TEMPLATE error condition
@@ -329,7 +329,7 @@ fn address_set_liquidity_pool_template_zero_address_error() {
 // ============================================
 
 /// Tests successful E-Mode category creation.
-/// 
+///
 /// Covers:
 /// - E-Mode category addition
 /// - Category ID auto-increment
@@ -350,7 +350,7 @@ fn emode_add_category_success() {
 }
 
 /// Tests successful E-Mode category update.
-/// 
+///
 /// Covers:
 /// - E-Mode category modification
 /// - Risk parameters update
@@ -382,7 +382,7 @@ fn emode_edit_category_success() {
 }
 
 /// Tests E-Mode category update for non-existent category fails.
-/// 
+///
 /// Covers:
 /// - Category existence validation
 /// - ERROR_EMODE_CATEGORY_NOT_FOUND error condition
@@ -405,7 +405,7 @@ fn emode_edit_category_not_found_error() {
 }
 
 /// Tests successful E-Mode category deprecation.
-/// 
+///
 /// Covers:
 /// - E-Mode category removal
 /// - Category deprecation flag
@@ -436,7 +436,7 @@ fn emode_remove_category_success() {
 }
 
 /// Tests E-Mode category removal for non-existent category fails.
-/// 
+///
 /// Covers:
 /// - Category existence validation
 /// - ERROR_EMODE_CATEGORY_NOT_FOUND error condition
@@ -448,7 +448,7 @@ fn emode_remove_category_not_found_error() {
 }
 
 /// Tests successful asset addition to E-Mode category.
-/// 
+///
 /// Covers:
 /// - Asset to E-Mode category mapping
 /// - Asset configuration in E-Mode
@@ -472,7 +472,7 @@ fn emode_add_asset_to_category_success() {
 }
 
 /// Tests asset addition to non-existent E-Mode category fails.
-/// 
+///
 /// Covers:
 /// - Category existence validation
 /// - ERROR_EMODE_CATEGORY_NOT_FOUND error condition
@@ -490,7 +490,7 @@ fn emode_add_asset_to_invalid_category_error() {
 }
 
 /// Tests adding unsupported asset to E-Mode category fails.
-/// 
+///
 /// Covers:
 /// - Asset existence validation
 /// - ERROR_ASSET_NOT_SUPPORTED error condition
@@ -509,7 +509,7 @@ fn emode_add_unsupported_asset_error() {
 }
 
 /// Tests adding already existing asset to E-Mode category fails.
-/// 
+///
 /// Covers:
 /// - Duplicate asset prevention
 /// - ERROR_ASSET_ALREADY_SUPPORTED_IN_EMODE error condition
@@ -528,7 +528,7 @@ fn emode_add_duplicate_asset_error() {
 }
 
 /// Tests successful asset configuration update in E-Mode category.
-/// 
+///
 /// Covers:
 /// - Asset configuration modification
 /// - Collateral/borrow flag updates
@@ -562,7 +562,7 @@ fn emode_edit_asset_in_category_success() {
 }
 
 /// Tests asset edit in non-existent E-Mode category fails.
-/// 
+///
 /// Covers:
 /// - Category existence validation
 /// - ERROR_EMODE_CATEGORY_NOT_FOUND error condition
@@ -584,7 +584,7 @@ fn emode_edit_asset_invalid_category_error() {
 }
 
 /// Tests editing non-existent asset in E-Mode category fails.
-/// 
+///
 /// Covers:
 /// - Asset existence in category validation
 /// - ERROR_ASSET_NOT_SUPPORTED_IN_EMODE error condition
@@ -607,7 +607,7 @@ fn emode_edit_missing_asset_error() {
 }
 
 /// Tests successful asset removal from E-Mode category.
-/// 
+///
 /// Covers:
 /// - Asset removal from category
 /// - Category asset list update
@@ -628,7 +628,7 @@ fn emode_remove_asset_from_category_success() {
 }
 
 /// Tests asset removal from non-existent E-Mode category fails.
-/// 
+///
 /// Covers:
 /// - Category existence validation
 /// - ERROR_EMODE_CATEGORY_NOT_FOUND error condition
@@ -644,7 +644,7 @@ fn emode_remove_asset_invalid_category_error() {
 }
 
 /// Tests removing unsupported asset from E-Mode category fails.
-/// 
+///
 /// Covers:
 /// - Asset existence validation
 /// - ERROR_ASSET_NOT_SUPPORTED error condition
@@ -661,7 +661,7 @@ fn emode_remove_unsupported_asset_error() {
 }
 
 /// Tests removing non-existent asset from E-Mode category fails.
-/// 
+///
 /// Covers:
 /// - Asset membership validation
 /// - ERROR_ASSET_NOT_SUPPORTED_IN_EMODE error condition
@@ -682,7 +682,7 @@ fn emode_remove_missing_asset_error() {
 // ============================================
 
 /// Tests successful asset configuration update.
-/// 
+///
 /// Covers:
 /// - Asset risk parameters update
 /// - All configuration fields
@@ -719,7 +719,7 @@ fn asset_edit_config_success() {
 }
 
 /// Tests asset configuration for non-existent asset fails.
-/// 
+///
 /// Covers:
 /// - Asset existence validation
 /// - ERROR_ASSET_NOT_SUPPORTED error condition
@@ -749,7 +749,7 @@ fn asset_edit_config_unsupported_asset_error() {
 }
 
 /// Tests asset configuration with invalid liquidation threshold fails.
-/// 
+///
 /// Covers:
 /// - Liquidation threshold > LTV validation
 /// - ERROR_INVALID_LIQUIDATION_THRESHOLD error condition
@@ -782,7 +782,7 @@ fn asset_edit_config_invalid_liquidation_threshold_error() {
 // ============================================
 
 /// Tests complete E-Mode category lifecycle.
-/// 
+///
 /// Covers:
 /// - Full E-Mode category management flow
 /// - Category creation, asset management, and removal
@@ -838,7 +838,7 @@ fn emode_complete_lifecycle_scenario() {
 }
 
 /// Tests E-Mode category removal with multiple assets.
-/// 
+///
 /// Covers:
 /// - Category removal impact on multiple assets
 /// - Automatic asset removal from deprecated category
@@ -925,7 +925,7 @@ fn emode_remove_category_with_multiple_assets_scenario() {
 }
 
 /// Tests asset configuration with zero caps handling.
-/// 
+///
 /// Covers:
 /// - Supply/borrow cap configuration
 /// - Zero cap interpretation as None

@@ -1,5 +1,3 @@
-use common_constants::RAY_PRECISION;
-
 use common_structs::{
     AccountAttributes, AccountPosition, AccountPositionType, AssetConfig, EModeCategory,
     PriceFeedShort,
@@ -264,8 +262,9 @@ pub trait PositionBorrowModule:
                 let pool = cache.get_cached_pool_address(asset);
                 let total_borrow_scaled = self.borrowed(pool.clone()).get();
                 let index = cache.get_cached_market_index(asset);
-                let borrowed_amount = self.rescale_half_up(
-                    &self.mul_half_up(&total_borrow_scaled, &index.borrow_index, RAY_PRECISION),
+                let borrowed_amount = self.scaled_to_original(
+                    &total_borrow_scaled,
+                    &index.borrow_index,
                     amount.scale(),
                 );
 
@@ -393,17 +392,42 @@ pub trait PositionBorrowModule:
 
     /// Processes a single borrow operation, including validations and position updates.
     ///
+    /// **Purpose**: Orchestrates a complete borrow flow with comprehensive validation,
+    /// e-mode application, and position management for both individual and bulk operations.
+    ///
+    /// **Methodology**:
+    /// 1. Validates payment structure and asset configuration
+    /// 2. Applies e-mode parameters if position has active e-mode
+    /// 3. Validates asset borrowability under current position constraints
+    /// 4. Performs LTV collateral validation against total debt
+    /// 5. Validates borrow cap and isolated debt constraints
+    /// 6. Executes position update through handle_borrow_position
+    /// 7. Updates bulk borrow tracking if applicable
+    ///
+    /// **Security Checks**:
+    /// - Payment validation prevents malformed inputs
+    /// - E-mode compatibility ensures proper risk parameters
+    /// - Asset borrowability validation enforces isolation/siloed rules
+    /// - LTV validation prevents undercollateralized positions
+    /// - Cap validation prevents market manipulation
+    /// - Isolated debt validation enforces concentration limits
+    ///
+    /// **E-mode Integration**:
+    /// - Retrieves asset-specific e-mode configuration
+    /// - Applies enhanced risk parameters if applicable
+    /// - Validates e-mode compatibility with asset type
+    ///
     /// # Arguments
-    /// - `cache`: Mutable reference to the storage cache.
-    /// - `account_payment`: The account NFT payment.
-    /// - `caller`: The address initiating the borrow.
-    /// - `borrowed_token`: The token and amount to borrow.
-    /// - `account_attributes`: Attributes of the account position.
-    /// - `e_mode`: The e-mode category, if enabled.
-    /// - `collaterals`: Vector of collateral positions.
-    /// - `borrows`: Mutable vector of borrow positions.
-    /// - `borrow_index_mapper`: Mutable map for indexing borrow positions in bulk borrows.
-    /// - `is_bulk_borrow`: Flag indicating if this is part of a bulk borrow operation.
+    /// - `cache`: Storage cache for asset configs and price feeds
+    /// - `account_nonce`: Position NFT nonce for storage operations
+    /// - `caller`: Borrower's address for event emission
+    /// - `borrowed_token`: Token payment containing asset and amount
+    /// - `account_attributes`: Position attributes with e-mode and isolation state
+    /// - `e_mode`: Optional e-mode category for parameter enhancement
+    /// - `borrows`: Mutable vector of existing borrow positions
+    /// - `borrow_index_mapper`: Position index mapping for bulk operations
+    /// - `is_bulk_borrow`: Flag for bulk operation tracking
+    /// - `ltv_collateral`: LTV-weighted collateral value for validation
     fn process_borrow(
         &self,
         cache: &mut Cache<Self>,

@@ -285,6 +285,7 @@ impl<M: ManagedTypeApi> AccountAttributes<M> {
 
     #[inline]
     pub fn get_isolated_token(&self) -> EgldOrEsdtTokenIdentifier<M> {
+        // SAFETY: This is safe because all call sites guard with is_isolated() checks
         unsafe { self.isolated_token.clone().into_option().unwrap_unchecked() }
     }
 }
@@ -391,4 +392,19 @@ pub struct MarketIndexView<M: ManagedTypeApi> {
     pub borrow_index: ManagedDecimal<M, NumDecimals>,
     pub egld_price: ManagedDecimal<M, NumDecimals>,
     pub usd_price: ManagedDecimal<M, NumDecimals>,
+}
+
+/// PositionLimits defines the maximum number of positions an NFT can hold.
+/// This limits complexity and optimizes gas costs during liquidations.
+///
+/// **Gas Optimization**: Liquidation operations iterate through all positions
+/// for health factor calculations. By limiting positions per NFT, we ensure
+/// liquidations remain within reasonable gas limits.
+///
+/// **Default Configuration**: 10 borrow + 10 supply = 20 total positions per NFT
+#[type_abi]
+#[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, Clone)]
+pub struct PositionLimits {
+    pub max_borrow_positions: u8,
+    pub max_supply_positions: u8,
 }

@@ -3,7 +3,7 @@ use common_proxies::proxy_onedex::State as StateOnedex;
 use common_proxies::proxy_xexchange_pair::State as StateXExchange;
 use common_structs::{
     AccountAttributes, AccountPosition, AccountPositionType, AssetConfig, EModeAssetConfig,
-    EModeCategory, OracleProvider,
+    EModeCategory, OracleProvider, PositionLimits,
 };
 use price_aggregator::structs::TimestampedPrice;
 multiversx_sc::imports!();
@@ -171,17 +171,6 @@ pub trait Storage {
         liquidity_pool_address: ManagedAddress,
     ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>, ManagedAddress>;
 
-    /// Retrieves the total bad debt from the pool.
-    /// This value is stored scaled to the asset's actual decimal precision.
-    ///
-    /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The total bad debt pending to be collected, scaled to the asset's decimals.
-    #[storage_mapper_from_address("bad_debt")]
-    fn bad_debt(
-        &self,
-        liquidity_pool_address: ManagedAddress,
-    ) -> SingleValueMapper<ManagedDecimal<Self::Api, NumDecimals>, ManagedAddress>;
-
     /// Retrieves the current borrow index.
     ///
     /// The borrow index is used to calculate accrued interest on borrow positions.
@@ -254,4 +243,11 @@ pub trait Storage {
         &self,
         price_aggregator_address: ManagedAddress,
     ) -> SingleValueMapper<bool, ManagedAddress>;
+
+    /// Get the position limits configuration
+    /// This storage mapper holds the maximum number of borrow and supply positions per NFT
+    /// Used to optimize gas costs during liquidations and prevent excessive position complexity
+    #[view(getPositionLimits)]
+    #[storage_mapper("position_limits")]
+    fn position_limits(&self) -> SingleValueMapper<PositionLimits>;
 }

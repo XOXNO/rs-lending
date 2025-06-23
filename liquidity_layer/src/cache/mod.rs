@@ -10,9 +10,9 @@ multiversx_sc::derive_imports!();
 /// **Goal**: Facilitate calculations (e.g., interest rates, utilization) by providing a mutable in-memory view of the pool.
 ///
 /// **Fields**:
-/// - All monetary values (`supplied`, `reserves`, `borrowed`, `revenue`) are in `ManagedDecimal` with pool-specific asset_decimals.
+/// - All monetary values (`supplied`, `borrowed`, `revenue`) are in `ManagedDecimal` with pool-specific asset_decimals.
 /// - Indices (`borrow_index`, `supply_index`) use RAY precision for interest accrual tracking.
-/// - Timestamps (`timestamp`, `last_timestamp`) are in seconds since the Unix epoch.
+/// - Timestamps (`timestamp`, `last_timestamp`) are in milliseconds since the Unix epoch.
 pub struct Cache<'a, C>
 where
     C: crate::storage::Storage + common_rates::InterestRates,
@@ -22,8 +22,6 @@ where
     pub supplied: ManagedDecimal<C::Api, NumDecimals>,
     /// The amount of the asset currently borrowed.
     pub borrowed: ManagedDecimal<C::Api, NumDecimals>,
-    /// The amount of the asset pending to be collected as bad debt.
-    pub bad_debt: ManagedDecimal<C::Api, NumDecimals>,
     /// The amount of the asset reserved for protocol revenue (subset of reserves).
     pub revenue: ManagedDecimal<C::Api, NumDecimals>,
     /// The timestamp of the current block (milliseconds since Unix epoch).
@@ -64,7 +62,6 @@ where
             zero: sc_ref.to_decimal(BigUint::zero(), params.asset_decimals),
             supplied: sc_ref.supplied().get(),
             borrowed: sc_ref.borrowed().get(),
-            bad_debt: sc_ref.bad_debt().get(),
             revenue: sc_ref.revenue().get(),
             timestamp: ms_time,
             params,
@@ -86,14 +83,13 @@ where
     ///
     /// **Goal**: Maintain consistency between in-memory cache and blockchain storage.
     ///
-    /// **Fields Updated**: `supplied`, `reserves`, `borrowed`, `revenue`, `borrow_index`, `supply_index`, `last_timestamp`.
+    /// **Fields Updated**: `supplied`, `borrowed`, `revenue`, `borrow_index`, `supply_index`, `last_timestamp`.
     ///
     /// **Security Tip**: Assumes setters (`set()`) handle serialization correctly; no validation here.
     fn drop(&mut self) {
         // commit changes to storage for the mutable fields
         self.sc_ref.supplied().set(&self.supplied);
         self.sc_ref.borrowed().set(&self.borrowed);
-        self.sc_ref.bad_debt().set(&self.bad_debt);
         self.sc_ref.revenue().set(&self.revenue);
         self.sc_ref.borrow_index().set(&self.borrow_index);
         self.sc_ref.supply_index().set(&self.supply_index);

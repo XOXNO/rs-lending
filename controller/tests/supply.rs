@@ -1,10 +1,12 @@
 use controller::{
-    ERROR_ACCOUNT_NOT_IN_THE_MARKET, ERROR_BULK_SUPPLY_NOT_SUPPORTED, ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS, ERROR_MIX_ISOLATED_COLLATERAL, ERROR_SUPPLY_CAP
+    ERROR_ACCOUNT_NOT_IN_THE_MARKET, ERROR_BULK_SUPPLY_NOT_SUPPORTED,
+    ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS, ERROR_MIX_ISOLATED_COLLATERAL,
+    ERROR_POSITION_LIMIT_EXCEEDED, ERROR_SUPPLY_CAP,
 };
 use multiversx_sc::types::{EsdtTokenPayment, ManagedVec};
 use multiversx_sc_scenario::{
     api::StaticApi,
-    imports::{BigUint, OptionalValue, TestAddress},
+    imports::{BigUint, OptionalValue, TestAddress, TestTokenIdentifier},
 };
 pub mod constants;
 pub mod proxys;
@@ -14,7 +16,7 @@ use setup::*;
 use std::ops::Mul;
 
 /// Tests that supplying with an inactive account nonce fails.
-/// 
+///
 /// Covers:
 /// - Controller::supply endpoint error path
 /// - Account validation in positions::account::PositionAccountModule
@@ -27,7 +29,7 @@ fn supply_with_inactive_account_nonce_error() {
 
     state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
-    
+
     // Attempt to supply with non-existent account nonce
     state.supply_asset_error(
         &supplier,
@@ -42,7 +44,7 @@ fn supply_with_inactive_account_nonce_error() {
 }
 
 /// Tests that supplying beyond the supply cap for an asset fails.
-/// 
+///
 /// Covers:
 /// - Controller::supply endpoint error path
 /// - Supply cap validation in positions::supply::PositionDepositModule
@@ -55,7 +57,7 @@ fn supply_exceeds_cap_error() {
 
     state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
-    
+
     // First supply within cap succeeds
     state.supply_asset(
         &supplier,
@@ -66,7 +68,7 @@ fn supply_exceeds_cap_error() {
         OptionalValue::None,
         false, // is_vault = false
     );
-    
+
     // Second supply exceeds cap and fails
     state.supply_asset_error(
         &supplier,
@@ -81,7 +83,7 @@ fn supply_exceeds_cap_error() {
 }
 
 /// Tests that calling supply endpoint without any payments fails.
-/// 
+///
 /// Covers:
 /// - Controller::supply endpoint validation
 /// - Payment validation in validation::ValidationModule
@@ -94,7 +96,7 @@ fn supply_without_payments_error() {
 
     state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
-    
+
     // Call supply without any ESDT transfers
     state.empty_supply_asset_error(
         &supplier,
@@ -105,7 +107,7 @@ fn supply_without_payments_error() {
 }
 
 /// Tests that supplying with only account NFT but no assets fails.
-/// 
+///
 /// Covers:
 /// - Controller::supply endpoint validation
 /// - Collateral validation in validate_supply_payment
@@ -118,7 +120,7 @@ fn supply_account_nft_only_no_assets_error() {
 
     state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
-    
+
     // Create initial position
     state.supply_asset(
         &supplier,
@@ -129,7 +131,7 @@ fn supply_account_nft_only_no_assets_error() {
         OptionalValue::None,
         false, // is_vault = false
     );
-    
+
     // Try to supply with only account NFT, no collateral
     state.supply_empty_asset_error(
         &supplier,
@@ -141,7 +143,7 @@ fn supply_account_nft_only_no_assets_error() {
 }
 
 /// Tests that bulk supply with isolated asset as first token fails.
-/// 
+///
 /// Covers:
 /// - Controller::supply endpoint with isolated assets
 /// - Isolated asset validation in supply flow
@@ -164,9 +166,9 @@ fn supply_bulk_isolated_asset_first_error() {
         0,
         BigUint::from(10u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32)),
     ));
-    
+
     setup_accounts(&mut state, supplier, borrower);
-    
+
     // Bulk supply with isolated asset should fail
     state.supply_bulk_error(
         &supplier,
@@ -179,7 +181,7 @@ fn supply_bulk_isolated_asset_first_error() {
 }
 
 /// Tests that mixing isolated assets with regular assets in supply fails.
-/// 
+///
 /// Covers:
 /// - Controller::supply endpoint validation for isolated assets
 /// - Mixed collateral validation
@@ -202,9 +204,9 @@ fn supply_mix_isolated_with_regular_assets_error() {
         0,
         BigUint::from(10u64).mul(BigUint::from(10u64).pow(ISOLATED_DECIMALS as u32)),
     ));
-    
+
     setup_accounts(&mut state, supplier, borrower);
-    
+
     // Mixing isolated with regular assets should fail
     state.supply_bulk_error(
         &supplier,
@@ -217,7 +219,7 @@ fn supply_mix_isolated_with_regular_assets_error() {
 }
 
 /// Tests that bulk supply exceeding cap for duplicated asset fails.
-/// 
+///
 /// Covers:
 /// - Controller::supply endpoint with bulk assets
 /// - Supply cap validation for multiple payments of same asset
@@ -240,9 +242,9 @@ fn supply_bulk_same_asset_exceeds_cap_error() {
         0,
         BigUint::from(51u64).mul(BigUint::from(10u64).pow(CAPPED_DECIMALS as u32)),
     ));
-    
+
     setup_accounts(&mut state, supplier, borrower);
-    
+
     // Total supply exceeds cap and should fail
     state.supply_bulk_error(
         &supplier,
@@ -251,5 +253,104 @@ fn supply_bulk_same_asset_exceeds_cap_error() {
         false, // is_vault = false
         assets,
         ERROR_SUPPLY_CAP,
+    );
+}
+
+/// Tests that supplying beyond the position limit for an NFT fails.
+///
+/// Covers:
+/// - Controller::supply endpoint error path
+/// - Position limits validation in validation::ValidationModule
+/// - ERROR_POSITION_LIMIT_EXCEEDED error condition
+#[test]
+fn supply_exceeds_position_limit_error() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    state.change_timestamp(0);
+    setup_accounts(&mut state, supplier, borrower);
+
+    // Set position limits to 2 supply positions max for testing
+    state.set_position_limits(10, 2); // 10 borrow, 2 supply
+
+    // Create account for supplier and supply first asset
+    state.supply_asset(
+        &supplier,
+        EGLD_TOKEN,
+        BigUint::from(10u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false, // is_vault = false
+    );
+
+    let account_nonce = 1;
+
+    // Supply second asset - should succeed (at limit)
+    state.supply_asset(
+        &supplier,
+        USDC_TOKEN,
+        BigUint::from(100u64),
+        USDC_DECIMALS,
+        OptionalValue::Some(account_nonce),
+        OptionalValue::None,
+        false, // is_vault = false
+    );
+
+    // Try to supply third asset - should fail due to position limit
+    state.supply_asset_error(
+        &supplier,
+        CAPPED_TOKEN,
+        BigUint::from(1u64),
+        CAPPED_DECIMALS,
+        OptionalValue::Some(account_nonce),
+        OptionalValue::None,
+        false, // is_vault = false
+        ERROR_POSITION_LIMIT_EXCEEDED,
+    );
+}
+
+/// Tests that bulk supply exceeding position limits fails even when individual supplies would pass.
+///
+/// Covers:
+/// - Controller::supply endpoint bulk validation
+/// - Bulk position limits validation in validation::ValidationModule  
+/// - ERROR_POSITION_LIMIT_EXCEEDED error condition for bulk operations
+#[test]
+fn supply_bulk_exceeds_position_limit_error() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    state.change_timestamp(0);
+    setup_accounts(&mut state, supplier, borrower);
+
+    // Set position limits to 1 supply position max for testing (very restrictive)
+    state.set_position_limits(10, 1); // 10 borrow, 1 supply
+
+    // Prepare bulk supply with 2 assets when limit is 1
+    // This should fail because we're trying to create 2 positions when limit is 1
+    let mut assets = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
+    assets.push(EsdtTokenPayment::new(
+        EGLD_TOKEN.to_token_identifier(),
+        0,
+        BigUint::from(10u64) * BigUint::from(10u64.pow(EGLD_DECIMALS as u32)),
+    ));
+    assets.push(EsdtTokenPayment::new(
+        USDC_TOKEN.to_token_identifier(),
+        0,
+        BigUint::from(100u64) * BigUint::from(10u64.pow(USDC_DECIMALS as u32)),
+    ));
+
+    // This bulk supply should fail because it would create 2 new positions
+    // when the limit is 1
+    state.supply_bulk_error(
+        &supplier,
+        OptionalValue::None,
+        OptionalValue::None,
+        false, // is_vault = false
+        assets,
+        ERROR_POSITION_LIMIT_EXCEEDED,
     );
 }

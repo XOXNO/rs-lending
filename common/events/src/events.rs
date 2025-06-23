@@ -97,7 +97,6 @@ pub trait EventsModule {
         revenue: &ManagedDecimal<Self::Api, NumDecimals>,
         base_asset: &EgldOrEsdtTokenIdentifier,
         asset_price: &ManagedDecimal<Self::Api, NumDecimals>,
-        bad_debt: &ManagedDecimal<Self::Api, NumDecimals>,
     ) {
         self._emit_update_market_state_event(
             timestamp,
@@ -109,7 +108,6 @@ pub trait EventsModule {
             revenue,
             base_asset,
             asset_price,
-            bad_debt,
         );
     }
 
@@ -140,7 +138,6 @@ pub trait EventsModule {
         #[indexed] revenue: &ManagedDecimal<Self::Api, NumDecimals>,
         #[indexed] base_asset: &EgldOrEsdtTokenIdentifier,
         #[indexed] asset_price: &ManagedDecimal<Self::Api, NumDecimals>,
-        #[indexed] bad_debt: &ManagedDecimal<Self::Api, NumDecimals>,
     );
 
     /// Emits an event to update an account's position.
@@ -181,21 +178,6 @@ pub trait EventsModule {
         #[indexed] asset: &EgldOrEsdtTokenIdentifier,
         #[indexed] amount: ManagedDecimal<Self::Api, NumDecimals>,
     );
-
-    // /// Emits an event to update the supplied amount in the global vault of an market.
-    // ///
-    // /// # Parameters
-    // /// - `asset`: The asset identifier.
-    // /// - `amount`: The updated vault supplied amount.
-    // ///
-    // /// # Returns
-    // /// - Nothing.
-    // #[event("update_vault_supplied_amount")]
-    // fn update_vault_supplied_amount_event(
-    //     &self,
-    //     #[indexed] asset: &EgldOrEsdtTokenIdentifier,
-    //     #[indexed] amount: ManagedDecimal<Self::Api, NumDecimals>,
-    // );
 
     /// Emits an event when the asset configuration is updated.
     ///

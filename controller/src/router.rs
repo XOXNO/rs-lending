@@ -12,6 +12,33 @@ use crate::{
     ERROR_INVALID_TICKER, ERROR_NO_ACCUMULATOR_FOUND, ERROR_NO_POOL_FOUND,
 };
 
+/// Router module managing liquidity pool deployment and protocol revenue operations.
+///
+/// This module handles critical infrastructure operations for the lending protocol:
+/// - **Pool Management**: Creation and upgrading of liquidity pools for new assets
+/// - **Template Deployment**: Using secure templates for consistent pool implementations
+/// - **Revenue Collection**: Claiming and routing protocol fees to the accumulator
+/// - **Asset Configuration**: Setting up comprehensive risk parameters for new markets
+///
+/// # Pool Deployment Security
+/// All pool deployments follow strict security patterns:
+/// - Template-based deployment ensures consistent and audited pool implementations
+/// - Comprehensive asset configuration prevents misconfigured risk parameters
+/// - Validation of all parameters before pool activation
+/// - Event emission for governance monitoring and transparency
+///
+/// # Revenue Management
+/// The module implements secure revenue collection mechanisms:
+/// - Multi-asset revenue claiming for gas efficiency
+/// - Direct routing to accumulator contracts for proper distribution
+/// - Price-aware revenue calculation using latest oracle data
+/// - Automatic handling of zero-revenue cases
+///
+/// # Governance Integration
+/// All functions require owner privileges and implement governance-controlled operations:
+/// - Pool creation with complete asset risk parameter setup
+/// - Pool upgrades for implementing protocol improvements
+/// - Revenue collection for protocol sustainability
 #[multiversx_sc::module]
 pub trait RouterModule:
     storage::Storage
@@ -24,39 +51,101 @@ pub trait RouterModule:
     + common_math::SharedMathModule
     + common_rates::InterestRates
 {
-    /// Creates a new liquidity pool for an asset with specified parameters.
-    /// Initializes the pool and configures lending/borrowing settings.
+    /// Deploys a complete liquidity pool with comprehensive asset configuration.
+    ///
+    /// **Purpose**: Creates a new lending market for an asset by deploying a liquidity pool
+    /// and configuring all necessary risk parameters, interest rate models, and operational
+    /// settings. This is the primary governance function for onboarding new assets.
+    ///
+    /// **How it works**:
+    /// 1. **Pre-deployment validation**:
+    ///    - Ensures asset doesn't already have a pool
+    ///    - Validates asset identifier format
+    ///    - Confirms liquidation threshold > LTV ratio
+    ///
+    /// 2. **Pool deployment**:
+    ///    - Deploys new pool from secure template
+    ///    - Initializes with interest rate model parameters
+    ///    - Registers pool address in protocol mapping
+    ///
+    /// 3. **Asset configuration**:
+    ///    - Sets up comprehensive risk parameters
+    ///    - Configures lending/borrowing permissions
+    ///    - Establishes supply/borrow caps and isolation settings
+    ///    - Initializes isolated debt tracking
+    ///
+    /// 4. **Event emission**:
+    ///    - Emits market creation event for transparency
+    ///    - Includes all configuration parameters for auditing
+    ///
+    /// **Interest rate model parameters**:
+    /// ```
+    /// utilization_rate = total_borrows / total_supply
+    ///
+    /// if utilization <= optimal_utilization:
+    ///     rate = base_rate + (utilization * slope1 / optimal_utilization)
+    /// elif utilization <= mid_utilization:
+    ///     rate = base_rate + slope1 + ((utilization - optimal) * slope2 / (mid - optimal))
+    /// else:
+    ///     rate = base_rate + slope1 + slope2 + ((utilization - mid) * slope3 / (100% - mid))
+    ///
+    /// borrow_rate = min(calculated_rate, max_borrow_rate)
+    /// ```
+    ///
+    /// **Risk parameter validation**:
+    /// - **LTV < Liquidation Threshold**: Ensures safety buffer between borrowing and liquidation
+    /// - **Valid asset identifier**: Prevents deployment for invalid tokens
+    /// - **Reasonable parameter bounds**: Protects against extreme risk configurations
+    ///
+    /// **Asset configuration mechanics**:
+    /// - **Isolation mode**: Assets can be restricted to isolation-only usage
+    /// - **Siloed borrowing**: Prevents borrowing multiple assets simultaneously
+    /// - **Supply/Borrow caps**: Limits maximum exposure to prevent concentration risk
+    /// - **Flash loan settings**: Configures flash loan availability and fees
+    ///
+    /// **Security considerations**:
+    /// - Template-based deployment ensures consistent security standards
+    /// - Comprehensive parameter validation prevents misconfiguration
+    /// - Asset uniqueness check prevents duplicate markets
+    /// - Owner-only access ensures governance control
+    ///
+    /// **Governance impact**:
+    /// Creates new lending market with immediate availability for users.
+    /// All parameters can be adjusted later through edit functions.
     ///
     /// # Arguments
-    /// - `base_asset`: Token identifier (EGLD or ESDT) of the asset.
-    /// - `max_borrow_rate`: Maximum borrow rate.
-    /// - `base_borrow_rate`: Base borrow rate.
-    /// - `slope1`, `slope2`, `slope3`: Interest rate slopes for utilization levels.
-    /// - `mid_utilization`, `optimal_utilization`: Utilization thresholds for rate calculations.
-    /// - `reserve_factor`: Fraction of interest reserved for the protocol.
-    /// - `ltv`: Loan-to-value ratio in BPS.
-    /// - `liquidation_threshold`: Liquidation threshold in BPS.
-    /// - `liquidation_base_bonus`: Base liquidation bonus in BPS.
-    /// - `liquidation_max_fee`: Maximum liquidation fee in BPS.
-    /// - `can_be_collateral`: Flag for collateral usability.
-    /// - `can_be_borrowed`: Flag for borrowability.
-    /// - `is_isolated`: Flag for isolated asset status.
-    /// - `debt_ceiling_usd`: Debt ceiling in USD for isolated assets.
-    /// - `flash_loan_fee`: Flash loan fee in BPS.
-    /// - `is_siloed`: Flag for siloed borrowing.
-    /// - `flashloan_enabled`: Flag for flash loan support.
-    /// - `can_borrow_in_isolation`: Flag for borrowing in isolation mode.
-    /// - `asset_decimals`: Number of decimals for the asset.
-    /// - `borrow_cap`: Optional borrow cap (`None` if unspecified).
-    /// - `supply_cap`: Optional supply cap (`None` if unspecified).
+    /// - `base_asset`: Token identifier for the new market asset
+    /// - `max_borrow_rate`: Interest rate ceiling (basis points)
+    /// - `base_borrow_rate`: Minimum interest rate (basis points)
+    /// - `slope1`: Rate increase slope for 0% to optimal utilization
+    /// - `slope2`: Rate increase slope for optimal to mid utilization  
+    /// - `slope3`: Rate increase slope for mid to 100% utilization
+    /// - `mid_utilization`: Mid-range utilization threshold (basis points)
+    /// - `optimal_utilization`: Target utilization rate (basis points)
+    /// - `reserve_factor`: Protocol fee percentage (basis points)
+    /// - `ltv`: Maximum loan-to-value ratio (basis points)
+    /// - `liquidation_threshold`: Liquidation trigger threshold (basis points)
+    /// - `liquidation_base_bonus`: Base liquidator reward (basis points)
+    /// - `liquidation_max_fee`: Maximum liquidation fee (basis points)
+    /// - `can_be_collateral`: Whether asset can secure loans
+    /// - `can_be_borrowed`: Whether asset can be borrowed
+    /// - `is_isolated`: Whether asset restricted to isolation mode
+    /// - `debt_ceiling_usd`: Maximum USD debt against isolated collateral
+    /// - `flash_loan_fee`: Flash loan fee percentage (basis points)
+    /// - `is_siloed`: Whether borrowing prevents other asset borrows
+    /// - `flashloan_enabled`: Whether flash loans are supported
+    /// - `can_borrow_in_isolation`: Whether other assets borrowable in isolation
+    /// - `asset_decimals`: Token decimal precision
+    /// - `borrow_cap`: Maximum total borrows (0 = unlimited)
+    /// - `supply_cap`: Maximum total supply (0 = unlimited)
     ///
     /// # Returns
-    /// - `ManagedAddress`: Address of the newly created liquidity pool.
+    /// Address of the newly deployed liquidity pool contract
     ///
     /// # Errors
-    /// - `ERROR_ASSET_ALREADY_SUPPORTED`: If the asset already has a pool.
-    /// - `ERROR_INVALID_TICKER`: If the asset identifier is invalid.
-    /// - `ERROR_INVALID_LIQUIDATION_THRESHOLD`: If threshold is invalid.
+    /// - `ERROR_ASSET_ALREADY_SUPPORTED`: Asset already has an active pool
+    /// - `ERROR_INVALID_TICKER`: Invalid asset identifier format
+    /// - `ERROR_INVALID_LIQUIDATION_THRESHOLD`: Threshold not greater than LTV
     #[allow_multiple_var_args]
     #[only_owner]
     #[endpoint(createLiquidityPool)]
@@ -284,14 +373,69 @@ pub trait RouterModule:
             .upgrade_async_call_and_exit();
     }
 
-    /// Claims revenue from multiple liquidity pools and deposits it into the accumulator.
-    /// Collects protocol revenue from interest and fees.
+    /// Collects protocol revenue from liquidity pools and routes to accumulator.
+    ///
+    /// **Purpose**: Harvests accumulated protocol fees and interest spreads from
+    /// multiple liquidity pools in a single transaction for gas efficiency.
+    /// Routes collected revenue to the accumulator for proper distribution.
+    ///
+    /// **How it works**:
+    /// 1. **Initialization**: Creates cache and validates accumulator address exists
+    /// 2. **Multi-asset iteration**: Processes each specified asset sequentially
+    /// 3. **Revenue claiming**: Calls each pool's claim_revenue with latest price
+    /// 4. **Revenue routing**: Deposits non-zero revenue into accumulator contract
+    /// 5. **Gas optimization**: Batches multiple claims in single transaction
+    ///
+    /// **Revenue sources collected**:
+    /// - **Interest rate spread**: Difference between borrow and supply rates
+    /// - **Reserve factor**: Percentage of interest reserved for protocol
+    /// - **Liquidation fees**: Fees collected during position liquidations
+    /// - **Flash loan fees**: Fees from flash loan operations
+    ///
+    /// **Price-aware collection**:
+    /// Passes latest oracle price to each pool for accurate revenue calculation:
+    /// ```
+    /// revenue_value = pool_balance * latest_price
+    /// revenue_amount = calculate_claimable_amount(revenue_value)
+    /// ```
+    ///
+    /// **Zero-revenue optimization**:
+    /// Only deposits revenue into accumulator if amount > 0, preventing
+    /// unnecessary transactions and gas costs for pools with no accrued revenue.
+    ///
+    /// **Multi-asset efficiency**:
+    /// - Single transaction processes multiple assets
+    /// - Cached price feeds reduce oracle query costs
+    /// - Batched accumulator deposits minimize transaction overhead
+    /// - Early termination for zero-revenue assets
+    ///
+    /// **Security considerations**:
+    /// - Owner-only access ensures governance control over revenue collection
+    /// - Accumulator address validation prevents revenue loss
+    /// - Latest price usage prevents stale price manipulation
+    /// - Cache consistency ensures accurate revenue calculations
+    ///
+    /// **Revenue flow pattern**:
+    /// ```
+    /// 1. Liquidity pools accumulate fees over time
+    /// 2. Governance calls claim_revenue with asset list
+    /// 3. Each pool calculates claimable revenue amount
+    /// 4. Revenue transferred from pools to accumulator
+    /// 5. Accumulator handles distribution per protocol rules
+    /// ```
+    ///
+    /// **Governance considerations**:
+    /// Regular revenue collection ensures protocol sustainability and proper
+    /// fee distribution to stakeholders. Frequency affects gas costs vs revenue timing.
     ///
     /// # Arguments
-    /// - `assets`: List of token identifiers (EGLD or ESDT) to claim revenue from.
+    /// - `assets`: Collection of token identifiers to claim revenue from
+    ///
+    /// # Returns
+    /// Nothing - transfers revenue from pools to accumulator
     ///
     /// # Errors
-    /// - `ERROR_NO_ACCUMULATOR_FOUND`: If no accumulator address is set.
+    /// - `ERROR_NO_ACCUMULATOR_FOUND`: Accumulator address not configured
     #[only_owner]
     #[endpoint(claimRevenue)]
     fn claim_revenue(&self, assets: MultiValueEncoded<EgldOrEsdtTokenIdentifier>) {

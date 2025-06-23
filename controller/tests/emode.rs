@@ -11,7 +11,7 @@ use constants::*;
 use setup::*;
 
 /// Tests basic supply and borrow operations within E-Mode category.
-/// 
+///
 /// Covers:
 /// - Controller::supply with E-Mode category selection
 /// - Controller::borrow within same E-Mode category
@@ -25,7 +25,7 @@ fn emode_supply_and_borrow_same_category_success() {
 
     state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
-    
+
     // Supplier provides XEGLD liquidity with E-Mode category 1
     state.supply_asset(
         &supplier,
@@ -66,7 +66,7 @@ fn emode_supply_and_borrow_same_category_success() {
 }
 
 /// Tests supply attempt with invalid E-Mode category.
-/// 
+///
 /// Covers:
 /// - Controller::supply E-Mode validation
 /// - Asset compatibility with E-Mode categories
@@ -78,7 +78,7 @@ fn emode_supply_incompatible_asset_category_error() {
     let borrower = TestAddress::new("borrower");
 
     setup_accounts(&mut state, supplier, borrower);
-    
+
     // Attempt to supply USDC with E-Mode category 1 (USDC not compatible)
     state.supply_asset_error(
         &borrower,
@@ -93,7 +93,7 @@ fn emode_supply_incompatible_asset_category_error() {
 }
 
 /// Tests borrow restriction when collateral is isolated asset.
-/// 
+///
 /// Covers:
 /// - Controller::borrow with isolated collateral
 /// - E-Mode interaction with isolated assets
@@ -130,7 +130,7 @@ fn emode_borrow_with_isolated_collateral_error() {
 }
 
 /// Tests borrow attempt for asset not supported in active E-Mode category.
-/// 
+///
 /// Covers:
 /// - Controller::borrow E-Mode category validation
 /// - Cross-category borrowing restriction
@@ -166,7 +166,7 @@ fn emode_borrow_asset_outside_category_error() {
 }
 
 /// Tests borrow attempt for non-borrowable asset within E-Mode.
-/// 
+///
 /// Covers:
 /// - Controller::borrow with non-borrowable assets
 /// - E-Mode respecting asset borrowability settings

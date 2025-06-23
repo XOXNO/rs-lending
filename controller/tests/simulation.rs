@@ -16,7 +16,7 @@ use rand_chacha::ChaCha8Rng;
 use setup::*;
 
 /// Tests that dust amounts remain minimal after complete market exit by multiple users.
-/// 
+///
 /// Covers:
 /// - Multi-user market exit with interest accrual
 /// - Dust accumulation from rounding
@@ -107,7 +107,7 @@ fn market_exit_dust_accumulation_minimal() {
     markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
     let update_frequency = 12; // seconds
     let total_updates = SECONDS_PER_DAY / update_frequency;
-    
+
     for i in 1..=total_updates {
         state.change_timestamp(i * update_frequency);
         state.update_markets(&OWNER_ADDRESS, markets.clone());
@@ -181,7 +181,7 @@ fn market_exit_dust_accumulation_minimal() {
 const SEED: u64 = 696969; // Fixed seed for reproducible tests
 
 /// Simulates many users performing random actions to stress test the protocol.
-/// 
+///
 /// Covers:
 /// - Large-scale user interactions (1000 users)
 /// - Random supply, borrow, repay, withdraw actions
@@ -203,7 +203,7 @@ fn stress_test_random_user_actions_large_scale() {
     // Create user accounts
     let mut borrower_names = Vec::with_capacity(NUM_USERS);
     let mut supplier_names = Vec::with_capacity(NUM_USERS);
-    
+
     for i in 0..NUM_USERS {
         borrower_names.push(format!("borrower{}", i));
         supplier_names.push(format!("supplier{}", i));
@@ -219,12 +219,12 @@ fn stress_test_random_user_actions_large_scale() {
     for i in 0..NUM_USERS {
         let borrower = TestAddress::new(borrower_names[i].as_str());
         let supplier = TestAddress::new(supplier_names[i].as_str());
-        
+
         borrowers.push(borrower);
         suppliers.push(supplier);
         all_users.push(borrower);
         all_users.push(supplier);
-        
+
         setup_account(&mut state, borrower);
         setup_account(&mut state, supplier);
     }
@@ -295,7 +295,7 @@ fn stress_test_random_user_actions_large_scale() {
                     let total_borrow = state.get_total_borrow_in_egld(nonce);
                     let ltv_collateral = state.get_ltv_collateral_in_egld(nonce);
                     let available_borrow = ltv_collateral - total_borrow;
-                    
+
                     if available_borrow.into_raw_units() > &BigUint::zero() {
                         state.borrow_asset(
                             &user_addr,
@@ -326,7 +326,7 @@ fn stress_test_random_user_actions_large_scale() {
                     let nonce = user_nonces.get(&user_addr);
                     let current_supply = state.get_total_collateral_in_egld(nonce);
                     let total_borrow = state.get_total_borrow_in_egld(nonce);
-                    
+
                     if current_supply.into_raw_units() > &BigUint::zero()
                         && total_borrow.into_raw_units() == &BigUint::zero()
                     {
@@ -397,7 +397,7 @@ fn stress_test_random_user_actions_large_scale() {
     for user_addr in &all_users {
         if user_nonces.contains(user_addr) {
             let nonce = user_nonces.get(user_addr);
-            
+
             // Repay all debt if borrower
             if borrowers.contains(user_addr) {
                 let final_borrow = state.get_total_borrow_in_egld(nonce);

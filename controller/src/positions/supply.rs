@@ -1,5 +1,4 @@
 use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validation};
-use common_constants::RAY_PRECISION;
 use common_errors::{
     ERROR_ACCOUNT_ATTRIBUTES_MISMATCH, ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL,
     ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS, ERROR_MIX_ISOLATED_COLLATERAL,
@@ -29,14 +28,36 @@ pub trait PositionDepositModule:
     + common_rates::InterestRates
 {
     /// Processes a deposit operation for a user's position.
-    /// Handles validations, e-mode, and updates for deposits.
+    ///
+    /// **Purpose**: Orchestrates the complete deposit flow by validating all deposit payments,
+    /// applying e-mode configurations, checking isolation constraints, and updating positions.
+    ///
+    /// **Methodology**:
+    /// 1. Validates e-mode category is not deprecated
+    /// 2. For each deposit payment:
+    ///    - Validates payment structure and amounts
+    ///    - Retrieves and applies e-mode asset configuration
+    ///    - Ensures asset can be used as collateral
+    ///    - Validates isolation mode constraints
+    ///    - Checks supply cap limits
+    ///    - Updates the deposit position through liquidity pool
+    ///
+    /// **Security Checks**:
+    /// - E-mode compatibility validation with asset types
+    /// - Isolation collateral mixing prevention
+    /// - Supply cap enforcement to prevent market manipulation
+    /// - Asset collateral eligibility verification
+    ///
+    /// **Mathematical Operations**:
+    /// - Supply index scaling for position amounts
+    /// - Price feed integration for USD value calculations
     ///
     /// # Arguments
-    /// - `caller`: Depositor's address.
-    /// - `account_nonce`: Position NFT nonce.
-    /// - `position_attributes`: NFT attributes.
-    /// - `deposit_payments`: Vector of deposit payments.
-    /// - `cache`: Mutable storage cache.
+    /// - `caller`: Depositor's address for event emission
+    /// - `account_nonce`: Position NFT nonce for storage mapping
+    /// - `position_attributes`: NFT attributes containing e-mode and isolation settings
+    /// - `deposit_payments`: Vector of deposit payments to process
+    /// - `cache`: Mutable storage cache for asset configs and price feeds
     fn process_deposit(
         &self,
         caller: &ManagedAddress,
@@ -47,6 +68,13 @@ pub trait PositionDepositModule:
     ) {
         let e_mode = self.get_e_mode_category(position_attributes.get_emode_id());
         self.ensure_e_mode_not_deprecated(&e_mode);
+
+        // Validate position limits for all new positions in this transaction
+        self.validate_bulk_position_limits(
+            account_nonce,
+            AccountPositionType::Deposit,
+            deposit_payments,
+        );
 
         for deposit_payment in deposit_payments {
             self.validate_payment(&deposit_payment);
@@ -89,16 +117,26 @@ pub trait PositionDepositModule:
     }
 
     /// Retrieves or creates a deposit position for a token.
-    /// Initializes new positions if none exist.
+    ///
+    /// **Purpose**: Manages position lifecycle by either fetching existing deposit positions
+    /// or initializing new ones with proper risk parameters.
+    ///
+    /// **Methodology**:
+    /// - Attempts to retrieve existing position from storage
+    /// - If none exists, creates new position with current asset configuration
+    /// - Initializes position with liquidation parameters from asset config
+    ///
+    /// **Security Considerations**:
+    /// - Uses latest asset risk parameters for new positions
+    /// - Ensures consistent position structure across all deposits
     ///
     /// # Arguments
-    /// - `account_nonce`: Position NFT nonce.
-    /// - `asset_info`: Deposited asset configuration.
-    /// - `token_id`: Token identifier.
-    /// - `is_vault`: Vault status flag.
+    /// - `account_nonce`: Position NFT nonce for storage mapping
+    /// - `asset_info`: Deposited asset configuration containing risk parameters
+    /// - `token_id`: Token identifier for position lookup
     ///
     /// # Returns
-    /// - Deposit position.
+    /// - `AccountPosition` with current or newly initialized deposit position
     fn get_or_create_deposit_position(
         &self,
         account_nonce: u64,
@@ -122,18 +160,37 @@ pub trait PositionDepositModule:
     }
 
     /// Updates a deposit position with a new deposit amount.
-    /// Handles vault or market logic accordingly.
+    ///
+    /// **Purpose**: Executes the core deposit logic by updating position state,
+    /// applying current risk parameters, and synchronizing with liquidity pools.
+    ///
+    /// **Methodology**:
+    /// 1. Retrieves or creates position for the asset
+    /// 2. Auto-upgrades risk parameters if they changed in asset config
+    /// 3. Converts deposit amount to decimal format using asset decimals
+    /// 4. Calls liquidity pool to update position with supply index scaling
+    /// 5. Emits position update event for monitoring
+    /// 6. Stores updated position in contract storage
+    ///
+    /// **Security Checks**:
+    /// - Automatic risk parameter updates ensure latest safety margins
+    /// - Position consistency validation across updates
+    ///
+    /// **Mathematical Operations**:
+    /// - Decimal conversion: `amount * 10^(18 - asset_decimals)`
+    /// - Supply index scaling in liquidity pool for interest accrual
     ///
     /// # Arguments
-    /// - `account_nonce`: Position NFT nonce.
-    /// - `collateral`: Deposit payment details.
-    /// - `asset_info`: Asset configuration.
-    /// - `caller`: Depositor's address.
-    /// - `attributes`: NFT attributes.
-    /// - `cache`: Mutable storage cache.
+    /// - `account_nonce`: Position NFT nonce for storage mapping
+    /// - `collateral`: Deposit payment containing token and amount
+    /// - `asset_info`: Asset configuration with current risk parameters
+    /// - `caller`: Depositor's address for event emission
+    /// - `attributes`: NFT attributes for event logging
+    /// - `feed`: Price feed for decimal conversion and valuation
+    /// - `cache`: Mutable storage cache for pool addresses
     ///
     /// # Returns
-    /// - Updated deposit position.
+    /// - `AccountPosition` with updated deposit position
     fn update_deposit_position(
         &self,
         account_nonce: u64,
@@ -188,13 +245,29 @@ pub trait PositionDepositModule:
     }
 
     /// Updates a market position via the liquidity pool.
-    /// Handles non-vault deposit updates.
+    ///
+    /// **Purpose**: Executes cross-contract call to liquidity pool for position updates,
+    /// handling supply index calculations and interest accrual.
+    ///
+    /// **Methodology**:
+    /// - Makes synchronous call to corresponding liquidity pool
+    /// - Passes current position state and price for validation
+    /// - Receives updated position with accrued interest and new scaled amounts
+    ///
+    /// **Security Considerations**:
+    /// - Trusted cross-contract interaction with verified pool addresses
+    /// - Price validation handled by liquidity pool contract
+    ///
+    /// **Mathematical Operations** (performed in pool):
+    /// - Scaled amount calculation: `amount * supply_index / RAY_PRECISION`
+    /// - Interest accrual based on time-weighted supply rate
     ///
     /// # Arguments
-    /// - `position`: Current deposit position.
-    /// - `amount`: Deposit amount.
-    /// - `token_id`: Token identifier.
-    /// - `feed`: Price feed for the token.
+    /// - `position`: Current deposit position with existing scaled amounts
+    /// - `amount`: Raw deposit amount to add to position
+    /// - `token_id`: Token identifier for pool routing
+    /// - `feed`: Price feed for pool-side validation
+    /// - `cache`: Storage cache containing pool address mappings
     fn update_market_position(
         &self,
         position: &mut AccountPosition<Self::Api>,
@@ -214,14 +287,36 @@ pub trait PositionDepositModule:
     }
 
     /// Validates deposit payments and handles NFT return.
-    /// Separates collateral from NFT payments if present.
+    ///
+    /// **Purpose**: Parses and validates incoming payments to separate position NFTs
+    /// from collateral tokens, ensuring proper payment structure for deposits.
+    ///
+    /// **Methodology**:
+    /// 1. Retrieves all transfer payments from call context
+    /// 2. Validates caller address is not zero
+    /// 3. Checks if first payment is account NFT:
+    ///    - If NFT: validates account activity and attributes consistency
+    ///    - If not NFT: handles accountless deposits or uses provided nonce
+    /// 4. Optionally returns NFT to caller based on `return_nft` flag
+    /// 5. Separates collateral payments from NFT payments
+    ///
+    /// **Security Checks**:
+    /// - Zero address validation prevents invalid operations
+    /// - Account activity validation ensures NFT exists in system
+    /// - Attribute consistency check prevents tampering
+    /// - Payment structure validation ensures proper token types
     ///
     /// # Arguments
-    /// - `caller`: Depositor's address.
-    /// - `payments`: Vector of payments (NFT and/or collateral).
+    /// - `require_account_payment`: Whether NFT is mandatory for operation
+    /// - `return_nft`: Whether to return NFT to caller after validation
+    /// - `opt_account_nonce`: Optional account nonce for accountless operations
     ///
     /// # Returns
-    /// - Tuple of (collateral payments, optional NFT payment).
+    /// - Tuple containing:
+    ///   - `ManagedVec<EgldOrEsdtTokenPayment>`: Collateral payments to process
+    ///   - `Option<EsdtTokenPayment>`: Account NFT payment if present
+    ///   - `ManagedAddress`: Validated caller address
+    ///   - `Option<AccountAttributes>`: Account attributes if NFT provided
     fn validate_supply_payment(
         &self,
         require_account_payment: bool,
@@ -296,13 +391,34 @@ pub trait PositionDepositModule:
     }
 
     /// Ensures isolated collateral constraints are met.
-    /// Prevents mixing of isolated collaterals.
+    ///
+    /// **Purpose**: Enforces isolation mode rules to prevent mixing of isolated
+    /// and non-isolated collaterals, maintaining risk isolation boundaries.
+    ///
+    /// **Methodology**:
+    /// 1. Determines if either asset or position is isolated
+    /// 2. If position is already isolated:
+    ///    - Ensures new deposit matches existing isolated token
+    ///    - Prevents switching between different isolated assets
+    /// 3. If asset is isolated but position is not:
+    ///    - Rejects deposit to prevent contamination
+    /// 4. Allows non-isolated operations to proceed normally
+    ///
+    /// **Security Rationale**:
+    /// - Isolated assets have specific risk profiles requiring separation
+    /// - Mixing isolated collaterals could lead to correlation risks
+    /// - Maintains predictable liquidation scenarios
+    /// - Preserves debt ceiling effectiveness for isolated assets
+    ///
+    /// **Isolation Rules**:
+    /// - One isolated asset per position maximum
+    /// - Cannot mix isolated and non-isolated collaterals
+    /// - Existing isolated positions can continue with same asset
     ///
     /// # Arguments
-    /// - `account_nonce`: Position NFT nonce.
-    /// - `token_id`: Deposited token identifier.
-    /// - `asset_info`: Asset configuration.
-    /// - `position_attributes`: NFT attributes.
+    /// - `token_id`: Token identifier being deposited
+    /// - `asset_info`: Asset configuration containing isolation flag
+    /// - `position_attributes`: NFT attributes with isolation state and token
     fn validate_isolated_collateral(
         &self,
         token_id: &EgldOrEsdtTokenIdentifier,
@@ -314,20 +430,48 @@ pub trait PositionDepositModule:
             return;
         }
 
-        require!(
-            asset_info.is_isolated() == position_attributes.is_isolated()
-                && position_attributes.get_isolated_token() == *token_id,
-            ERROR_MIX_ISOLATED_COLLATERAL
-        );
+        // Allow existing isolated positions to continue working even if asset becomes non-isolated
+        if position_attributes.is_isolated() {
+            // Position is isolated - ensure it's using the correct isolated token
+            require!(
+                position_attributes.get_isolated_token() == *token_id,
+                ERROR_MIX_ISOLATED_COLLATERAL
+            );
+        } else if asset_info.is_isolated() {
+            // Asset is isolated but position is not - not allowed
+            require!(false, ERROR_MIX_ISOLATED_COLLATERAL);
+        }
+        // If neither is isolated, no further checks needed
     }
 
     /// Ensures a deposit respects the asset's supply cap.
     ///
+    /// **Purpose**: Prevents excessive market concentration by enforcing maximum
+    /// supply limits per asset, protecting against liquidity manipulation.
+    ///
+    /// **Methodology**:
+    /// 1. Checks if asset has configured supply cap
+    /// 2. Retrieves current total supply from liquidity pool
+    /// 3. Converts scaled supply to actual amount using supply index
+    /// 4. Validates new deposit won't exceed cap limit
+    ///
+    /// **Security Rationale**:
+    /// - Prevents market manipulation through large deposits
+    /// - Maintains liquidity diversity across assets
+    /// - Protects against concentration risk
+    /// - Ensures protocol stability under market stress
+    ///
+    /// **Mathematical Validation**:
+    /// ```
+    /// total_supplied = (total_supply_scaled * supply_index) / RAY_PRECISION
+    /// require(total_supplied + deposit_amount <= supply_cap)
+    /// ```
+    ///
     /// # Arguments
-    /// - `asset_info`: Asset configuration.
-    /// - `deposit_payment`: Deposit payment details.
-    /// - `is_vault`: Vault status flag.
-    /// - `cache`: Mutable storage cache.
+    /// - `asset_info`: Asset configuration containing optional supply cap
+    /// - `deposit_payment`: Deposit payment with amount to validate
+    /// - `feed`: Price feed for decimal conversion
+    /// - `cache`: Storage cache for pool address and market index access
     fn validate_supply_cap(
         &self,
         asset_info: &AssetConfig<Self::Api>,
@@ -340,8 +484,9 @@ pub trait PositionDepositModule:
                 let pool = cache.get_cached_pool_address(&deposit_payment.token_identifier);
                 let index = cache.get_cached_market_index(&deposit_payment.token_identifier);
                 let total_supply_scaled = self.supplied(pool.clone()).get();
-                let total_supplied = self.rescale_half_up(
-                    &self.mul_half_up(&total_supply_scaled, &index.supply_index, RAY_PRECISION),
+                let total_supplied = self.scaled_to_original(
+                    &total_supply_scaled,
+                    &index.supply_index,
                     feed.asset_decimals,
                 );
 
@@ -356,7 +501,34 @@ pub trait PositionDepositModule:
         }
     }
 
-    /// Updates position threshold (LTV or liquidation) for an account.
+    /// Updates position threshold (LTV or liquidation) parameters for an account.
+    ///
+    /// **Purpose**: Allows updating of risk parameters for existing positions,
+    /// either for loan-to-value adjustments or liquidation threshold updates.
+    ///
+    /// **Methodology**:
+    /// 1. Validates account exists and has deposit position for asset
+    /// 2. Retrieves current e-mode configuration if applicable
+    /// 3. Applies e-mode parameters to asset configuration
+    /// 4. Updates either LTV parameters (safe) or liquidation thresholds (risky)
+    /// 5. For risky updates: validates health factor remains above minimum
+    /// 6. Emits position update event for monitoring
+    ///
+    /// **Security Considerations**:
+    /// - Health factor validation prevents immediate liquidations
+    /// - Requires minimum 20% health factor buffer for risky updates
+    /// - E-mode compatibility validation ensures proper parameter application
+    ///
+    /// **Risk Management**:
+    /// - Safe updates: LTV, liquidation bonus, liquidation fees
+    /// - Risky updates: liquidation threshold (requires health check)
+    ///
+    /// # Arguments
+    /// - `account_nonce`: Position NFT nonce for validation and storage
+    /// - `asset_id`: Asset identifier for position lookup
+    /// - `has_risks`: Flag indicating if update affects liquidation threshold
+    /// - `asset_config`: Updated asset configuration with new parameters
+    /// - `cache`: Storage cache for health factor validation
     fn update_position_threshold(
         &self,
         account_nonce: u64,

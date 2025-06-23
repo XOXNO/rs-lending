@@ -191,4 +191,17 @@ pub trait SharedMathModule {
             b
         }
     }
+
+    #[inline]
+    fn get_max(
+        self,
+        a: ManagedDecimal<Self::Api, NumDecimals>,
+        b: ManagedDecimal<Self::Api, NumDecimals>,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        if a > b {
+            a
+        } else {
+            b
+        }
+    }
 }

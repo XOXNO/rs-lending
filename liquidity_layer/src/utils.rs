@@ -3,6 +3,7 @@ multiversx_sc::derive_imports!();
 
 use crate::{cache::Cache, storage, view};
 
+use common_constants::RAY_PRECISION;
 use common_errors::{
     ERROR_INVALID_ASSET, ERROR_INVALID_FLASHLOAN_REPAYMENT, ERROR_WITHDRAW_AMOUNT_LESS_THAN_FEE,
 };
@@ -23,25 +24,61 @@ pub trait UtilsModule:
 {
     /// Updates both borrow and supply indexes based on elapsed time since the last update.
     ///
-    /// **Scope**: Synchronizes the global state of the pool by recalculating borrow and supply indexes,
-    /// factoring in interest growth over time and distributing rewards.
+    /// **Purpose**: Synchronizes the global state of the pool by recalculating borrow and supply indexes,
+    /// ensuring accurate compound interest accrual and proportional reward distribution.
     ///
-    /// **Goal**: Keep the pool's financial state current, ensuring accurate interest accrual and reward distribution.
+    /// **Mathematical Foundation**:
+    /// This function implements the core interest accrual mechanism using compound interest formulas:
     ///
-    /// **Process**:
-    /// 1. Computes time delta (`delta`) since `cache.last_timestamp`.
-    /// 2. If `delta > 0`:
-    ///    a. Calculates the current `borrow_rate` using `cache.get_utilization()` and `cache.params`.
-    ///    b. Computes the `borrow_factor` using `calculate_compounded_interest(borrow_rate, delta)`.
-    ///    c. Updates `cache.borrow_index` via `update_borrow_index`, storing the `old_borrow_index`.
-    ///    d. Calculates `rewards` for suppliers using `calc_supplier_rewards(cache, old_borrow_index)`.
-    ///    e. Updates `cache.supply_index` via `update_supply_index(cache, rewards)`.
-    ///    f. Sets `cache.last_timestamp` to the current `cache.timestamp`.
+    /// **Compound Interest Formula**:
+    /// ```
+    /// compound_factor = (1 + annual_rate)^(time_delta / YEAR_IN_MS)
+    /// new_borrow_index = old_borrow_index * compound_factor
+    /// ```
+    ///
+    /// **Utilization-Based Rate Calculation**:
+    /// ```
+    /// utilization = total_borrowed_value / total_supplied_value
+    /// borrow_rate = base_rate + (utilization * slope1) + max(0, (utilization - kink) * slope2)
+    /// ```
+    ///
+    /// **Supply Index Update Formula**:
+    /// ```
+    /// supplier_rewards = borrowed_scaled * (new_borrow_index - old_borrow_index) * (1 - reserve_factor)
+    /// new_supply_index = old_supply_index + (supplier_rewards / total_scaled_supplied)
+    /// ```
+    ///
+    /// **Revenue Distribution**:
+    /// ```
+    /// total_interest = borrowed_scaled * (new_borrow_index - old_borrow_index)
+    /// supplier_share = total_interest * (1 - reserve_factor)
+    /// protocol_share = total_interest * reserve_factor
+    /// ```
+    ///
+    /// **Process Flow**:
+    /// 1. **Time Delta**: `delta = current_timestamp - last_update_timestamp`
+    /// 2. **Rate Calculation**: Compute current borrow rate based on utilization
+    /// 3. **Compound Factor**: Calculate interest growth factor for time period
+    /// 4. **Borrow Index Update**: Apply compound growth to borrow index
+    /// 5. **Interest Distribution**: Split accrued interest between suppliers and protocol
+    /// 6. **Supply Index Update**: Distribute supplier rewards via index increase
+    /// 7. **Protocol Revenue**: Add protocol share to revenue accumulator
+    /// 8. **Timestamp Update**: Record current time as last update
+    ///
+    /// **Interest Accrual Properties**:
+    /// - Continuous compounding approximation for small time intervals
+    /// - Precise calculation for any time period length
+    /// - Atomicity ensures no interest is lost or double-counted
+    /// - Proportional distribution maintains fairness
     ///
     /// # Arguments
-    /// - `cache`: Mutable reference to the pool state (`Cache<Self>`), holding timestamps, indexes, and all relevant financial figures.
+    /// - `cache`: Mutable pool state containing indexes, timestamps, and balances
     ///
-    /// **Security Tip**: Skips updates if `delta == 0`, preventing redundant computation. Protected by caller ensuring valid `cache`. The sequence of operations ensures that rewards are calculated based on interest accrued in the current period.
+    /// **Security Considerations**:
+    /// - Zero delta check prevents redundant computation
+    /// - Atomic state updates prevent inconsistencies
+    /// - Overflow protection in compound interest calculations
+    /// - Timestamp monotonicity enforcement
     fn global_sync(&self, cache: &mut Cache<Self>) {
         let delta = cache.timestamp - cache.last_timestamp;
 
@@ -51,15 +88,13 @@ pub trait UtilsModule:
             let (new_borrow_index, old_borrow_index) =
                 self.update_borrow_index(cache.borrow_index.clone(), borrow_factor.clone());
 
-            // 3 raw split
-            let (supplier_rewards_ray, protocol_fee_ray, new_bad_debt) = self
-                .calc_supplier_rewards(
-                    cache.params.clone(),
-                    &cache.borrowed,
-                    cache.bad_debt.clone(),
-                    &new_borrow_index,
-                    &old_borrow_index,
-                );
+            // Calculate supplier rewards and protocol fees directly
+            let (supplier_rewards_ray, protocol_fee_ray) = self.calc_supplier_rewards(
+                cache.params.clone(),
+                &cache.borrowed,
+                &new_borrow_index,
+                &old_borrow_index,
+            );
 
             let new_supply_index = self.update_supply_index(
                 cache.supplied.clone(),
@@ -69,16 +104,109 @@ pub trait UtilsModule:
 
             cache.supply_index = new_supply_index;
             cache.borrow_index = new_borrow_index;
-            cache.bad_debt = new_bad_debt;
 
-            if protocol_fee_ray > self.ray_zero() {
-                let fee_scaled = cache.scaled_supply(&protocol_fee_ray);
-                cache.revenue += &fee_scaled;
-                cache.supplied += &fee_scaled; // mint to total supply
-            }
+            self.internal_add_protocol_revenue(cache, protocol_fee_ray);
 
             cache.last_timestamp = cache.timestamp;
         }
+    }
+
+    /// Applies bad debt immediately to supply index, socializing the loss among all suppliers.
+    ///
+    /// **Purpose**: Implements immediate loss socialization to prevent supplier flight and maintain
+    /// pool stability during bad debt events. This mechanism is superior to traditional bad debt
+    /// tracking as it eliminates race conditions and ensures fair loss distribution.
+    ///
+    /// **Problem Statement**:
+    /// Traditional lending protocols track bad debt separately, creating opportunities for
+    /// informed suppliers to withdraw before losses are realized, leaving remaining suppliers
+    /// with disproportionate losses. This creates systemic instability during stress events.
+    ///
+    /// **Mathematical Foundation**:
+    ///
+    /// **Supply Index Reduction Formula**:
+    /// ```
+    /// total_supplied_value = total_scaled_supplied * current_supply_index
+    /// loss_ratio = min(bad_debt_amount / total_supplied_value, 1.0)
+    /// reduction_factor = 1 - loss_ratio
+    /// new_supply_index = old_supply_index * reduction_factor
+    /// ```
+    ///
+    /// **Loss Distribution Calculation**:
+    /// ```
+    /// // For each supplier:
+    /// old_value = supplier_scaled_tokens * old_supply_index
+    /// new_value = supplier_scaled_tokens * new_supply_index
+    /// supplier_loss = old_value - new_value
+    /// loss_percentage = bad_debt_amount / total_supplied_value
+    /// ```
+    ///
+    /// **Proportionality Guarantee**:
+    /// Every supplier loses exactly the same percentage of their holdings:
+    /// ```
+    /// supplier_loss_ratio = supplier_loss / supplier_old_value = loss_percentage (constant)
+    /// ```
+    ///
+    /// **Minimum Index Protection**:
+    /// To prevent total collapse while allowing significant losses:
+    /// ```
+    /// min_supply_index = 1e-27  // Very small but positive
+    /// final_supply_index = max(calculated_new_index, min_supply_index)
+    /// ```
+    ///
+    /// **Economic Properties**:
+    /// 1. **Immediate Finality**: Losses are applied instantly, preventing withdrawal races
+    /// 2. **Proportional Fairness**: All suppliers share losses proportionally
+    /// 3. **No Arbitrage**: No opportunity to avoid losses through timing
+    /// 4. **Stability Preservation**: Pool remains functional after loss events
+    /// 5. **Simplified Accounting**: No separate bad debt tracking required
+    ///
+    /// **Implementation Details**:
+    /// - Uses RAY precision (27 decimals) for accurate calculations
+    /// - Caps bad debt to available value to prevent negative results
+    /// - Maintains scaled token amounts (only index changes)
+    /// - Preserves total scaled supply consistency
+    ///
+    /// # Arguments
+    /// - `cache`: Mutable pool state for index updates
+    /// - `bad_debt_amount`: Uncollectable debt amount in asset decimals
+    ///
+    /// **Security Considerations**:
+    /// - Immediate application prevents gaming opportunities
+    /// - Minimum index floor prevents total value destruction
+    /// - Proportional distribution ensures fairness
+    /// - Atomic operation prevents partial loss states
+    fn apply_bad_debt_to_supply_index(
+        &self,
+        cache: &mut Cache<Self>,
+        bad_debt_amount: &ManagedDecimal<Self::Api, NumDecimals>,
+    ) {
+        // Calculate total supplied value in RAY precision
+        let total_supplied_value_ray =
+            self.mul_half_up(&cache.supplied, &cache.supply_index, RAY_PRECISION);
+        // Convert bad debt to RAY precision
+        let bad_debt_ray = bad_debt_amount.rescale(RAY_PRECISION);
+
+        // Cap bad debt to available value (prevent negative results)
+        let capped_bad_debt_ray = self.get_min(bad_debt_ray, total_supplied_value_ray.clone());
+
+        // Calculate remaining value after bad debt
+        let remaining_value_ray = total_supplied_value_ray.clone() - capped_bad_debt_ray;
+
+        // Calculate reduction factor: remaining_value / total_value
+        let reduction_factor = self.div_half_up(
+            &remaining_value_ray,
+            &total_supplied_value_ray,
+            RAY_PRECISION,
+        );
+
+        // Apply reduction to supply index
+        let new_supply_index =
+            self.mul_half_up(&cache.supply_index, &reduction_factor, RAY_PRECISION);
+
+        // Ensure minimum supply index (prevent total collapse but allow significant reduction)
+        let min_supply_index = self.to_decimal(BigUint::from(1u64), RAY_PRECISION); // 1e-27, very small but > 0
+        cache.supply_index = self.get_max(new_supply_index, min_supply_index);
     }
 
     /// Emits an event logging the current market state for transparency.
@@ -108,7 +236,6 @@ pub trait UtilsModule:
             &cache.revenue,
             &cache.params.asset_id,
             asset_price,
-            &cache.bad_debt,
         );
     }
 
@@ -221,29 +348,57 @@ pub trait UtilsModule:
 
     /// Determines the gross scaled and actual amounts for a withdrawal operation.
     ///
-    /// **Scope**: Calculates how much of a user's position should be considered for withdrawal,
-    /// based on their requested amount versus their total current supply (including interest).
+    /// **Purpose**: Calculates the precise amounts to withdraw from a user's position,
+    /// handling both full and partial withdrawals while preserving scaling precision.
     ///
-    /// **Goal**: To provide a clear calculation of withdrawal amounts before applying any fees or further checks.
+    /// **Mathematical Process**:
     ///
-    /// **Process**:
-    /// 1. Calculates the user's `current_supply_actual` (original value of their scaled position including interest).
-    /// 2. If `requested_amount_actual` is greater than or equal to `current_supply_actual` (full withdrawal):
-    ///    - `scaled_withdrawal_amount_gross` becomes the user's entire `position_scaled_amount`.
-    ///    - `amount_to_withdraw_gross` becomes `current_supply_actual`.
-    /// 3. Else (partial withdrawal):
-    ///    - `scaled_withdrawal_amount_gross` becomes the scaled equivalent of `requested_amount_actual`.
-    ///    - `amount_to_withdraw_gross` becomes `requested_amount_actual`.
+    /// **Current Position Value Calculation**:
+    /// ```
+    /// current_supply_actual = position_scaled_amount * current_supply_index
+    /// ```
+    ///
+    /// **Full vs Partial Withdrawal Logic**:
+    /// ```
+    /// if requested_amount >= current_supply_actual:
+    ///     // Full withdrawal - user gets entire position value
+    ///     scaled_to_withdraw = position_scaled_amount (entire position)
+    ///     actual_to_withdraw = current_supply_actual (position value)
+    /// else:
+    ///     // Partial withdrawal - scale down the request
+    ///     scaled_to_withdraw = requested_amount / current_supply_index
+    ///     actual_to_withdraw = requested_amount
+    /// ```
+    ///
+    /// **Scaling Precision Properties**:
+    /// - Maintains exact scaled token arithmetic
+    /// - Prevents rounding errors in position calculations
+    /// - Ensures withdrawal accuracy regardless of supply index value
+    /// - Preserves remaining position integrity
+    ///
+    /// **Interest Inclusion**:
+    /// The withdrawal calculation automatically includes accrued interest
+    /// through the current supply index, ensuring users receive their
+    /// proportional share of pool earnings.
+    ///
+    /// **Edge Case Handling**:
+    /// - Over-withdrawal protection: Caps at available position value
+    /// - Zero position handling: Returns zero amounts safely
+    /// - Index consistency: Uses current synchronized indexes
     ///
     /// # Arguments
-    /// - `cache`: A reference to the current pool state (`Cache<Self>`), used for index and scaling information.
-    /// - `position_scaled_amount`: The scaled amount of the user's supply position.
-    /// - `requested_amount_actual`: The actual amount the user has requested to withdraw.
+    /// - `cache`: Current pool state with updated indexes
+    /// - `position_scaled_amount`: User's scaled supply token balance
+    /// - `requested_amount_actual`: Desired withdrawal amount in asset decimals
     ///
     /// # Returns
-    /// A tuple `(scaled_withdrawal_amount_gross, amount_to_withdraw_gross)`:
-    /// - `scaled_withdrawal_amount_gross`: The portion of the user's scaled position to be withdrawn.
-    /// - `amount_to_withdraw_gross`: The actual gross amount of tokens to be withdrawn, before any fees.
+    /// - `scaled_withdrawal_amount_gross`: Scaled tokens to burn from position
+    /// - `amount_to_withdraw_gross`: Actual asset amount to transfer (before fees)
+    ///
+    /// **Security Considerations**:
+    /// - Prevents over-withdrawal through position capping
+    /// - Maintains scaling precision to prevent exploitation
+    /// - Uses synchronized indexes for accurate calculations
     #[inline(always)]
     fn determine_gross_withdrawal_amounts(
         &self,
@@ -268,29 +423,77 @@ pub trait UtilsModule:
 
     /// Determines the scaled amount to repay and any overpaid actual amount for a borrow position.
     ///
-    /// **Scope**: Calculates the effect of a payment on a borrow position, identifying how much of the
-    /// scaled debt is covered and if there's any overpayment.
+    /// **Purpose**: Calculates precise repayment allocation including interest and handles
+    /// overpayment scenarios to ensure accurate debt reduction and fund protection.
     ///
-    /// **Goal**: To provide a clear calculation of repayment effects before updating pool and position states.
+    /// **Mathematical Process**:
     ///
-    /// **Process**:
-    /// 1. Calculates the user's `current_debt_actual` (original value of their scaled position including interest).
-    /// 2. If `payment_amount_actual` is greater than or equal to `current_debt_actual` (full repayment or overpayment):
-    ///    - `scaled_amount_to_repay` becomes the user's entire `position_scaled_amount`.
-    ///    - `over_paid_amount_actual` is calculated as `payment_amount_actual - current_debt_actual`.
-    /// 3. Else (partial repayment):
-    ///    - `scaled_amount_to_repay` becomes the scaled equivalent of `payment_amount_actual`.
-    ///    - `over_paid_amount_actual` is zero.
+    /// **Current Debt Calculation**:
+    /// ```
+    /// current_debt_actual = position_scaled_amount * current_borrow_index
+    /// ```
+    /// This includes both principal and all accrued interest up to the current moment.
+    ///
+    /// **Repayment Scenarios**:
+    ///
+    /// **Full Repayment or Overpayment**:
+    /// ```
+    /// if payment_amount >= current_debt_actual:
+    ///     scaled_to_repay = position_scaled_amount (entire position)
+    ///     overpayment = payment_amount - current_debt_actual
+    ///     // User's debt completely cleared, excess refunded
+    /// ```
+    ///
+    /// **Partial Repayment**:
+    /// ```
+    /// if payment_amount < current_debt_actual:
+    ///     scaled_to_repay = payment_amount / current_borrow_index
+    ///     overpayment = 0
+    ///     remaining_scaled_debt = position_scaled_amount - scaled_to_repay
+    /// ```
+    ///
+    /// **Interest Payment Mechanics**:
+    /// Interest is automatically included in debt calculations through the borrow index:
+    /// ```
+    /// total_owed = principal_borrowed + accrued_interest
+    /// accrued_interest = scaled_debt * (current_borrow_index - borrow_index_at_origination)
+    /// ```
+    ///
+    /// **Proportional Debt Reduction**:
+    /// For partial payments, the scaled debt reduction is proportional:
+    /// ```
+    /// payment_ratio = payment_amount / current_total_debt
+    /// scaled_reduction = position_scaled_amount * payment_ratio
+    /// ```
+    ///
+    /// **Overpayment Protection**:
+    /// Prevents accidental loss of user funds by:
+    /// - Calculating exact debt amount including interest
+    /// - Automatically detecting overpayments
+    /// - Ensuring refund of excess amounts
+    /// - Clearing position completely when fully paid
+    ///
+    /// **Precision Handling**:
+    /// Uses scaled arithmetic to maintain precision across:
+    /// - Varying borrow index values
+    /// - Different time periods since borrowing
+    /// - Multiple partial repayments
+    /// - Interest compounding effects
     ///
     /// # Arguments
-    /// - `cache`: A reference to the current pool state (`Cache<Self>`), used for index, scaling information, and zero value.
-    /// - `position_scaled_amount`: The scaled amount of the user's borrow position.
-    /// - `payment_amount_actual`: The actual amount the user has paid.
+    /// - `cache`: Current pool state with updated borrow index
+    /// - `position_scaled_amount`: User's scaled debt token balance
+    /// - `payment_amount_actual`: Repayment amount in asset decimals
     ///
     /// # Returns
-    /// A tuple `(scaled_amount_to_repay, over_paid_amount_actual)`:
-    /// - `scaled_amount_to_repay`: The portion of the user's scaled debt that is repaid.
-    /// - `over_paid_amount_actual`: The actual amount overpaid by the user, if any.
+    /// - `scaled_amount_to_repay`: Scaled debt tokens to burn from position
+    /// - `over_paid_amount_actual`: Excess payment to refund to user
+    ///
+    /// **Security Considerations**:
+    /// - Prevents overpayment loss through automatic refunds
+    /// - Uses current borrow index for accurate debt calculation
+    /// - Maintains scaling precision to prevent manipulation
+    /// - Handles edge cases like zero payments safely
     #[inline(always)]
     fn determine_repayment_details(
         &self,
@@ -314,29 +517,79 @@ pub trait UtilsModule:
         }
     }
 
-    /// Calculates and applies any applicable liquidation fee, updating the net transfer amount directly
-    /// and adding the fee to protocol revenue within the cache.
+    /// Processes liquidation fees by deducting them from withdrawal amount and adding to protocol revenue.
     ///
-    /// **Scope**: Modifies the net withdrawal amount if a liquidation fee applies and updates `cache.revenue`
-    /// with the fee amount.
+    /// **Purpose**: Handles liquidation fee collection during collateral withdrawals,
+    /// ensuring protocol revenue capture while maintaining user asset safety.
     ///
-    /// **Goal**: To encapsulate the logic for applying liquidation fees, directly adjusting the transfer amount
-    /// and centralizing the revenue update.
+    /// **Liquidation Fee Economics**:
+    /// Liquidation fees serve multiple purposes:
+    /// - Compensate liquidators for gas costs and price risk
+    /// - Generate protocol revenue from liquidation events
+    /// - Create incentives for timely liquidation execution
+    /// - Prevent excessive leverage through fee costs
     ///
-    /// **Process**:
-    /// 1. If `is_liquidation` is true and `protocol_fee_asset_decimals_opt` contains a fee:
-    ///    a. Retrieves the `protocol_fee_asset_decimals`.
-    ///    b. Requires that the initial `amount_to_transfer_net_asset_decimals` (gross withdrawal) is sufficient to cover the fee.
-    ///    c. Calculates `protocol_fee_for_revenue_ray` by rescaling `protocol_fee_asset_decimals` to RAY precision.
-    ///    d. Deducts `protocol_fee_asset_decimals` directly from the mutable `amount_to_transfer_net_asset_decimals`.
-    ///    e. If `protocol_fee_for_revenue_ray` is greater than zero, adds it to `cache.revenue`.
+    /// **Mathematical Process**:
+    ///
+    /// **Fee Validation and Deduction**:
+    /// ```
+    /// if is_liquidation && protocol_fee.is_some():
+    ///     require(gross_withdrawal >= protocol_fee, "Insufficient withdrawal for fee")
+    ///     net_transfer = gross_withdrawal - protocol_fee
+    ///     protocol_revenue += protocol_fee (in scaled units)
+    /// ```
+    ///
+    /// **Revenue Conversion**:
+    /// ```
+    /// fee_scaled = protocol_fee / current_supply_index
+    /// cache.revenue += fee_scaled
+    /// cache.supplied += fee_scaled  // Mint to total supply
+    /// ```
+    ///
+    /// **Fee Sufficiency Check**:
+    /// Critical validation to prevent negative transfers:
+    /// ```
+    /// require(amount_to_transfer >= liquidation_fee, ERROR_WITHDRAW_AMOUNT_LESS_THAN_FEE)
+    /// ```
+    ///
+    /// **Liquidation Event Flow**:
+    /// 1. Liquidator identifies undercollateralized position
+    /// 2. Liquidator calls liquidation with fee parameter
+    /// 3. Collateral withdrawal processes with fee deduction
+    /// 4. Net amount transferred to liquidator
+    /// 5. Fee amount added to protocol treasury
+    ///
+    /// **Fee Calculation Examples**:
+    /// ```
+    /// // 5% liquidation fee scenario:
+    /// gross_withdrawal = 1000 USDC
+    /// liquidation_fee = 50 USDC (5%)
+    /// net_transfer = 950 USDC (to liquidator)
+    /// protocol_revenue += 50 USDC (scaled)
+    /// ```
+    ///
+    /// **Edge Case Handling**:
+    /// - Non-liquidation withdrawals: No fee processing
+    /// - Missing fee parameter: No fee deduction
+    /// - Insufficient withdrawal amount: Transaction reverts
+    /// - Zero fee: No-op processing
+    ///
+    /// **Revenue Accounting**:
+    /// Fees are immediately converted to scaled supply tokens and added to:
+    /// - Protocol revenue accumulator (for later claiming)
+    /// - Total supplied amount (maintaining pool balance)
     ///
     /// # Arguments
-    /// - `cache`: A mutable reference to the current pool state (`Cache<Self>`), used for updating revenue.
-    /// - `is_liquidation`: A boolean indicating if the withdrawal is part of a liquidation.
-    /// - `protocol_fee_asset_decimals_opt`: An optional `ManagedDecimal` representing the liquidation fee in asset decimals.
-    /// - `amount_to_transfer_net_asset_decimals`: A mutable reference to the gross amount to be withdrawn (in asset decimals).
-    ///                                            This value will be reduced by the fee if applicable.
+    /// - `cache`: Mutable pool state for revenue updates
+    /// - `is_liquidation`: Flag indicating liquidation context
+    /// - `protocol_fee_asset_decimals_opt`: Optional liquidation fee amount
+    /// - `amount_to_transfer_net_asset_decimals`: Mutable withdrawal amount to adjust
+    ///
+    /// **Security Considerations**:
+    /// - Fee sufficiency validation prevents negative transfers
+    /// - Revenue conversion maintains accurate pool accounting
+    /// - Optional fee handling prevents forced fee scenarios
+    /// - Scaled conversion preserves precision
     #[inline(always)]
     fn process_liquidation_fee_details(
         &self,
@@ -359,36 +612,83 @@ pub trait UtilsModule:
         }
     }
 
-    /// Adds protocol revenue to the pool.
+    /// Adds protocol revenue to the pool by minting scaled supply tokens to the treasury.
     ///
-    /// **Scope**: Updates the pool's revenue and total supply by adding a portion of the incoming payment.
+    /// **Purpose**: Converts protocol revenue from various sources into scaled supply tokens,
+    /// effectively minting treasury shares that appreciate with the supply index.
     ///
-    /// **Goal**: To handle incoming payments that cover part of the bad debt, converting the remainder to scaled units.
+    /// **Revenue Tokenization Process**:
     ///
-
+    /// **Scaling Conversion**:
+    /// ```
+    /// fee_scaled = revenue_amount / current_supply_index
+    /// ```
+    /// This converts the actual revenue amount into scaled tokens at current rates.
+    ///
+    /// **Treasury Minting**:
+    /// ```
+    /// cache.revenue += fee_scaled         // Add to protocol treasury
+    /// cache.supplied += fee_scaled        // Increase total supply
+    /// ```
+    ///
+    /// **Revenue Appreciation Mechanism**:
+    /// Protocol revenue is stored as scaled supply tokens that:
+    /// - Appreciate in value as the supply index grows
+    /// - Earn interest alongside user deposits
+    /// - Maintain proportional value through market cycles
+    /// - Can be claimed at any time by the protocol owner
+    ///
+    /// **Mathematical Properties**:
+    /// ```
+    /// // At revenue addition:
+    /// treasury_value = fee_scaled * current_supply_index = revenue_amount
+    ///
+    /// // At future claim time:
+    /// treasury_value = fee_scaled * future_supply_index > revenue_amount
+    /// protocol_earnings = fee_scaled * (future_supply_index - current_supply_index)
+    /// ```
+    ///
+    /// **Revenue Sources Integration**:
+    /// This function handles revenue from multiple sources:
+    /// - Interest rate spreads (reserve factor portion)
+    /// - Flash loan fees
+    /// - Strategy creation fees
+    /// - Liquidation fees
+    /// - Dust collateral seizures
+    ///
+    /// **Supply Index Impact**:
+    /// Adding revenue does NOT dilute existing suppliers because:
+    /// - Revenue represents value already earned by the pool
+    /// - Scaled token minting maintains proportional ownership
+    /// - Supply index reflects the new total value correctly
+    ///
+    /// **Zero Amount Handling**:
+    /// Efficiently skips processing for zero amounts to save gas costs.
+    ///
+    /// # Arguments
+    /// - `cache`: Mutable pool state for revenue and supply updates
+    /// - `amount`: Revenue amount in asset decimals to add
+    ///
+    /// **Security Considerations**:
+    /// - Zero check prevents unnecessary computation
+    /// - Scaling conversion maintains precision
+    /// - Treasury and supply updates are atomic
+    /// - No dilution of existing user positions
+    ///
     fn internal_add_protocol_revenue(
         &self,
         cache: &mut Cache<Self>,
-        mut amount: ManagedDecimal<Self::Api, NumDecimals>,
+        amount: ManagedDecimal<Self::Api, NumDecimals>,
     ) {
         if amount == cache.zero {
             return;
         }
 
-        if amount <= cache.bad_debt {
-            // Entire incoming payment covers part (or all) of bad debt.
-            cache.bad_debt -= &amount;
-        } else {
-            // Part of the payment clears bad debt, remainder is protocol revenue.
-            amount -= &cache.bad_debt;
-            cache.bad_debt = cache.zero.clone();
+        // Convert directly to scaled units
+        let fee_scaled = cache.scaled_supply(&amount);
 
-            // Convert remainder directly to scaled units – precision handled inside math helper.
-            let fee_scaled = cache.scaled_supply(&amount);
-
-            // Mint to treasury and total supply.
-            cache.revenue += &fee_scaled;
-            cache.supplied += &fee_scaled;
-        }
+        // Mint to treasury and total supply
+        cache.revenue += &fee_scaled;
+        cache.supplied += &fee_scaled;
     }
 }

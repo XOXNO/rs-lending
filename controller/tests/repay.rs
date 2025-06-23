@@ -8,7 +8,7 @@ use constants::*;
 use setup::*;
 
 /// Tests repaying a loan with interest, including overpayment handling.
-/// 
+///
 /// Covers:
 /// - Controller::repay endpoint functionality
 /// - Interest accrual over time
@@ -64,13 +64,13 @@ fn repay_full_debt_with_interest_and_overpayment_success() {
 
     // Advance 10 days to accumulate interest
     state.change_timestamp(SECONDS_PER_DAY * 10);
-    
+
     // Update market indexes to reflect interest
     let mut markets = MultiValueEncoded::new();
     markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
     markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
     state.update_markets(&borrower, markets.clone());
-    
+
     // Verify debt increased due to interest
     let debt_with_interest = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
     assert!(debt_with_interest > initial_debt);
@@ -83,7 +83,7 @@ fn repay_full_debt_with_interest_and_overpayment_success() {
         2,
         EGLD_DECIMALS,
     );
-    
+
     // Verify debt position was fully cleared
     let custom_error_message = format!("Token not existing in the account {}", EGLD_TOKEN.as_str());
     state.get_borrow_amount_for_token_non_existing(2, EGLD_TOKEN, custom_error_message.as_bytes());

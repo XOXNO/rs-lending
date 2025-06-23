@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           65
+// Endpoints:                           67
 // Async Callback:                       1
-// Total number of exported functions:  68
+// Total number of exported functions:  70
 
 #![no_std]
 
@@ -47,6 +47,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         editAssetInEModeCategory => edit_asset_in_e_mode_category
         removeAssetFromEModeCategory => remove_asset_from_e_mode_category
         editAssetConfig => edit_asset_config
+        setPositionLimits => set_position_limits
         getPools => pools
         getAccount => account
         getAccountNonce => account_nonce
@@ -68,6 +69,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         getIsolatedAssetDebtUsd => isolated_asset_debt_usd
         getTokenOracle => token_oracle
         isFlashLoanOngoing => flash_loan_ongoing
+        getPositionLimits => position_limits
         liquidationEstimations => liquidation_estimations
         getAllMarketIndexes => get_all_market_indexes
         getAllMarkets => get_all_markets

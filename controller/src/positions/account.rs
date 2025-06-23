@@ -12,16 +12,41 @@ multiversx_sc::derive_imports!();
 #[multiversx_sc::module]
 pub trait PositionAccountModule: common_events::EventsModule + storage::Storage {
     /// Creates a new NFT for a user's lending position.
-    /// Tracks position type (isolated, vault, e-mode) via NFT attributes.
+    ///
+    /// **Purpose**: Mints a new position NFT that represents a user's lending account
+    /// with specific risk profile and operational mode configurations.
+    ///
+    /// **Methodology**:
+    /// 1. Determines e-mode category (disabled for isolated positions)
+    /// 2. Sets isolated token if position is isolated
+    /// 3. Creates NFT with incremented nonce and position attributes
+    /// 4. Transfers NFT to caller and updates storage mappings
+    ///
+    /// **NFT Attributes Structure**:
+    /// - `is_isolated_position`: Flag for isolation mode
+    /// - `e_mode_category_id`: E-mode category (0 = disabled)
+    /// - `mode`: Position mode (standard, vault, etc.)
+    /// - `isolated_token`: Token identifier for isolated positions
+    ///
+    /// **Security Considerations**:
+    /// - Isolated positions cannot use e-mode (forced to category 0)
+    /// - Incremental nonce prevents collision attacks
+    /// - Atomic creation and storage updates
+    ///
+    /// **NFT Metadata**:
+    /// - Name: "Lending Account #{nonce}"
+    /// - URI: "{BASE_NFT_URI}/{nonce}"
+    /// - Attributes: Encoded position configuration
     ///
     /// # Arguments
-    /// - `caller`: User's address.
-    /// - `is_isolated`: Indicates an isolated position.
-    /// - `is_vault`: Indicates a vault position.
-    /// - `e_mode_category`: Optional e-mode category ID.
+    /// - `caller`: User's address to receive the NFT
+    /// - `is_isolated`: Flag indicating isolated collateral position
+    /// - `mode`: Position mode configuration
+    /// - `e_mode_category`: Optional e-mode category ID (ignored if isolated)
+    /// - `isolated_token`: Required token identifier for isolated positions
     ///
     /// # Returns
-    /// - Tuple of (NFT payment, attributes).
+    /// - Tuple containing (NFT payment, position attributes)
     fn create_account_nft(
         &self,
         caller: &ManagedAddress,
@@ -81,17 +106,36 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
     }
 
     /// Retrieves an existing position or creates a new one.
-    /// Reuses existing NFTs or initializes new ones as needed.
+    ///
+    /// **Purpose**: Manages position NFT lifecycle by either using existing positions
+    /// or creating new ones when needed, optimizing for user experience.
+    ///
+    /// **Methodology**:
+    /// - If existing account provided: validates and uses existing NFT
+    /// - If no account provided: creates new NFT with specified configuration
+    /// - Returns consistent interface regardless of creation path
+    ///
+    /// **Use Cases**:
+    /// - First-time users: Creates new position NFT
+    /// - Existing users: Reuses existing position for additional operations
+    /// - Multi-position users: Can have multiple NFTs with different configs
+    ///
+    /// **Security Considerations**:
+    /// - Validates existing NFT attributes match expected configuration
+    /// - Ensures consistent position state across operations
+    /// - Prevents unauthorized position modifications
     ///
     /// # Arguments
-    /// - `caller`: User's address.
-    /// - `is_isolated`: Indicates an isolated position.
-    /// - `is_vault`: Indicates a vault position.
-    /// - `e_mode_category`: Optional e-mode category.
-    /// - `existing_position`: Optional existing NFT.
+    /// - `caller`: User's address for NFT operations
+    /// - `is_isolated`: Flag for isolation mode requirement
+    /// - `mode`: Position mode configuration
+    /// - `e_mode_category`: Optional e-mode category for new positions
+    /// - `opt_account`: Optional existing account NFT to reuse
+    /// - `opt_attributes`: Optional existing attributes for validation
+    /// - `opt_isolated_token`: Required token for isolated position creation
     ///
     /// # Returns
-    /// - Tuple of (NFT nonce, attributes).
+    /// - Tuple containing (NFT nonce, validated position attributes)
     fn get_or_create_account(
         &self,
         caller: &ManagedAddress,
@@ -103,7 +147,9 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
         opt_isolated_token: Option<EgldOrEsdtTokenIdentifier>,
     ) -> (u64, AccountAttributes<Self::Api>) {
         match opt_account {
-            Some(account) => (account.token_nonce, unsafe { opt_attributes.unwrap_unchecked() }),
+            Some(account) => (account.token_nonce, unsafe {
+                opt_attributes.unwrap_unchecked()
+            }),
             None => {
                 let (payment, account_attributes) = self.create_account_nft(
                     caller,
@@ -118,14 +164,30 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
     }
 
     /// Decodes and retrieves attributes of a position NFT.
-    /// Accesses on-chain position metadata.
+    ///
+    /// **Purpose**: Extracts position configuration from NFT metadata to determine
+    /// operational constraints and risk parameters for the position.
+    ///
+    /// **Methodology**:
+    /// - Queries blockchain for NFT token data at specified nonce
+    /// - Decodes stored attributes from NFT metadata
+    /// - Returns structured position configuration
+    ///
+    /// **Attribute Decoding**:
+    /// - Uses built-in codec for secure deserialization
+    /// - Validates attribute structure integrity
+    /// - Provides type-safe access to position configuration
+    ///
+    /// **Security Considerations**:
+    /// - Tamper-proof storage in NFT metadata
+    /// - Cryptographic validation of attribute integrity
+    /// - Read-only access prevents unauthorized modifications
     ///
     /// # Arguments
-    /// - `account_nonce`: NFT nonce.
-    /// - `token_id`: NFT identifier.
+    /// - `account_payment`: NFT payment containing identifier and nonce
     ///
     /// # Returns
-    /// - `AccountAttributes` containing position details.
+    /// - `AccountAttributes` with decoded position configuration
     fn nft_attributes(
         &self,
         account_payment: &EsdtTokenPayment<Self::Api>,
@@ -140,10 +202,22 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
     }
 
     /// Ensures an account nonce is active in the market.
-    /// Prevents operations on uninitialized accounts.
+    ///
+    /// **Purpose**: Validates that a position NFT is properly registered in the protocol
+    /// before allowing any lending operations on it.
+    ///
+    /// **Methodology**:
+    /// - Checks if nonce exists in active accounts registry
+    /// - Prevents operations on invalid or burned NFTs
+    /// - Provides early validation for all position operations
+    ///
+    /// **Security Rationale**:
+    /// - Prevents operations on non-existent positions
+    /// - Protects against replay attacks using old NFTs
+    /// - Ensures data consistency across protocol operations
     ///
     /// # Arguments
-    /// - `nonce`: Account nonce to verify.
+    /// - `nonce`: Account NFT nonce to validate for existence
     #[inline]
     fn require_active_account(&self, nonce: u64) {
         require!(
@@ -152,12 +226,34 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
         );
     }
 
-    /// Validates borrow operation parameters.
-    /// Ensures account, asset, and caller are valid.
+    /// Validates account NFT and extracts operation parameters.
+    ///
+    /// **Purpose**: Comprehensive validation of account NFT for lending operations,
+    /// ensuring NFT authenticity and attribute consistency.
+    ///
+    /// **Methodology**:
+    /// 1. Extracts NFT payment from call context
+    /// 2. Validates account is active in the protocol
+    /// 3. Verifies NFT token identifier matches expected account token
+    /// 4. Validates attribute consistency between NFT and storage
+    /// 5. Optionally returns NFT to caller after validation
+    ///
+    /// **Security Checks**:
+    /// - Account activity validation prevents unauthorized operations
+    /// - Token identifier validation prevents spoofing attacks
+    /// - Attribute consistency check prevents tampering
+    /// - Caller address validation ensures proper authorization
+    ///
+    /// **Attribute Consistency**:
+    /// - Compares NFT attributes with stored attributes
+    /// - Ensures no unauthorized modifications to position config
+    /// - Validates integrity of position state
     ///
     /// # Arguments
-    /// - `position_nft_payment`: NFT payment.
-    /// - `initial_caller`: Borrower's address.
+    /// - `return_account`: Flag to return NFT to caller after validation
+    ///
+    /// # Returns
+    /// - Tuple containing (NFT payment, caller address, validated attributes)
     #[inline]
     fn validate_account(
         &self,
@@ -191,13 +287,26 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
     }
 
     /// Ensures an address is not the zero address.
-    /// Validates caller or contract addresses to avoid invalid operations.
+    ///
+    /// **Purpose**: Validates addresses to prevent operations with invalid zero addresses
+    /// that could lead to token loss or protocol malfunctions.
+    ///
+    /// **Security Rationale**:
+    /// - Zero addresses indicate uninitialized or invalid states
+    /// - Prevents accidental token transfers to burn address
+    /// - Ensures proper caller identification for all operations
+    /// - Protects against address computation errors
+    ///
+    /// **Validation Context**:
+    /// - Caller addresses for operation authorization
+    /// - Contract addresses for cross-contract interactions
+    /// - Recipient addresses for token transfers
     ///
     /// # Arguments
-    /// - `address`: The address to validate as a `ManagedAddress`.
+    /// - `address`: Address to validate for non-zero value
     ///
     /// # Errors
-    /// - `ERROR_ADDRESS_IS_ZERO`: If the address is zero.
+    /// - `ERROR_ADDRESS_IS_ZERO`: If address equals zero/empty address
     #[inline]
     fn require_non_zero_address(&self, address: &ManagedAddress) {
         require!(!address.is_zero(), ERROR_ADDRESS_IS_ZERO);

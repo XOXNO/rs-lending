@@ -272,71 +272,39 @@ pub trait InterestRates: common_math::SharedMathModule {
         return old_supply_index;
     }
 
-    /// Calculates supplier rewards by deducting protocol fees from accrued interest, after accounting for bad debt.
-    ///
-    /// **Scope**: Computes the rewards suppliers earn from interest paid by borrowers,
-    /// after the protocol takes its share (reserve factor) and bad debt is covered. Used during index updates.
-    ///
-    /// **Goal**: Ensure suppliers receive their fair share of interest while updating protocol revenue and bad debt.
-    ///
-    /// **Formula**:
-    /// 1. `total_scaled_borrowed = cache.borrowed` (this is the sum of initial principals scaled by their initial borrow indexes).
-    /// 2. `accrued_interest_ray = total_scaled_borrowed * new_borrow_index - total_scaled_borrowed * old_borrow_index`.
-    /// 3. If `accrued_interest_asset_decimals <= bad_debt_asset_decimals`:
-    ///    - `new_bad_debt_asset_decimals = bad_debt_asset_decimals - accrued_interest_asset_decimals`.
-    ///    - `supplier_rewards_ray = 0`.
-    /// 4. Else (`accrued_interest_asset_decimals > bad_debt_asset_decimals`):
-    ///    - `left_interest_asset_decimals = accrued_interest_asset_decimals - bad_debt_asset_decimals`.
-    ///    - `new_bad_debt_asset_decimals = 0`.
-    ///    - `protocol_fee_ray = left_interest_ray * reserve_factor`. (where `left_interest_ray` is `left_interest_asset_decimals` rescaled to RAY)
-    ///    - `supplier_rewards_ray = left_interest_ray - protocol_fee_ray`.
-    /// 5. `cache.revenue` is incremented by `protocol_fee_ray`.
+    /// Calculates supplier rewards and protocol fees
+    /// This simplified version directly distributes accrued interest between suppliers and protocol.
     ///
     /// # Arguments
-    /// - `cache`: Mutable reference to the pool state (`Cache<Self>`), containing borrow amounts, indexes, params, bad debt, and revenue.
-    /// - `old_borrow_index`: The borrow index before the current update (`ManagedDecimal<Self::Api, NumDecimals>`), RAY-based.
+    /// - `params`: The market parameters including reserve factor
+    /// - `borrowed`: The total scaled borrowed amount
+    /// - `new_borrow_index`: The updated borrow index after interest accrual
+    /// - `old_borrow_index`: The previous borrow index
     ///
     /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: Net rewards for suppliers after protocol fees and bad debt processing (RAY-based).
-    ///
-    /// **Security Tip**: Relies on upstream validation of `cache` state. Ensures bad debt is covered before distributing rewards or accruing protocol fees from new interest.
+    /// - `(supplier_rewards_ray, protocol_fee_ray)`: Interest distribution in RAY precision
     fn calc_supplier_rewards(
         &self,
         params: MarketParams<Self::Api>,
         borrowed: &ManagedDecimal<Self::Api, NumDecimals>,
-        bad_debt: ManagedDecimal<Self::Api, NumDecimals>,
         new_borrow_index: &ManagedDecimal<Self::Api, NumDecimals>,
         old_borrow_index: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> (
         ManagedDecimal<Self::Api, NumDecimals>, // supplier_rewards_ray
         ManagedDecimal<Self::Api, NumDecimals>, // protocol_fee_ray
-        ManagedDecimal<Self::Api, NumDecimals>, // new_bad_debt_asset_decimals
     ) {
-        // Calculate the actual accrued interest correctly using calc_interest
+        // Calculate total accrued interest
         let old_total_debt = self.mul_half_up(borrowed, old_borrow_index, RAY_PRECISION);
         let new_total_debt = self.mul_half_up(borrowed, new_borrow_index, RAY_PRECISION);
 
         let accrued_interest_ray = new_total_debt.sub(old_total_debt);
-        let accrued_interest_asset_decimals =
-            self.rescale_half_up(&accrued_interest_ray, params.asset_decimals);
-        // If the accrued interest (asset dec) is less than or equal to bad debt (asset dec)
-        if accrued_interest_asset_decimals.le(&bad_debt) {
-            // Subtract the asset decimal interest from asset decimal bad debt
-            let new_bad_debt = bad_debt.sub(accrued_interest_asset_decimals);
-            // No rewards or fees generated
-            (self.ray_zero(), self.ray_zero(), new_bad_debt)
-        } else {
-            // Accrued interest is greater than bad debt.
-            // Calculate remaining interest after clearing bad debt (in asset decimals)
-            let left_interest_ray = accrued_interest_ray.sub(bad_debt.rescale(RAY_PRECISION));
 
-            let protocol_fee =
-                self.mul_half_up(&left_interest_ray, &params.reserve_factor, RAY_PRECISION);
-            let supplier_rewards_ray = left_interest_ray - protocol_fee.clone();
+        // Direct distribution: protocol fee first, then supplier rewards
+        let protocol_fee =
+            self.mul_half_up(&accrued_interest_ray, &params.reserve_factor, RAY_PRECISION);
+        let supplier_rewards_ray = accrued_interest_ray - protocol_fee.clone();
 
-            let zero_bad_debt = self.to_decimal(BigUint::zero(), params.asset_decimals);
-            (supplier_rewards_ray, protocol_fee, zero_bad_debt)
-        }
+        (supplier_rewards_ray, protocol_fee)
     }
 
     fn get_utilization(
@@ -368,7 +336,6 @@ pub trait InterestRates: common_math::SharedMathModule {
         current_borrowed_index: ManagedDecimal<Self::Api, NumDecimals>,
         supplied: ManagedDecimal<Self::Api, NumDecimals>,
         current_supply_index: ManagedDecimal<Self::Api, NumDecimals>,
-        bad_debt: ManagedDecimal<Self::Api, NumDecimals>,
         params: MarketParams<Self::Api>,
     ) -> MarketIndex<Self::Api> {
         let delta = current_timestamp - last_timestamp;
@@ -385,10 +352,9 @@ pub trait InterestRates: common_math::SharedMathModule {
                 self.update_borrow_index(current_borrowed_index.clone(), borrow_factor.clone());
 
             // 3 raw split
-            let (supplier_rewards_ray, _, _) = self.calc_supplier_rewards(
+            let (supplier_rewards_ray, _) = self.calc_supplier_rewards(
                 params.clone(),
                 &borrowed,
-                bad_debt.clone(),
                 &new_borrow_index,
                 &old_borrow_index,
             );

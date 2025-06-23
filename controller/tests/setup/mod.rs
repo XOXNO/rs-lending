@@ -559,6 +559,25 @@ impl LendingPoolTestState {
             .run();
     }
 
+    /// Borrow multiple assets with error expectation
+    pub fn borrow_assets_error(
+        &mut self,
+        account_nonce: u64,
+        from: &TestAddress,
+        assets: MultiValueEncoded<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
+        error_message: &[u8],
+    ) {
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .borrow(assets)
+            .esdt(TestEsdtTransfer(ACCOUNT_TOKEN, account_nonce, 1u64))
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
     /// Repay borrowed asset
     pub fn repay_asset(
         &mut self,
@@ -1095,6 +1114,17 @@ impl LendingPoolTestState {
             .typed(proxy_lending_pool::ControllerProxy)
             .set_safe_price_view(safe_view_address)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
+    /// Set position limits
+    pub fn set_position_limits(&mut self, max_borrow_positions: u8, max_supply_positions: u8) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .set_position_limits(max_borrow_positions, max_supply_positions)
             .run();
     }
 
@@ -3391,6 +3421,10 @@ pub fn setup_accounts(
         .account(supplier)
         .nonce(1)
         .esdt_balance(
+            DAI_TOKEN,
+            BigUint::from(100000000u64) * BigUint::from(10u64).pow(DAI_DECIMALS as u32),
+        )
+        .esdt_balance(
             LP_EGLD_TOKEN,
             BigUint::from(100000000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
         )
@@ -3431,6 +3465,10 @@ pub fn setup_accounts(
         .world
         .account(borrower)
         .nonce(1)
+        .esdt_balance(
+            DAI_TOKEN,
+            BigUint::from(100000000u64) * BigUint::from(10u64).pow(DAI_DECIMALS as u32),
+        )
         .esdt_balance(
             LP_EGLD_TOKEN,
             BigUint::from(100000000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),

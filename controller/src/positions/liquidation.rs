@@ -26,17 +26,51 @@ pub trait PositionLiquidationModule:
     + common_rates::InterestRates
     + emode::EModeModule
 {
-    /// Executes core liquidation logic for an account.
-    /// Manages debt repayment and collateral seizure.
+    /// Executes the core liquidation logic for an unhealthy position using a sophisticated Dutch auction mechanism.
+    ///
+    /// # Purpose and Scope
+    /// This function implements the main liquidation algorithm that:
+    /// - Validates the position's health factor (must be < 1.0)
+    /// - Calculates optimal debt repayment and collateral seizure amounts
+    /// - Applies dynamic liquidation bonuses with proportional seizure
+    /// - Handles excess payments with automatic refunds
+    /// - Triggers bad debt cleanup when necessary
+    ///
+    /// # How It Works (Methodology and Process)
+    /// 1. **Position Analysis**: Retrieves all deposit and borrow positions for the account
+    /// 2. **Repayment Calculation**: Processes debt payments, handling excess amounts with refunds
+    /// 3. **Collateral Valuation**: Calculates total and liquidation-weighted collateral values
+    /// 4. **Seizure Proportions**: Determines weighted seizure ratios across multiple collateral assets
+    /// 5. **Dutch Auction Logic**: Applies algebraic liquidation model targeting 1.02/1.01 health factors
+    /// 6. **Proportional Seizure**: Distributes seized collateral proportionally across all deposit positions
+    /// 7. **Bad Debt Detection**: Checks if remaining debt/collateral falls below $5 USD threshold
+    ///
+    /// # Mathematical Formulas
+    /// - Health Factor: `weighted_collateral / total_debt` (must be < 1.0 for liquidation)
+    /// - Liquidation Bonus: `linear_scaling * (1 - health_factor) * 200%` (capped at 15%)
+    /// - Seizure Amount: `debt_repaid * (1 + liquidation_bonus)`
+    /// - Proportional Distribution: `asset_collateral_value / total_collateral_value * total_seizure`
+    ///
+    /// # Security Checks Implemented
+    /// - Health factor validation (position must be liquidatable)
+    /// - Reentrancy protection via cache.flash_loan_ongoing
+    /// - Payment validation for all debt repayments
+    /// - Excess payment detection and automatic refunding
+    /// - Bad debt threshold validation ($5 USD minimum)
+    /// - Precision loss mitigation in decimal conversions
     ///
     /// # Arguments
-    /// - `account_nonce`: Position NFT nonce.
-    /// - `debt_payments`: Debt repayment payments.
-    /// - `caller`: Liquidator's address.
-    /// - `cache`: Mutable storage cache.
+    /// - `account_nonce`: Position NFT nonce identifying the borrower's account
+    /// - `debt_payments`: Vector of ERC20/EGLD payments for debt repayment
+    /// - `cache`: Mutable storage cache for price feeds and pool addresses
     ///
     /// # Returns
-    /// - Tuple of (seized collateral details, repaid token details).
+    /// Returns a tuple containing:
+    /// - `seized_collaterals`: Vector of (seized_payment, protocol_fee) for each collateral asset
+    /// - `repaid_tokens`: Vector of (payment, egld_value, price_feed) for each repaid debt
+    /// - `refunds`: Vector of excess payments to be refunded to liquidator
+    /// - `max_debt_to_repay_wad`: Maximum debt amount that was repaid (WAD precision)
+    /// - `bonus_rate`: Applied liquidation bonus rate in basis points
     fn execute_liquidation(
         &self,
         account_nonce: u64,
@@ -124,13 +158,45 @@ pub trait PositionLiquidationModule:
         )
     }
 
-    /// Orchestrates the full liquidation process.
-    /// Coordinates repayments and collateral seizures.
+    /// Orchestrates the complete liquidation workflow from validation to settlement.
+    ///
+    /// # Purpose and Scope
+    /// This is the main entry point for liquidations that coordinates the entire process:
+    /// - Validates liquidation prerequisites and security constraints
+    /// - Executes core liquidation logic with Dutch auction pricing
+    /// - Handles payment processing and refund distribution
+    /// - Processes debt repayments through liquidity pool interactions
+    /// - Manages collateral seizure and protocol fee collection
+    /// - Ensures proper event emission and accounting updates
+    ///
+    /// # How It Works (Complete Liquidation Workflow)
+    /// 1. **Security Setup**: Establishes reentrancy protection and cache initialization
+    /// 2. **Payment Validation**: Validates liquidator payments and authorization
+    /// 3. **Account Verification**: Confirms account exists and is active
+    /// 4. **Liquidation Execution**: Runs core liquidation algorithm via `execute_liquidation`
+    /// 5. **Refund Processing**: Returns excess payments to liquidator if any
+    /// 6. **Debt Settlement**: Processes each debt repayment through respective liquidity pools
+    /// 7. **Collateral Transfer**: Handles seized collateral transfers with protocol fees
+    ///
+    /// # Security Checks Implemented
+    /// - Reentrancy protection via `cache.flash_loan_ongoing` guard
+    /// - Payment validation for all debt repayments
+    /// - Caller address validation (non-zero address requirement)
+    /// - Account existence and active status verification
+    /// - Safe price oracle usage (unsafe prices disabled)
+    ///
+    /// # Integration Points
+    /// The function integrates with multiple protocol components:
+    /// - **Liquidity Pools**: For debt repayment processing via `process_repayment`
+    /// - **Oracle System**: For price feeds and asset valuation
+    /// - **Position Management**: For withdrawal processing via `process_withdrawal`
+    /// - **Event System**: For liquidation event emission
+    /// - **Cache System**: For optimized storage access and price feed caching
     ///
     /// # Arguments
-    /// - `account_nonce`: Position NFT nonce.
-    /// - `debt_payments`: Debt repayment payments.
-    /// - `caller`: Liquidator's address.
+    /// - `account_nonce`: Position NFT nonce identifying the borrower's account
+    /// - `debt_payments`: Vector of ERC20/EGLD payments for debt repayment
+    /// - `caller`: Address of the liquidator initiating the liquidation
     fn process_liquidation(
         &self,
         account_nonce: u64,
@@ -191,15 +257,53 @@ pub trait PositionLiquidationModule:
         }
     }
 
-    /// Validates if the health factor permits liquidation.
-    /// Ensures the position is unhealthy enough to liquidate.
+    /// Validates that the position's health factor qualifies for liquidation and prevents healthy position liquidation.
+    ///
+    /// # Purpose and Scope
+    /// This critical validation function ensures liquidation integrity by:
+    /// - Computing the current health factor using liquidation-weighted collateral
+    /// - Enforcing the fundamental liquidation rule (health factor < 1.0)
+    /// - Preventing liquidation of healthy positions (which would be protocol theft)
+    /// - Returning the health factor for use in subsequent liquidation calculations
+    ///
+    /// # How It Works (Health Factor Validation)
+    /// 1. **Health Factor Calculation**: `collateral_value / total_debt`
+    /// 2. **Liquidation Threshold Check**: Health factor must be < 1.0 (WAD precision)
+    /// 3. **Security Enforcement**: Reverts transaction if position is healthy
+    /// 4. **Value Return**: Provides health factor for Dutch auction calculations
+    ///
+    /// # Mathematical Formula
+    /// ```
+    /// health_factor = liquidation_weighted_collateral / total_debt
+    ///
+    /// Liquidation eligibility: health_factor < 1.0
+    /// ```
+    ///
+    /// Where `liquidation_weighted_collateral` accounts for asset-specific liquidation
+    /// thresholds (e.g., 80% for WETH, 75% for WBTC) rather than raw collateral values.
+    ///
+    /// # Security Checks Implemented
+    /// - Health factor boundary validation (must be < 1.0)
+    /// - Numerical precision handling with WAD-level accuracy
+    /// - Transaction revert on healthy position liquidation attempts
+    /// - Proper error code emission for debugging and monitoring
+    ///
+    /// # Critical Security Note
+    /// This validation is the primary defense against:
+    /// - **Liquidation Attacks**: Preventing liquidation of healthy positions
+    /// - **MEV Exploitation**: Stopping profitable attacks on solvent positions  
+    /// - **Protocol Drain**: Ensuring only undercollateralized positions can be liquidated
+    /// - **User Protection**: Safeguarding borrowers from premature liquidations
     ///
     /// # Arguments
-    /// - `collateral_in_egld`: Collateral value in EGLD.
-    /// - `borrowed_egld`: Borrowed value in EGLD.
+    /// - `collateral_in_egld`: Liquidation-threshold-weighted collateral value (EGLD-denominated)
+    /// - `borrowed_egld`: Total borrowed amount across all assets (EGLD-denominated)
     ///
     /// # Returns
-    /// - Current health factor.
+    /// - Current health factor (WAD precision) for use in liquidation amount calculations
+    ///
+    /// # Errors
+    /// - `ERROR_HEALTH_FACTOR`: When health factor ≥ 1.0 (position is healthy and not liquidatable)
     fn validate_liquidation_health_factor(
         &self,
         collateral_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -231,18 +335,61 @@ pub trait PositionLiquidationModule:
         self.require_non_zero_address(initial_caller);
     }
 
-    /// Calculates collateral to seize based on debt repayment.
-    /// Applies proportional seizure with bonus.
+    /// Calculates proportional collateral seizure across multiple assets with precision-aware bonus distribution.
+    ///
+    /// # Purpose and Scope
+    /// This function implements sophisticated proportional collateral seizure that:
+    /// - Distributes liquidation across all deposited assets proportionally to their values
+    /// - Applies liquidation bonuses with protocol fee extraction
+    /// - Handles precision loss gracefully during decimal conversions
+    /// - Ensures no asset seizure exceeds the deposited amount
+    /// - Calculates protocol fees on bonus portions only
+    ///
+    /// # How It Works (Proportional Seizure Methodology)
+    /// 1. **Proportion Calculation**: For each asset, calculates `asset_value / total_collateral_value`
+    /// 2. **Base Seizure**: Applies proportion to total debt repayment amount
+    /// 3. **Bonus Application**: Adds liquidation bonus (multiplier = BPS + bonus_rate)
+    /// 4. **Protocol Fee Extraction**: Calculates fee only on bonus portion using `liquidation_fees`
+    /// 5. **Precision Management**: Rescales from RAY precision to asset-specific decimals
+    /// 6. **Safety Bounds**: Ensures seized amount never exceeds total deposited amount
+    ///
+    /// # Mathematical Formulas
+    /// For each collateral asset `i`:
+    /// ```
+    /// proportion_i = asset_value_i / total_collateral_value
+    /// base_seizure_i = debt_to_repay * proportion_i
+    /// bonus_seizure_i = base_seizure_i * (1 + bonus_rate)
+    /// protocol_fee_i = (bonus_seizure_i - base_seizure_i) * liquidation_fees_i
+    /// final_seizure_i = min(bonus_seizure_i, total_deposited_i)
+    /// ```
+    ///
+    /// All calculations performed in RAY precision (27 decimals) then rescaled to asset decimals.
+    ///
+    /// # Security Checks Implemented
+    /// - Bounds checking: seized amount ≤ total deposited amount
+    /// - Precision loss mitigation with half-up rounding
+    /// - Protocol fee validation on bonus portion only
+    /// - Safe decimal rescaling from RAY to asset-specific precision
+    /// - Zero-amount validation before token transfer creation
+    ///
+    /// # Precision Handling
+    /// The function acknowledges unavoidable precision loss during rescaling from RAY (27 decimals)
+    /// to individual token decimals (e.g., 6 for USDC, 18 for WETH). This is handled by:
+    /// - Using half-up rounding for all conversions
+    /// - Taking minimum of calculated amount and total deposited
+    /// - Documenting precision loss points in code comments
     ///
     /// # Arguments
-    /// - `deposit_positions`: Borrower's deposit positions.
-    /// - `total_collateral_value`: Total collateral in EGLD.
-    /// - `debt_to_be_repaid`: Debt amount to repay.
-    /// - `bonus_rate`: Liquidation bonus in BPS.
-    /// - `cache`: Mutable storage cache.
+    /// - `deposit_positions`: Vector of borrower's collateral positions with asset IDs and amounts
+    /// - `total_collateral_value`: Total collateral value across all assets (EGLD-denominated)
+    /// - `debt_to_be_repaid_ray`: Amount of debt being repaid (RAY precision)
+    /// - `bonus_rate`: Liquidation bonus rate in basis points
+    /// - `cache`: Mutable storage cache for price feeds and asset data
     ///
     /// # Returns
-    /// - Vector of (seized payment, protocol fee) tuples.
+    /// Vector of tuples containing:
+    /// - `seized_payment`: EgldOrEsdtTokenPayment representing the seized collateral amount
+    /// - `protocol_fee`: ManagedDecimal representing protocol fee on the liquidation bonus
     fn calculate_seized_collateral(
         &self,
         deposit_positions: &ManagedVec<AccountPosition<Self::Api>>,
@@ -310,18 +457,67 @@ pub trait PositionLiquidationModule:
         seized_amounts_by_collateral
     }
 
-    /// Computes total repaid debt and token details.
-    /// Handles excess payments with refunds.
+    /// Computes total debt repayment with intelligent excess payment handling and automatic refund generation.
+    ///
+    /// # Purpose and Scope
+    /// This function processes liquidator debt payments and:
+    /// - Validates each payment against existing borrow positions
+    /// - Calculates EGLD-equivalent values for all payments
+    /// - Detects and handles excess payments with automatic refunds
+    /// - Ensures liquidators cannot pay more than outstanding debt per asset
+    /// - Aggregates total repayment value for liquidation calculations
+    ///
+    /// # How It Works (Payment Processing Methodology)
+    /// 1. **Payment Validation**: Checks each payment against corresponding borrow position
+    /// 2. **Price Conversion**: Converts token amounts to EGLD-equivalent using oracle prices
+    /// 3. **Debt Comparison**: Compares payment amount against outstanding debt for each asset
+    /// 4. **Excess Detection**: Identifies payments exceeding outstanding debt amounts
+    /// 5. **Refund Generation**: Creates refund payments for excess amounts
+    /// 6. **Aggregation**: Sums all valid payments to total EGLD repayment value
+    ///
+    /// # Mathematical Formulas
+    /// For each payment token `i`:
+    /// ```
+    /// payment_egld_value_i = payment_amount_i * price_i
+    /// outstanding_debt_egld_i = borrowed_amount_i * price_i
+    ///
+    /// if payment_egld_value_i > outstanding_debt_egld_i:
+    ///     excess_egld_i = payment_egld_value_i - outstanding_debt_egld_i
+    ///     excess_tokens_i = excess_egld_i / price_i
+    ///     refund_i = excess_tokens_i
+    ///     valid_payment_i = payment_amount_i - excess_tokens_i
+    /// else:
+    ///     valid_payment_i = payment_amount_i
+    ///
+    /// total_repaid_egld = Σ(valid_payment_egld_i)
+    /// ```
+    ///
+    /// # Security Checks Implemented
+    /// - Payment-to-position matching validation via index mapping
+    /// - Outstanding debt boundary enforcement
+    /// - Price feed validation for all token conversions
+    /// - Automatic excess payment detection and refunding
+    /// - Zero-amount payment filtering
+    ///
+    /// # Excess Payment Handling Logic
+    /// When a liquidator pays more than the outstanding debt for a specific asset:
+    /// 1. Calculate excess amount in EGLD terms
+    /// 2. Convert excess back to original token amount using current price
+    /// 3. Reduce the payment amount by the excess
+    /// 4. Add excess amount to refunds vector for automatic return
+    /// 5. Use only the outstanding debt amount for liquidation calculations
     ///
     /// # Arguments
-    /// - `repayments`: Debt repayment payments.
-    /// - `borrows`: Borrow positions.
-    /// - `refunds`: Mutable refund vector.
-    /// - `borrows_index_map`: Token-to-index mapping.
-    /// - `cache`: Mutable storage cache.
+    /// - `repayments`: Vector of liquidator's debt repayment payments
+    /// - `borrows`: Vector of borrower's current borrow positions
+    /// - `refunds`: Mutable vector to collect excess payment refunds
+    /// - `borrows_index_map`: Mapping from token identifier to borrow position index
+    /// - `cache`: Mutable storage cache for price feeds and oracle data
     ///
     /// # Returns
-    /// - Tuple of (total repaid in EGLD, repaid token details).
+    /// Returns a tuple containing:
+    /// - `total_repaid_egld`: Total repayment amount in EGLD (RAY precision)
+    /// - `repaid_tokens`: Vector of (payment, egld_value, price_feed) for each valid repayment
     fn calculate_repayment_amounts(
         &self,
         repayments: &ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
@@ -378,16 +574,66 @@ pub trait PositionLiquidationModule:
         (total_repaid, repaid_tokens)
     }
 
-    /// Calculates proportional and bonus-weighted seizure amounts.
-    /// Determines seizure proportions for liquidation.
+    /// Calculates weighted liquidation parameters by aggregating asset-specific thresholds and bonuses.
+    ///
+    /// # Purpose and Scope
+    /// This function computes portfolio-level liquidation parameters by:
+    /// - Calculating value-weighted liquidation thresholds across all collateral assets
+    /// - Determining aggregate liquidation bonus rates based on asset composition
+    /// - Supporting complex multi-asset positions with different risk parameters
+    /// - Enabling precise liquidation calculations for heterogeneous collateral portfolios
+    ///
+    /// # How It Works (Weighted Aggregation Methodology)
+    /// 1. **Asset Valuation**: Calculate EGLD-equivalent value for each collateral position
+    /// 2. **Weight Calculation**: Determine each asset's proportion of total collateral value
+    /// 3. **Threshold Weighting**: Apply asset-specific liquidation thresholds weighted by value
+    /// 4. **Bonus Weighting**: Apply asset-specific liquidation bonuses weighted by value
+    /// 5. **Aggregation**: Sum weighted values to produce portfolio-level parameters
+    /// 6. **Precision Scaling**: Convert results to basis points precision for downstream use
+    ///
+    /// # Mathematical Formulas
+    /// For each collateral asset `i`:
+    /// ```
+    /// weight_i = asset_value_i / total_collateral_value
+    /// weighted_threshold_i = weight_i * liquidation_threshold_i
+    /// weighted_bonus_i = weight_i * liquidation_bonus_i
+    /// ```
+    ///
+    /// Portfolio aggregates:
+    /// ```
+    /// portfolio_threshold = Σ(weighted_threshold_i)
+    /// portfolio_bonus = Σ(weighted_bonus_i)
+    /// ```
+    ///
+    /// All calculations performed in RAY precision then rescaled to BPS precision.
+    ///
+    /// # Security Checks Implemented
+    /// - Division by zero protection (total collateral must be positive)
+    /// - Precision scaling validation from RAY to BPS
+    /// - Asset-specific parameter validation via price feeds
+    /// - Numerical overflow protection in weighted calculations
+    ///
+    /// # Integration with Risk Parameters
+    /// The function integrates with the lending protocol's risk management by:
+    /// - Using asset-specific liquidation thresholds (e.g., 80% for WETH, 75% for WBTC)
+    /// - Applying asset-specific liquidation bonuses (e.g., 5% for stable coins, 10% for volatile assets)
+    /// - Supporting e-mode and isolation mode parameter variations
+    /// - Enabling dynamic risk adjustment based on portfolio composition
+    ///
+    /// # Use in Liquidation Process
+    /// The returned values are used in downstream liquidation calculations:
+    /// - `proportion_seized`: Used as weighted liquidation threshold for health factor calculations
+    /// - `weighted_bonus`: Used as base liquidation bonus rate before Dutch auction adjustments
     ///
     /// # Arguments
-    /// - `total_collateral_in_egld`: Total collateral in EGLD.
-    /// - `positions`: Deposit positions.
-    /// - `cache`: Mutable storage cache.
+    /// - `total_collateral_in_egld`: Total portfolio collateral value (EGLD-denominated)
+    /// - `positions`: Vector of deposit positions with asset IDs and amounts
+    /// - `cache`: Mutable storage cache for price feeds and asset risk parameters
     ///
     /// # Returns
-    /// - Tuple of (proportional, bonus-weighted) values.
+    /// Returns a tuple containing:
+    /// - `proportion_seized`: Value-weighted liquidation threshold (BPS precision)
+    /// - `weighted_bonus`: Value-weighted liquidation bonus rate (BPS precision)
     fn calculate_seizure_proportions(
         &self,
         total_collateral_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -421,20 +667,65 @@ pub trait PositionLiquidationModule:
         (proportion_seized, weighted_bonus)
     }
 
-    /// Calculates maximum debt to repay and bonus rate.
-    /// Uses a Dutch auction mechanism for liquidation amounts.
+    /// Calculates optimal liquidation amounts using a sophisticated Dutch auction mechanism.
+    ///
+    /// # Purpose and Scope
+    /// This function implements the core liquidation algorithm that solves complex algebraic equations
+    /// to determine the maximum debt that can be repaid while maintaining system stability. The
+    /// Dutch auction mechanism targets specific health factor ranges (1.02 for conservative, 1.01 for
+    /// aggressive liquidations) to ensure efficient capital utilization while preventing over-liquidation.
+    ///
+    /// # How It Works (Dutch Auction Methodology)
+    /// 1. **Health Factor Analysis**: Evaluates current position health relative to liquidation thresholds
+    /// 2. **Algebraic Model**: Solves the liquidation equation to find optimal debt repayment amount
+    /// 3. **Dynamic Bonus Scaling**: Applies linear scaling with 200% factor, capped at 15% maximum
+    /// 4. **Target Health Factor**: Aims for post-liquidation health factor of 1.02 (conservative) or 1.01 (aggressive)
+    /// 5. **Payment Constraint**: Limits repayment to actual liquidator payment when provided
+    /// 6. **Collateral Calculation**: Determines total collateral to seize including liquidation premium
+    ///
+    /// # Mathematical Formulas
+    /// The core liquidation equation being solved:
+    /// ```
+    /// target_health_factor = (weighted_collateral - seized_collateral) / (total_debt - repaid_debt)
+    /// ```
+    /// Where:
+    /// - `seized_collateral = repaid_debt * (1 + liquidation_bonus)`
+    /// - `liquidation_bonus = min(15%, linear_scale * (1 - health_factor) * 200%)`
+    /// - `target_health_factor = 1.02` (conservative) or `1.01` (aggressive)
+    ///
+    /// Solving for `repaid_debt`:
+    /// ```
+    /// repaid_debt = (weighted_collateral - target_hf * total_debt) /
+    ///               (target_hf + liquidation_bonus - 1)
+    /// ```
+    ///
+    /// # Security Checks Implemented
+    /// - Maximum debt validation (cannot exceed total position debt)
+    /// - Liquidation bonus cap enforcement (15% maximum)
+    /// - Payment amount validation (cannot exceed liquidator's actual payment)
+    /// - Precision handling for RAY/WAD conversions
+    /// - Health factor boundary validation
+    ///
+    /// # Integration with E-Mode and Isolation
+    /// - E-mode positions may have different liquidation thresholds and bonuses
+    /// - Isolated positions follow special liquidation rules
+    /// - Weighted collateral accounts for asset-specific liquidation thresholds
     ///
     /// # Arguments
-    /// - `total_debt_in_egld`: Total debt in EGLD.
-    /// - `total_collateral_in_egld`: Total collateral in EGLD.
-    /// - `weighted_collateral_in_egld`: Weighted collateral in EGLD.
-    /// - `proportion_seized`: Seizure proportion.
-    /// - `base_liquidation_bonus`: Base bonus.
-    /// - `health_factor`: Current health factor.
-    /// - `debt_payment`: Optional debt payment in EGLD.
+    /// - `total_debt_in_egld`: Total borrowed amount across all assets (EGLD-denominated)
+    /// - `total_collateral_in_egld`: Total collateral value at current prices (EGLD-denominated)
+    /// - `weighted_collateral_in_egld`: Liquidation-threshold-weighted collateral value
+    /// - `proportion_seized`: Weighted seizure proportion across all collateral assets
+    /// - `base_liquidation_bonus`: Asset-weighted base liquidation bonus in BPS
+    /// - `health_factor`: Current position health factor (< 1.0 for liquidatable positions)
+    /// - `egld_payment`: Actual liquidator payment amount in EGLD (RAY precision)
     ///
     /// # Returns
-    /// - Tuple of (max debt to repay,max_seized_collateral, bonus rate).
+    /// Returns a tuple containing:
+    /// - `max_debt_to_repay_ray`: Maximum debt amount to repay (RAY precision)
+    /// - `max_debt_to_repay_wad`: Maximum debt amount to repay (WAD precision)
+    /// - `max_collateral_seized`: Total collateral value to seize including bonus
+    /// - `bonus_rate`: Applied liquidation bonus rate in basis points
     fn calculate_liquidation_amounts(
         &self,
         total_debt_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -482,14 +773,66 @@ pub trait PositionLiquidationModule:
         )
     }
 
-    /// Adjusts repayments and refunds for excess payments.
-    /// Ensures accurate liquidation accounting.
+    /// Processes excess liquidation payments using a reverse-chronological adjustment algorithm.
+    ///
+    /// # Purpose and Scope
+    /// This function handles situations where liquidators pay more than the maximum allowable
+    /// debt repayment by:
+    /// - Redistributing excess payments across multiple tokens in reverse order
+    /// - Maintaining accurate accounting for both repayments and refunds
+    /// - Ensuring liquidators receive proper refunds for overpayments
+    /// - Preserving liquidation integrity while handling payment edge cases
+    ///
+    /// # How It Works (Reverse-Chronological Algorithm)
+    /// 1. **Reverse Iteration**: Processes repaid tokens from last to first (LIFO approach)
+    /// 2. **Excess Distribution**: Distributes total excess across individual token payments
+    /// 3. **Partial Adjustments**: Reduces payments when excess is less than token amount
+    /// 4. **Full Removals**: Removes entire payments when excess exceeds token amount
+    /// 5. **Refund Generation**: Creates corresponding refund entries for all adjustments
+    /// 6. **Accounting Updates**: Updates repaid_tokens vector with adjusted amounts
+    ///
+    /// # Mathematical Process
+    /// For each token in reverse order:
+    /// ```
+    /// if excess_remaining >= token_egld_value:
+    ///     // Full removal case
+    ///     refund_amount = entire_token_payment
+    ///     remove_from_repaid_tokens(token)
+    ///     excess_remaining -= token_egld_value
+    /// else:
+    ///     // Partial adjustment case
+    ///     refund_egld = excess_remaining
+    ///     refund_tokens = refund_egld / token_price
+    ///     adjust_payment_amount(token, -refund_tokens)
+    ///     excess_remaining = 0
+    /// ```
+    ///
+    /// # Algorithm Design Rationale
+    /// The reverse-chronological approach provides several benefits:
+    /// - **Simplicity**: Easier to implement and understand than proportional distribution
+    /// - **Efficiency**: Requires fewer calculations than complex weighted approaches
+    /// - **Determinism**: Consistent behavior regardless of payment order variations
+    /// - **Edge Case Handling**: Gracefully handles partial and complete payment adjustments
+    ///
+    /// # Security Checks Implemented
+    /// - Bounds validation (excess cannot exceed total repayment)
+    /// - Price conversion accuracy for refund calculations
+    /// - Vector index safety during reverse iteration
+    /// - Accounting consistency (total adjustments = initial excess)
+    /// - Refund amount validation (non-negative, properly converted)
+    ///
+    /// # Integration with Liquidation Flow
+    /// This function is called when `debt_payment_in_egld_ray > max_debt_to_repay_ray`,
+    /// ensuring that liquidators:
+    /// - Never pay more than the calculated maximum
+    /// - Receive automatic refunds for overpayments
+    /// - Maintain proper liquidation incentives
+    /// - Experience predictable payment processing
     ///
     /// # Arguments
-    /// - `repaid_tokens`: Mutable repaid token details.
-    /// - `refunds`: Mutable refund vector.
-    /// - `excess_in_egld`: Excess payment in EGLD.
-    /// - `cache`: Mutable storage cache.
+    /// - `repaid_tokens`: Mutable vector of (payment, egld_value, price_feed) tuples
+    /// - `refunds`: Mutable vector to collect refund payments for return to liquidator
+    /// - `excess_in_egld`: Total excess payment amount in EGLD (RAY precision)
     fn process_excess_payment(
         &self,
         repaid_tokens: &mut ManagedVec<
@@ -532,16 +875,56 @@ pub trait PositionLiquidationModule:
         }
     }
 
-    /// Retrieves a borrow position by token index.
-    /// Uses an index map for efficient lookup.
+    /// Retrieves a specific borrow position using optimized index-based lookup for liquidation processing.
+    ///
+    /// # Purpose and Scope
+    /// This utility function provides efficient access to borrow positions during liquidation by:
+    /// - Using pre-computed index mappings to avoid linear searches
+    /// - Validating position existence before access
+    /// - Handling the index offset correction needed for zero-based indexing
+    /// - Supporting fast liquidation processing with O(1) position lookup
+    ///
+    /// # How It Works (Index-Based Lookup)
+    /// 1. **Existence Validation**: Checks if token exists in the index mapping
+    /// 2. **Index Retrieval**: Gets the stored index for the token identifier
+    /// 3. **Offset Correction**: Subtracts 1 to convert from 1-based to 0-based indexing
+    /// 4. **Position Access**: Retrieves the position from the vector using the corrected index
+    /// 5. **Position Return**: Returns a clone of the position for liquidation calculations
+    ///
+    /// # Index Offset Handling
+    /// The function implements a critical index correction:
+    /// ```
+    /// stored_index = borrows_index_map.get(key_token)  // 1-based index
+    /// actual_index = stored_index - 1                  // Convert to 0-based
+    /// position = borrows.get(actual_index)             // Vector access
+    /// ```
+    ///
+    /// This correction is necessary because the mapping uses 1-based indexing to distinguish
+    /// between "index 0" and "not found" in the contains() check.
+    ///
+    /// # Security Checks Implemented
+    /// - Position existence validation via `contains()` check
+    /// - Index bounds validation (implicit via vector access)
+    /// - Token identifier validation against mapping keys
+    /// - Error message generation with token identifier for debugging
+    ///
+    /// # Performance Optimization
+    /// Using index-based lookup provides significant performance benefits:
+    /// - **O(1) Access**: Direct vector indexing vs O(n) linear search
+    /// - **Memory Efficiency**: Single lookup vs full vector iteration
+    /// - **Cache Friendly**: Better cache locality with direct indexing
+    /// - **Scalable**: Performance doesn't degrade with position count
     ///
     /// # Arguments
-    /// - `key_token`: Token identifier.
-    /// - `borrows`: Borrow positions vector.
-    /// - `borrows_index_map`: Token-to-index mapping.
+    /// - `key_token`: Token identifier to search for in the borrow positions
+    /// - `borrows`: Vector of all borrow positions for the account
+    /// - `borrows_index_map`: Pre-computed mapping from token ID to vector index (1-based)
     ///
     /// # Returns
-    /// - Borrow position.
+    /// - Clone of the AccountPosition corresponding to the specified token
+    ///
+    /// # Panics
+    /// - When `key_token` is not found in `borrows_index_map` (validation failure)
     fn get_position_by_index(
         &self,
         key_token: &EgldOrEsdtTokenIdentifier,
@@ -561,21 +944,68 @@ pub trait PositionLiquidationModule:
         position
     }
 
-    /// Checks if dust cleanup is needed immediately after liquidation and performs it if necessary.
+    /// Analyzes post-liquidation position state and triggers bad debt cleanup when necessary.
     ///
-    /// Uses values already calculated during the liquidation process to determine:
-    /// 1. Remaining debt after liquidation
-    /// 2. Remaining collateral after liquidation
-    /// 3. Whether thresholds for dust cleanup are met
+    /// # Purpose and Scope
+    /// This function implements sophisticated bad debt detection that:
+    /// - Calculates remaining debt and collateral after liquidation completion
+    /// - Applies $5 USD threshold logic for dust position cleanup
+    /// - Prevents accumulation of small bad debt positions
+    /// - Triggers automatic bad debt cleanup events for external processing
+    /// - Maintains protocol solvency by identifying undercollateralized remnants
+    ///
+    /// # How It Works (Bad Debt Detection Methodology)
+    /// 1. **Remainder Calculation**: Computes post-liquidation debt and collateral balances
+    /// 2. **USD Value Conversion**: Converts EGLD amounts to USD using oracle prices
+    /// 3. **Threshold Analysis**: Applies $5 USD threshold logic for cleanup eligibility
+    /// 4. **Bad Debt Validation**: Checks if debt exceeds remaining collateral value
+    /// 5. **Cleanup Triggering**: Emits events for positions meeting cleanup criteria
+    ///
+    /// # Mathematical Formulas
+    /// Post-liquidation calculations:
+    /// ```
+    /// remaining_debt_egld = max(0, borrowed_egld - max_debt_repaid)
+    /// remaining_collateral_egld = max(0, total_collateral - seized_collateral_egld)
+    ///
+    /// remaining_debt_usd = remaining_debt_egld * egld_usd_price
+    /// remaining_collateral_usd = remaining_collateral_egld * egld_usd_price
+    /// ```
+    ///
+    /// Bad debt cleanup criteria (all must be true):
+    /// ```
+    /// has_bad_debt = remaining_debt_usd > remaining_collateral_usd
+    /// has_minimal_collateral = remaining_collateral_usd <= $5 USD
+    /// has_significant_debt = remaining_debt_usd >= $5 USD
+    /// ```
+    ///
+    /// # Security Checks Implemented
+    /// - Non-negative remainder validation (debt and collateral cannot be negative)
+    /// - USD conversion validation using EGLD/USD oracle price
+    /// - Threshold boundary validation ($5 USD minimum)
+    /// - Bad debt ratio validation (debt must exceed collateral)
+    /// - Event emission validation for cleanup triggers
+    ///
+    /// # Bad Debt Threshold Logic ($5 USD)
+    /// The $5 USD threshold serves multiple purposes:
+    /// - **Gas Efficiency**: Prevents cleanup of positions worth less than transaction costs
+    /// - **Economic Viability**: Ensures cleanup operations are economically justified
+    /// - **Protocol Health**: Removes dust positions that could accumulate over time
+    /// - **Liquidator Incentives**: Focuses liquidation efforts on meaningful positions
+    ///
+    /// # Integration with Cleanup Process
+    /// When cleanup criteria are met, this function emits events that trigger:
+    /// - External bad debt cleanup procedures
+    /// - Protocol reserve fund utilization
+    /// - Position closure and account cleanup
+    /// - Liquidity pool bad debt accounting
     ///
     /// # Arguments
-    /// - `account_nonce`: Position NFT nonce
-    /// - `borrowed_egld`: Total borrowed value before liquidation
-    /// - `max_debt_repaid`: Amount of debt repaid during liquidation
-    /// - `total_collateral`: Total collateral value before liquidation
-    /// - `seized_collateral_egld`: Amount of collateral seized during liquidation
-    /// - `cache`: Mutable storage cache
-    /// - `account_attributes`: Account attributes
+    /// - `cache`: Mutable storage cache containing EGLD/USD price feeds
+    /// - `account_nonce`: Position NFT nonce identifying the account
+    /// - `borrowed_egld`: Total borrowed value before liquidation (EGLD-denominated)
+    /// - `max_debt_repaid`: Amount of debt repaid during liquidation (EGLD-denominated)
+    /// - `total_collateral`: Total collateral value before liquidation (EGLD-denominated)
+    /// - `seized_collateral_egld`: Amount of collateral seized during liquidation (EGLD-denominated)
     fn check_bad_debt_after_liquidation(
         &self,
         cache: &mut Cache<Self>,
@@ -613,13 +1043,37 @@ pub trait PositionLiquidationModule:
         }
     }
 
-    /// Checks if dust cleanup is needed immediately after liquidation and performs it if necessary.
+    /// Evaluates whether a position qualifies for bad debt cleanup based on USD value thresholds.
     ///
-    /// Uses values already calculated during the liquidation process to determine:
-    /// 1. Remaining debt after liquidation
-    /// 2. Remaining collateral after liquidation
-    /// 3. Whether thresholds for dust cleanup are met
+    /// # Purpose and Scope
+    /// This function implements the core bad debt detection algorithm that determines if a position
+    /// should undergo dust cleanup based on economic thresholds. It prevents the accumulation of
+    /// small undercollateralized positions that would be uneconomical to liquidate individually.
     ///
+    /// # How It Works (Threshold Evaluation Logic)
+    /// 1. **USD Conversion**: Converts debt and collateral from EGLD to USD using oracle prices
+    /// 2. **Bad Debt Detection**: Checks if debt value exceeds collateral value
+    /// 3. **Threshold Validation**: Applies $5 USD thresholds for both debt and collateral
+    /// 4. **Cleanup Qualification**: Returns true only if all criteria are met simultaneously
+    ///
+    /// # Mathematical Criteria (All Must Be True)
+    /// ```
+    /// total_usd_debt = total_borrow * egld_usd_price
+    /// total_usd_collateral = total_collateral * egld_usd_price
+    /// min_threshold = $5 USD
+    ///
+    /// Cleanup criteria:
+    /// 1. has_bad_debt = total_usd_debt > total_usd_collateral
+    /// 2. has_minimal_collateral = total_usd_collateral <= min_threshold
+    /// 3. has_significant_debt = total_usd_debt >= min_threshold
+    /// ```
+    ///
+    /// # Economic Rationale
+    /// The $5 USD threshold ensures that:
+    /// - Cleanup operations are economically viable (gas costs < cleanup value)
+    /// - Small dust positions don't accumulate in the protocol
+    /// - Liquidators focus on meaningful positions
+    /// - Protocol maintains clean accounting without negligible bad debt
     fn can_clean_bad_debt_positions(
         &self,
         cache: &mut Cache<Self>,
@@ -643,12 +1097,73 @@ pub trait PositionLiquidationModule:
         has_bad_debt && has_collateral_under_min_threshold && has_bad_debt_above_min_threshold
     }
 
-    /// Executes dust cleanup by seizing all remaining collateral and adding bad debt
-    /// to the respective liquidity pools.
+    /// Executes comprehensive bad debt cleanup by liquidating all remaining positions and transferring losses to protocol reserves.
+    ///
+    /// # Purpose and Scope
+    /// This function performs complete position closure for accounts with bad debt that meets
+    /// cleanup criteria ($5 USD threshold). It:
+    /// - Transfers all remaining debt to liquidity pool bad debt reserves
+    /// - Seizes all remaining collateral for protocol benefit
+    /// - Handles isolated debt positions with special clearing procedures
+    /// - Completely closes the account and clears all position data
+    /// - Maintains protocol solvency through systematic bad debt accounting
+    ///
+    /// # How It Works (Complete Liquidation Process)
+    /// 1. **Debt Transfer**: All borrow positions are transferred to liquidity pools as bad debt
+    /// 2. **Isolated Debt Clearing**: Special handling for isolated positions via dedicated clearing
+    /// 3. **Collateral Seizure**: All deposit positions are seized by the protocol as dust collateral
+    /// 4. **Pool Integration**: Liquidity pools update their bad debt accounting and collateral reserves
+    /// 5. **Position Cleanup**: All position mappings are cleared from storage
+    /// 6. **Account Closure**: Account NFT and attributes are completely removed
+    ///
+    /// # Security Checks Implemented
+    /// - Caller address validation for event emission
+    /// - Pool address validation via cached lookups
+    /// - Position state validation before cleanup operations
+    /// - Atomic operation sequencing (debt first, then collateral)
+    /// - Complete data cleanup to prevent orphaned positions
+    ///
+    /// # Integration with Liquidity Pools
+    /// The function makes two critical calls to each affected liquidity pool:
+    ///
+    /// **For Borrow Positions** (`add_bad_debt`):
+    /// - Transfers debt obligation to pool's bad debt reserves
+    /// - Updates pool's accounting for undercollateralized loans
+    /// - May trigger protocol reserve utilization for bad debt coverage
+    ///
+    /// **For Deposit Positions** (`seize_dust_collateral`):
+    /// - Transfers collateral ownership to the liquidity pool
+    /// - Adds seized assets to pool's reserve fund
+    /// - Helps offset bad debt losses through collateral recovery
+    ///
+    /// # Bad Debt Accounting Flow
+    /// ```
+    /// For each borrow position:
+    ///   pool.add_bad_debt(position, current_price)
+    ///   emit_position_update_event(zero_position, updated_position)
+    ///
+    /// For each deposit position:
+    ///   pool.seize_dust_collateral(position, current_price)
+    ///   emit_position_update_event(zero_position, updated_position)
+    ///
+    /// Clear all position mappings and account data
+    /// ```
+    ///
+    /// # Isolated Debt Special Handling
+    /// For accounts in isolated mode, the function calls `clear_position_isolated_debt`
+    /// before transferring to bad debt, ensuring proper isolated position accounting
+    /// and preventing cross-contamination between isolated and regular debt positions.
+    ///
+    /// # Economic Impact
+    /// Bad debt cleanup has several economic effects:
+    /// - **Protocol Reserves**: May draw from protocol reserves to cover bad debt
+    /// - **Liquidity Pools**: Bad debt is distributed across affected pools
+    /// - **Collateral Recovery**: Seized collateral helps offset bad debt losses
+    /// - **System Health**: Removes toxic positions from active accounting
     ///
     /// # Arguments
-    /// - `account_nonce`: Position NFT nonce
-    /// - `cache`: Mutable storage cache
+    /// - `account_nonce`: Position NFT nonce identifying the account to clean up
+    /// - `cache`: Mutable storage cache for price feeds and pool address lookups
     fn perform_bad_debt_cleanup(&self, account_nonce: u64, cache: &mut Cache<Self>) {
         let caller = self.blockchain().get_caller();
         let account_attributes = self.account_attributes(account_nonce).get();

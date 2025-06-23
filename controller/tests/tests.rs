@@ -1364,7 +1364,7 @@ fn oracle_price_second_tolerance_xoxno_egld_averaging() {
     let get_usd_price = state.get_usd_price(XOXNO_TOKEN);
     // Result second bound as average price
     assert!(get_usd_price > get_usd_price_before && get_usd_price.into_raw_units() < &new_price);
-    
+
     // Borrow should succeed with averaged prices
     state.borrow_asset(
         &borrower,
@@ -1476,6 +1476,4 @@ fn oracle_price_out_of_tolerance_lp_egld_averaging() {
         EGLD_DECIMALS,
         ERROR_UN_SAFE_PRICE_NOT_ALLOWED,
     );
-    
-    
 }

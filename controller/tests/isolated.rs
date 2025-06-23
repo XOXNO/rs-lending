@@ -11,7 +11,7 @@ use constants::*;
 use setup::*;
 
 /// Tests that isolated assets cannot be used with E-Mode.
-/// 
+///
 /// Covers:
 /// - Controller::supply validation for isolated assets
 /// - E-Mode incompatibility with isolated assets
@@ -23,7 +23,7 @@ fn isolated_supply_with_emode_incompatible_error() {
     let borrower = TestAddress::new("borrower");
 
     setup_accounts(&mut state, supplier, borrower);
-    
+
     // First supply a regular asset with E-Mode
     state.supply_asset(
         &supplier,
@@ -49,7 +49,7 @@ fn isolated_supply_with_emode_incompatible_error() {
 }
 
 /// Tests that isolated collateral cannot be mixed with other collateral types.
-/// 
+///
 /// Covers:
 /// - Controller::supply validation for collateral mixing
 /// - Isolated asset exclusivity requirement
@@ -61,7 +61,7 @@ fn isolated_mix_with_regular_collateral_error() {
     let borrower = TestAddress::new("borrower");
 
     setup_accounts(&mut state, supplier, borrower);
-    
+
     // First supply isolated asset
     state.supply_asset(
         &supplier,
@@ -87,7 +87,7 @@ fn isolated_mix_with_regular_collateral_error() {
 }
 
 /// Tests borrowing against isolated collateral with debt ceiling tracking.
-/// 
+///
 /// Covers:
 /// - Controller::borrow with isolated collateral
 /// - Debt ceiling tracking for isolated assets
@@ -131,7 +131,7 @@ fn isolated_borrow_within_debt_ceiling_success() {
         2,
         USDC_DECIMALS,
     );
-    
+
     // Verify debt ceiling usage is tracked
     let debt_usage = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
     assert!(debt_usage > ManagedDecimal::from_raw_units(BigUint::zero(), ISOLATED_DECIMALS));
@@ -144,14 +144,14 @@ fn isolated_borrow_within_debt_ceiling_success() {
         2,
         USDC_DECIMALS,
     );
-    
+
     // Verify debt ceiling usage is cleared
     let final_debt_usage = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
     assert!(final_debt_usage == ManagedDecimal::from_raw_units(BigUint::zero(), ISOLATED_DECIMALS));
 }
 
 /// Tests borrowing against isolated collateral hitting debt ceiling limit.
-/// 
+///
 /// Covers:
 /// - Controller::borrow debt ceiling validation
 /// - Isolated asset debt ceiling enforcement
@@ -198,7 +198,7 @@ fn isolated_borrow_exceeds_debt_ceiling_error() {
 }
 
 /// Tests debt ceiling tracking with interest accrual on isolated collateral.
-/// 
+///
 /// Covers:
 /// - Controller::updateIndexes impact on isolated debt tracking
 /// - Interest accrual vs principal tracking for debt ceiling
@@ -244,8 +244,10 @@ fn isolated_debt_ceiling_with_interest_accrual() {
 
     // Verify initial debt ceiling usage
     let initial_debt_usage = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
-    assert!(initial_debt_usage > ManagedDecimal::from_raw_units(BigUint::zero(), ISOLATED_DECIMALS));
-    
+    assert!(
+        initial_debt_usage > ManagedDecimal::from_raw_units(BigUint::zero(), ISOLATED_DECIMALS)
+    );
+
     // Advance time for interest accrual
     state.change_timestamp(SECONDS_PER_DAY);
 
@@ -253,7 +255,7 @@ fn isolated_debt_ceiling_with_interest_accrual() {
     let mut markets = MultiValueEncoded::new();
     markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
     state.update_markets(&borrower, markets.clone());
-    
+
     // Partial repayment (less than total with interest)
     state.repay_asset(
         &borrower,
@@ -262,14 +264,14 @@ fn isolated_debt_ceiling_with_interest_accrual() {
         2,
         USDC_DECIMALS,
     );
-    
+
     // Verify debt ceiling usage still exists (interest not fully covered)
     let final_debt_usage = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
     assert!(final_debt_usage > ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION));
 }
 
 /// Tests liquidation impact on isolated asset debt ceiling.
-/// 
+///
 /// Covers:
 /// - Controller::liquidate with isolated collateral
 /// - Debt ceiling reduction through liquidation
@@ -281,7 +283,7 @@ fn isolated_liquidation_reduces_debt_ceiling() {
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
     let liquidator = TestAddress::new("liquidator");
-    
+
     setup_accounts(&mut state, supplier, borrower);
     state.world.account(liquidator).nonce(1).esdt_balance(
         USDC_TOKEN,
@@ -318,17 +320,19 @@ fn isolated_liquidation_reduces_debt_ceiling() {
         2,
         USDC_DECIMALS,
     );
-    
+
     // Record initial debt ceiling usage
     let initial_debt_usage = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
-    assert!(initial_debt_usage > ManagedDecimal::from_raw_units(BigUint::zero(), ISOLATED_DECIMALS));
-    
+    assert!(
+        initial_debt_usage > ManagedDecimal::from_raw_units(BigUint::zero(), ISOLATED_DECIMALS)
+    );
+
     // Advance time significantly to make position unhealthy
     state.change_timestamp(SECONDS_PER_DAY * 1600);
     let mut markets = MultiValueEncoded::new();
     markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
     state.update_markets(&borrower, markets.clone());
-    
+
     // Liquidate position
     state.liquidate_account(
         &liquidator,
@@ -337,14 +341,14 @@ fn isolated_liquidation_reduces_debt_ceiling() {
         2,
         USDC_DECIMALS,
     );
-    
+
     // Verify debt ceiling reduced after liquidation
     let post_liquidation_usage = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
     assert!(post_liquidation_usage < initial_debt_usage);
-    
+
     // Clean remaining bad debt
     state.clean_bad_debt(2);
-    
+
     // Verify debt ceiling fully cleared
     let final_debt_usage = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
     assert_eq!(
@@ -354,7 +358,7 @@ fn isolated_liquidation_reduces_debt_ceiling() {
 }
 
 /// Tests supply attempt with non-collateralizable asset in E-Mode.
-/// 
+///
 /// Covers:
 /// - Controller::supply validation for asset support
 /// - E-Mode respecting collateralization settings

@@ -8,6 +8,25 @@ use common_errors::*;
 pub use common_events::*;
 pub use common_proxies::*;
 
+/// Configuration module for the MultiversX lending protocol controller.
+///
+/// This module handles critical protocol governance functions including:
+/// - Oracle configuration and price feed management
+/// - Asset configuration with risk parameters (LTV, liquidation thresholds, fees)
+/// - E-mode category management for optimized asset usage
+/// - Protocol service address management (aggregator, accumulator, etc.)
+///
+/// # Security Considerations
+/// All functions in this module are restricted to the contract owner and affect
+/// core protocol parameters. Changes must be carefully validated to maintain
+/// protocol safety and prevent economic exploits.
+///
+/// # Governance Aspects
+/// This module implements governance-controlled configuration that determines:
+/// - Risk parameters for lending and borrowing
+/// - Oracle sources and tolerance settings for price feeds
+/// - Efficiency mode categories for correlated assets
+/// - Protocol fee collection and revenue distribution
 #[multiversx_sc::module]
 pub trait ConfigModule:
     storage::Storage
@@ -18,15 +37,36 @@ pub trait ConfigModule:
     + common_math::SharedMathModule
     + common_rates::InterestRates
 {
-    /// Registers a new NFT token for tracking account positions.
-    /// Issues an ESDT token with non-fungible properties.
+    /// Registers a new NFT token for tracking account positions in the lending protocol.
+    ///
+    /// **Purpose**: Creates a dynamic NFT collection used to represent user positions
+    /// as transferable tokens. Each NFT contains position data including deposits,
+    /// borrows, and risk parameters.
+    ///
+    /// **How it works**:
+    /// 1. Issues a new ESDT token with DynamicNFT properties
+    /// 2. Sets all necessary roles for minting/burning position NFTs
+    /// 3. Enables position tracking and transferability
+    ///
+    /// **Security checks**:
+    /// - Only contract owner can register account tokens
+    /// - Requires EGLD payment for token issuance (protocol fee)
+    /// - Validates token name and ticker parameters
+    ///
+    /// **Governance considerations**:
+    /// This is a one-time setup function that establishes the position tracking
+    /// mechanism. Once set, users can mint position NFTs representing their
+    /// lending/borrowing activities.
     ///
     /// # Arguments
-    /// - `token_name`: Name of the NFT token.
-    /// - `ticker`: Ticker symbol for the NFT token.
+    /// - `token_name`: Human-readable name for the position NFT collection
+    /// - `ticker`: Short ticker symbol for the NFT collection
     ///
-    /// # Notes
-    /// - Requires EGLD payment for issuance.
+    /// # Returns
+    /// Nothing - sets up the account token for future position minting
+    ///
+    /// # Payment Required
+    /// - EGLD payment for ESDT token issuance (amount determined by protocol)
     #[only_owner]
     #[payable("EGLD")]
     #[endpoint(registerAccountToken)]
@@ -292,16 +332,54 @@ pub trait ConfigModule:
         self.liq_pool_template_address().set(&address);
     }
 
-    /// Adds a new e-mode category with risk parameters.
-    /// Creates an efficiency mode for optimized asset usage.
+    /// Creates a new efficiency mode (e-mode) category with optimized risk parameters.
+    ///
+    /// **Purpose**: E-mode categories allow users to achieve higher capital efficiency
+    /// when using correlated assets (e.g., different stablecoins or ETH derivatives).
+    /// Categories group assets with similar risk profiles for optimized lending terms.
+    ///
+    /// **How it works**:
+    /// 1. Increments the global e-mode category counter
+    /// 2. Converts risk parameters from basis points to decimal representation
+    /// 3. Creates EModeCategory struct with new ID and parameters
+    /// 4. Stores the category and emits configuration event
+    ///
+    /// **Risk parameter conversion**:
+    /// All parameters are converted using `to_decimal_bps()` formula:
+    /// ```
+    /// decimal_value = bps_value / 10000
+    /// ```
+    /// This converts basis points (1 bps = 0.01%) to decimal representation.
+    ///
+    /// **E-mode benefits**:
+    /// - Higher LTV ratios for correlated assets
+    /// - Lower liquidation thresholds (safer for protocol)
+    /// - Optimized capital utilization for users
+    /// - Reduced risk through asset correlation
+    ///
+    /// **Security considerations**:
+    /// - Only owner can create e-mode categories (governance control)
+    /// - Risk parameters must be carefully calibrated for asset correlations
+    /// - Categories cannot be deleted, only deprecated
+    /// - Assets must be explicitly added to categories after creation
+    ///
+    /// **Governance impact**:
+    /// E-mode categories affect user capital efficiency and protocol risk.
+    /// Parameters should reflect actual asset correlations and market conditions.
     ///
     /// # Arguments
-    /// - `ltv`: Loan-to-value ratio in BPS.
-    /// - `liquidation_threshold`: Liquidation threshold in BPS.
-    /// - `liquidation_bonus`: Liquidation bonus in BPS.
+    /// - `ltv`: Loan-to-value ratio in basis points (e.g., 8000 = 80%)
+    /// - `liquidation_threshold`: Liquidation threshold in basis points (e.g., 8500 = 85%)
+    /// - `liquidation_bonus`: Liquidation bonus in basis points (e.g., 500 = 5%)
     ///
-    /// # Notes
-    /// - Assigns a new category ID automatically.
+    /// # Returns
+    /// Nothing - creates new e-mode category with auto-assigned ID
+    ///
+    /// # Mathematical formulas
+    /// - **LTV**: Maximum borrowing capacity = collateral_value * ltv
+    /// - **Liquidation threshold**: Position becomes liquidatable when health_factor < 1
+    ///   where health_factor = (collateral * threshold) / debt
+    /// - **Liquidation bonus**: Additional reward for liquidators = liquidated_amount * bonus
     #[only_owner]
     #[endpoint(addEModeCategory)]
     fn add_e_mode_category(
@@ -597,5 +675,34 @@ pub trait ConfigModule:
         map.set(new_config);
 
         self.update_asset_config_event(&asset, new_config);
+    }
+
+    /// Sets the position limits for NFT accounts.
+    /// Configures maximum number of borrow and supply positions per NFT.
+    ///
+    /// **Purpose**: Controls the maximum number of positions an NFT can hold to optimize
+    /// gas costs during liquidations and prevent excessive complexity in position management.
+    ///
+    /// **Gas Optimization**: By limiting positions per NFT, liquidation operations remain
+    /// within reasonable gas limits, preventing failed liquidations due to gas constraints.
+    ///
+    /// **Default Configuration**: 10 borrow positions + 10 supply positions = 20 total positions
+    ///
+    /// # Arguments
+    /// - `max_borrow_positions`: Maximum number of borrow positions per NFT
+    /// - `max_supply_positions`: Maximum number of supply positions per NFT  
+    ///
+    /// # Security
+    /// - Only contract owner can modify position limits
+    /// - Changes affect new positions only, existing positions remain valid
+    /// - Limits are enforced in supply and borrow operations
+    #[only_owner]
+    #[endpoint(setPositionLimits)]
+    fn set_position_limits(&self, max_borrow_positions: u8, max_supply_positions: u8) {
+        let limits = PositionLimits {
+            max_borrow_positions,
+            max_supply_positions,
+        };
+        self.position_limits().set(limits);
     }
 }
