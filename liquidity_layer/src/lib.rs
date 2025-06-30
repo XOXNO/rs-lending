@@ -37,7 +37,7 @@ pub trait LiquidityPool:
     ///    by converting `BigUint` inputs to `ManagedDecimal` with appropriate scaling (RAY for rates, BPS for reserve factor).
     /// 3. Initializes the borrow and supply indexes to `RAY` (representing 1.0 in the system's precision).
     /// 4. Sets initial values for supplied, reserves, borrowed, and revenue to zero, using the asset's decimal precision.
-    /// 5. Records the current blockchain timestamp as the last update time.
+    /// 5. Records the current blockchain timestamp converted to milliseconds as the last update time.
     ///
     /// ### Parameters
     /// - `asset`: The asset identifier (`EgldOrEsdtTokenIdentifier`) for the pool.

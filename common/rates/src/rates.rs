@@ -93,11 +93,11 @@ pub trait InterestRates: common_math::SharedMathModule {
     ///
     /// # Arguments
     /// - `utilization`: Current utilization ratio (`ManagedDecimal<Self::Api, NumDecimals>`), RAY-based.
-    /// - `borrow_rate`: Current per-second borrow rate (`ManagedDecimal<Self::Api, NumDecimals>`), RAY-based.
+    /// - `borrow_rate`: Current per-millisecond borrow rate (`ManagedDecimal<Self::Api, NumDecimals>`), RAY-based.
     /// - `reserve_factor`: Protocol fee fraction (`ManagedDecimal<Self::Api, NumDecimals>`), BPS-based.
     ///
     /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: Per-second deposit rate (RAY-based).
+    /// - `ManagedDecimal<Self::Api, NumDecimals>`: Per-millisecond deposit rate (RAY-based).
     ///
     /// **Security Tip**: Assumes inputs are valid; no overflow or underflow checks within this specific function beyond standard `ManagedDecimal` operations.
     fn calc_deposit_rate(
@@ -123,8 +123,8 @@ pub trait InterestRates: common_math::SharedMathModule {
     /// - `Interest Factor = 1 + (rate * time_passed)`
     ///
     /// # Arguments
-    /// - `rate`: The per-second interest rate (`ManagedDecimal<Self::Api, NumDecimals>`), in RAY.
-    /// - `time_passed`: The duration in seconds (`u64`) for which interest is calculated.
+    /// - `rate`: The per-millisecond interest rate (`ManagedDecimal<Self::Api, NumDecimals>`), in RAY.
+    /// - `time_passed`: The duration in milliseconds (`u64`) for which interest is calculated.
     ///
     /// # Returns
     /// - `ManagedDecimal<Self::Api, NumDecimals>`: The interest accumulation factor `(1 + r*t)`, in RAY.
@@ -155,8 +155,8 @@ pub trait InterestRates: common_math::SharedMathModule {
     /// - Suitable for small `x`; precision decreases for large intervals.
     ///
     /// # Arguments
-    /// - `rate`: Current per-second borrow rate (`ManagedDecimal<Self::Api, NumDecimals>`), RAY-based.
-    /// - `exp`: Time elapsed in seconds (`u64`).
+    /// - `rate`: Current per-millisecond borrow rate (`ManagedDecimal<Self::Api, NumDecimals>`), RAY-based.
+    /// - `exp`: Time elapsed in milliseconds (`u64`).
     ///
     /// # Returns
     /// - `ManagedDecimal<Self::Api, NumDecimals>`: Interest growth factor (RAY-based).

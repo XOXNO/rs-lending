@@ -181,7 +181,6 @@ pub trait ViewModule:
     /// **Time Measurement**:
     /// ```
     /// delta_ms = current_block_timestamp * 1000 - last_timestamp
-    /// delta_seconds = delta_ms / 1000
     /// ```
     ///
     /// **Interest Accrual Relationship**:

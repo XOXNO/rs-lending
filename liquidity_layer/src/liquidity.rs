@@ -820,6 +820,7 @@ pub trait LiquidityModule:
     /// While this function doesn't enforce a threshold, it's typically used for
     /// amounts that are economically unviable for users to withdraw due to
     /// transaction costs exceeding the value.
+    /// The treshold is set inside the controller contract that is the only one able to call this function.
     ///
     /// **Impact on Pool Accounting**:
     /// - User's scaled position: reduced to zero

@@ -516,7 +516,7 @@ pub trait PositionDepositModule:
     ///
     /// **Security Considerations**:
     /// - Health factor validation prevents immediate liquidations
-    /// - Requires minimum 20% health factor buffer for risky updates
+    /// - Requires minimum 5% health factor buffer for risky updates (safety factor of 20)
     /// - E-mode compatibility validation ensures proper parameter application
     ///
     /// **Risk Management**:

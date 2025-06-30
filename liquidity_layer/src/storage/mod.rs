@@ -69,7 +69,7 @@ pub trait Storage {
     /// Retrieves the last update timestamp for the interest indexes.
     ///
     /// # Returns
-    /// - `u64`: The timestamp when indexes were last updated.
+    /// - `u64`: The timestamp when indexes were last updated, stored in milliseconds since Unix epoch.
     #[view(getLastTimestamp)]
     #[storage_mapper("last_timestamp")]
     fn last_timestamp(&self) -> SingleValueMapper<u64>;
