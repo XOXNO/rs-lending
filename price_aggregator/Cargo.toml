@@ -1,6 +1,6 @@
 [package]
 name = "price_aggregator"
-version = "0.57.0"
+version = "0.59.0"
 authors = [
     "Claudiu-Marcel Bruda <claudiu.bruda@multiversx.com>",
     "MultiversX <contact@multiversx.com>",
@@ -31,13 +31,13 @@ path = "src/lib.rs"
 doctest = false
 
 [dev-dependencies.multiversx-sc-scenario]
-version = "0.57.0"
+version = "0.59.0"
 
 [dependencies.multiversx-sc]
-version = "0.57.0"
+version = "0.59.0"
 
 [dependencies.multiversx-sc-modules]
-version = "0.57.0"
+version = "0.59.0"
 
 [dependencies.arrayvec]
 version = "0.7.1"

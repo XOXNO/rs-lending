@@ -268,7 +268,7 @@ pub trait PositionLiquidationModule:
     ///
     /// # How It Works (Health Factor Validation)
     /// 1. **Health Factor Calculation**: `collateral_value / total_debt`
-    /// 2. **Liquidation Threshold Check**: Health factor must be < 1.0 (WAD precision)
+    /// 2. **Liquidation Threshold Check**: Health factor must be < 1.0 (RAY precision)
     /// 3. **Security Enforcement**: Reverts transaction if position is healthy
     /// 4. **Value Return**: Provides health factor for Dutch auction calculations
     ///
@@ -284,7 +284,7 @@ pub trait PositionLiquidationModule:
     ///
     /// # Security Checks Implemented
     /// - Health factor boundary validation (must be < 1.0)
-    /// - Numerical precision handling with WAD-level accuracy
+    /// - Numerical precision handling with RAY-level accuracy
     /// - Transaction revert on healthy position liquidation attempts
     /// - Proper error code emission for debugging and monitoring
     ///
@@ -300,7 +300,7 @@ pub trait PositionLiquidationModule:
     /// - `borrowed_egld`: Total borrowed amount across all assets (EGLD-denominated)
     ///
     /// # Returns
-    /// - Current health factor (WAD precision) for use in liquidation amount calculations
+    /// - Current health factor (RAY precision) for use in liquidation amount calculations
     ///
     /// # Errors
     /// - `ERROR_HEALTH_FACTOR`: When health factor ≥ 1.0 (position is healthy and not liquidatable)
@@ -310,7 +310,7 @@ pub trait PositionLiquidationModule:
         borrowed_egld: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let health_factor = self.compute_health_factor(collateral_in_egld, borrowed_egld);
-        require!(health_factor < self.wad(), ERROR_HEALTH_FACTOR);
+        require!(health_factor < self.ray(), ERROR_HEALTH_FACTOR);
         health_factor
     }
 
@@ -734,7 +734,7 @@ pub trait PositionLiquidationModule:
         proportion_seized: &ManagedDecimal<Self::Api, NumDecimals>,
         base_liquidation_bonus: &ManagedDecimal<Self::Api, NumDecimals>,
         health_factor: &ManagedDecimal<Self::Api, NumDecimals>,
-        egld_payment: &ManagedDecimal<Self::Api, NumDecimals>,
+        egld_payment_ray: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> (
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
@@ -749,9 +749,8 @@ pub trait PositionLiquidationModule:
             base_liquidation_bonus,
             health_factor,
         );
-        let egld_payment_ray = egld_payment.rescale(RAY_PRECISION);
-        let final_repayment_amount_ray = if egld_payment_ray > self.ray_zero() {
-            self.get_min(egld_payment_ray, estimated_max_repayable_debt_ray)
+        let final_repayment_amount_ray = if egld_payment_ray > &self.ray_zero() {
+            self.get_min(egld_payment_ray.clone(), estimated_max_repayable_debt_ray)
         } else {
             estimated_max_repayable_debt_ray.clone()
         };
@@ -1187,6 +1186,7 @@ pub trait PositionLiquidationModule:
                 .sync_call();
 
             self.emit_position_update_event(
+                cache,
                 &position.zero_decimal(),
                 &updated_position,
                 feed.price.clone(),
@@ -1210,6 +1210,7 @@ pub trait PositionLiquidationModule:
                 .sync_call();
 
             self.emit_position_update_event(
+                cache,
                 &position.zero_decimal(),
                 &updated_position,
                 feed.price,

@@ -1,5 +1,4 @@
-use common_constants::RAY;
-use controller::WAD_PRECISION;
+use common_constants::WAD_PRECISION;
 use multiversx_sc::types::{
     EgldOrEsdtTokenIdentifier, ManagedDecimal, ManagedMapEncoded, MultiValueEncoded,
 };
@@ -300,7 +299,7 @@ fn stress_test_random_user_actions_large_scale() {
                         state.borrow_asset(
                             &user_addr,
                             EGLD_TOKEN,
-                            available_borrow.into_raw_units().clone() / BigUint::from(RAY),
+                            available_borrow.into_raw_units().clone() / BigUint::from(WAD),
                             nonce,
                             EGLD_DECIMALS,
                         );

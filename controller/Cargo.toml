@@ -10,13 +10,14 @@ path = "src/lib.rs"
 doctest = false
 
 [dependencies.multiversx-sc-modules]
-version = "0.57.0"
+version = "0.59.0"
 
 [dependencies.multiversx-sc]
-version = "0.57.0"
+version = "0.59.0"
+features = ["barnard"]
 
 [dependencies.multiversx-wegld-swap-sc]
-version = "0.57.0"
+version = "0.59.0"
 
 [dependencies.liquidity_layer]
 path = "../liquidity_layer"
@@ -49,8 +50,7 @@ path = "../price_aggregator"
 path = "../flash_mock"
 
 [dev-dependencies]
-hex                    = "0.4"
-multiversx-sc-scenario = "0.57.0"
+multiversx-sc-scenario = "0.59.0"
 rs-liquid-xoxno        = { git = "https://github.com/XOXNO/rs-liquid-xoxno" }
 rs-liquid-staking-sc   = { git = "https://github.com/XOXNO/rs-liquid-staking-sc", package = "liquid-staking" }
 pair                   = { git = "https://github.com/mihaieremia/mx-exchange-sc", package = "pair" }

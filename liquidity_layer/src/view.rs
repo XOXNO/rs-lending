@@ -197,7 +197,7 @@ pub trait ViewModule:
     /// - Time elapsed since last update in milliseconds
     #[view(getDeltaTime)]
     fn get_delta_time(&self) -> u64 {
-        (self.blockchain().get_block_timestamp() * 1000u64) - self.last_timestamp().get()
+        self.blockchain().get_block_timestamp_ms() - self.last_timestamp().get()
     }
 
     /// Retrieves the protocol revenue accrued from borrow interest fees, scaled to the asset's decimals.

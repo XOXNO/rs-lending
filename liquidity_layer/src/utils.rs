@@ -320,23 +320,17 @@ pub trait UtilsModule:
         back_transfers: &BackTransfers<Self::Api>,
         required_repayment: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let repayment = if cache.params.asset_id.is_egld() {
-            cache.get_decimal_value(&back_transfers.total_egld_amount)
-        } else {
-            require!(
-                back_transfers.esdt_payments.len() == 1,
-                ERROR_INVALID_FLASHLOAN_REPAYMENT
-            );
-            let payment = back_transfers.esdt_payments.get(0);
-            require!(
-                cache.is_same_asset(&EgldOrEsdtTokenIdentifier::esdt(
-                    payment.token_identifier.clone()
-                )),
-                ERROR_INVALID_FLASHLOAN_REPAYMENT
-            );
+        require!(
+            back_transfers.payments.len() == 1,
+            ERROR_INVALID_FLASHLOAN_REPAYMENT
+        );
+        let payment = back_transfers.payments.get(0);
+        require!(
+            cache.is_same_asset(&payment.token_identifier),
+            ERROR_INVALID_FLASHLOAN_REPAYMENT
+        );
 
-            cache.get_decimal_value(&payment.amount)
-        };
+        let repayment = cache.get_decimal_value(&payment.amount);
 
         require!(
             repayment >= *required_repayment,

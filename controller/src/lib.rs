@@ -219,7 +219,6 @@ pub trait Controller:
             .positions(account_nonce, AccountPositionType::Deposit)
             .values()
             .collect();
-        // self.sync_deposit_positions_interest(account_payment.token_nonce, &mut cache, true);
 
         let (_, _, ltv_collateral) = self.calculate_collateral_values(&collaterals, &mut cache);
 

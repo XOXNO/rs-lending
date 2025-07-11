@@ -1,5 +1,5 @@
-use common_events::MarketIndexView;
-use common_structs::{AccountPositionType, AssetExtendedConfigView};
+use common_constants::WAD_PRECISION;
+use common_structs::{AccountPositionType, AssetExtendedConfigView, MarketIndexView};
 
 use crate::{cache::Cache, helpers, oracle, positions, storage, utils, validation};
 
@@ -132,7 +132,7 @@ pub trait ViewsModule:
     #[view(canBeLiquidated)]
     fn can_be_liquidated(&self, account_nonce: u64) -> bool {
         let health_factor = self.get_health_factor(account_nonce);
-        health_factor < self.wad()
+        health_factor < self.ray()
     }
 
     /// Computes the current health factor for an account position.
@@ -227,7 +227,9 @@ pub trait ViewsModule:
             .positions(account_nonce, AccountPositionType::Borrow)
             .values()
             .collect();
-        self.calculate_total_borrow_in_egld(&borrow_positions, &mut cache)
+        let total_borrow_ray = self.calculate_total_borrow_in_egld(&borrow_positions, &mut cache);
+
+        self.rescale_half_up(&total_borrow_ray, WAD_PRECISION)
     }
 
     /// Computes the total collateral value in EGLD for an account position.
@@ -251,7 +253,7 @@ pub trait ViewsModule:
         deposit_positions.values().fold(self.wad_zero(), |acc, dp| {
             let feed = self.get_token_price(&dp.asset_id, &mut cache);
             let amount = self.get_total_amount(&dp, &feed, &mut cache);
-            acc + self.get_token_egld_value_ray(&amount, &feed.price)
+            acc + self.get_token_egld_value(&amount, &feed.price)
         })
     }
 
@@ -275,7 +277,7 @@ pub trait ViewsModule:
         let (weighted_collateral, _, _) =
             self.calculate_collateral_values(&deposit_positions.values().collect(), &mut cache);
 
-        weighted_collateral
+        self.rescale_half_up(&weighted_collateral, WAD_PRECISION)
     }
 
     /// Computes the LTV-weighted collateral value in EGLD.
@@ -298,7 +300,7 @@ pub trait ViewsModule:
         let (_, _, ltv_collateral) =
             self.calculate_collateral_values(&deposit_positions.values().collect(), &mut cache);
 
-        ltv_collateral
+        self.rescale_half_up(&ltv_collateral, WAD_PRECISION)
     }
 
     /// Retrieves the USD price of a token using oracle data.

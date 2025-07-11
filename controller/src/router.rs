@@ -313,7 +313,7 @@ pub trait RouterModule:
             ERROR_TEMPLATE_EMPTY
         );
 
-        let decimals = self.token_oracle(base_asset).get().price_decimals;
+        let decimals = self.token_oracle(base_asset).get().asset_decimals;
 
         self.tx()
             .typed(proxy_pool::LiquidityPoolProxy)

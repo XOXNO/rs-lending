@@ -70,11 +70,17 @@ pub trait SharedMathModule {
         let product = scaled_a.into_raw_units() * scaled_b.into_raw_units();
 
         // Half-up rounding at precision
-        let scaled = BigUint::from(10u64).pow(precision as u32);
-        let half_scaled = &scaled / &BigUint::from(2u64);
+        let scaled = BigInt::from(10i64).pow(precision as u32);
+        let half_scaled = &scaled / &BigInt::from(2i64);
 
-        // Round half-up
-        let rounded_product = (product + half_scaled) / scaled;
+        // ─── sign-aware “away-from-zero” rounding ───────────────────────────
+        let rounded_product = if product.sign() == Sign::Minus {
+            // pull the value farther *below* zero
+            (product - half_scaled) / scaled // truncates toward-0 ⇒ away-from-0
+        } else {
+            // push the value farther *above* zero
+            (product + half_scaled) / scaled
+        };
 
         ManagedDecimalSigned::from_raw_units(rounded_product, precision)
     }
@@ -91,15 +97,22 @@ pub trait SharedMathModule {
         let scaled_b = b.rescale(precision);
 
         // Perform division in BigUint
-        let scaled = BigUint::from(10u64).pow(precision as u32);
+        let scaled = BigInt::from(10i64).pow(precision as u32);
         let numerator = scaled_a.into_raw_units() * &scaled;
         let denominator = scaled_b.into_raw_units();
 
         // Half-up rounding
-        let half_denominator = denominator / &BigUint::from(2u64);
-        let rounded_quotient = &(&numerator + &half_denominator) / denominator;
+        let half_denominator = denominator / &BigInt::from(2i64);
 
-        ManagedDecimalSigned::from_raw_units(rounded_quotient, precision)
+        let sign_neg = numerator.sign() != denominator.sign();
+
+        let rounded = if sign_neg {
+            &(numerator - half_denominator) / denominator
+        } else {
+            &(numerator + half_denominator) / denominator
+        };
+
+        ManagedDecimalSigned::from_raw_units(rounded, precision)
     }
 
     #[inline]

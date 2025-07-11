@@ -59,8 +59,14 @@ where
             allow_unsafe_price: true,
             flash_loan_ongoing: sc_ref.flash_loan_ongoing().get(),
             safe_price_view,
-            current_timestamp: sc_ref.blockchain().get_block_timestamp() * 1000,
+            current_timestamp: sc_ref.blockchain().get_block_timestamp_ms(),
         }
+    }
+
+    // Clean the prices cache to have a fresh value after the swaps to prevent a bad HF
+    // This is used in the strategy to prevent a bad HF after the swaps
+    pub fn clean_prices_cache(&mut self) {
+        self.prices_cache = ManagedMapEncoded::new();
     }
 
     /// Retrieves or caches asset configuration data.

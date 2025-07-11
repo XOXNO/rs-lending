@@ -120,7 +120,8 @@ where
     /// - `e_mode_category`: Optional e-mode category for specialized parameters. 
     ///  
     /// # Payment 
-    /// - Accepts minimum 1 payment: optional account NFT and bulk collateral tokens. 
+    /// - Accepts payments: optional account NFT (first payment if present) and one or more collateral tokens. 
+    /// - Requires at least one collateral token payment after NFT extraction. 
     pub fn supply<
         Arg0: ProxyArg<OptionalValue<u64>>,
         Arg1: ProxyArg<OptionalValue<u8>>,
@@ -210,7 +211,7 @@ where
     ///  
     /// # Arguments 
     /// - `borrowed_asset_id`: Token identifier to borrow. 
-    /// - `amount`: Amount to borrow. 
+    /// - `amount`: Amount to borrow in raw token units (will be converted to decimal precision). 
     /// - `contract_address`: Address of the contract to receive the loan. 
     /// - `endpoint`: Endpoint to call on the receiving contract. 
     /// - `arguments`: Arguments for the endpoint call. 

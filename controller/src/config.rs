@@ -194,7 +194,7 @@ pub trait ConfigModule:
             oracle_contract_address: contract_address.clone(),
             oracle_type: token_type,
             exchange_source: source,
-            price_decimals: decimals,
+            asset_decimals: decimals,
             pricing_method,
             tolerance,
             onedex_pair_id: one_dex_id,

@@ -394,12 +394,12 @@ fn views_position_data_and_aggregates() {
     let ltv_collateral = state.get_ltv_collateral_in_egld(2);
 
     // Verify relationships
-    assert!(total_borrow_egld > ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION));
-    assert!(total_collateral_egld > ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION));
+    assert!(total_borrow_egld > ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION));
+    assert!(total_collateral_egld > ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION));
     assert!(
-        liquidation_collateral > ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION)
+        liquidation_collateral > ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION)
     );
-    assert!(ltv_collateral > ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION));
+    assert!(ltv_collateral > ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION));
 
     // Verify expected relationships
     assert!(ltv_collateral < liquidation_collateral); // LTV more conservative
@@ -604,8 +604,8 @@ fn views_complex_liquidation_bad_debt_scenario() {
     assert!(
         health_factor
             < ManagedDecimal::from_raw_units(
-                BigUint::from(10u64).pow(WAD_PRECISION as u32),
-                WAD_PRECISION
+                BigUint::from(10u64).pow(RAY_PRECISION as u32),
+                RAY_PRECISION
             )
     );
 

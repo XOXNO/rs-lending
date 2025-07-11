@@ -157,6 +157,7 @@ pub trait EventsModule {
     #[event("update_position")]
     fn update_position_event(
         &self,
+        #[indexed] index: ManagedDecimal<Self::Api, NumDecimals>,
         #[indexed] amount: &ManagedDecimal<Self::Api, NumDecimals>,
         #[indexed] position: &AccountPosition<Self::Api>,
         #[indexed] asset_price: OptionalValue<ManagedDecimal<Self::Api, NumDecimals>>,

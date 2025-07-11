@@ -111,8 +111,8 @@ pub trait LiquidityPool:
 
         self.revenue().set(self.ray_zero());
 
-        let timestamp_seconds = self.blockchain().get_block_timestamp();
-        self.last_timestamp().set(timestamp_seconds * 1000u64);
+        let timestamp_ms = self.blockchain().get_block_timestamp_ms();
+        self.last_timestamp().set(timestamp_ms);
     }
 
     /// Upgrades the liquidity pool parameters.

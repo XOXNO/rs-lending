@@ -448,8 +448,8 @@ pub trait LendingUtilsModule:
         let health_factor = self.compute_health_factor(&collateral, &borrowed);
 
         let min_health_factor = match safety_factor {
-            Some(safety_factor_value) => self.wad() + (self.wad() / safety_factor_value),
-            None => self.wad(),
+            Some(safety_factor_value) => self.ray() + (self.ray() / safety_factor_value),
+            None => self.ray(),
         };
 
         require!(

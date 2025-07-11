@@ -54,7 +54,7 @@ where
     ///    by converting `BigUint` inputs to `ManagedDecimal` with appropriate scaling (RAY for rates, BPS for reserve factor). 
     /// 3. Initializes the borrow and supply indexes to `RAY` (representing 1.0 in the system's precision). 
     /// 4. Sets initial values for supplied, reserves, borrowed, and revenue to zero, using the asset's decimal precision. 
-    /// 5. Records the current blockchain timestamp as the last update time. 
+    /// 5. Records the current blockchain timestamp converted to milliseconds as the last update time. 
     ///  
     /// ### Parameters 
     /// - `asset`: The asset identifier (`EgldOrEsdtTokenIdentifier`) for the pool. 
@@ -290,7 +290,7 @@ where
     /// Retrieves the last update timestamp for the interest indexes. 
     ///  
     /// # Returns 
-    /// - `u64`: The timestamp when indexes were last updated. 
+    /// - `u64`: The timestamp when indexes were last updated, stored in milliseconds since Unix epoch. 
     pub fn last_timestamp(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, u64> {
@@ -833,6 +833,7 @@ where
     /// While this function doesn't enforce a threshold, it's typically used for 
     /// amounts that are economically unviable for users to withdraw due to 
     /// transaction costs exceeding the value. 
+    /// The treshold is set inside the controller contract that is the only one able to call this function. 
     ///  
     /// **Impact on Pool Accounting**: 
     /// - User's scaled position: reduced to zero 
@@ -1101,7 +1102,6 @@ where
     /// **Time Measurement**: 
     /// ``` 
     /// delta_ms = current_block_timestamp * 1000 - last_timestamp 
-    /// delta_seconds = delta_ms / 1000 
     /// ``` 
     ///  
     /// **Interest Accrual Relationship**: 

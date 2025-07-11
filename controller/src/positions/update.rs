@@ -1,9 +1,7 @@
 use common_structs::{AccountAttributes, AccountPosition, AccountPositionType};
 
-use crate::{helpers, oracle, storage, utils, validation};
-
 use super::account;
-
+use crate::{cache::Cache, helpers, oracle, storage, utils, validation};
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
@@ -161,13 +159,23 @@ pub trait PositionUpdateModule:
     /// - `attributes`: Account attributes and configuration
     fn emit_position_update_event(
         &self,
+        cache: &mut Cache<Self>,
         amount: &ManagedDecimal<Self::Api, NumDecimals>,
         position: &AccountPosition<Self::Api>,
         price: ManagedDecimal<Self::Api, NumDecimals>,
         caller: &ManagedAddress<Self::Api>,
         attributes: &AccountAttributes<Self::Api>,
     ) {
+        let position_type = position.position_type.clone();
+        let market_index = cache.get_cached_market_index(&position.asset_id);
+        let index = match position_type {
+            AccountPositionType::Borrow => market_index.borrow_index,
+            AccountPositionType::Deposit => market_index.supply_index,
+            _ => return,
+        };
+
         self.update_position_event(
+            index,
             amount,
             position,
             OptionalValue::Some(price),

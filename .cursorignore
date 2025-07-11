@@ -35,5 +35,4 @@ output-docker/
 proxy
 **/wasm/**
 flash_mock
-Cargo.toml
 **.wasm

@@ -3,7 +3,7 @@
     "proxy": "https://devnet-gateway.xoxno.com",
     "chain_id": "D",
     "addresses": {
-      "controller": "erd1qqqqqqqqqqqqqpgqsq0x5fdkcsl8x8ntycr6xslhj6q5h64zah0s9cmyef",
+      "controller": "erd1qqqqqqqqqqqqqpgqddn9mw8qut5sr2hcd92qw90zhvnqmj2tah0s0z5lv2",
       "lp_template": "erd1qqqqqqqqqqqqqpgqxf56zsnsg8egt4d09g04fjq68eyr6g7mah0szmesex",
       "price_aggregator": "erd1qqqqqqqqqqqqqpgqcd5jnctcnyhcqep70fwvr3y9eel52kt4ah0saez2dj",
       "ash": "erd1qqqqqqqqqqqqqpgqglqtgt5m50njg6le3calj6hknfuuta2tnrzsuh2qlc",
@@ -17,7 +17,7 @@
     ],
     "account_token": {
       "name": "XOXNOLendingAccount",
-      "ticker": "BOBERLEND",
+      "ticker": "XOXNOLEND",
       "issue_cost": 50000000000000000
     },
     "ledger": {

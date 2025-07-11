@@ -214,7 +214,7 @@ pub trait OracleModule:
 
         let price = self.find_price_feed(&data, token_id, cache);
         let feed = PriceFeedShort {
-            asset_decimals: data.price_decimals,
+            asset_decimals: data.asset_decimals,
             price,
         };
 
@@ -295,7 +295,7 @@ pub trait OracleModule:
         // This ensures consistent decimal arithmetic across different token denominations
         let reserve_first = self.to_decimal(reserve_0, safe_first_token_feed.asset_decimals);
         let reserve_second = self.to_decimal(reserve_1, safe_second_token_feed.asset_decimals);
-        let total_supply = self.to_decimal(total_supply, configs.price_decimals);
+        let total_supply = self.to_decimal(total_supply, configs.asset_decimals);
 
         let safe_lp_price = self.get_lp_price(
             configs,
@@ -427,7 +427,7 @@ pub trait OracleModule:
             .returns(ReturnsResult)
             .sync_call_readonly();
 
-        self.to_decimal(ratio, configs.price_decimals)
+        self.to_decimal(ratio, configs.asset_decimals)
     }
 
     /// Calculates xEGLD price using Hatom liquid staking exchange rate.
@@ -463,7 +463,7 @@ pub trait OracleModule:
             .returns(ReturnsResult)
             .sync_call_readonly();
 
-        self.to_decimal(ratio, configs.price_decimals)
+        self.to_decimal(ratio, configs.asset_decimals)
     }
 
     /// Calculates LXOXNO price using liquid staking rate and underlying XOXNO price.
@@ -503,7 +503,7 @@ pub trait OracleModule:
             .get_exchange_rate()
             .returns(ReturnsResult)
             .sync_call_readonly();
-        let ratio_dec = self.to_decimal(ratio, configs.price_decimals);
+        let ratio_dec = self.to_decimal(ratio, configs.asset_decimals);
 
         let main_price = if safe_price_check {
             self.get_token_price(&configs.base_token_id, cache).price
@@ -551,7 +551,7 @@ pub trait OracleModule:
         token_id: &EgldOrEsdtTokenIdentifier,
         cache: &mut Cache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let one_token = BigUint::from(10u64).pow(configs.price_decimals as u32);
+        let one_token = BigUint::from(10u64).pow(configs.asset_decimals as u32);
 
         let result = if configs.exchange_source == ExchangeSource::Onedex {
             let pair_status = self

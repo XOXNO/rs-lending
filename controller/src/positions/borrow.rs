@@ -7,7 +7,7 @@ use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validatio
 use common_errors::{
     ERROR_ASSET_NOT_BORROWABLE, ERROR_ASSET_NOT_BORROWABLE_IN_ISOLATION,
     ERROR_ASSET_NOT_BORROWABLE_IN_SILOED, ERROR_BORROW_CAP, ERROR_DEBT_CEILING_REACHED,
-    ERROR_INSUFFICIENT_COLLATERAL,
+    ERROR_INSUFFICIENT_COLLATERAL, ERROR_INVALID_PAYMENTS, ERROR_WRONG_TOKEN,
 };
 
 use super::{account, emode, update};
@@ -38,7 +38,7 @@ pub trait PositionBorrowModule:
         caller: &ManagedAddress,
         account_attributes: &AccountAttributes<Self::Api>,
         cache: &mut Cache<Self>,
-    ) -> AccountPosition<Self::Api> {
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
         self.require_asset_supported(new_debt_token);
 
         let e_mode = self.get_e_mode_category(account_attributes.e_mode_category_id);
@@ -53,7 +53,7 @@ pub trait PositionBorrowModule:
 
         let (borrows, _) = self.get_borrow_positions(account_nonce, false);
 
-        let mut borrow_position =
+        let borrow_position =
             self.get_or_create_borrow_position(account_nonce, debt_config, new_debt_token);
 
         let feed = self.get_token_price(new_debt_token, cache);
@@ -76,7 +76,7 @@ pub trait PositionBorrowModule:
         );
 
         // Create the internal flash loan, taking the new debt amount and flash fee added as interest
-        borrow_position = self
+        let (updated_borrow_position, back_transfers) = self
             .tx()
             .to(pool_address)
             .typed(proxy_pool::LiquidityPoolProxy)
@@ -87,19 +87,26 @@ pub trait PositionBorrowModule:
                 feed.price.clone(),
             )
             .returns(ReturnsResult)
+            .returns(ReturnsBackTransfersReset)
             .sync_call();
 
         self.emit_position_update_event(
+            cache,
             &amount,
-            &borrow_position,
+            &updated_borrow_position,
             feed.price,
             caller,
             account_attributes,
         );
 
-        self.store_updated_position(account_nonce, &borrow_position);
-
-        borrow_position
+        self.store_updated_position(account_nonce, &updated_borrow_position);
+        require!(back_transfers.payments.len() == 1, ERROR_INVALID_PAYMENTS);
+        let payment = back_transfers.payments.get(0);
+        require!(
+            payment.token_identifier == *new_debt_token,
+            ERROR_WRONG_TOKEN
+        );
+        self.to_decimal(payment.amount.clone(), feed.asset_decimals)
     }
 
     /// Manages a borrow operation, updating positions and handling isolated debt.
@@ -145,6 +152,7 @@ pub trait PositionBorrowModule:
         self.store_updated_position(account_nonce, &borrow_position);
 
         self.emit_position_update_event(
+            cache,
             &amount,
             &borrow_position,
             feed.price.clone(),

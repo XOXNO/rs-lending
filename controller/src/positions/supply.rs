@@ -231,6 +231,7 @@ pub trait PositionDepositModule:
         );
 
         self.emit_position_update_event(
+            cache,
             &amount_decimal,
             &position,
             feed.price.clone(),
@@ -579,10 +580,12 @@ pub trait PositionDepositModule:
             );
         }
 
+        let feed = self.get_token_price(asset_id, cache);
         self.emit_position_update_event(
+            cache,
             &dp.zero_decimal(),
             &dp,
-            self.get_token_price(asset_id, cache).price,
+            feed.price,
             &controller_sc,
             &account_attributes,
         );

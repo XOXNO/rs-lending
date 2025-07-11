@@ -10,7 +10,8 @@ path = "src/lib.rs"
 doctest = false
 
 [dependencies.multiversx-sc]
-version = "0.57.0"
+version = "0.59.0"
+features = ["barnard"]
 
 [dependencies.common-structs]
 path = "../common/structs"
@@ -31,4 +32,5 @@ path = "../common/events"
 path = "../common/errors"
 
 [dev-dependencies.multiversx-sc-scenario]
-version = "0.57.0"
+version = "0.59.0"
+

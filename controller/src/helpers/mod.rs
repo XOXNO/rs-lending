@@ -255,7 +255,7 @@ pub trait MathsModule: common_math::SharedMathModule {
     ///
     /// **Security Considerations**:
     /// - **Zero Division Protection**: Returns `u128::MAX` when borrowed_value is zero
-    /// - **Precision Handling**: Calculated in RAY precision, rescaled to WAD for consistency
+    /// - **Precision Handling**: Calculated in RAY precision
     /// - **Overflow Protection**: Uses `u128::MAX` to represent infinite health factor
     ///
     /// **Economic Rationale**: The health factor represents how much the collateral
@@ -263,27 +263,25 @@ pub trait MathsModule: common_math::SharedMathModule {
     /// of 1.5 means collateral can lose 33.3% of its value before liquidation.
     ///
     /// # Arguments
-    /// - `weighted_collateral_in_egld`: Collateral value weighted by liquidation thresholds (WAD)
-    /// - `borrowed_value_in_egld`: Total borrowed value in EGLD (WAD)
+    /// - `weighted_collateral_in_egld`: Collateral value weighted by liquidation thresholds (RAY)
+    /// - `borrowed_value_in_egld`: Total borrowed value in EGLD (RAY)
     ///
     /// # Returns
-    /// - Health factor in WAD precision (10^18); `u128::MAX` if no borrows exist
+    /// - Health factor in RAY precision (10^27); `u128::MAX` if no borrows exist
     fn compute_health_factor(
         &self,
         weighted_collateral_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
         borrowed_value_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        if borrowed_value_in_egld == &self.wad_zero() {
-            return self.to_decimal_wad(BigUint::from(u128::MAX));
+        if borrowed_value_in_egld == &self.ray_zero() {
+            return self.to_decimal_ray(BigUint::from(u128::MAX));
         }
 
-        let health_factor = self.div_half_up(
+        return self.div_half_up(
             weighted_collateral_in_egld,
             borrowed_value_in_egld,
             RAY_PRECISION,
         );
-
-        self.rescale_half_up(&health_factor, WAD_PRECISION)
     }
 
     /// Calculates upper and lower bounds for a tolerance in basis points.
@@ -531,7 +529,7 @@ pub trait MathsModule: common_math::SharedMathModule {
     /// - `proportion_seized`: Proportion of collateral seized per unit debt (BPS precision)
     /// - `liquidation_bonus`: Liquidation bonus rate (BPS precision)
     /// - `total_debt`: Total debt value (WAD precision)
-    /// - `target_hf`: Target post-liquidation health factor (WAD precision)
+    /// - `target_hf`: Target post-liquidation health factor (RAY precision)
     ///
     /// # Returns
     /// - Tuple of (debt_to_repay, liquidation_bonus, new_health_factor) in appropriate precisions
@@ -552,12 +550,9 @@ pub trait MathsModule: common_math::SharedMathModule {
         let bps = self.bps();
 
         // Convert to signed for intermediate calculations
-        let total_debt_ray_signed = total_debt.clone().into_signed().rescale(RAY_PRECISION);
-        let target_health = target_hf.clone().into_signed().rescale(RAY_PRECISION);
-        let weighted_collateral_ray = weighted_collateral
-            .clone()
-            .into_signed()
-            .rescale(RAY_PRECISION);
+        let total_debt_ray_signed = total_debt.clone().into_signed();
+        let target_health = target_hf.clone().into_signed();
+        let weighted_collateral_ray = weighted_collateral.clone().into_signed();
 
         // Compute 1 + b
         let one_plus_bonus = self.bps() + liquidation_bonus.clone();
@@ -658,12 +653,12 @@ pub trait MathsModule: common_math::SharedMathModule {
     /// - **Edge Cases**: Graceful handling of positions near liquidation boundary
     ///
     /// # Arguments
-    /// - `weighted_collateral_in_egld`: Weighted collateral value in EGLD (WAD)
+    /// - `weighted_collateral_in_egld`: Weighted collateral value in EGLD (RAY)
     /// - `proportion_seized`: Proportion of collateral seized per unit debt (BPS)
-    /// - `total_collateral`: Total collateral value (WAD)
-    /// - `total_debt`: Total debt value (WAD)
+    /// - `total_collateral`: Total collateral value (RAY)
+    /// - `total_debt`: Total debt value (RAY)
     /// - `min_bonus`: Minimum liquidation bonus (BPS)
-    /// - `current_hf`: Current health factor (WAD)
+    /// - `current_hf`: Current health factor (RAY)
     ///
     /// # Returns
     /// - Tuple of (optimal_debt_to_repay, calculated_bonus) in appropriate precisions
@@ -679,9 +674,9 @@ pub trait MathsModule: common_math::SharedMathModule {
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
-        let wad = self.wad();
+        let ray = self.ray();
 
-        let target_best = wad.clone().into_raw_units() / 50u32 + wad.into_raw_units(); // 1.02 WAD
+        let target_best = ray.clone().into_raw_units() / 50u32 + ray.into_raw_units(); // 1.02 RAY
 
         let (safest_debt, safest_bonus, safe_new_hf) = self.simulate_liquidation(
             weighted_collateral_in_egld,
@@ -690,14 +685,14 @@ pub trait MathsModule: common_math::SharedMathModule {
             total_debt,
             min_bonus,
             current_hf,
-            self.to_decimal_wad(target_best),
+            self.to_decimal_ray(target_best),
         );
 
-        if safe_new_hf >= self.wad() {
+        if safe_new_hf >= self.ray() {
             return (safest_debt, safest_bonus);
         }
 
-        let target_best_second = wad.clone().into_raw_units() / 100u32 + wad.into_raw_units(); // 1.01 WAD
+        let target_best_second = ray.clone().into_raw_units() / 100u32 + ray.into_raw_units(); // 1.01 RAY
         let (limit_debt, limit_bonus, _) = self.simulate_liquidation(
             weighted_collateral_in_egld,
             proportion_seized,
@@ -705,7 +700,7 @@ pub trait MathsModule: common_math::SharedMathModule {
             total_debt,
             min_bonus,
             current_hf,
-            self.to_decimal_wad(target_best_second),
+            self.to_decimal_ray(target_best_second),
         );
 
         (limit_debt, limit_bonus)
@@ -769,7 +764,7 @@ pub trait MathsModule: common_math::SharedMathModule {
     fn calculate_post_liquidation_health_factor(
         &self,
         weighted_collateral: &ManagedDecimal<Self::Api, NumDecimals>,
-        total_debt: &ManagedDecimal<Self::Api, NumDecimals>,
+        total_debt_ray: &ManagedDecimal<Self::Api, NumDecimals>,
         debt_to_repay_ray: &ManagedDecimal<Self::Api, NumDecimals>,
         proportion_seized: &ManagedDecimal<Self::Api, NumDecimals>,
         liquidation_bonus: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -785,17 +780,13 @@ pub trait MathsModule: common_math::SharedMathModule {
         );
         // Compute new weighted collateral and total debt
         let new_weighted_wad = weighted_collateral.clone() - seized_weighted;
-        let total_debt_ray = total_debt.clone().rescale(RAY_PRECISION);
-        let new_total_debt_ray = if *debt_to_repay_ray >= total_debt_ray {
+        let new_total_debt_ray = if debt_to_repay_ray >= total_debt_ray {
             self.ray_zero()
         } else {
-            total_debt_ray - debt_to_repay_ray.clone()
+            total_debt_ray.clone() - debt_to_repay_ray.clone()
         };
         // Compute new_health_factor
-        self.compute_health_factor(
-            &new_weighted_wad,
-            &self.rescale_half_up(&new_total_debt_ray, WAD_PRECISION),
-        )
+        self.compute_health_factor(&new_weighted_wad, &new_total_debt_ray)
     }
 
     /// Simulates a liquidation to estimate debt repayment, bonus, and new health factor.

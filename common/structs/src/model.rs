@@ -352,7 +352,7 @@ pub struct OracleProvider<M: ManagedTypeApi> {
     pub pricing_method: PricingMethod,
     pub oracle_type: OracleType,
     pub exchange_source: ExchangeSource,
-    pub price_decimals: usize,
+    pub asset_decimals: usize,
     pub onedex_pair_id: usize,
     pub max_price_stale_seconds: u64,
 }

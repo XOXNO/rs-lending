@@ -1,4 +1,3 @@
-use common_errors::ERROR_WITHDRAW_TOKEN_RECEIVED;
 use common_structs::{AccountAttributes, AccountPosition, AccountPositionType, PriceFeedShort};
 
 use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validation};
@@ -84,6 +83,7 @@ pub trait PositionWithdrawModule:
         );
 
         self.emit_position_update_event(
+            cache,
             &amount,
             deposit_position,
             feed.price.clone(),
@@ -158,7 +158,7 @@ pub trait PositionWithdrawModule:
                 liquidation_fee,
                 feed.price.clone(),
             )
-            .returns(ReturnsBackTransfers)
+            .returns(ReturnsBackTransfersReset)
             .returns(ReturnsResult)
             .sync_call();
 
@@ -167,17 +167,10 @@ pub trait PositionWithdrawModule:
         let mut payment =
             EgldOrEsdtTokenPayment::new(deposit_position.asset_id.clone(), 0, BigUint::zero());
 
-        for esdt in back_transfers.esdt_payments {
-            if esdt.token_identifier == deposit_position.asset_id {
-                payment.amount += esdt.amount;
+        for transfer in back_transfers.payments {
+            if transfer.token_identifier == deposit_position.asset_id {
+                payment.amount += transfer.amount;
             }
-        }
-        if back_transfers.total_egld_amount > 0 {
-            require!(
-                deposit_position.asset_id.is_egld(),
-                ERROR_WITHDRAW_TOKEN_RECEIVED
-            );
-            payment.amount += back_transfers.total_egld_amount;
         }
 
         payment

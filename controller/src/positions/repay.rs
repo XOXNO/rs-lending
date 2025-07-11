@@ -177,6 +177,7 @@ pub trait PositionRepayModule:
             .sync_call();
 
         self.emit_position_update_event(
+            cache,
             repay_amount,
             &borrow_position,
             feed.price.clone(),

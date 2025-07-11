@@ -105,13 +105,12 @@ pub trait SnapModule:
         let mut debt_config = cache.get_cached_asset_info(debt_token);
 
         // Fetch current market prices from oracle feeds with staleness protection
-        let collateral_price_feed = self.get_token_price(collateral_token, &mut cache);
-        let debt_price_feed = self.get_token_price(debt_token, &mut cache);
+        let collateral_oracle = cache.get_cached_oracle(collateral_token);
+        let debt_oracle = cache.get_cached_oracle(debt_token);
 
         let mut collateral_to_be_supplied =
-            self.to_decimal(BigUint::zero(), collateral_price_feed.asset_decimals);
-        let mut debt_to_be_swapped =
-            self.to_decimal(debt_to_flash_loan.clone(), debt_price_feed.asset_decimals);
+            self.to_decimal(BigUint::zero(), collateral_oracle.asset_decimals);
+        let mut debt_to_be_swapped = self.to_decimal(BigUint::zero(), debt_oracle.asset_decimals);
 
         if opt_account.is_none() {
             // New position creation: validate single payment and determine token conversion path
@@ -127,16 +126,14 @@ pub trait SnapModule:
                 // Direct collateral deposit: no conversion needed
                 let collateral_received = self.to_decimal(
                     initial_payment.amount.clone(),
-                    collateral_price_feed.asset_decimals,
+                    collateral_oracle.asset_decimals,
                 );
 
                 collateral_to_be_supplied += &collateral_received
             } else if is_payment_same_as_debt {
                 // Payment in debt token: reduces flash loan requirement
-                let debt_amount_received = self.to_decimal(
-                    initial_payment.amount.clone(),
-                    debt_price_feed.asset_decimals,
-                );
+                let debt_amount_received =
+                    self.to_decimal(initial_payment.amount.clone(), debt_oracle.asset_decimals);
                 debt_to_be_swapped += &debt_amount_received;
             } else {
                 // Payment in different token: requires conversion to collateral
@@ -144,7 +141,7 @@ pub trait SnapModule:
                 let steps_payment = unsafe { steps_payment.into_option().unwrap_unchecked() };
 
                 // Convert payment token to collateral token via swap router
-                self.convert_token_from_to(
+                let received = self.convert_token_from_to(
                     collateral_token,
                     &initial_payment.token_identifier,
                     &initial_payment.amount,
@@ -152,10 +149,10 @@ pub trait SnapModule:
                     steps_payment,
                 );
 
-                // TODO: Once Bernard mainnet protocol is live, uncomment to track converted collateral
-                // let collateral_received =
-                //     self.to_decimal(received.amount, collateral_price_feed.asset_decimals);
-                // collateral_to_be_supplied += &collateral_received;
+                let collateral_received =
+                    self.to_decimal(received.amount, collateral_oracle.asset_decimals);
+
+                collateral_to_be_supplied += &collateral_received;
             }
         } else {
             // Existing position enhancement: no additional payments allowed
@@ -189,7 +186,7 @@ pub trait SnapModule:
 
         // Execute flash loan borrow operation
         // This creates the debt position that will be backed by swapped collateral
-        self.handle_create_borrow_strategy(
+        let received_debt = self.handle_create_borrow_strategy(
             account_nonce,
             debt_token,
             &debt_to_flash_loan,
@@ -198,6 +195,8 @@ pub trait SnapModule:
             &nft_attributes,
             &mut cache,
         );
+
+        debt_to_be_swapped += &received_debt;
 
         // Convert borrowed debt tokens to collateral tokens via swap router
         // This is the core leverage mechanism: debt → collateral conversion
@@ -208,7 +207,6 @@ pub trait SnapModule:
             &caller,
             steps,
         );
-
         // Add any directly supplied collateral to the swapped amount
         final_collateral.amount += collateral_to_be_supplied.into_raw_units();
 
@@ -221,6 +219,8 @@ pub trait SnapModule:
             &mut cache,
         );
 
+        // Remove the prices from the cache to have a fresh value after the swaps to prevent a bad HF
+        cache.clean_prices_cache();
         // CRITICAL: Validate position health after leverage creation
         // Ensures the position is not immediately liquidatable due to slippage or market conditions
         self.validate_is_healthy(account_nonce, &mut cache, None);
@@ -354,6 +354,8 @@ pub trait SnapModule:
             );
         }
 
+        // Remove the prices from the cache to have a fresh value after the swaps to prevent a bad HF
+        cache.clean_prices_cache();
         // CRITICAL: Validate position health after debt swap completion
         // Ensures the position is not liquidatable due to swap slippage or price movements
         self.validate_is_healthy(account.token_nonce, &mut cache, None);
@@ -467,6 +469,8 @@ pub trait SnapModule:
             &mut cache,
         );
 
+        // Remove the prices from the cache to have a fresh value after the swaps to prevent a bad HF
+        cache.clean_prices_cache();
         // CRITICAL: Validate position health after collateral swap completion
         // Ensures the position is not liquidatable due to swap slippage or different liquidation thresholds
         self.validate_is_healthy(account.token_nonce, &mut cache, None);
@@ -576,14 +580,22 @@ pub trait SnapModule:
             );
         }
 
-        // CRITICAL: Validate position health after debt repayment
-        // Ensures remaining position is not liquidatable due to reduced collateral
-        self.validate_is_healthy(account.token_nonce, &mut cache, None);
+        // Remove the prices from the cache to have a fresh value after the swaps to prevent a bad HF
+        cache.clean_prices_cache();
 
         // Check if all debt has been repaid for potential position closure
         let has_no_debt = self
             .positions(account.token_nonce, AccountPositionType::Borrow)
             .is_empty();
+
+        // If it still has debt clean the cache of prices to have a fresh value after the swaps to prevent a bad HF
+        if !has_no_debt {
+            cache.clean_prices_cache();
+        }
+
+        // CRITICAL: Validate position health after debt repayment
+        // Ensures remaining position is not liquidatable due to reduced collateral
+        self.validate_is_healthy(account.token_nonce, &mut cache, None);
 
         // Execute full position closure if requested and all debt is repaid
         if close_position && has_no_debt {
@@ -797,29 +809,8 @@ pub trait SnapModule:
             .raw_call(ManagedBuffer::new_from_bytes(b"swap"))
             .arguments_raw(args) // Pass through swap configuration (path, slippage, etc.)
             .egld_or_single_esdt(from_token, 0, from_amount)
-            .returns(ReturnsBackTransfersReset) // Reset to capture all return transfers
+            .returns(ReturnsBackTransfers) // Reset to capture all return transfers
             .sync_call();
-
-        // Process all returned tokens from the swap router
-        let mut payments: ManagedVec<EgldOrEsdtTokenPayment<Self::Api>> = ManagedVec::new();
-
-        // Handle EGLD returns from swap
-        if back_transfers.total_egld_amount > 0 {
-            payments.push(EgldOrEsdtTokenPayment::new(
-                EgldOrEsdtTokenIdentifier::egld(),
-                0,
-                back_transfers.total_egld_amount,
-            ));
-        }
-
-        // Handle ESDT token returns from swap
-        for esdt in back_transfers.esdt_payments.iter() {
-            payments.push(EgldOrEsdtTokenPayment::new(
-                EgldOrEsdtTokenIdentifier::esdt(esdt.token_identifier.clone()),
-                esdt.token_nonce,
-                esdt.amount.clone(),
-            ));
-        }
 
         // Initialize result container for target token accumulation
         let mut wanted_result =
@@ -828,9 +819,9 @@ pub trait SnapModule:
         // Separate target tokens from refundable tokens
         let mut refunds = ManagedVec::new();
 
-        for payment in payments {
+        for payment in back_transfers.payments {
             // Accumulate all instances of the target token (fungible tokens only, nonce = 0)
-            if payment.token_identifier == *wanted_token && payment.token_nonce == 0 {
+            if payment.token_identifier == *wanted_token {
                 wanted_result.amount += &payment.amount;
             } else {
                 // Collect non-target tokens for refund to caller

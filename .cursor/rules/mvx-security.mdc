@@ -44,4 +44,3 @@ alwaysApply: true
 - **Reentrancy**: While Rust's ownership model helps, be mindful of external calls, especially during flash loans or interactions with other contracts. Use checks-effects-interactions pattern where applicable.
 - **Error Handling**: Use specific error constants from `common/errors` for clear failure reasons.
 - **Integer Overflow/Underflow**: Use `BigUint` and `ManagedDecimal` which handle large numbers safely. Be cautious with standard integer types if used.
-- **Timestamp Dependency**: Be aware that `get_block_timestamp()` can have minor variations. Use it for ordering or duration calculations, but avoid relying on exact values for critical logic.
