@@ -660,37 +660,37 @@ where
     ///  
     /// **Mathematical Process**: 
     /// 1. **Liquidity Validation**: Verify `strategy_amount <= available_reserves` 
-    /// 2. **Total Debt Calculation**: `total_debt = strategy_amount + strategy_fee` 
-    /// 3. **Scaling Conversion**: `scaled_debt = total_debt / current_borrow_index` 
+    /// 2. **Fee Deduction**: `amount_to_send = strategy_amount - strategy_fee` 
+    /// 3. **Scaling Conversion**: `scaled_debt = strategy_amount / current_borrow_index` 
     /// 4. **Position Update**: `new_scaled_debt = old_scaled_debt + scaled_debt` 
     /// 5. **Pool State Update**: `total_borrowed += scaled_debt` 
     /// 6. **Revenue Collection**: Add `strategy_fee` to protocol treasury 
-    /// 7. **Asset Transfer**: Send `strategy_amount` to user for strategy execution 
+    /// 7. **Asset Transfer**: Send `amount_to_send` to user for strategy execution 
     ///  
     /// **Strategy Debt Structure**: 
     /// ``` 
-    /// // User receives strategy_amount but owes total_debt: 
-    /// assets_received = strategy_amount 
-    /// debt_created = strategy_amount + strategy_fee 
-    /// protocol_fee = strategy_fee (collected immediately) 
+    /// // User receives less than borrowed amount due to fee deduction: 
+    /// assets_received = strategy_amount - strategy_fee 
+    /// debt_created = strategy_amount (fee NOT included in debt) 
+    /// protocol_fee = strategy_fee (one-time charge, no interest) 
     /// ``` 
     ///  
-    /// **Interest Accrual on Total Debt**: 
-    /// The entire debt (including the upfront fee) accrues interest over time: 
+    /// **Interest Accrual on Principal Only**: 
+    /// Only the borrowed principal accrues interest over time: 
     /// ``` 
-    /// initial_scaled_debt = (strategy_amount + strategy_fee) / borrow_index_at_creation 
+    /// initial_scaled_debt = strategy_amount / borrow_index_at_creation 
     /// future_debt = initial_scaled_debt * current_borrow_index 
-    /// total_repayment_needed = future_debt 
+    /// total_repayment_needed = future_debt (fees already paid upfront) 
     /// ``` 
     ///  
     /// **Leveraged Position Example**: 
     /// ``` 
     /// User wants 2x leverage on 100 USDC: 
     /// 1. User supplies 100 USDC as collateral 
-    /// 2. Strategy borrows 100 USDC (+ 1 USDC fee) 
-    /// 3. User receives 100 USDC to buy more assets 
-    /// 4. User's debt: 101 USDC (accruing interest) 
-    /// 5. User's exposure: 200 USDC worth of assets 
+    /// 2. Strategy borrows 100 USDC (with 1% fee = 1 USDC) 
+    /// 3. User receives 99 USDC to buy more assets (100 - 1 fee) 
+    /// 4. User's debt: 100 USDC (accruing interest, fee not included) 
+    /// 5. User's exposure: 199 USDC worth of assets 
     /// ``` 
     ///  
     /// **Fee Collection Model**: 
