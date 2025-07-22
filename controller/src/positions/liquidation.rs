@@ -712,9 +712,9 @@ pub trait PositionLiquidationModule:
     /// - Weighted collateral accounts for asset-specific liquidation thresholds
     ///
     /// # Arguments
-    /// - `total_debt_in_egld`: Total borrowed amount across all assets (EGLD-denominated)
-    /// - `total_collateral_in_egld`: Total collateral value at current prices (EGLD-denominated)
-    /// - `weighted_collateral_in_egld`: Liquidation-threshold-weighted collateral value
+    /// - `total_debt_in_egld`: Total borrowed amount across all assets (EGLD-denominated) as RAY
+    /// - `total_collateral_in_egld`: Total collateral value at current prices (EGLD-denominated) as RAY
+    /// - `weighted_collateral_in_egld`: Liquidation-threshold-weighted collateral value as RAY
     /// - `proportion_seized`: Weighted seizure proportion across all collateral assets
     /// - `base_liquidation_bonus`: Asset-weighted base liquidation bonus in BPS
     /// - `health_factor`: Current position health factor (< 1.0 for liquidatable positions)
@@ -1181,7 +1181,7 @@ pub trait PositionLiquidationModule:
                 .tx()
                 .to(pool_address)
                 .typed(proxy_pool::LiquidityPoolProxy)
-                .add_bad_debt(position.clone(), feed.price.clone())
+                .seize_position(position.clone(), feed.price.clone())
                 .returns(ReturnsResult)
                 .sync_call();
 
@@ -1205,7 +1205,7 @@ pub trait PositionLiquidationModule:
                 .tx()
                 .to(pool_address)
                 .typed(proxy_pool::LiquidityPoolProxy)
-                .seize_dust_collateral(position.clone(), feed.price.clone())
+                .seize_position(position.clone(), feed.price.clone())
                 .returns(ReturnsResult)
                 .sync_call();
 

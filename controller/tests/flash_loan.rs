@@ -143,6 +143,45 @@ fn flash_loan_partial_repayment_error() {
     );
 }
 
+/// Tests flash loan failure with partial repayment.
+///
+/// Covers:
+/// - Controller::flashLoan partial repayment validation
+/// - Exact repayment requirement
+/// - ERROR_INVALID_FLASHLOAN_REPAYMENT for insufficient repayment
+#[test]
+fn flash_loan_partial_repayment_wrong_token_error() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+    setup_accounts(&mut state, supplier, borrower);
+
+    // Supply liquidity to enable flash loan
+    state.supply_asset(
+        &supplier,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    let mut args = ManagedArgBuffer::new();
+    args.push_arg(USDC_TOKEN);
+
+    // Attempt flash loan with partial repayment
+    state.flash_loan_error(
+        &OWNER_ADDRESS,
+        &EGLD_TOKEN,
+        BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32)),
+        state.flash_mock.clone(),
+        ManagedBuffer::from("flashRepaySomeWrongToken"), // Endpoint that repays partially
+        args,
+        ERROR_INVALID_FLASHLOAN_REPAYMENT,
+    );
+}
+
 /// Tests flash loan validation for empty endpoint name.
 ///
 /// Covers:

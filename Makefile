@@ -2,7 +2,7 @@
 
 SHELL := /bin/bash
 NETWORKS := devnet mainnet
-POSITIONAL_MARKET_ACTIONS := createMarket createOracle upgradeMarket editAssetConfig editOracleTolerance show
+POSITIONAL_MARKET_ACTIONS := createMarket createOracle upgradeMarket upgradeMarketParams editAssetConfig editOracleTolerance show
 POSITIONAL_ID_ACTIONS := addEModeCategory
 POSITIONAL_ID_ASSET_ACTIONS := addAssetToEMode
 POSITIONAL_ORACLE_ACTIONS := addOracles
@@ -57,6 +57,8 @@ help:
 	@for action in $(POSITIONAL_MARKET_ACTIONS); do \
 		echo "    $$action <market_name>"; \
 	done
+	@echo "    upgradeMarket <market_name>        - Upgrade market code only"
+	@echo "    upgradeMarketParams <market_name>  - Upgrade market parameters only"
 	@echo ""
 	@echo "  Commands with category ID:"
 	@for action in $(POSITIONAL_ID_ACTIONS); do \
@@ -246,7 +248,7 @@ list-networks:
 # Reproducible build target
 build:
 	rm -rf ./output-docker
-	mxpy contract reproducible-build --docker-image="multiversx/sdk-rust-contract-builder:v10.0.0"
+	mxpy contract reproducible-build --docker-image="multiversx/sdk-rust-contract-builder:v11.0.0"
 
 # Add new targets for E-Mode and asset configuration functions
 

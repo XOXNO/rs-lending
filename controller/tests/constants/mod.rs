@@ -110,6 +110,8 @@ pub const LENDING_POOL_PATH: MxscPath = MxscPath::new("../output/controller.mxsc
 pub const LIQUIDITY_POOL_PATH: MxscPath =
     MxscPath::new("../liquidity_layer/output/liquidity_layer.mxsc.json");
 
+pub const ACCUMULATOR_PATH: MxscPath = MxscPath::new("../proxys/accumulator.mxsc.json");
+
 pub const PRICE_AGGREGATOR_PATH: MxscPath =
     MxscPath::new("../price_aggregator/output/price_aggregator.mxsc.json");
 

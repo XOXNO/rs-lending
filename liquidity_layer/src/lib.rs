@@ -26,6 +26,8 @@ pub trait LiquidityPool:
     + common_math::SharedMathModule
     + view::ViewModule
 {
+    #[upgrade]
+    fn upgrade(&self) {}
     /// Initializes the liquidity pool for a specific asset.
     ///
     /// **Purpose**: Sets up the initial state of the liquidity pool, including the asset, interest rate parameters,
@@ -142,8 +144,8 @@ pub trait LiquidityPool:
     /// - Restricted to the contract owner (via the `#[upgrade]` attribute) to prevent unauthorized modifications.
     /// - Uses precise decimal conversions (`to_decimal_ray` and `to_decimal_bps`) to ensure consistency in calculations.
     /// - Logs changes via an event, enabling tracking and verification of updates.
-    #[upgrade]
-    fn upgrade(
+    #[endpoint(updateParams)]
+    fn update_params(
         &self,
         max_borrow_rate: BigUint,
         base_borrow_rate: BigUint,

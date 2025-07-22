@@ -97,6 +97,18 @@ where
             .original_result()
     }
 
+    pub fn flash_repay_some_wrong_token<
+        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+    >(
+        self,
+        token: Arg0,
+    ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
+        self.wrapped_tx
+            .raw_call("flashRepaySomeWrongToken")
+            .argument(&token)
+            .original_result()
+    }
+
     pub fn flash_no_repay(
         self,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {

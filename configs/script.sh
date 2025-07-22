@@ -38,7 +38,7 @@ if [ "$NETWORK" = "devnet" ]; then
 else
     VERIFIER_URL="https://play-api.multiversx.com"
 fi
-DOCKER_IMAGE="multiversx/sdk-rust-contract-builder:v10.0.0"
+DOCKER_IMAGE="multiversx/sdk-rust-contract-builder:v11.0.0"
 
 # Check if market config file exists
 if [ ! -f "$MARKET_CONFIG_FILE" ]; then
@@ -519,10 +519,10 @@ create_token_oracle() {
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 
-upgrade_market() {
+upgrade_market_params() {
     local market_name=$1
     
-    echo "Creating market for ${market_name}..."
+    echo "Upgrading market params for ${market_name}..."
     echo "Token ID: $(get_config_value "$market_name" "token_id")"
     
     local args=( $(build_market_upgrade_args "$market_name") )
@@ -530,7 +530,20 @@ upgrade_market() {
     mxpy contract call ${ADDRESS} --recall-nonce \
     --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
     --gas-limit=55000000 \
-    --function="upgradeLiquidityPool" --arguments "${args[@]}" \
+    --function="upgradeLiquidityPoolParams" --arguments "${args[@]}" \
+    --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
+}
+
+upgrade_market() {
+    local market_name=$1
+    
+    echo "Upgrading market for ${market_name}..."
+    echo "Token ID: $(get_config_value "$market_name" "token_id")"
+    
+    mxpy contract call ${ADDRESS} --recall-nonce \
+    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    --gas-limit=55000000 \
+    --function="upgradeLiquidityPool" --arguments "str:$(get_config_value "$market_name" "token_id")" \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 }
 
@@ -541,12 +554,10 @@ upgrade_market_with_nonce() {
     
     echo "Token ID: $(get_config_value "$market_name" "token_id")"
     
-    local args=( $(build_market_upgrade_args "$market_name") )
-
     mxpy contract call ${ADDRESS} --nonce=${nonce} \
     --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
     --gas-limit=55000000 \
-    --function="upgradeLiquidityPool" --arguments "${args[@]}" \
+    --function="upgradeLiquidityPool" --arguments "str:$(get_config_value "$market_name" "token_id")" \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 }
 
@@ -895,6 +906,14 @@ case "$1" in
         fi
         upgrade_market "$2"
         ;;
+    "upgradeMarketParams")
+        if [ -z "$2" ]; then
+            echo "Please specify a market name"
+            list_markets
+            exit 1
+        fi
+        upgrade_market_params "$2"
+        ;;
     "upgradeAllMarkets")
         upgrade_all_markets
         ;;
@@ -996,7 +1015,8 @@ case "$1" in
         echo "  registerAccountToken           - Register a new account token for NFT positions"
         echo "  createMarket MARKET            - Create a new market with specified configuration"
         echo "  createOracle MARKET            - Create oracle for a market"
-        echo "  upgradeMarket MARKET           - Upgrade an existing market"
+        echo "  upgradeMarket MARKET           - Upgrade an existing market (code only)"
+        echo "  upgradeMarketParams MARKET     - Upgrade market parameters (rates, reserves)"
         echo "  upgradeAllMarkets              - Upgrade all markets"
         echo "  listMarkets                    - List available market configurations"
         echo "  show MARKET                    - Show configuration for specified market"

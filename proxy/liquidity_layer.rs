@@ -124,6 +124,25 @@ where
     To: TxTo<Env>,
     Gas: TxGas<Env>,
 {
+    pub fn upgrade(
+        self,
+    ) -> TxTypedUpgrade<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_upgrade()
+            .original_result()
+    }
+}
+
+#[rustfmt::skip]
+impl<Env, From, To, Gas> LiquidityPoolProxyMethods<Env, From, To, Gas>
+where
+    Env: TxEnv,
+    Env::Api: VMApi,
+    From: TxFrom<Env>,
+    To: TxTo<Env>,
+    Gas: TxGas<Env>,
+{
     /// Upgrades the liquidity pool parameters. 
     ///  
     /// **Purpose**: Updates the pool's interest rate parameters and reserve factor to adapt to changing market conditions 
@@ -151,7 +170,7 @@ where
     /// - Restricted to the contract owner (via the `#[upgrade]` attribute) to prevent unauthorized modifications. 
     /// - Uses precise decimal conversions (`to_decimal_ray` and `to_decimal_bps`) to ensure consistency in calculations. 
     /// - Logs changes via an event, enabling tracking and verification of updates. 
-    pub fn upgrade<
+    pub fn update_params<
         Arg0: ProxyArg<BigUint<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
         Arg2: ProxyArg<BigUint<Env::Api>>,
@@ -172,10 +191,10 @@ where
         optimal_utilization: Arg6,
         reserve_factor: Arg7,
         asset_price: Arg8,
-    ) -> TxTypedUpgrade<Env, From, To, NotPayable, Gas, ()> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_upgrade()
+            .raw_call("updateParams")
             .argument(&max_borrow_rate)
             .argument(&base_borrow_rate)
             .argument(&slope1)
@@ -187,17 +206,7 @@ where
             .argument(&asset_price)
             .original_result()
     }
-}
 
-#[rustfmt::skip]
-impl<Env, From, To, Gas> LiquidityPoolProxyMethods<Env, From, To, Gas>
-where
-    Env: TxEnv,
-    Env::Api: VMApi,
-    From: TxFrom<Env>,
-    To: TxTo<Env>,
-    Gas: TxGas<Env>,
-{
     /// Retrieves the total scaled amount supplied to the pool. 
     /// This value represents the sum of all supplied principals, each divided by the supply index at the time of their deposit. 
     /// It is stored RAY-scaled. 
@@ -779,7 +788,7 @@ where
     /// - Immediate application prevents gaming/arbitrage 
     /// - Proportional distribution ensures fairness 
     /// - Supply index has minimum floor to prevent total collapse 
-    pub fn add_bad_debt<
+    pub fn seize_position<
         Arg0: ProxyArg<common_structs::AccountPosition<Env::Api>>,
         Arg1: ProxyArg<ManagedDecimal<Env::Api, usize>>,
     >(
@@ -789,80 +798,7 @@ where
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::AccountPosition<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("addBadDebt")
-            .argument(&position)
-            .argument(&price)
-            .original_result()
-    }
-
-    /// Seizes dust collateral from a position, transferring it directly to protocol revenue. 
-    ///  
-    /// **Purpose**: Enables collection of economically unviable small collateral amounts 
-    /// that remain after liquidations, converting them to protocol revenue. 
-    ///  
-    /// **Use Case Scenario**: 
-    /// After a liquidation and bad debt socialization, a user's supply position may 
-    /// have a small remaining balance that is: 
-    /// - Too small to be economically liquidated (gas costs > value) 
-    /// - Below minimum transaction thresholds 
-    /// - Creates accounting complexity if left unclaimed 
-    ///  
-    /// **Mathematical Process**: 
-    /// 1. **Global Sync**: Update indexes to current state 
-    /// 2. **Direct Transfer**: `protocol_revenue += position.scaled_amount` 
-    /// 3. **Position Clearing**: `position.scaled_amount = 0` 
-    /// 4. **Supply Maintenance**: Total supplied remains unchanged (dust becomes revenue) 
-    ///  
-    /// **Revenue Conversion**: 
-    /// ``` 
-    /// // Dust collateral becomes protocol revenue: 
-    /// dust_value = scaled_dust * current_supply_index 
-    /// protocol_revenue_scaled += scaled_dust 
-    /// user_position_scaled = 0 
-    /// ``` 
-    ///  
-    /// **Economic Justification**: 
-    /// Small balances create operational overhead and user confusion. 
-    /// Converting them to protocol revenue: 
-    /// - Simplifies account management 
-    /// - Reduces storage requirements 
-    /// - Provides clean closure of positions 
-    /// - Generates modest protocol income 
-    ///  
-    /// **Dust Threshold Considerations**: 
-    /// While this function doesn't enforce a threshold, it's typically used for 
-    /// amounts that are economically unviable for users to withdraw due to 
-    /// transaction costs exceeding the value. 
-    /// The treshold is set inside the controller contract that is the only one able to call this function. 
-    ///  
-    /// **Impact on Pool Accounting**: 
-    /// - User's scaled position: reduced to zero 
-    /// - Protocol revenue: increased by dust amount 
-    /// - Total supplied: unchanged (internal transfer) 
-    /// - Pool liquidity: unchanged 
-    ///  
-    /// # Arguments 
-    /// - `position`: Supply position containing dust collateral 
-    /// - `price`: Asset price for event logging 
-    ///  
-    /// # Returns 
-    /// - Cleared position with zero scaled supply 
-    ///  
-    /// **Security Considerations**: 
-    /// - Should only be used for genuinely uneconomical amounts 
-    /// - Requires careful governance to prevent abuse 
-    /// - Position is completely cleared (irreversible) 
-    pub fn seize_dust_collateral<
-        Arg0: ProxyArg<common_structs::AccountPosition<Env::Api>>,
-        Arg1: ProxyArg<ManagedDecimal<Env::Api, usize>>,
-    >(
-        self,
-        position: Arg0,
-        price: Arg1,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::AccountPosition<Env::Api>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("seizeDustCollateral")
+            .raw_call("seizePosition")
             .argument(&position)
             .argument(&price)
             .original_result()
@@ -875,11 +811,12 @@ where
     ///  
     /// **Mathematical Process**: 
     /// 1. **Global Sync**: Update indexes to include latest revenue 
-    /// 2. **Revenue Calculation**: `revenue_actual = revenue_scaled * current_supply_index` 
-    /// 3. **Available Balance Check**: Determine withdrawable amount based on reserves 
-    /// 4. **Empty Pool Handling**: If pool has no user funds, claim entire contract balance 
-    /// 5. **Proportional Withdrawal**: If partial withdrawal, burn proportional scaled revenue 
-    /// 6. **Transfer Execution**: Send claimed amount to controller 
+    /// 2. **Revenue Validation**: Return zero payment if no revenue accumulated 
+    /// 3. **Revenue Calculation**: `revenue_actual = revenue_scaled * current_supply_index` 
+    /// 4. **Available Balance Check**: `amount_to_transfer = min(current_reserves, treasury_actual)` 
+    /// 5. **Symmetric Accounting Update**: Burn revenue from both `cache.revenue` and `cache.supplied` 
+    /// 6. **Precision Safety**: Use minimum values when precision drift occurs 
+    /// 7. **Transfer Execution**: Send claimed amount to controller 
     ///  
     /// **Revenue Sources**: 
     /// ``` 
@@ -892,27 +829,32 @@ where
     /// } 
     /// ``` 
     ///  
-    /// **Empty Pool Logic**: 
-    /// When `user_supplied_scaled = 0` and `borrowed_scaled = 0`: 
-    /// - All contract balance belongs to protocol 
-    /// - Claim entire available balance 
-    /// - Useful for final revenue extraction 
+    /// **Symmetric Accounting Logic**: 
+    /// ``` 
+    /// // Standard case - sufficient supplied balance: 
+    /// if supplied >= revenue_scaled: 
+    ///     cache.revenue -= revenue_scaled 
+    ///     cache.supplied -= revenue_scaled 
     ///  
-    /// **Partial Withdrawal Mechanics**: 
+    /// // Precision drift protection: 
+    /// else: 
+    ///     scaled_burn = min(calculated_burn, min(revenue, supplied)) 
+    ///     cache.revenue -= actual_revenue_burn 
+    ///     cache.supplied -= actual_supplied_burn 
     /// ``` 
-    /// // When reserves < total_revenue: 
-    /// withdrawal_ratio = available_reserves / total_revenue_value 
-    /// scaled_to_burn = revenue_scaled * withdrawal_ratio 
-    /// remaining_revenue_scaled = revenue_scaled - scaled_to_burn 
-    /// ``` 
+    ///  
+    /// **Precision Safety Mechanisms**: 
+    /// Uses minimum values to handle potential precision drift between 
+    /// `cache.revenue` and `cache.supplied` that can occur from rounding 
+    /// operations throughout the protocol's lifetime. 
     ///  
     /// **Reserve Constraints**: 
     /// Revenue withdrawal is limited by available contract balance to ensure 
-    /// user withdrawals remain possible. 
+    /// user withdrawals remain possible: `transfer = min(reserves, revenue_value)`. 
     ///  
     /// **Accounting Precision**: 
     /// Uses scaled amounts to maintain precision in revenue tracking, 
-    /// preventing rounding errors from accumulating over time. 
+    /// with symmetric burning of both revenue and supplied to prevent orphaned tokens. 
     ///  
     /// **Revenue Realization**: 
     /// Revenue is stored as scaled supply tokens that appreciate with the supply index, 
@@ -924,10 +866,10 @@ where
     /// # Returns 
     /// - Payment object representing the claimed revenue amount 
     ///  
-    /// **Security Considerations**: 
+    /// # **Security Considerations**: 
     /// - Reserve validation ensures pool liquidity preservation 
-    /// - Empty pool detection prevents user fund seizure 
-    /// - Proportional burning maintains accurate accounting 
+    /// - Symmetric accounting prevents orphaned supply tokens 
+    /// - Precision safety prevents underflow from rounding drift 
     /// - Only callable by owner (controller contract) 
     pub fn claim_revenue<
         Arg0: ProxyArg<ManagedDecimal<Env::Api, usize>>,

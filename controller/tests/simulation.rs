@@ -104,12 +104,13 @@ fn market_exit_dust_accumulation_minimal() {
     // Update markets frequently over one day (every 6 seconds)
     let mut markets = MultiValueEncoded::new();
     markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
-    let update_frequency = 12; // seconds
+    let update_frequency = 60; // seconds
     let total_updates = SECONDS_PER_DAY / update_frequency;
 
     for i in 1..=total_updates {
         state.change_timestamp(i * update_frequency);
         state.update_markets(&OWNER_ADDRESS, markets.clone());
+        state.claim_revenue(EGLD_TOKEN);
     }
 
     // Get final positions
@@ -167,17 +168,22 @@ fn market_exit_dust_accumulation_minimal() {
     let protocol_revenue = state.get_market_revenue(state.egld_market.clone());
     let reserves = state.get_market_reserves(state.egld_market.clone());
 
+    println!("reserves:         {}", reserves);
+    println!("protocol_revenue: {}", protocol_revenue);
     let dust = if reserves >= protocol_revenue {
         reserves - protocol_revenue
     } else {
         protocol_revenue - reserves
     };
 
+    let supplied = state.get_market_supplied(state.egld_market.clone());
+    println!("supplied: {}", supplied);
+    println!("dust: {}", dust);
     // Dust should be less than 5 wei (extremely small)
-    assert!(dust <= ManagedDecimal::from_raw_units(BigUint::from(5u64), WAD_PRECISION));
+    assert!(dust <= ManagedDecimal::from_raw_units(BigUint::from(1u64), WAD_PRECISION));
 }
 
-const SEED: u64 = 696969; // Fixed seed for reproducible tests
+const SEED: u64 = 69696; // Fixed seed for reproducible tests
 
 /// Simulates many users performing random actions to stress test the protocol.
 ///
@@ -194,8 +200,8 @@ fn stress_test_random_user_actions_large_scale() {
     let mut state = LendingPoolTestState::new();
     let mut rng = ChaCha8Rng::seed_from_u64(SEED);
 
-    const NUM_ACTIONS: usize = 1000;
-    const MAX_TIME_JUMP_SECONDS: u64 = SECONDS_PER_DAY * 7;
+    const NUM_ACTIONS: usize = 4000;
+    const MAX_TIME_JUMP_SECONDS: u64 = SECONDS_PER_DAY * 10;
     const NUM_USERS: usize = 1000;
     const MAX_AMOUNT: u64 = 100_000;
 
@@ -250,6 +256,10 @@ fn stress_test_random_user_actions_large_scale() {
             state.update_markets(&OWNER_ADDRESS, markets);
         }
 
+        // if action_index % 10 == 1 {
+        state.claim_revenue(EGLD_TOKEN);
+        // }
+
         // Select random user
         let user_index = rng.random_range(0..all_users.len());
         let user_addr = all_users[user_index];
@@ -293,9 +303,10 @@ fn stress_test_random_user_actions_large_scale() {
                     let nonce = user_nonces.get(&user_addr);
                     let total_borrow = state.get_total_borrow_in_egld(nonce);
                     let ltv_collateral = state.get_ltv_collateral_in_egld(nonce);
-                    let available_borrow = ltv_collateral - total_borrow;
 
-                    if available_borrow.into_raw_units() > &BigUint::zero() {
+                    if ltv_collateral > total_borrow {
+                        let available_borrow = ltv_collateral - total_borrow;
+
                         state.borrow_asset(
                             &user_addr,
                             EGLD_TOKEN,
@@ -317,6 +328,10 @@ fn stress_test_random_user_actions_large_scale() {
                             current_borrow.into_raw_units().clone(),
                             nonce,
                         );
+                        assert!(
+                            state.get_total_borrow_in_egld(nonce).into_raw_units()
+                                == &BigUint::zero()
+                        );
                     }
                 }
             } else {
@@ -333,7 +348,7 @@ fn stress_test_random_user_actions_large_scale() {
                         state.withdraw_asset_den(
                             &user_addr,
                             EGLD_TOKEN,
-                            max_withdraw.into_raw_units().clone() - BigUint::from(1u64),
+                            max_withdraw.into_raw_units().clone(),
                             nonce,
                         );
                         user_nonces.remove(&user_addr);
@@ -381,6 +396,14 @@ fn stress_test_random_user_actions_large_scale() {
                             current_supply.into_raw_units().clone(),
                             nonce,
                         );
+                        assert!(
+                            state.get_total_collateral_in_egld(nonce).into_raw_units()
+                                == &BigUint::zero()
+                        );
+                        assert!(
+                            state.get_total_borrow_in_egld(nonce).into_raw_units()
+                                == &BigUint::zero()
+                        );
                         user_nonces.remove(&user_addr);
                     }
                 }
@@ -421,16 +444,52 @@ fn stress_test_random_user_actions_large_scale() {
                 );
                 user_nonces.remove(user_addr);
             }
+
+            assert!(state.get_total_collateral_in_egld(nonce).into_raw_units() == &BigUint::zero());
+            assert!(state.get_total_borrow_in_egld(nonce).into_raw_units() == &BigUint::zero());
         }
     }
 
     // Verify market integrity after simulation
     let protocol_revenue = state.get_market_revenue(state.egld_market.clone());
+    println!("protocol_revenue: {}", protocol_revenue);
     let reserves = state.get_market_reserves(state.egld_market.clone());
+    println!("reserves: {}", reserves);
     let final_utilization = state.get_market_utilization(state.egld_market.clone());
+    println!("final_utilization: {}", final_utilization);
+    let supplied = state.get_market_supplied(state.egld_market.clone());
+    println!("supplied: {}", supplied);
+    let borrowed = state.get_market_borrowed(state.egld_market.clone());
+    println!("borrowed: {}", borrowed);
 
     // Basic sanity checks
     assert!(reserves.into_raw_units() >= &BigUint::zero());
     assert!(protocol_revenue.into_raw_units() >= &BigUint::zero());
-    assert!(final_utilization >= ManagedDecimal::from_raw_units(BigUint::zero(), 27));
+    // Use precision tolerance (allow up to 1000 wei difference):
+    let diff = if protocol_revenue > reserves {
+        protocol_revenue - reserves
+    } else {
+        reserves - protocol_revenue
+    };
+    assert!(diff <= ManagedDecimal::from_raw_units(BigUint::from(1000u64), WAD_PRECISION));
+
+    assert!(supplied.into_raw_units() >= &BigUint::zero());
+    assert!(borrowed.into_raw_units() == &BigUint::zero());
+    assert!(final_utilization == ManagedDecimal::from_raw_units(BigUint::zero(), 27));
+
+    state.claim_revenue(EGLD_TOKEN);
+    // Verify market integrity after simulation
+    let protocol_revenue = state.get_market_revenue(state.egld_market.clone());
+    println!("protocol_revenue: {}", protocol_revenue);
+    let reserves = state.get_market_reserves(state.egld_market.clone());
+    println!("reserves: {}", reserves);
+    let supplied = state.get_market_supplied(state.egld_market.clone());
+    println!("supplied: {}", supplied);
+    let borrowed = state.get_market_borrowed(state.egld_market.clone());
+    println!("borrowed: {}", borrowed);
+
+    assert!(protocol_revenue.into_raw_units() == &BigUint::zero());
+
+    assert!(supplied.into_raw_units() == &BigUint::zero());
+    assert!(borrowed.into_raw_units() == &BigUint::zero());
 }

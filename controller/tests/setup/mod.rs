@@ -9,7 +9,7 @@ use multiversx_sc::{
     types::{
         BigUint, EgldOrEsdtTokenPayment, ManagedAddress, ManagedArgBuffer, ManagedBuffer,
         ManagedDecimal, MultiValueEncoded, NumDecimals, ReturnsNewManagedAddress, ReturnsResult,
-        TestTokenIdentifier,
+        TestTokenIdentifier, TokenIdentifier,
     },
 };
 use multiversx_sc_scenario::{
@@ -50,9 +50,11 @@ pub static NFT_ROLES: &[EsdtLocalRole] = &[
 /// Main test state structure containing all the smart contract instances and addresses
 pub struct LendingPoolTestState {
     pub world: ScenarioWorld,
-    pub lending_pool_whitebox: WhiteboxContract<controller::ContractObj<DebugApi>>,
-    pub liquidity_pool_whitebox: WhiteboxContract<liquidity_layer::ContractObj<DebugApi>>,
-    pub price_aggregator_whitebox: WhiteboxContract<price_aggregator::ContractObj<DebugApi>>,
+    // pub lending_pool_whitebox: WhiteboxContract<controller::ContractObj<DebugApi>>,
+    // pub liquidity_pool_whitebox: WhiteboxContract<liquidity_layer::ContractObj<DebugApi>>,
+    // pub price_aggregator_whitebox: WhiteboxContract<price_aggregator::ContractObj<DebugApi>>,
+    // pub accumulator_whitebox: WhiteboxContract<rs_accumulator::ContractObj<DebugApi>>,
+    pub accumulator_sc: ManagedAddress<StaticApi>,
     pub lending_sc: ManagedAddress<StaticApi>,
     pub template_address_liquidity_pool: ManagedAddress<StaticApi>,
     pub price_aggregator_sc: ManagedAddress<StaticApi>,
@@ -82,14 +84,14 @@ impl LendingPoolTestState {
         setup_owner(&mut world);
         world.current_block().block_timestamp(0);
 
-        let (template_address_liquidity_pool, liquidity_pool_whitebox) =
-            setup_template_liquidity_pool(&mut world);
+        let template_address_liquidity_pool = setup_template_liquidity_pool(&mut world);
 
-        let (price_aggregator_sc, price_aggregator_whitebox) = setup_price_aggregator(&mut world);
+        let price_aggregator_sc = setup_price_aggregator(&mut world);
 
+        let accumulator_sc = setup_accumulator(&mut world);
+        println!("accumulator_sc: {:?}", accumulator_sc);
         let (
             lending_sc,
-            lending_pool_whitebox,
             usdc_market,
             egld_market,
             isolated_market,
@@ -104,6 +106,7 @@ impl LendingPoolTestState {
             &mut world,
             &template_address_liquidity_pool,
             &price_aggregator_sc,
+            &accumulator_sc,
         );
 
         let flash_mock = setup_flash_mock(&mut world);
@@ -113,9 +116,7 @@ impl LendingPoolTestState {
 
         Self {
             world,
-            lending_pool_whitebox,
-            liquidity_pool_whitebox,
-            price_aggregator_whitebox,
+            accumulator_sc,
             lending_sc,
             price_aggregator_sc,
             template_address_liquidity_pool,
@@ -1361,7 +1362,7 @@ impl LendingPoolTestState {
     }
 
     /// Upgrade liquidity pool configuration
-    pub fn upgrade_liquidity_pool(
+    pub fn upgrade_liquidity_pool_params(
         &mut self,
         base_asset: &EgldOrEsdtTokenIdentifier<StaticApi>,
         max_borrow_rate: BigUint<StaticApi>,
@@ -1378,7 +1379,7 @@ impl LendingPoolTestState {
             .from(OWNER_ADDRESS)
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .upgrade_liquidity_pool(
+            .upgrade_liquidity_pool_params(
                 base_asset.clone(),
                 max_borrow_rate,
                 base_borrow_rate,
@@ -1995,13 +1996,7 @@ impl LendingPoolTestState {
         &mut self,
         account_nonce: u64,
         debt_payments: ManagedVec<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
-    ) -> (
-        ManagedVec<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
-        ManagedVec<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
-        ManagedVec<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
-        ManagedDecimal<StaticApi, NumDecimals>,
-        ManagedDecimal<StaticApi, NumDecimals>,
-    ) {
+    ) -> LiquidationEstimate<StaticApi> {
         self.world
             .query()
             .to(self.lending_sc.clone())
@@ -2151,6 +2146,58 @@ impl LendingPoolTestState {
             .to(market_address)
             .typed(proxy_liquidity_pool::LiquidityPoolProxy)
             .supplied()
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    pub fn get_market_protocol_revenue(
+        &mut self,
+        market_address: ManagedAddress<StaticApi>,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        self.world
+            .query()
+            .to(market_address)
+            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
+            .get_protocol_revenue()
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    pub fn get_market_borrowed_amount(
+        &mut self,
+        market_address: ManagedAddress<StaticApi>,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        self.world
+            .query()
+            .to(market_address)
+            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
+            .get_borrowed_amount()
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    pub fn get_market_supplied_amount(
+        &mut self,
+        market_address: ManagedAddress<StaticApi>,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        self.world
+            .query()
+            .to(market_address)
+            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
+            .get_supplied_amount()
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    pub fn get_market_borrowed(
+        &mut self,
+        market_address: ManagedAddress<StaticApi>,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        self.world
+            .query()
+            .to(market_address)
+            .typed(proxy_liquidity_pool::LiquidityPoolProxy)
+            .borrowed()
             .returns(ReturnsResult)
             .run()
     }
@@ -2381,6 +2428,7 @@ pub fn world() -> ScenarioWorld {
     blockchain.register_contract(PAIR_PATH, pair::ContractBuilder);
 
     blockchain.register_contract(SAFE_PRICE_VIEW_PATH, pair::ContractBuilder);
+    blockchain.register_contract(ACCUMULATOR_PATH, accumulator::ContractBuilder);
 
     blockchain.register_contract(FLASH_MOCK_PATH, flash_mock::ContractBuilder);
 
@@ -2392,9 +2440,9 @@ pub fn setup_lending_pool(
     world: &mut ScenarioWorld,
     template_address_liquidity_pool: &ManagedAddress<StaticApi>,
     price_aggregator_sc: &ManagedAddress<StaticApi>,
+    accumulator_sc: &ManagedAddress<StaticApi>,
 ) -> (
     ManagedAddress<StaticApi>,
-    WhiteboxContract<controller::ContractObj<DebugApi>>,
     ManagedAddress<StaticApi>,
     ManagedAddress<StaticApi>,
     ManagedAddress<StaticApi>,
@@ -2406,9 +2454,6 @@ pub fn setup_lending_pool(
     ManagedAddress<StaticApi>,
     ManagedAddress<StaticApi>,
 ) {
-    let lending_pool_whitebox =
-        WhiteboxContract::new(LENDING_POOL_ADDRESS, controller::contract_obj);
-
     let safe_view_sc = world
         .tx()
         .from(OWNER_ADDRESS)
@@ -2435,9 +2480,9 @@ pub fn setup_lending_pool(
             template_address_liquidity_pool,
             price_aggregator_sc,
             safe_view_sc.clone(),
-            safe_view_sc.clone(), // TODO: Add real accumulator
-            safe_view_sc.clone(), // TODO Add wrap SC for WEGLD
-            safe_view_sc.clone(), // TODO: Add ash SC
+            accumulator_sc.clone(), // TODO: Add real accumulator
+            safe_view_sc.clone(),   // TODO Add wrap SC for WEGLD
+            safe_view_sc.clone(),   // TODO: Add ash SC
         )
         .code(LENDING_POOL_PATH)
         .returns(ReturnsNewManagedAddress)
@@ -2537,7 +2582,6 @@ pub fn setup_lending_pool(
 
     (
         lending_sc,
-        lending_pool_whitebox,
         usdc_market,
         egld_market,
         isolated_market,
@@ -3011,14 +3055,7 @@ pub fn setup_flash_mock(world: &mut ScenarioWorld) -> ManagedAddress<StaticApi> 
 }
 
 /// Setup price aggregator
-pub fn setup_price_aggregator(
-    world: &mut ScenarioWorld,
-) -> (
-    ManagedAddress<StaticApi>,
-    WhiteboxContract<price_aggregator::ContractObj<DebugApi>>,
-) {
-    let price_aggregator_whitebox =
-        WhiteboxContract::new(PRICE_AGGREGATOR_ADDRESS, price_aggregator::contract_obj);
+pub fn setup_price_aggregator(world: &mut ScenarioWorld) -> ManagedAddress<StaticApi> {
     world.account(ORACLE_ADDRESS_1).nonce(1);
     world.account(ORACLE_ADDRESS_2).nonce(1);
     world.account(ORACLE_ADDRESS_3).nonce(1);
@@ -3116,7 +3153,7 @@ pub fn setup_price_aggregator(
         0u64,
     );
 
-    (price_aggregator_sc, price_aggregator_whitebox)
+    price_aggregator_sc
 }
 
 /// Setup EGLD liquid staking
@@ -3295,16 +3332,8 @@ pub fn submit_price(
 }
 
 /// Setup template liquidity pool
-pub fn setup_template_liquidity_pool(
-    world: &mut ScenarioWorld,
-) -> (
-    ManagedAddress<StaticApi>,
-    WhiteboxContract<liquidity_layer::ContractObj<DebugApi>>,
-) {
-    let liquidity_pool_whitebox =
-        WhiteboxContract::new(LIQUIDITY_POOL_ADDRESS, liquidity_layer::contract_obj);
-
-    let template_address_liquidity_pool = world
+pub fn setup_template_liquidity_pool(world: &mut ScenarioWorld) -> ManagedAddress<StaticApi> {
+    world
         .tx()
         .from(OWNER_ADDRESS)
         .typed(proxy_liquidity_pool::LiquidityPoolProxy)
@@ -3322,9 +3351,28 @@ pub fn setup_template_liquidity_pool(
         )
         .code(LIQUIDITY_POOL_PATH)
         .returns(ReturnsNewManagedAddress)
+        .run()
+}
+
+/// Setup template liquidity pool
+pub fn setup_accumulator(world: &mut ScenarioWorld) -> ManagedAddress<StaticApi> {
+    let accumulator_sc = world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .typed(proxy_accumulator::AccumulatorProxy)
+        .init(
+            ManagedAddress::zero(),
+            BigUint::from(1_000u64),
+            BigUint::from(3_000u64),
+            TokenIdentifier::<StaticApi>::from(XEGLD_TOKEN.to_token_identifier()),
+            TokenIdentifier::<StaticApi>::from(USDC_TOKEN.to_token_identifier()),
+            ManagedAddress::zero(),
+        )
+        .code(ACCUMULATOR_PATH)
+        .returns(ReturnsNewManagedAddress)
         .run();
 
-    (template_address_liquidity_pool, liquidity_pool_whitebox)
+    accumulator_sc
 }
 
 /// Create e-mode category
@@ -3602,8 +3650,13 @@ pub fn setup_owner(world: &mut ScenarioWorld) {
 /// Setup flasher account
 pub fn setup_flasher(world: &mut ScenarioWorld, flash: ManagedAddress<StaticApi>) {
     world.set_esdt_balance(
-        flash,
+        flash.clone(),
         EGLD_TOKEN.as_bytes(),
+        BigUint::from(100000000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+    );
+    world.set_esdt_balance(
+        flash,
+        USDC_TOKEN.as_bytes(),
         BigUint::from(100000000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
     );
 }

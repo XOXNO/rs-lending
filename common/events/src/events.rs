@@ -237,4 +237,11 @@ pub trait EventsModule {
         #[indexed] total_borrow_usd: &ManagedDecimal<Self::Api, NumDecimals>,
         #[indexed] total_collateral_usd: &ManagedDecimal<Self::Api, NumDecimals>,
     );
+
+    #[event("update_asset_oracle")]
+    fn update_asset_oracle_event(
+        &self,
+        #[indexed] asset: &EgldOrEsdtTokenIdentifier,
+        #[indexed] oracle: &OracleProvider<Self::Api>,
+    );
 }

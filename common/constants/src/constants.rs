@@ -11,6 +11,7 @@ pub const MILLISECONDS_PER_YEAR: u64 = 31_556_926_000;
 pub const SECONDS_PER_MINUTE: u64 = 60;
 
 pub const RAY: u128 = 1_000_000_000_000_000_000_000_000_000;
+pub const DOUBLE_RAY: u128 = 2_000_000_000_000_000_000_000_000_000;
 pub const RAY_PRECISION: usize = 27;
 
 /// Basis points for 1 EGLD which is the base price for all assets or 1 USD

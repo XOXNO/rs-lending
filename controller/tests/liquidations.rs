@@ -1,5 +1,5 @@
 use common_constants::RAY;
-use controller::{ERROR_INSUFFICIENT_COLLATERAL, RAY_PRECISION};
+use controller::{ERROR_INSUFFICIENT_COLLATERAL, RAY_PRECISION, WAD_PRECISION};
 use multiversx_sc::types::{EgldOrEsdtTokenIdentifier, ManagedDecimal, MultiValueEncoded};
 use multiversx_sc_scenario::imports::{BigUint, OptionalValue, TestAddress};
 pub mod constants;
@@ -122,6 +122,8 @@ fn liquidate_multiple_debt_positions_sequential_success() {
     let borrowed_usdc = state.get_borrow_amount_for_token(2, USDC_TOKEN);
     let borrowed_egld = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
 
+    let before_health = state.get_account_health_factor(2);
+    println!("before_health: {:?}", before_health);
     // Liquidate EGLD debt first
     state.liquidate_account_dem(
         &liquidator,
@@ -129,15 +131,20 @@ fn liquidate_multiple_debt_positions_sequential_success() {
         borrowed_egld.into_raw_units().clone(),
         2,
     );
+    let after_health = state.get_account_health_factor(2);
+    println!("after_health: {:?}", after_health);
+    assert!(after_health > before_health);
 
-    // Liquidate USDC debt second
+    // // Liquidate USDC debt second
     state.liquidate_account_dem(
         &liquidator,
         &USDC_TOKEN,
         borrowed_usdc.into_raw_units().clone(),
         2,
     );
-
+    let after_health = state.get_account_health_factor(2);
+    println!("after_health: {:?}", after_health);
+    assert!(after_health > before_health);
     // Verify position health improved
     let final_borrowed = state.get_total_borrow_in_egld(2);
     assert!(final_borrowed < borrowed);
@@ -265,7 +272,8 @@ fn liquidate_bulk_multiple_assets_with_overpayment_success() {
 
     // Execute bulk liquidation
     state.liquidate_account_dem_bulk(&liquidator, payments, 2);
-
+    let after_health = state.get_account_health_factor(2);
+    println!("after_health: {:?}", after_health);
     // Verify final position state
     let final_borrowed = state.get_total_borrow_in_egld(2);
     assert!(final_borrowed < borrowed);
@@ -616,7 +624,9 @@ fn liquidate_single_asset_position_high_interest_success() {
     let final_borrowed = state.get_total_borrow_in_egld_big(2);
     let final_collateral = state.get_total_collateral_in_egld_big(2);
     let final_health = state.get_account_health_factor(2);
-
+    println!("final_borrowed: {:?}", final_borrowed);
+    println!("final_collateral: {:?}", final_collateral);
+    println!("final_health: {:?}", final_health);
     assert!(final_borrowed >= ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
     assert!(final_collateral >= ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
     assert!(final_health > ManagedDecimal::from_raw_units(BigUint::from(1u64), RAY_PRECISION));
@@ -765,5 +775,301 @@ fn borrow_insufficient_collateral_for_siloed_asset_error() {
         1,
         SILOED_DECIMALS,
         ERROR_INSUFFICIENT_COLLATERAL,
+    );
+}
+
+/// Tests seizure of dust collateral after bad debt cleanup.
+///
+/// Covers:
+/// - Controller::cleanBadDebt endpoint functionality
+/// - LiquidityModule::seizeDustCollateral endpoint
+/// - Protocol revenue collection from dust positions
+/// - Complete position clearing after dust seizure
+/// - Bad debt socialization with remaining collateral
+/// - Requires: debt > collateral AND collateral < $5 AND debt > $5
+#[test]
+fn seize_dust_collateral_after_bad_debt_success() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+    let liquidator = TestAddress::new("liquidator");
+
+    state.change_timestamp(0);
+    setup_accounts(&mut state, supplier, borrower);
+
+    // Setup liquidator account
+    state.world.account(liquidator).nonce(1).esdt_balance(
+        USDC_TOKEN,
+        BigUint::from(200000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
+    );
+
+    // Setup liquidity pools
+    state.supply_asset(
+        &supplier,
+        USDC_TOKEN,
+        BigUint::from(5000u64),
+        USDC_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+    state.supply_asset(
+        &supplier,
+        USDC_TOKEN,
+        BigUint::from(1000u64),
+        USDC_DECIMALS,
+        OptionalValue::Some(1),
+        OptionalValue::None,
+        false,
+    );
+
+    // Borrower provides EGLD collateral that will be liquidated down to dust
+    state.supply_asset(
+        &borrower,
+        EGLD_TOKEN,
+        BigUint::from(20u64), // 10 EGLD = $1250
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    // Borrower takes loan that will create bad debt after interest
+    state.borrow_asset(
+        &borrower,
+        USDC_TOKEN,
+        BigUint::from(500u64), // $500 loan against $1250 collateral
+        2,
+        USDC_DECIMALS,
+    );
+
+    // Record initial protocol revenue for EGLD pool
+    let egld_pool_address = state.get_pool_address(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
+    // Advance very long time to create massive interest accumulation
+    state.change_timestamp(880000000u64); // Same as working test
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
+    state.update_markets(&supplier, markets.clone());
+
+    let health_factor = state.get_account_health_factor(2);
+    println!("health_factor: {:?}", health_factor);
+    let initial_debt_usdc = state.get_borrow_amount_for_token(2, USDC_TOKEN);
+    println!("initial_debt_usd: {:?}", initial_debt_usdc);
+    // Liquidate most of the collateral, leaving only dust
+    state.liquidate_account(
+        &liquidator,
+        &USDC_TOKEN,
+        BigUint::from(730u64), // Liquidate with large amount to consume most collateral
+        2,
+        USDC_DECIMALS,
+    );
+    let left_collateral_egld = state.get_collateral_amount_for_token(2, EGLD_TOKEN);
+    println!("left_collateral_egld: {:?}", left_collateral_egld);
+    // At this point:
+    // - Significant bad debt remains due to massive interest
+    // - Very little collateral remains (dust under $5)
+    // - Conditions for cleanBadDebt are met
+
+    let left_bad_debt_usdc = state.get_borrow_amount_for_token(2, USDC_TOKEN);
+    println!("left_bad_debt_usdc: {:?}", left_bad_debt_usdc);
+
+    assert!(state.get_total_borrow_in_egld(2) > state.get_total_collateral_in_egld(2));
+    let initial_egld_revenue = state.get_market_revenue(egld_pool_address.clone());
+    let before_clean_market_indexes =
+        state.get_all_market_indexes(MultiValueEncoded::from_iter(vec![
+            EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN),
+        ]));
+    println!(
+        "usdc_index: {:?}",
+        before_clean_market_indexes.get(0).supply_index
+    );
+    // state.claim_revenue(USDC_TOKEN);
+    let usdc_supplied_before_bad_debt = state.get_collateral_amount_for_token(1, USDC_TOKEN);
+    println!("usdc_supplied_before_bad_debt: {:?}", usdc_supplied_before_bad_debt);
+    // Clean bad debt - this calls seizeDustCollateral internally
+    state.clean_bad_debt(2);
+
+    // Verify all positions cleared
+    let final_debt = state.get_total_borrow_in_egld(2);
+    let final_collateral = state.get_total_collateral_in_egld(2);
+
+    assert!(final_debt == ManagedDecimal::from_raw_units(BigUint::from(0u64), WAD_PRECISION));
+    assert!(final_collateral == ManagedDecimal::from_raw_units(BigUint::from(0u64), WAD_PRECISION));
+
+    println!("initial_egld_revenue: {:?}", initial_egld_revenue);
+    // Verify protocol revenue increased from dust seizure
+    let final_egld_revenue = state.get_market_revenue(egld_pool_address);
+    println!("final_egld_revenue:   {:?}", final_egld_revenue);
+    assert!(
+        final_egld_revenue > initial_egld_revenue,
+        "Protocol revenue should increase or stay same when dust collateral is seized"
+    );
+    // Revenue should be the initial revenue + the collateral left before bad debt socialization
+    assert!(final_egld_revenue == initial_egld_revenue + left_collateral_egld);
+
+    let after_clean_market_indexes =
+        state.get_all_market_indexes(MultiValueEncoded::from_iter(vec![
+            EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN),
+        ]));
+    let re_paid_usdc_debt = initial_debt_usdc - left_bad_debt_usdc;
+    println!("re_paid_usdc_debt: {:?}", re_paid_usdc_debt);
+    println!(
+        "usdc_index: {:?}",
+        after_clean_market_indexes.get(0).supply_index
+    );
+
+    // Verify supply index decreased due to bad debt socialization distribution to suppliers
+    assert!(
+        after_clean_market_indexes.get(0).supply_index
+            < before_clean_market_indexes.get(0).supply_index
+    );
+
+    let usdc_supplied_after_bad_debt = state.get_collateral_amount_for_token(1, USDC_TOKEN);
+    println!("usdc_supplied_after_bad_debt: {:?}", usdc_supplied_after_bad_debt);
+    let lost_usdc_due_to_socialization = usdc_supplied_before_bad_debt.clone() - usdc_supplied_after_bad_debt.clone();
+    println!("lost_usdc_due_to_socialization: {:?}", lost_usdc_due_to_socialization);
+    assert!(lost_usdc_due_to_socialization.into_raw_units().clone() > BigUint::from(0u64));
+    let supplied_usdc = state.get_market_supplied_amount(state.usdc_market.clone());
+    let market_reserves = state.get_market_reserves(state.usdc_market.clone());
+    let protoocl_revenue = state.get_market_protocol_revenue(state.usdc_market.clone());
+    println!("total supplied_usdc: {:?}", supplied_usdc);
+    println!("market_reserves: {:?}", market_reserves);
+    println!("protoocl_revenue: {:?}", protoocl_revenue);
+    state.withdraw_asset_den(
+        &supplier,
+        USDC_TOKEN,
+        usdc_supplied_after_bad_debt.into_raw_units().clone(),
+        1,
+    );
+    let supplied_usdc = state.get_market_supplied_amount(state.usdc_market.clone());
+    let market_reserves = state.get_market_reserves(state.usdc_market.clone());
+    let protoocl_revenue = state.get_market_protocol_revenue(state.usdc_market.clone());
+    println!("total supplied_usdc: {:?}", supplied_usdc);
+    println!("market_reserves: {:?}", market_reserves);
+    println!("protoocl_revenue: {:?}", protoocl_revenue);
+    state.claim_revenue(USDC_TOKEN);
+    let final_protoocl_revenue = state.get_market_protocol_revenue(state.usdc_market.clone());
+    println!("final_protoocl_revenue: {:?}", final_protoocl_revenue);
+    assert!(final_protoocl_revenue.into_raw_units().clone() == BigUint::zero());
+    let scaled_borrowed = state.get_market_borrowed(state.usdc_market.clone());
+    println!("scaled_borrowed: {:?}", scaled_borrowed);
+    assert!(scaled_borrowed.into_raw_units().clone() == BigUint::zero());
+    let scaled_supplied = state.get_market_supplied(state.usdc_market.clone());
+    println!("scaled_supplied: {:?}", scaled_supplied);
+    // With the fix, there should be no dust when claiming full revenue
+    assert!(
+        scaled_supplied.into_raw_units().clone() == BigUint::zero(),
+        "Scaled supplied should be zero after full revenue claim"
+    );
+}
+
+/// Tests seizure of dust collateral after bad debt cleanup.
+///
+/// Covers:
+/// - Controller::cleanBadDebt endpoint functionality with just debt no collateral
+/// - Requires: debt > collateral AND collateral < $5 AND debt > $5
+/// - Revenue should stay the same when debt is seized but no collateral is left just bad debt
+#[test]
+fn seize_dust_collateral_after_bad_debt_success_just_debt_no_collateral() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+    let liquidator = TestAddress::new("liquidator");
+
+    state.change_timestamp(0);
+    setup_accounts(&mut state, supplier, borrower);
+
+    // Setup liquidator account
+    state.world.account(liquidator).nonce(1).esdt_balance(
+        USDC_TOKEN,
+        BigUint::from(200000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
+    );
+
+    // Setup liquidity pools
+    state.supply_asset(
+        &supplier,
+        USDC_TOKEN,
+        BigUint::from(5000u64),
+        USDC_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+    state.supply_asset(
+        &supplier,
+        USDC_TOKEN,
+        BigUint::from(1000u64),
+        USDC_DECIMALS,
+        OptionalValue::Some(1),
+        OptionalValue::None,
+        false,
+    );
+
+    // Borrower provides EGLD collateral that will be liquidated down to dust
+    state.supply_asset(
+        &borrower,
+        EGLD_TOKEN,
+        BigUint::from(20u64), // 10 EGLD = $1250
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    // Borrower takes loan that will create bad debt after interest
+    state.borrow_asset(
+        &borrower,
+        USDC_TOKEN,
+        BigUint::from(500u64), // $500 loan against $1250 collateral
+        2,
+        USDC_DECIMALS,
+    );
+
+    // Record initial protocol revenue for EGLD pool
+    let egld_pool_address = state.get_pool_address(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
+    // Advance very long time to create massive interest accumulation
+    state.change_timestamp(880000000u64); // Same as working test
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
+    state.update_markets(&supplier, markets.clone());
+
+    let health_factor = state.get_account_health_factor(2);
+    println!("health_factor: {:?}", health_factor);
+    let debt_usdc = state.get_borrow_amount_for_token(2, USDC_TOKEN);
+    println!("debt_usd: {:?}", debt_usdc);
+    let collateral_egld = state.get_collateral_amount_for_token(2, EGLD_TOKEN);
+    println!("collateral_egld: {:?}", collateral_egld);
+
+    // Liquidate most of the collateral, leaving only dust
+    state.liquidate_account(
+        &liquidator,
+        &USDC_TOKEN,
+        BigUint::from(780u64), // Liquidate with large amount to consume most collateral
+        2,
+        USDC_DECIMALS,
+    );
+    // At this point:
+    // - Significant bad debt remains due to massive interest
+    // - Very little collateral remains (dust under $5)
+    // - Conditions for cleanBadDebt are met
+    let initial_egld_revenue = state.get_market_revenue(egld_pool_address.clone());
+
+    // Clean bad debt - this calls seizeDustCollateral internally
+    state.clean_bad_debt(2);
+
+    // Verify all positions cleared
+    let final_debt = state.get_total_borrow_in_egld(2);
+    let final_collateral = state.get_total_collateral_in_egld(2);
+
+    assert!(final_debt == ManagedDecimal::from_raw_units(BigUint::from(0u64), WAD_PRECISION));
+    assert!(final_collateral == ManagedDecimal::from_raw_units(BigUint::from(0u64), WAD_PRECISION));
+
+    println!("initial_egld_revenue: {:?}", initial_egld_revenue);
+    // Verify protocol revenue increased from dust seizure
+    let final_egld_revenue = state.get_market_revenue(egld_pool_address);
+    println!("final_egld_revenue:   {:?}", final_egld_revenue);
+    assert!(
+        final_egld_revenue == initial_egld_revenue,
+        "Protocol revenue should increase or stay same when dust collateral is seized"
     );
 }

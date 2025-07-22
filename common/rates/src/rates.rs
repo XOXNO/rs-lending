@@ -72,7 +72,7 @@ pub trait InterestRates: common_math::SharedMathModule {
             annual_rate
         };
 
-        // Convert annual rate to per-second rate
+        // Convert annual rate to per-millisecond rate
         self.div_half_up(
             &capped_rate,
             &self.to_decimal(BigUint::from(MILLISECONDS_PER_YEAR), 0),
@@ -115,31 +115,6 @@ pub trait InterestRates: common_math::SharedMathModule {
             &self.bps().sub(reserve_factor),
             RAY_PRECISION,
         )
-    }
-
-    /// Calculates the interest accumulation factor using a linear interest rate formula.
-    ///
-    /// **Formula**:
-    /// - `Interest Factor = 1 + (rate * time_passed)`
-    ///
-    /// # Arguments
-    /// - `rate`: The per-millisecond interest rate (`ManagedDecimal<Self::Api, NumDecimals>`), in RAY.
-    /// - `time_passed`: The duration in milliseconds (`u64`) for which interest is calculated.
-    ///
-    /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: The interest accumulation factor `(1 + r*t)`, in RAY.
-    fn calculate_linear_interest(
-        &self,
-        rate: ManagedDecimal<Self::Api, NumDecimals>,
-        time_passed: u64,
-    ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let factor = self.mul_half_up(
-            &rate,
-            &self.to_decimal(BigUint::from(time_passed), 0),
-            RAY_PRECISION,
-        );
-
-        self.ray() + factor
     }
 
     /// Computes the interest growth factor using a Taylor series approximation for `e^(rate * exp)`.
@@ -256,7 +231,7 @@ pub trait InterestRates: common_math::SharedMathModule {
         old_supply_index: ManagedDecimal<Self::Api, NumDecimals>,
         rewards_increase: ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        if supplied != self.ray_zero() {
+        if supplied != self.ray_zero() && rewards_increase != self.ray_zero() {
             let total_supplied_with_interest =
                 self.mul_half_up(&supplied, &old_supply_index, RAY_PRECISION);
             let rewards_ratio = self.div_half_up(
@@ -294,8 +269,8 @@ pub trait InterestRates: common_math::SharedMathModule {
         ManagedDecimal<Self::Api, NumDecimals>, // protocol_fee_ray
     ) {
         // Calculate total accrued interest
-        let old_total_debt = self.mul_half_up(borrowed, old_borrow_index, RAY_PRECISION);
-        let new_total_debt = self.mul_half_up(borrowed, new_borrow_index, RAY_PRECISION);
+        let old_total_debt = self.scaled_to_original_ray(borrowed, old_borrow_index);
+        let new_total_debt = self.scaled_to_original_ray(borrowed, new_borrow_index);
 
         let accrued_interest_ray = new_total_debt.sub(old_total_debt);
 
@@ -309,13 +284,21 @@ pub trait InterestRates: common_math::SharedMathModule {
 
     fn get_utilization(
         &self,
-        borrowed: &ManagedDecimal<Self::Api, NumDecimals>,
-        supplied: &ManagedDecimal<Self::Api, NumDecimals>,
+        borrowed_ray: &ManagedDecimal<Self::Api, NumDecimals>,
+        supplied_ray: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        if supplied == &self.ray_zero() {
+        if supplied_ray == &self.ray_zero() {
             return self.ray_zero();
         }
-        self.div_half_up(borrowed, supplied, RAY_PRECISION)
+        self.div_half_up(borrowed_ray, supplied_ray, RAY_PRECISION)
+    }
+
+    fn scaled_to_original_ray(
+        &self,
+        scaled_amount: &ManagedDecimal<Self::Api, NumDecimals>,
+        index: &ManagedDecimal<Self::Api, NumDecimals>,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        self.mul_half_up(scaled_amount, index, RAY_PRECISION)
     }
 
     fn scaled_to_original(
@@ -341,10 +324,8 @@ pub trait InterestRates: common_math::SharedMathModule {
         let delta = current_timestamp - last_timestamp;
 
         if delta > 0 {
-            let borrowed_original =
-                self.scaled_to_original(&borrowed, &current_borrowed_index, params.asset_decimals);
-            let supplied_original =
-                self.scaled_to_original(&supplied, &current_supply_index, params.asset_decimals);
+            let borrowed_original = self.scaled_to_original_ray(&borrowed, &current_borrowed_index);
+            let supplied_original = self.scaled_to_original_ray(&supplied, &current_supply_index);
             let utilization = self.get_utilization(&borrowed_original, &supplied_original);
             let borrow_rate = self.calc_borrow_rate(utilization, params.clone());
             let borrow_factor = self.calculate_compounded_interest(borrow_rate.clone(), delta);

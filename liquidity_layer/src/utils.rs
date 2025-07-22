@@ -169,7 +169,7 @@ pub trait UtilsModule:
     ///
     /// # Arguments
     /// - `cache`: Mutable pool state for index updates
-    /// - `bad_debt_amount`: Uncollectable debt amount in asset decimals
+    /// - `bad_debt_amount_ray`: Uncollectable debt amount in RAY precision
     ///
     /// **Security Considerations**:
     /// - Immediate application prevents gaming opportunities
@@ -179,16 +179,13 @@ pub trait UtilsModule:
     fn apply_bad_debt_to_supply_index(
         &self,
         cache: &mut Cache<Self>,
-        bad_debt_amount: &ManagedDecimal<Self::Api, NumDecimals>,
+        bad_debt_amount_ray: ManagedDecimal<Self::Api, NumDecimals>,
     ) {
         // Calculate total supplied value in RAY precision
-        let total_supplied_value_ray =
-            self.mul_half_up(&cache.supplied, &cache.supply_index, RAY_PRECISION);
+        let total_supplied_value_ray = cache.original_supply_ray(&cache.supplied);
         // Convert bad debt to RAY precision
-        let bad_debt_ray = bad_debt_amount.rescale(RAY_PRECISION);
-
         // Cap bad debt to available value (prevent negative results)
-        let capped_bad_debt_ray = self.get_min(bad_debt_ray, total_supplied_value_ray.clone());
+        let capped_bad_debt_ray = self.get_min(bad_debt_amount_ray, total_supplied_value_ray.clone());
 
         // Calculate remaining value after bad debt
         let remaining_value_ray = total_supplied_value_ray.clone() - capped_bad_debt_ray;

@@ -4,19 +4,11 @@ pub static ERROR_ASSET_NOT_SUPPORTED: &[u8] = b"Asset not supported.";
 
 pub static ERROR_INSUFFICIENT_COLLATERAL: &[u8] = b"Not enough collateral available for this loan.";
 
-pub static ERROR_INSUFFICIENT_DEPOSIT: &[u8] = b"Not enough tokens deposited for this account.";
-
 pub static ERROR_HEALTH_FACTOR: &[u8] = b"Health not low enough for liquidation.";
 
 pub static ERROR_HEALTH_FACTOR_WITHDRAW: &[u8] = b"Health factor will be too low after withdrawal.";
-pub static ERROR_HEALTH_FACTOR_BECOME_LOW: &[u8] = b"Health factor will be too low.";
 
 pub static ERROR_TOKEN_MISMATCH: &[u8] = b"Token sent is not the same as the liquidation token.";
-
-pub static ERROR_INSUFFICIENT_LIQUIDATION: &[u8] = b"Insufficient funds for liquidation.";
-
-pub static ERROR_NO_COLLATERAL_TOKEN: &[u8] =
-    b"Liquidatee user doesn't have this token as collateral.";
 
 pub static ERROR_ASSET_ALREADY_SUPPORTED: &[u8] = b"Asset already supported.";
 
@@ -27,10 +19,6 @@ pub static ERROR_INVALID_BULK_BORROW_TICKER: &[u8] = b"Invalid bulk borrow ticke
 pub static ERROR_NO_POOL_FOUND: &[u8] = b"No pool found for this asset.";
 
 pub static ERROR_TEMPLATE_EMPTY: &[u8] = b"Liquidity pool contract template is empty.";
-
-pub static ERROR_TOKEN_TICKER_FETCH: &[u8] = b"Failed to get token ticker.";
-
-pub static ERROR_COLLATERAL_NOT_FOUND: &[u8] = b"Collateral not found to liquidate.";
 
 pub static ERROR_PRICE_AGGREGATOR_NOT_SET: &[u8] = b"Price aggregator not set.";
 
@@ -45,17 +33,12 @@ pub static ERROR_ASSET_ALREADY_SUPPORTED_IN_EMODE: &[u8] = b"Asset already suppo
 
 pub static ERROR_ASSET_NOT_SUPPORTED_IN_EMODE: &[u8] = b"Asset not supported in E-mode.";
 
-pub static ERROR_EMODE_ASSET_NOT_SUPPORTED_AS_COLLATERAL: &[u8] =
-    b"E-mode asset not supported as collateral.";
-
 pub static ERROR_ASSET_NOT_BORROWABLE_IN_ISOLATION: &[u8] = b"Asset not borrowable in isolation.";
 
 pub static ERROR_ASSET_NOT_BORROWABLE_IN_SILOED: &[u8] =
     b"Asset can not be borrowed when in siloed mode, if there are other borrow positions.";
 
 pub static ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL: &[u8] = b"Asset not supported as collateral.";
-
-pub static ERROR_POSITION_SHOULD_BE_VAULT: &[u8] = b"Position should be vault.";
 
 pub static ERROR_INVALID_AGGREGATOR: &[u8] = b"Invalid aggregator.";
 
@@ -110,20 +93,9 @@ pub static ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO: &[u8] = b"Amount must be grea
 
 pub static ERROR_ADDRESS_IS_ZERO: &[u8] = b"Address is zero.";
 
-pub static ERROR_LIQUIDATED_AMOUNT_AFTER_FEES_LESS_THAN_MIN_AMOUNT_TO_RECEIVE: &[u8] =
-    b"Liquidated amount after fees is less than min amount to receive.";
-
 pub static ERROR_EMODE_CATEGORY_DEPRECATED: &[u8] = b"E-mode category deprecated.";
 
 pub static ERROR_POSITION_NOT_FOUND: &[u8] = b"Position not found.";
-
-pub static ERROR_ENABLE_VAULT_MODE_FAILED: &[u8] = b"Enable vault mode failed.";
-
-pub static ERROR_VAULT_ALREADY_DISABLED: &[u8] = b"Vault already disabled.";
-
-pub static ERROR_VAULT_ALREADY_ENABLED: &[u8] = b"Vault already enabled.";
-
-pub static ERROR_DEBT_CAN_NOT_BE_NEGATIVE: &[u8] = b"Debt repaid can not be negative!";
 
 pub static ERROR_SWAP_COLLATERAL_NOT_SUPPORTED: &[u8] =
     b"Swap collateral not supported with isolated assets.";
@@ -143,6 +115,8 @@ pub static ERROR_SWAP_DEBT_NOT_SUPPORTED: &[u8] = b"Swap debt not supported.";
 
 pub static ERROR_MULTIPLY_REQUIRE_EXTRA_STEPS: &[u8] = b"Multiply requires extra steps.";
 
+pub static ERROR_STRATEGY_FEE_EXCEEDS_AMOUNT: &[u8] = b"Strategy fee cannot exceed strategy amount.";
+
 pub static ERROR_INVALID_BORROW_RATE_PARAMS: &[u8] =
     b"Borrow rate parameters invalid: max_borrow_rate must be greater than base_borrow_rate.";
 pub static ERROR_INVALID_UTILIZATION_RANGE: &[u8] =
@@ -154,14 +128,6 @@ pub static ERROR_INVALID_RESERVE_FACTOR: &[u8] =
 pub static ERROR_INVALID_ONEDEX_PAIR_ID: &[u8] = b"Invalid onedex pair id.";
 
 pub static ERROR_WRONG_TOKEN: &[u8] = b"Wrong received token.";
-
-pub static ERROR_ZERO_AMOUNT: &[u8] = b"Amount is zero.";
-
-pub static ERROR_MULTIPLY_STRATEGY_REQUIRES_FLASH_LOAN: &[u8] =
-    b"Multiply strategy requires flash loan leverage.";
-
-pub static ERROR_INITIAL_COLLATERAL_OVER_FINAL_COLLATERAL: &[u8] =
-    b"Initial collateral is over the final collateral amount";
 
 pub static ERROR_CANNOT_CLEAN_BAD_DEBT: &[u8] = b"Cannot clean bad debt.";
 
@@ -176,8 +142,6 @@ pub static ERROR_PRICE_FEED_STALE: &[u8] = b"Price feed is stale.";
 pub static ERROR_FLASH_LOAN_ALREADY_ONGOING: &[u8] = b"Flash loan already ongoing.";
 
 pub static ERROR_ACCOUNT_ATTRIBUTES_MISMATCH: &[u8] = b"Account attributes mismatch.";
-
-pub static ERROR_WITHDRAW_TOKEN_RECEIVED: &[u8] = b"Wrong token received during withdraw.";
 
 pub static ERROR_WITHDRAW_AMOUNT_LESS_THAN_FEE: &[u8] =
     b"Withdraw amount less than liquidation fee.";

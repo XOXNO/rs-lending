@@ -52,6 +52,7 @@ path = "../flash_mock"
 [dev-dependencies]
 multiversx-sc-scenario = "0.59.0"
 rs-liquid-xoxno        = { git = "https://github.com/XOXNO/rs-liquid-xoxno" }
+accumulator         = { git = "https://github.com/XOXNO/rs-accumulator" }
 rs-liquid-staking-sc   = { git = "https://github.com/XOXNO/rs-liquid-staking-sc", package = "liquid-staking" }
 pair                   = { git = "https://github.com/mihaieremia/mx-exchange-sc", package = "pair" }
 rand                   = "0.9.1"

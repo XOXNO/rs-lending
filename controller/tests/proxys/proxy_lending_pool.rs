@@ -90,16 +90,12 @@ where
     To: TxTo<Env>,
     Gas: TxGas<Env>,
 {
-    pub fn upgrade<
-        Arg0: ProxyArg<MultiValueEncoded<Env::Api, EgldOrEsdtTokenIdentifier<Env::Api>>>,
-    >(
+    pub fn upgrade(
         self,
-        _assets: Arg0,
     ) -> TxTypedUpgrade<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_upgrade()
-            .argument(&_assets)
             .original_result()
     }
 }
@@ -494,6 +490,19 @@ where
     /// - `ERROR_NO_POOL_FOUND`: If no pool exists for the asset. 
     pub fn upgrade_liquidity_pool<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+    >(
+        self,
+        base_asset: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("upgradeLiquidityPool")
+            .argument(&base_asset)
+            .original_result()
+    }
+
+    pub fn upgrade_liquidity_pool_params<
+        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
         Arg2: ProxyArg<BigUint<Env::Api>>,
         Arg3: ProxyArg<BigUint<Env::Api>>,
@@ -516,7 +525,7 @@ where
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("upgradeLiquidityPool")
+            .raw_call("upgradeLiquidityPoolParams")
             .argument(&base_asset)
             .argument(&max_borrow_rate)
             .argument(&base_borrow_rate)
@@ -1431,7 +1440,7 @@ where
         self,
         account_nonce: Arg0,
         debt_payments: Arg1,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, (ManagedVec<Env::Api, EgldOrEsdtTokenPayment<Env::Api>>, ManagedVec<Env::Api, EgldOrEsdtTokenPayment<Env::Api>>, ManagedVec<Env::Api, EgldOrEsdtTokenPayment<Env::Api>>, ManagedDecimal<Env::Api, usize>, ManagedDecimal<Env::Api, usize>)> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::LiquidationEstimate<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("liquidationEstimations")

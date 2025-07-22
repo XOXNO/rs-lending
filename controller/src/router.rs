@@ -146,7 +146,6 @@ pub trait RouterModule:
     /// - `ERROR_ASSET_ALREADY_SUPPORTED`: Asset already has an active pool
     /// - `ERROR_INVALID_TICKER`: Invalid asset identifier format
     /// - `ERROR_INVALID_LIQUIDATION_THRESHOLD`: Threshold not greater than LTV
-    #[allow_multiple_var_args]
     #[only_owner]
     #[endpoint(createLiquidityPool)]
     fn create_liquidity_pool(
@@ -267,7 +266,16 @@ pub trait RouterModule:
     /// - `ERROR_NO_POOL_FOUND`: If no pool exists for the asset.
     #[only_owner]
     #[endpoint(upgradeLiquidityPool)]
-    fn upgrade_liquidity_pool(
+    fn upgrade_liquidity_pool(&self, base_asset: &EgldOrEsdtTokenIdentifier) {
+        require!(!self.pools_map(base_asset).is_empty(), ERROR_NO_POOL_FOUND);
+
+        let pool_address = self.get_pool_address(base_asset);
+        self.upgrade_pool(pool_address);
+    }
+
+    #[only_owner]
+    #[endpoint(upgradeLiquidityPoolParams)]
+    fn upgrade_liquidity_pool_params(
         &self,
         base_asset: &EgldOrEsdtTokenIdentifier,
         max_borrow_rate: BigUint,
@@ -282,7 +290,7 @@ pub trait RouterModule:
         require!(!self.pools_map(base_asset).is_empty(), ERROR_NO_POOL_FOUND);
 
         let pool_address = self.get_pool_address(base_asset);
-        self.upgrade_pool(
+        self.update_pool_params(
             pool_address,
             base_asset,
             max_borrow_rate,
@@ -335,7 +343,7 @@ pub trait RouterModule:
             .sync_call()
     }
 
-    fn upgrade_pool(
+    fn update_pool_params(
         &self,
         lp_address: ManagedAddress,
         base_asset: &EgldOrEsdtTokenIdentifier,
@@ -348,16 +356,12 @@ pub trait RouterModule:
         optimal_utilization: BigUint,
         reserve_factor: BigUint,
     ) {
-        require!(
-            !self.liq_pool_template_address().is_empty(),
-            ERROR_TEMPLATE_EMPTY
-        );
         let mut cache = Cache::new(self);
         let feed = self.get_token_price(base_asset, &mut cache);
         self.tx()
             .to(lp_address)
             .typed(proxy_pool::LiquidityPoolProxy)
-            .upgrade(
+            .update_params(
                 max_borrow_rate,
                 base_borrow_rate,
                 slope1,
@@ -368,6 +372,18 @@ pub trait RouterModule:
                 reserve_factor,
                 feed.price,
             )
+            .sync_call()
+    }
+
+    fn upgrade_pool(&self, lp_address: ManagedAddress) {
+        require!(
+            !self.liq_pool_template_address().is_empty(),
+            ERROR_TEMPLATE_EMPTY
+        );
+        self.tx()
+            .to(lp_address)
+            .typed(proxy_pool::LiquidityPoolProxy)
+            .upgrade()
             .from_source(self.liq_pool_template_address().get())
             .code_metadata(CodeMetadata::UPGRADEABLE | CodeMetadata::READABLE)
             .upgrade_async_call_and_exit();

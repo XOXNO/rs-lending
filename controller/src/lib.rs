@@ -79,18 +79,7 @@ pub trait Controller:
     }
 
     #[upgrade]
-    fn upgrade(&self, _assets: MultiValueEncoded<EgldOrEsdtTokenIdentifier>) {
-        // for asset in assets {
-        //     let current_balance = self.blockchain().get_sc_balance(&asset, 0);
-
-        //     if current_balance > BigUint::zero() {
-        //         self.tx()
-        //             .to(self.blockchain().get_caller())
-        //             .egld_or_single_esdt(&asset, 0, &current_balanclearce)
-        //             .transfer();
-        //     }
-        // }
-    }
+    fn upgrade(&self) {}
 
     /// Supplies collateral to the lending pool.
     ///

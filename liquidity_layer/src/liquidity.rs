@@ -171,6 +171,7 @@ multiversx_sc::derive_imports!();
 
 use common_errors::{
     ERROR_FLASHLOAN_RESERVE_ASSET, ERROR_INSUFFICIENT_LIQUIDITY, ERROR_INVALID_ASSET,
+    ERROR_STRATEGY_FEE_EXCEEDS_AMOUNT,
 };
 use common_structs::*;
 
@@ -610,37 +611,37 @@ pub trait LiquidityModule:
     ///
     /// **Mathematical Process**:
     /// 1. **Liquidity Validation**: Verify `strategy_amount <= available_reserves`
-    /// 2. **Total Debt Calculation**: `total_debt = strategy_amount + strategy_fee`
-    /// 3. **Scaling Conversion**: `scaled_debt = total_debt / current_borrow_index`
+    /// 2. **Fee Deduction**: `amount_to_send = strategy_amount - strategy_fee`
+    /// 3. **Scaling Conversion**: `scaled_debt = strategy_amount / current_borrow_index`
     /// 4. **Position Update**: `new_scaled_debt = old_scaled_debt + scaled_debt`
     /// 5. **Pool State Update**: `total_borrowed += scaled_debt`
     /// 6. **Revenue Collection**: Add `strategy_fee` to protocol treasury
-    /// 7. **Asset Transfer**: Send `strategy_amount` to user for strategy execution
+    /// 7. **Asset Transfer**: Send `amount_to_send` to user for strategy execution
     ///
     /// **Strategy Debt Structure**:
     /// ```
-    /// // User receives strategy_amount but owes total_debt:
-    /// assets_received = strategy_amount
-    /// debt_created = strategy_amount + strategy_fee
-    /// protocol_fee = strategy_fee (collected immediately)
+    /// // User receives less than borrowed amount due to fee deduction:
+    /// assets_received = strategy_amount - strategy_fee
+    /// debt_created = strategy_amount (fee NOT included in debt)
+    /// protocol_fee = strategy_fee (one-time charge, no interest)
     /// ```
     ///
-    /// **Interest Accrual on Total Debt**:
-    /// The entire debt (including the upfront fee) accrues interest over time:
+    /// **Interest Accrual on Principal Only**:
+    /// Only the borrowed principal accrues interest over time:
     /// ```
-    /// initial_scaled_debt = (strategy_amount + strategy_fee) / borrow_index_at_creation
+    /// initial_scaled_debt = strategy_amount / borrow_index_at_creation
     /// future_debt = initial_scaled_debt * current_borrow_index
-    /// total_repayment_needed = future_debt
+    /// total_repayment_needed = future_debt (fees already paid upfront)
     /// ```
     ///
     /// **Leveraged Position Example**:
     /// ```
     /// User wants 2x leverage on 100 USDC:
     /// 1. User supplies 100 USDC as collateral
-    /// 2. Strategy borrows 100 USDC (+ 1 USDC fee)
-    /// 3. User receives 100 USDC to buy more assets
-    /// 4. User's debt: 101 USDC (accruing interest)
-    /// 5. User's exposure: 200 USDC worth of assets
+    /// 2. Strategy borrows 100 USDC (with 1% fee = 1 USDC)
+    /// 3. User receives 99 USDC to buy more assets (100 - 1 fee)
+    /// 4. User's debt: 100 USDC (accruing interest, fee not included)
+    /// 5. User's exposure: 199 USDC worth of assets
     /// ```
     ///
     /// **Fee Collection Model**:
@@ -681,9 +682,17 @@ pub trait LiquidityModule:
             ERROR_INSUFFICIENT_LIQUIDITY
         );
 
-        let effective_initial_debt = strategy_amount.clone() + strategy_fee.clone();
+        // Ensure fee doesn't exceed the strategy amount
+        require!(
+            strategy_fee <= strategy_amount,
+            ERROR_STRATEGY_FEE_EXCEEDS_AMOUNT
+        );
 
-        let scaled_amount_to_add = cache.scaled_borrow(&effective_initial_debt);
+        // Calculate the amount to send to user (strategy amount minus fee)
+        let amount_to_send = strategy_amount.clone() - strategy_fee.clone();
+
+        // Only add the borrowed amount to debt (not the fee)
+        let scaled_amount_to_add = cache.scaled_borrow(strategy_amount);
 
         position.scaled_amount += &scaled_amount_to_add;
 
@@ -693,7 +702,8 @@ pub trait LiquidityModule:
 
         self.emit_market_update(&cache, price);
 
-        self.send_asset(&cache, strategy_amount, &self.blockchain().get_caller());
+        // Send the net amount (after fee deduction) to the user
+        self.send_asset(&cache, &amount_to_send, &self.blockchain().get_caller());
 
         position
     }
@@ -754,8 +764,8 @@ pub trait LiquidityModule:
     /// - Proportional distribution ensures fairness
     /// - Supply index has minimum floor to prevent total collapse
     #[only_owner]
-    #[endpoint(addBadDebt)]
-    fn add_bad_debt(
+    #[endpoint(seizePosition)]
+    fn seize_position(
         &self,
         mut position: AccountPosition<Self::Api>,
         price: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -766,97 +776,28 @@ pub trait LiquidityModule:
 
         require!(cache.is_same_asset(&position.asset_id), ERROR_INVALID_ASSET);
 
-        let current_debt_actual = cache.original_borrow(&position.scaled_amount);
+        match position.position_type {
+            AccountPositionType::Borrow => {
+                let current_debt_actual = cache.original_borrow_ray(&position.scaled_amount);
 
-        // Apply immediate supply index reduction for bad debt socialization
-        self.apply_bad_debt_to_supply_index(&mut cache, &current_debt_actual);
+                // Apply immediate supply index reduction for bad debt socialization
+                self.apply_bad_debt_to_supply_index(&mut cache, current_debt_actual);
 
-        // Remove debt from borrowed amounts
-        cache.borrowed -= &position.scaled_amount;
+                // Remove debt from borrowed amounts
+                cache.borrowed -= &position.scaled_amount;
 
-        // Clear the position
-        position.scaled_amount = self.ray_zero();
+                // Clear the position
+                position.scaled_amount = self.ray_zero();
+            },
+            AccountPositionType::Deposit => {
+                // Add the dust collateral directly to protocol revenue
+                cache.revenue += &position.scaled_amount;
 
-        self.emit_market_update(&cache, price);
-
-        position
-    }
-
-    /// Seizes dust collateral from a position, transferring it directly to protocol revenue.
-    ///
-    /// **Purpose**: Enables collection of economically unviable small collateral amounts
-    /// that remain after liquidations, converting them to protocol revenue.
-    ///
-    /// **Use Case Scenario**:
-    /// After a liquidation and bad debt socialization, a user's supply position may
-    /// have a small remaining balance that is:
-    /// - Too small to be economically liquidated (gas costs > value)
-    /// - Below minimum transaction thresholds
-    /// - Creates accounting complexity if left unclaimed
-    ///
-    /// **Mathematical Process**:
-    /// 1. **Global Sync**: Update indexes to current state
-    /// 2. **Direct Transfer**: `protocol_revenue += position.scaled_amount`
-    /// 3. **Position Clearing**: `position.scaled_amount = 0`
-    /// 4. **Supply Maintenance**: Total supplied remains unchanged (dust becomes revenue)
-    ///
-    /// **Revenue Conversion**:
-    /// ```
-    /// // Dust collateral becomes protocol revenue:
-    /// dust_value = scaled_dust * current_supply_index
-    /// protocol_revenue_scaled += scaled_dust
-    /// user_position_scaled = 0
-    /// ```
-    ///
-    /// **Economic Justification**:
-    /// Small balances create operational overhead and user confusion.
-    /// Converting them to protocol revenue:
-    /// - Simplifies account management
-    /// - Reduces storage requirements
-    /// - Provides clean closure of positions
-    /// - Generates modest protocol income
-    ///
-    /// **Dust Threshold Considerations**:
-    /// While this function doesn't enforce a threshold, it's typically used for
-    /// amounts that are economically unviable for users to withdraw due to
-    /// transaction costs exceeding the value.
-    /// The treshold is set inside the controller contract that is the only one able to call this function.
-    ///
-    /// **Impact on Pool Accounting**:
-    /// - User's scaled position: reduced to zero
-    /// - Protocol revenue: increased by dust amount
-    /// - Total supplied: unchanged (internal transfer)
-    /// - Pool liquidity: unchanged
-    ///
-    /// # Arguments
-    /// - `position`: Supply position containing dust collateral
-    /// - `price`: Asset price for event logging
-    ///
-    /// # Returns
-    /// - Cleared position with zero scaled supply
-    ///
-    /// **Security Considerations**:
-    /// - Should only be used for genuinely uneconomical amounts
-    /// - Requires careful governance to prevent abuse
-    /// - Position is completely cleared (irreversible)
-    #[only_owner]
-    #[endpoint(seizeDustCollateral)]
-    fn seize_dust_collateral(
-        &self,
-        mut position: AccountPosition<Self::Api>,
-        price: &ManagedDecimal<Self::Api, NumDecimals>,
-    ) -> AccountPosition<Self::Api> {
-        let mut cache = Cache::new(self);
-
-        self.global_sync(&mut cache);
-
-        require!(cache.is_same_asset(&position.asset_id), ERROR_INVALID_ASSET);
-
-        // Add the dust collateral directly to protocol revenue
-        cache.revenue += &position.scaled_amount;
-
-        // Clear the user's position.
-        position.scaled_amount = self.ray_zero();
+                // Clear the user's position.
+                position.scaled_amount = self.ray_zero();
+            },
+            _ => {},
+        }
 
         self.emit_market_update(&cache, price);
 
@@ -870,11 +811,12 @@ pub trait LiquidityModule:
     ///
     /// **Mathematical Process**:
     /// 1. **Global Sync**: Update indexes to include latest revenue
-    /// 2. **Revenue Calculation**: `revenue_actual = revenue_scaled * current_supply_index`
-    /// 3. **Available Balance Check**: Determine withdrawable amount based on reserves
-    /// 4. **Empty Pool Handling**: If pool has no user funds, claim entire contract balance
-    /// 5. **Proportional Withdrawal**: If partial withdrawal, burn proportional scaled revenue
-    /// 6. **Transfer Execution**: Send claimed amount to controller
+    /// 2. **Revenue Validation**: Return zero payment if no revenue accumulated
+    /// 3. **Revenue Calculation**: `revenue_actual = revenue_scaled * current_supply_index`
+    /// 4. **Available Balance Check**: `amount_to_transfer = min(current_reserves, treasury_actual)`
+    /// 5. **Symmetric Accounting Update**: Burn revenue from both `cache.revenue` and `cache.supplied`
+    /// 6. **Precision Safety**: Use minimum values when precision drift occurs
+    /// 7. **Transfer Execution**: Send claimed amount to controller
     ///
     /// **Revenue Sources**:
     /// ```
@@ -887,27 +829,32 @@ pub trait LiquidityModule:
     /// }
     /// ```
     ///
-    /// **Empty Pool Logic**:
-    /// When `user_supplied_scaled = 0` and `borrowed_scaled = 0`:
-    /// - All contract balance belongs to protocol
-    /// - Claim entire available balance
-    /// - Useful for final revenue extraction
+    /// **Symmetric Accounting Logic**:
+    /// ```
+    /// // Standard case - sufficient supplied balance:
+    /// if supplied >= revenue_scaled:
+    ///     cache.revenue -= revenue_scaled
+    ///     cache.supplied -= revenue_scaled
     ///
-    /// **Partial Withdrawal Mechanics**:
+    /// // Precision drift protection:
+    /// else:
+    ///     scaled_burn = min(calculated_burn, min(revenue, supplied))
+    ///     cache.revenue -= actual_revenue_burn
+    ///     cache.supplied -= actual_supplied_burn
     /// ```
-    /// // When reserves < total_revenue:
-    /// withdrawal_ratio = available_reserves / total_revenue_value
-    /// scaled_to_burn = revenue_scaled * withdrawal_ratio
-    /// remaining_revenue_scaled = revenue_scaled - scaled_to_burn
-    /// ```
+    ///
+    /// **Precision Safety Mechanisms**:
+    /// Uses minimum values to handle potential precision drift between
+    /// `cache.revenue` and `cache.supplied` that can occur from rounding
+    /// operations throughout the protocol's lifetime.
     ///
     /// **Reserve Constraints**:
     /// Revenue withdrawal is limited by available contract balance to ensure
-    /// user withdrawals remain possible.
+    /// user withdrawals remain possible: `transfer = min(reserves, revenue_value)`.
     ///
     /// **Accounting Precision**:
     /// Uses scaled amounts to maintain precision in revenue tracking,
-    /// preventing rounding errors from accumulating over time.
+    /// with symmetric burning of both revenue and supplied to prevent orphaned tokens.
     ///
     /// **Revenue Realization**:
     /// Revenue is stored as scaled supply tokens that appreciate with the supply index,
@@ -919,10 +866,10 @@ pub trait LiquidityModule:
     /// # Returns
     /// - Payment object representing the claimed revenue amount
     ///
-    /// **Security Considerations**:
+    /// # **Security Considerations**:
     /// - Reserve validation ensures pool liquidity preservation
-    /// - Empty pool detection prevents user fund seizure
-    /// - Proportional burning maintains accurate accounting
+    /// - Symmetric accounting prevents orphaned supply tokens
+    /// - Precision safety prevents underflow from rounding drift
     /// - Only callable by owner (controller contract)
     #[only_owner]
     #[endpoint(claimRevenue)]
@@ -933,64 +880,46 @@ pub trait LiquidityModule:
         let mut cache = Cache::new(self);
         self.global_sync(&mut cache);
 
-        // 1. Treasury (protocol) funds are held in `cache.revenue` **scaled** units.
-        let treasury_scaled = cache.revenue.clone();
+        let revenue_scaled = cache.revenue.clone();
 
-        // Nothing to do if treasury has no balance.
-        if treasury_scaled == self.ray_zero() {
+        if revenue_scaled == self.ray_zero() {
+            self.emit_market_update(&cache, price);
             return EgldOrEsdtTokenPayment::new(cache.params.asset_id.clone(), 0, BigUint::zero());
         }
 
-        // Convert the full treasury position to asset-decimals using the *current* supply index.
-        let treasury_actual = cache.original_supply(&treasury_scaled);
-
-        // Contract balance that is really available right now.
+        let treasury_actual = cache.original_supply(&revenue_scaled);
         let current_reserves = cache.get_reserves();
 
-        // A pool is considered empty of user funds when all supplied tokens belong to the treasury
-        // and there is no outstanding debt.
-        let user_supplied_scaled = if cache.supplied >= treasury_scaled {
-            cache.supplied.clone() - treasury_scaled.clone()
-        } else {
-            self.ray_zero()
-        };
-        let pool_is_empty =
-            user_supplied_scaled == self.ray_zero() && cache.borrowed == self.ray_zero();
+        let amount_to_transfer = self.get_min(current_reserves.clone(), treasury_actual.clone());
 
-        // Decide whether we can withdraw the entire treasury balance.
-        let full_withdrawable = current_reserves >= treasury_actual;
-
-        // Amount that will actually be transferred to the controller.
-        let amount_to_transfer = if pool_is_empty {
-            // When pool is empty, everything in the contract is by definition revenue or dust – take it all.
-            current_reserves.clone()
-        } else if full_withdrawable {
-            treasury_actual.clone()
-        } else {
-            current_reserves.clone()
-        };
-
-        let mut payment =
-            EgldOrEsdtTokenPayment::new(cache.params.asset_id.clone(), 0, BigUint::zero());
         if amount_to_transfer > cache.zero {
-            // 1. Transfer the funds to the controller
             let controller = self.blockchain().get_caller();
-            payment = self.send_asset(&cache, &amount_to_transfer, &controller);
+            let payment = self.send_asset(&cache, &amount_to_transfer, &controller);
 
-            // 2. Burn / reduce the scaled treasury balance
-            if pool_is_empty || full_withdrawable {
-                // We removed the entire treasury position – burn it without any rescaling loss.
-                cache.supplied -= &treasury_scaled;
-                cache.revenue = cache.zero.clone();
+            // Determine the scaled amount to burn
+            let scaled_to_burn = if amount_to_transfer >= treasury_actual {
+                // Full claim: burn the exact revenue_scaled to avoid precision loss
+                revenue_scaled.clone()
             } else {
-                // Partial withdrawal – compute exact scaled portion of what we transferred.
-                let scaled_burn = cache.scaled_supply(&amount_to_transfer);
-                cache.revenue -= &scaled_burn;
-                cache.supplied -= &scaled_burn;
-            }
+                // Partial claim: calculate proportional scaled amount
+                // scaled_to_burn = revenue_scaled * (amount_to_transfer / treasury_actual)
+                let ratio = self.div_half_up(&amount_to_transfer, &treasury_actual, RAY_PRECISION);
+                self.mul_half_up(&revenue_scaled, &ratio, RAY_PRECISION)
+            };
+
+            // Ensure we don't burn more than what exists (safety check)
+            let actual_revenue_burn = self.get_min(scaled_to_burn.clone(), cache.revenue.clone());
+            let actual_supplied_burn = self.get_min(scaled_to_burn, cache.supplied.clone());
+
+            // Burn the calculated amount
+            cache.revenue -= &actual_revenue_burn;
+            cache.supplied -= &actual_supplied_burn;
+
+            self.emit_market_update(&cache, price);
+            return payment;
         }
 
         self.emit_market_update(&cache, price);
-        payment
+        EgldOrEsdtTokenPayment::new(cache.params.asset_id.clone(), 0, BigUint::zero())
     }
 }

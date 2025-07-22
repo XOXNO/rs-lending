@@ -1,5 +1,7 @@
 use common_constants::WAD_PRECISION;
-use common_structs::{AccountPositionType, AssetExtendedConfigView, MarketIndexView};
+use common_structs::{
+    AccountPositionType, AssetExtendedConfigView, LiquidationEstimate, MarketIndexView,
+};
 
 use crate::{cache::Cache, helpers, oracle, positions, storage, utils, validation};
 
@@ -28,23 +30,17 @@ pub trait ViewsModule:
         &self,
         account_nonce: u64,
         debt_payments: &ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
-    ) -> (
-        ManagedVec<EgldOrEsdtTokenPayment>,
-        ManagedVec<EgldOrEsdtTokenPayment>,
-        ManagedVec<EgldOrEsdtTokenPayment>,
-        ManagedDecimal<Self::Api, NumDecimals>,
-        ManagedDecimal<Self::Api, NumDecimals>,
-    ) {
+    ) -> LiquidationEstimate<Self::Api> {
         let mut cache = Cache::new(self);
         self.require_active_account(account_nonce);
 
-        let (seized_collaterals, _, refunds, max_egld_payment, bonus_rate) =
+        let (collaterals, _, refunds, max_egld_payment, bonus_rate) =
             self.execute_liquidation(account_nonce, debt_payments, &mut cache);
 
-        let mut seized_collaterals_view = ManagedVec::new();
-        let mut protocol_fees_views = ManagedVec::new();
-        for collateral in seized_collaterals {
-            let (seized_collateral, protocol_fees) = collateral.into_tuple();
+        let mut seized_collaterals = ManagedVec::new();
+        let mut protocol_fees = ManagedVec::new();
+        for collateral in collaterals {
+            let (seized_collateral, fees) = collateral.into_tuple();
             let collateral_view = EgldOrEsdtTokenPayment::new(
                 seized_collateral.token_identifier.clone(),
                 seized_collateral.token_nonce,
@@ -53,19 +49,19 @@ pub trait ViewsModule:
             let protocol_fees_view = EgldOrEsdtTokenPayment::new(
                 seized_collateral.token_identifier,
                 seized_collateral.token_nonce,
-                protocol_fees.into_raw_units().clone(),
+                fees.into_raw_units().clone(),
             );
-            seized_collaterals_view.push(collateral_view);
-            protocol_fees_views.push(protocol_fees_view);
+            seized_collaterals.push(collateral_view);
+            protocol_fees.push(protocol_fees_view);
         }
 
-        (
-            seized_collaterals_view,
-            protocol_fees_views,
+        LiquidationEstimate {
+            seized_collaterals,
+            protocol_fees,
             refunds,
             max_egld_payment,
             bonus_rate,
-        )
+        }
     }
 
     #[view(getAllMarketIndexes)]
@@ -145,9 +141,20 @@ pub trait ViewsModule:
     /// - Health factor as a `ManagedDecimal` in WAD precision.
     #[view(getHealthFactor)]
     fn get_health_factor(&self, account_nonce: u64) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let collateral_in_egld = self.get_liquidation_collateral_available(account_nonce);
-        let borrowed_egld = self.get_total_borrow_in_egld(account_nonce);
-        self.compute_health_factor(&collateral_in_egld, &borrowed_egld)
+        let mut cache = Cache::new(self);
+        let deposit_positions = self.positions(account_nonce, AccountPositionType::Deposit);
+
+        let (weighted_collateral, _, _) =
+            self.calculate_collateral_values(&deposit_positions.values().collect(), &mut cache);
+
+        let borrow_positions = self
+            .positions(account_nonce, AccountPositionType::Borrow)
+            .values()
+            .collect();
+
+        let total_borrow_ray = self.calculate_total_borrow_in_egld(&borrow_positions, &mut cache);
+
+        self.compute_health_factor(&weighted_collateral, &total_borrow_ray)
     }
 
     /// Retrieves the collateral amount for a specific token in an account position.

@@ -208,14 +208,14 @@ fn views_liquidation_estimation_unhealthy_position() {
     ));
 
     // Get liquidation estimations
-    let (seized_collaterals, protocol_fees, _, max_egld_payment, bonus_rate) =
-        state.liquidation_estimations(2, debt_payments);
+    let liquidation_estimate = state.liquidation_estimations(2, debt_payments);
 
     // Verify estimations
-    assert!(seized_collaterals.len() > 0);
-    assert!(protocol_fees.len() > 0);
-    assert!(max_egld_payment > ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION));
-    assert!(bonus_rate > ManagedDecimal::from_raw_units(BigUint::zero(), BPS_PRECISION));
+    assert!(liquidation_estimate.seized_collaterals.len() > 0);
+    assert!(liquidation_estimate.protocol_fees.len() > 0);
+    assert!(liquidation_estimate.refunds.len() > 0);
+    assert!(liquidation_estimate.max_egld_payment > ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION));
+    assert!(liquidation_estimate.bonus_rate > ManagedDecimal::from_raw_units(BigUint::zero(), BPS_PRECISION));
 }
 
 /// Tests market index and market data views for multiple assets.
@@ -632,25 +632,24 @@ fn views_complex_liquidation_bad_debt_scenario() {
     ));
 
     // Get liquidation estimations
-    let (seized_collaterals, protocol_fees, refunds, max_egld_payment, bonus_rate) =
-        state.liquidation_estimations(2, debt_payments);
+    let liquidation_estimate = state.liquidation_estimations(2, debt_payments);
 
     // Full refund of the last paid debt since it was overpaid
     assert_eq!(
-        refunds.get(0).amount,
+        liquidation_estimate.refunds.get(0).amount,
         borrowed_capped.into_raw_units().clone()
     );
     // Partial refund of the second paid debt since it was overpaid
     assert_eq!(
-        refunds.get(1).amount,
+        liquidation_estimate.refunds.get(1).amount,
         borrowed_usdc.into_raw_units().clone()
     );
     // Partial refund of the first paid debt since it was underpaid
-    assert!(refunds.get(2).amount < borrowed_egld.into_raw_units().clone());
+    assert!(liquidation_estimate.refunds.get(2).amount < borrowed_egld.into_raw_units().clone());
     // Verify complex liquidation results
-    assert_eq!(seized_collaterals.len(), 2); // Both collateral types seized
-    assert_eq!(protocol_fees.len(), 2); // Fees for each seized asset
-    assert_eq!(refunds.len(), 3); // Refunds from the last to the first asset
-    assert!(max_egld_payment > ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION));
-    assert!(bonus_rate > ManagedDecimal::from_raw_units(BigUint::from(100u64), BPS_PRECISION));
+    assert_eq!(liquidation_estimate.seized_collaterals.len(), 2); // Both collateral types seized
+    assert_eq!(liquidation_estimate.protocol_fees.len(), 2); // Fees for each seized asset
+    assert_eq!(liquidation_estimate.refunds.len(), 3); // Refunds from the last to the first asset
+    assert!(liquidation_estimate.max_egld_payment > ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION));
+    assert!(liquidation_estimate.bonus_rate > ManagedDecimal::from_raw_units(BigUint::from(100u64), BPS_PRECISION));
 }

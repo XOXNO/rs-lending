@@ -20,6 +20,7 @@ multiversx_sc_wasm_adapter::endpoints! {
     (
         init => init
         upgrade => upgrade
+        updateParams => update_params
         getSuppliedScaled => supplied
         getRevenueScaled => revenue
         getBorrowedScaled => borrowed
@@ -34,8 +35,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         repay => repay
         flashLoan => flash_loan
         createStrategy => create_strategy
-        addBadDebt => add_bad_debt
-        seizeDustCollateral => seize_dust_collateral
+        seizePosition => seize_position
         claimRevenue => claim_revenue
         getCapitalUtilisation => get_capital_utilisation
         getReserves => get_reserves

@@ -335,7 +335,8 @@ fn market_complete_exit_multi_user() {
     // Verify borrow no longer exists
     let custom_error_message = format!("Token not existing in the account {}", EGLD_TOKEN.as_str());
     state.get_borrow_amount_for_token_non_existing(2, EGLD_TOKEN, custom_error_message.as_bytes());
-
+    state.claim_revenue(EGLD_TOKEN);
+    state.claim_revenue(USDC_TOKEN);
     // Update markets significantly later
     state.change_timestamp(1000000u64);
     state.update_markets(&borrower, markets.clone());
@@ -408,6 +409,13 @@ fn market_complete_exit_multi_user() {
     let reserves = state.get_market_reserves(state.egld_market.clone());
     let revenue = state.get_market_revenue(state.egld_market.clone());
     assert!(reserves >= revenue);
+
+    state.claim_revenue(EGLD_TOKEN);
+    state.claim_revenue(USDC_TOKEN);
+
+    let reserves = state.get_market_reserves(state.egld_market.clone());
+    let revenue = state.get_market_revenue(state.egld_market.clone());
+    assert!(reserves == revenue);
 }
 
 /// Tests interest accrual over long time period.

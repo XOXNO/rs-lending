@@ -2,7 +2,7 @@
 
 use core::cmp::Ordering;
 
-use common_constants::{BPS, BPS_PRECISION, RAY, RAY_PRECISION, WAD, WAD_PRECISION};
+use common_constants::{BPS, BPS_PRECISION, DOUBLE_RAY, RAY, RAY_PRECISION, WAD, WAD_PRECISION};
 
 multiversx_sc::imports!();
 
@@ -148,6 +148,11 @@ pub trait SharedMathModule {
     #[inline]
     fn ray(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal(BigUint::from(RAY), RAY_PRECISION)
+    }
+
+    #[inline]
+    fn double_ray(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
+        self.to_decimal(BigUint::from(DOUBLE_RAY), RAY_PRECISION)
     }
 
     #[inline]

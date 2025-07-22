@@ -394,6 +394,16 @@ pub struct MarketIndexView<M: ManagedTypeApi> {
     pub usd_price: ManagedDecimal<M, NumDecimals>,
 }
 
+#[type_abi]
+#[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode, Clone)]
+pub struct LiquidationEstimate<M: ManagedTypeApi> {
+    pub seized_collaterals: ManagedVec<M, EgldOrEsdtTokenPayment<M>>,
+    pub protocol_fees: ManagedVec<M, EgldOrEsdtTokenPayment<M>>,
+    pub refunds: ManagedVec<M, EgldOrEsdtTokenPayment<M>>,
+    pub max_egld_payment: ManagedDecimal<M, NumDecimals>,
+    pub bonus_rate: ManagedDecimal<M, NumDecimals>,
+}
+
 /// PositionLimits defines the maximum number of positions an NFT can hold.
 /// This limits complexity and optimizes gas costs during liquidations.
 ///
