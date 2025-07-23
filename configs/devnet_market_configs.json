@@ -122,7 +122,7 @@
     "is_siloed": "0x00",
     "flashloan_enabled": "0x01",
     "can_borrow_in_isolation": "0x00",
-    "oracle_address": "erd1qqqqqqqqqqqqqpgqkesz5whk008525zhrq45rfym4areg5ef0n4s2yzd75",
+    "oracle_address": "erd1qqqqqqqqqqqqqpgqw8pt2jap6pwnpngf6jlk5rygwzkwe0w50n4s5uwy6w",
     "oracle_method": "4",
     "oracle_type": "1",
     "oracle_source": "1",

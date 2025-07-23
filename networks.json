@@ -3,8 +3,8 @@
     "proxy": "https://devnet-gateway.xoxno.com",
     "chain_id": "D",
     "addresses": {
-      "controller": "erd1qqqqqqqqqqqqqpgqddn9mw8qut5sr2hcd92qw90zhvnqmj2tah0s0z5lv2",
-      "lp_template": "erd1qqqqqqqqqqqqqpgqxf56zsnsg8egt4d09g04fjq68eyr6g7mah0szmesex",
+      "controller": "erd1qqqqqqqqqqqqqpgq4jah0u2hcgem33c0q8lwwlv2au6x2ck3ah0sh00d8w",
+      "lp_template": "erd1qqqqqqqqqqqqqpgqjr7w863gzzq0lsvf0hsr52cvvc6yku5cah0sap8kze",
       "price_aggregator": "erd1qqqqqqqqqqqqqpgqcd5jnctcnyhcqep70fwvr3y9eel52kt4ah0saez2dj",
       "ash": "erd1qqqqqqqqqqqqqpgqglqtgt5m50njg6le3calj6hknfuuta2tnrzsuh2qlc",
       "wegld": "erd1qqqqqqqqqqqqqpgqpv09kfzry5y4sj05udcngesat07umyj70n4sa2c0rp",
@@ -52,11 +52,6 @@
       "name": "XOXNOLendingAccount",
       "ticker": "XOLEND",
       "issue_cost": 50000000000000000
-    },
-    "paths": {
-      "controller": "../output/controller.wasm",
-      "market": "../../liquidity_layer/output/liquidity_layer.wasm",
-      "price_aggregator": "./price_aggregator/output/price_aggregator.wasm"
     },
     "ledger": {
       "account_index": 0,

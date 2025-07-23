@@ -304,9 +304,10 @@ pub trait Controller:
         amount: BigUint,
         contract_address: &ManagedAddress,
         endpoint: ManagedBuffer<Self::Api>,
-        arguments: ManagedArgBuffer<Self::Api>,
+        mut arguments: ManagedArgBuffer<Self::Api>,
     ) {
         let mut cache = Cache::new(self);
+        let caller = self.blockchain().get_caller();
         self.reentrancy_guard(cache.flash_loan_ongoing);
         let asset_config = cache.get_cached_asset_info(borrowed_asset_id);
         require!(asset_config.can_flashloan(), ERROR_FLASHLOAN_NOT_ENABLED);
@@ -317,8 +318,8 @@ pub trait Controller:
         self.validate_flash_loan_endpoint(&endpoint);
 
         let feed = self.get_token_price(borrowed_asset_id, &mut cache);
-
         self.flash_loan_ongoing().set(true);
+        arguments.push_arg(caller);
         self.tx()
             .to(pool_address)
             .typed(proxy_pool::LiquidityPoolProxy)

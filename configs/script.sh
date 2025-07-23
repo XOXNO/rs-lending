@@ -792,16 +792,36 @@ edit_asset_config() {
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 
-# Function to claim revenue from all markets
+# Function to claim revenue from all markets or specified tokens
 claim_revenue() {
-    echo "Claiming revenue from all markets..."
+    local token_names=("$@")
+    local token_ids=()
     
-    # Get all token IDs from the config file
-    local token_ids=($(jq -r 'to_entries[] | .value.token_id' "$MARKET_CONFIG_FILE"))
-    
-    if [ ${#token_ids[@]} -eq 0 ]; then
-        echo "No markets found in configuration"
-        exit 1
+    if [ ${#token_names[@]} -eq 0 ]; then
+        # No specific tokens provided, get all token IDs from the config file
+        echo "Claiming revenue from all markets..."
+        token_ids=($(jq -r 'to_entries[] | .value.token_id' "$MARKET_CONFIG_FILE"))
+        
+        if [ ${#token_ids[@]} -eq 0 ]; then
+            echo "No markets found in configuration"
+            exit 1
+        fi
+    else
+        # Specific tokens provided, get their token_ids from config
+        echo "Claiming revenue from specified markets: ${token_names[*]}"
+        
+        for token_name in "${token_names[@]}"; do
+            local token_id=$(get_config_value "$token_name" "token_id")
+            
+            if [ "$token_id" = "null" ] || [ -z "$token_id" ]; then
+                echo "Error: Token '$token_name' not found in configuration"
+                echo "Available markets:"
+                jq -r 'keys[]' "$MARKET_CONFIG_FILE" | sed 's/^/  - /'
+                exit 1
+            fi
+            
+            token_ids+=("$token_id")
+        done
     fi
     
     echo "Token IDs to claim revenue from: ${token_ids[*]}"
@@ -861,7 +881,8 @@ case "$1" in
         registerAccountToken
         ;;
     "claimRevenue")
-        claim_revenue
+        shift  # Remove the first argument (command name)
+        claim_revenue "$@"
         ;;
     "addOracles")
         shift  # Remove the first argument (command name)
@@ -1025,6 +1046,7 @@ case "$1" in
         echo "  setDecimals MARKET             - Set decimals for market in price aggregator"
         echo "  networks                       - List available networks"
         echo "  claimRevenue                   - Claim revenue from all markets"
+        echo "  claimRevenue TOKEN1 TOKEN2 ... - Claim revenue from specified tokens (e.g. EGLD USDT)"
         echo "  setAshSwap ADDRESS             - Set the AshSwap aggregator address"
         echo ""
         echo "Price Aggregator Commands:"

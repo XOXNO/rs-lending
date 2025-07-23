@@ -81,39 +81,54 @@ where
     To: TxTo<Env>,
     Gas: TxGas<Env>,
 {
-    pub fn flash(
+    pub fn flash<
+        Arg0: ProxyArg<ManagedAddress<Env::Api>>,
+    >(
         self,
+        _original_caller: Arg0,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("flash")
+            .argument(&_original_caller)
             .original_result()
     }
 
-    pub fn flash_repay_some(
+    pub fn flash_repay_some<
+        Arg0: ProxyArg<ManagedAddress<Env::Api>>,
+    >(
         self,
+        _original_caller: Arg0,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("flashRepaySome")
+            .argument(&_original_caller)
             .original_result()
     }
 
     pub fn flash_repay_some_wrong_token<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+        Arg1: ProxyArg<ManagedAddress<Env::Api>>,
     >(
         self,
         token: Arg0,
+        _original_caller: Arg1,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("flashRepaySomeWrongToken")
             .argument(&token)
+            .argument(&_original_caller)
             .original_result()
     }
 
-    pub fn flash_no_repay(
+    pub fn flash_no_repay<
+        Arg0: ProxyArg<ManagedAddress<Env::Api>>,
+    >(
         self,
+        _original_caller: Arg0,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("flashNoRepay")
+            .argument(&_original_caller)
             .original_result()
     }
 }

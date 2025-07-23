@@ -47,6 +47,7 @@ help:
 	@echo "    listMarkets              - List all available markets"
 	@echo "    listEModeCategories      - List all E-Mode categories"
 	@echo "    claimRevenue             - Claim revenue from all markets"
+	@echo "    claimRevenue <token1> ..  - Claim revenue from specified tokens (e.g. EGLD USDT)"
 	@echo ""
 	@echo "  Verification commands:"
 	@echo "    verifyController              - Verify the controller contract"
@@ -89,6 +90,7 @@ help:
 	@echo "  make devnet addAssetToEMode 1 USDC"
 	@echo "  make devnet show EGLD"
 	@echo "  make devnet setAshSwap erd1..."
+	@echo "  make devnet claimRevenue EGLD USDT"
 
 # Define the networks as targets that accept a second argument
 $(NETWORKS):
@@ -161,6 +163,12 @@ $(NETWORKS):
 			NETWORK=$@ ./configs/script.sh deployMarketTemplate EGLD; \
 		elif [ "$(word 2,$(MAKECMDGOALS))" = "upgradeTemplateMarket" ]; then \
 			NETWORK=$@ ./configs/script.sh upgradeMarketTemplate EGLD; \
+		elif [ "$(word 2,$(MAKECMDGOALS))" = "claimRevenue" ]; then \
+			if [ -n "$(word 3,$(MAKECMDGOALS))" ]; then \
+				NETWORK=$@ ./configs/script.sh claimRevenue $(wordlist 3,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS)); \
+			else \
+				NETWORK=$@ ./configs/script.sh claimRevenue; \
+			fi; \
 		else \
 			NETWORK=$@ ./configs/script.sh $(word 2,$(MAKECMDGOALS)); \
 		fi; \
