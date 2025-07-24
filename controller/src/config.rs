@@ -229,7 +229,7 @@ pub trait ConfigModule:
         let tolerance = self.validate_and_calculate_tolerances(&first_tolerance, &last_tolerance);
         self.token_oracle(market_token).update(|oracle| {
             oracle.tolerance = tolerance;
-            self.update_asset_oracle_event(market_token, &oracle);
+            self.update_asset_oracle_event(market_token, oracle);
         });
     }
 

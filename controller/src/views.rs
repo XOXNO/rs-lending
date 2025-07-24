@@ -1,4 +1,4 @@
-use common_constants::WAD_PRECISION;
+use common_constants::{BPS_PRECISION, WAD_PRECISION};
 use common_structs::{
     AccountPositionType, AssetExtendedConfigView, LiquidationEstimate, MarketIndexView,
 };
@@ -34,7 +34,7 @@ pub trait ViewsModule:
         let mut cache = Cache::new(self);
         self.require_active_account(account_nonce);
 
-        let (collaterals, _, refunds, max_egld_payment, bonus_rate) =
+        let (collaterals, _, refunds, max_egld_payment_ray, bonus_rate_ray) =
             self.execute_liquidation(account_nonce, debt_payments, &mut cache);
 
         let mut seized_collaterals = ManagedVec::new();
@@ -59,8 +59,8 @@ pub trait ViewsModule:
             seized_collaterals,
             protocol_fees,
             refunds,
-            max_egld_payment,
-            bonus_rate,
+            max_egld_payment: self.rescale_half_up(&max_egld_payment_ray, WAD_PRECISION),
+            bonus_rate: self.rescale_half_up(&bonus_rate_ray, BPS_PRECISION),
         }
     }
 
@@ -259,7 +259,7 @@ pub trait ViewsModule:
 
         deposit_positions.values().fold(self.wad_zero(), |acc, dp| {
             let feed = self.get_token_price(&dp.asset_id, &mut cache);
-            let amount = self.get_total_amount(&dp, &feed, &mut cache);
+            let amount = self.get_total_amount_ray(&dp, &mut cache);
             acc + self.get_token_egld_value(&amount, &feed.price)
         })
     }

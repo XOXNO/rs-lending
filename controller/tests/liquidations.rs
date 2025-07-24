@@ -1,5 +1,8 @@
 use common_constants::RAY;
-use controller::{ERROR_INSUFFICIENT_COLLATERAL, RAY_PRECISION, WAD_PRECISION};
+pub use common_constants::{BPS_PRECISION, RAY_PRECISION, WAD_PRECISION};
+
+use controller::ERROR_INSUFFICIENT_COLLATERAL;
+
 use multiversx_sc::types::{EgldOrEsdtTokenIdentifier, ManagedDecimal, MultiValueEncoded};
 use multiversx_sc_scenario::imports::{BigUint, OptionalValue, TestAddress};
 pub mod constants;
@@ -885,7 +888,10 @@ fn seize_dust_collateral_after_bad_debt_success() {
     );
     // state.claim_revenue(USDC_TOKEN);
     let usdc_supplied_before_bad_debt = state.get_collateral_amount_for_token(1, USDC_TOKEN);
-    println!("usdc_supplied_before_bad_debt: {:?}", usdc_supplied_before_bad_debt);
+    println!(
+        "usdc_supplied_before_bad_debt: {:?}",
+        usdc_supplied_before_bad_debt
+    );
     // Clean bad debt - this calls seizeDustCollateral internally
     state.clean_bad_debt(2);
 
@@ -925,9 +931,16 @@ fn seize_dust_collateral_after_bad_debt_success() {
     );
 
     let usdc_supplied_after_bad_debt = state.get_collateral_amount_for_token(1, USDC_TOKEN);
-    println!("usdc_supplied_after_bad_debt: {:?}", usdc_supplied_after_bad_debt);
-    let lost_usdc_due_to_socialization = usdc_supplied_before_bad_debt.clone() - usdc_supplied_after_bad_debt.clone();
-    println!("lost_usdc_due_to_socialization: {:?}", lost_usdc_due_to_socialization);
+    println!(
+        "usdc_supplied_after_bad_debt: {:?}",
+        usdc_supplied_after_bad_debt
+    );
+    let lost_usdc_due_to_socialization =
+        usdc_supplied_before_bad_debt.clone() - usdc_supplied_after_bad_debt.clone();
+    println!(
+        "lost_usdc_due_to_socialization: {:?}",
+        lost_usdc_due_to_socialization
+    );
     assert!(lost_usdc_due_to_socialization.into_raw_units().clone() > BigUint::from(0u64));
     let supplied_usdc = state.get_market_supplied_amount(state.usdc_market.clone());
     let market_reserves = state.get_market_reserves(state.usdc_market.clone());

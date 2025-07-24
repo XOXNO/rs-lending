@@ -1107,12 +1107,22 @@ fn configuration_update_risky_values_no_borrows() {
         config.config.is_siloed_borrowing,
         config.config.is_flashloanable,
         config.config.flashloan_fee.into_raw_units(),
-        false, // is_collateralizable = false
+        true,  // is_collateralizable = false
         false, // is_borrowable = false
         false, // isolation_borrow_enabled = false
         &config.config.borrow_cap.unwrap_or(BigUint::from(0u64)),
         &config.config.supply_cap.unwrap_or(BigUint::from(0u64)),
         None,
+    );
+    // Supply without borrows
+    state.supply_asset(
+        &supplier,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::Some(1),
+        OptionalValue::None,
+        false,
     );
 }
 
@@ -1167,10 +1177,10 @@ fn configuration_update_risky_values_with_borrows_allowed() {
     let config = get_xegld_config();
     state.edit_asset_config(
         EgldOrEsdtTokenIdentifier::esdt(XEGLD_TOKEN.to_token_identifier()),
-        &BigUint::from(6000u64), // Reduce from 75% to 60%
+        &BigUint::from(6200u64), // Reduce from 75% to 60%
         &BigUint::from(7000u64), // Reduce from 80% to 70%
-        &BigUint::from(600u64),
-        &BigUint::from(600u64),
+        &BigUint::from(640u64),
+        &BigUint::from(640u64),
         config.config.is_isolated_asset,
         config.config.isolation_debt_ceiling_usd.into_raw_units(),
         config.config.is_siloed_borrowing,
@@ -1190,6 +1200,12 @@ fn configuration_update_risky_values_with_borrows_allowed() {
     state.update_account_threshold(
         EgldOrEsdtTokenIdentifier::esdt(XEGLD_TOKEN.to_token_identifier()),
         true, // risky update
+        nonces.clone(),
+        None,
+    );
+    state.update_account_threshold(
+        EgldOrEsdtTokenIdentifier::esdt(XEGLD_TOKEN.to_token_identifier()),
+        false, // risky update
         nonces,
         None,
     );

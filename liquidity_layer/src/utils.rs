@@ -185,7 +185,8 @@ pub trait UtilsModule:
         let total_supplied_value_ray = cache.original_supply_ray(&cache.supplied);
         // Convert bad debt to RAY precision
         // Cap bad debt to available value (prevent negative results)
-        let capped_bad_debt_ray = self.get_min(bad_debt_amount_ray, total_supplied_value_ray.clone());
+        let capped_bad_debt_ray =
+            self.get_min(bad_debt_amount_ray, total_supplied_value_ray.clone());
 
         // Calculate remaining value after bad debt
         let remaining_value_ray = total_supplied_value_ray.clone() - capped_bad_debt_ray;
@@ -251,7 +252,7 @@ pub trait UtilsModule:
     /// - `EgldOrEsdtTokenPayment<Self::Api>`: Payment object representing the transfer.
     ///
     /// **Security Tip**: Uses `transfer_if_not_empty` to avoid empty transfers, protected by caller validation of `amount`.
-    #[inline]
+
     fn send_asset(
         &self,
         cache: &Cache<Self>,

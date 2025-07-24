@@ -3,6 +3,8 @@ multiversx_sc::derive_imports!();
 
 use crate::cache::Cache;
 use crate::{helpers, oracle, storage, ERROR_NO_POOL_FOUND};
+pub use common_constants::{BPS_PRECISION, RAY_PRECISION, WAD_PRECISION};
+
 use common_errors::*;
 use common_structs::*;
 
@@ -98,7 +100,7 @@ pub trait LendingUtilsModule:
     ///
     /// # Returns
     /// Current position amount in asset's native decimal precision
-    #[inline]
+
     fn get_total_amount(
         &self,
         position: &AccountPosition<Self::Api>,
@@ -113,6 +115,22 @@ pub trait LendingUtilsModule:
         };
 
         self.scaled_to_original(&position.scaled_amount, &index, feed.asset_decimals)
+    }
+
+    // Similar to get_total_amount but returns the result in RAY precision
+    fn get_total_amount_ray(
+        &self,
+        position: &AccountPosition<Self::Api>,
+        cache: &mut Cache<Self>,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        let indexes = cache.get_cached_market_index(&position.asset_id);
+        let index = if position.position_type == AccountPositionType::Deposit {
+            indexes.supply_index
+        } else {
+            indexes.borrow_index
+        };
+
+        self.scaled_to_original_ray(&position.scaled_amount, &index)
     }
 
     /// Computes multiple collateral valuations for risk assessment and borrowing capacity.
@@ -186,7 +204,7 @@ pub trait LendingUtilsModule:
 
         for position in positions {
             let feed = self.get_token_price(&position.asset_id, cache);
-            let amount = self.get_total_amount(&position, &feed, cache);
+            let amount = self.get_total_amount_ray(&position, cache);
             let amount_egld = self.get_token_egld_value_ray(&amount, &feed.price);
 
             total_collateral += &amount_egld;
@@ -215,7 +233,7 @@ pub trait LendingUtilsModule:
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         positions.iter().fold(self.ray_zero(), |acc, position| {
             let feed = self.get_token_price(&position.asset_id, cache);
-            let amount = self.get_total_amount(&position, &feed, cache);
+            let amount = self.get_total_amount_ray(&position, cache);
             acc + self.get_token_egld_value_ray(&amount, &feed.price)
         })
     }

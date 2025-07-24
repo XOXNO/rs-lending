@@ -1,4 +1,4 @@
-use common_constants::{BPS_PRECISION, RAY_PRECISION, WAD_PRECISION};
+use common_constants::{RAY_PRECISION, WAD_PRECISION};
 use common_structs::{AccountPosition, AccountPositionType, PriceFeedShort};
 
 use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validation};
@@ -69,8 +69,8 @@ pub trait PositionLiquidationModule:
     /// - `seized_collaterals`: Vector of (seized_payment, protocol_fee) for each collateral asset
     /// - `repaid_tokens`: Vector of (payment, egld_value, price_feed) for each repaid debt
     /// - `refunds`: Vector of excess payments to be refunded to liquidator
-    /// - `max_debt_to_repay_wad`: Maximum debt amount that was repaid (WAD precision)
-    /// - `bonus_rate`: Applied liquidation bonus rate in basis points
+    /// - `max_debt_to_repay_ray`: Maximum debt amount that was repaid (RAY precision)
+    /// - `bonus_rate_ray`: Applied liquidation bonus rate (RAY precision)
     fn execute_liquidation(
         &self,
         account_nonce: u64,
@@ -114,8 +114,8 @@ pub trait PositionLiquidationModule:
         let health_factor =
             self.validate_liquidation_health_factor(&liquidation_collateral, &borrowed_egld);
 
-        let (max_debt_to_repay_ray, max_debt_to_repay_wad, max_collateral_seized, bonus_rate) =
-            self.calculate_liquidation_amounts(
+        let (max_debt_to_repay_ray, max_collateral_seized_ray, bonus_rate_ray) = self
+            .calculate_liquidation_amounts(
                 &borrowed_egld,
                 &total_collateral,
                 &liquidation_collateral,
@@ -129,7 +129,7 @@ pub trait PositionLiquidationModule:
             &deposit_positions,
             &total_collateral,
             &max_debt_to_repay_ray,
-            &bonus_rate,
+            &bonus_rate_ray,
             cache,
         );
 
@@ -139,7 +139,7 @@ pub trait PositionLiquidationModule:
             &borrowed_egld,
             &max_debt_to_repay_ray,
             &total_collateral,
-            &max_collateral_seized,
+            &max_collateral_seized_ray,
         );
 
         let user_paid_more = debt_payment_in_egld_ray > max_debt_to_repay_ray;
@@ -153,8 +153,8 @@ pub trait PositionLiquidationModule:
             seized_collaterals,
             repaid_tokens,
             refunds,
-            max_debt_to_repay_wad,
-            bonus_rate,
+            max_debt_to_repay_ray,
+            bonus_rate_ray,
         )
     }
 
@@ -383,7 +383,7 @@ pub trait PositionLiquidationModule:
     /// - `deposit_positions`: Vector of borrower's collateral positions with asset IDs and amounts
     /// - `total_collateral_value`: Total collateral value across all assets (EGLD-denominated)
     /// - `debt_to_be_repaid_ray`: Amount of debt being repaid (RAY precision)
-    /// - `bonus_rate`: Liquidation bonus rate in basis points
+    /// - `bonus_rate_ray`: Liquidation bonus rate (RAY precision)
     /// - `cache`: Mutable storage cache for price feeds and asset data
     ///
     /// # Returns
@@ -395,20 +395,20 @@ pub trait PositionLiquidationModule:
         deposit_positions: &ManagedVec<AccountPosition<Self::Api>>,
         total_collateral_value: &ManagedDecimal<Self::Api, NumDecimals>,
         debt_to_be_repaid_ray: &ManagedDecimal<Self::Api, NumDecimals>,
-        bonus_rate: &ManagedDecimal<Self::Api, NumDecimals>,
+        bonus_rate_ray: &ManagedDecimal<Self::Api, NumDecimals>,
         cache: &mut Cache<Self>,
     ) -> ManagedVec<MultiValue2<EgldOrEsdtTokenPayment, ManagedDecimal<Self::Api, NumDecimals>>>
     {
         let mut seized_amounts_by_collateral = ManagedVec::new();
 
         // Pre-calculate bonus multiplier
-        let bonus_multiplier = self.bps() + bonus_rate.clone();
+        let bonus_multiplier = self.ray() + bonus_rate_ray.clone();
 
         for position in deposit_positions {
             let asset_data = self.get_token_price(&position.asset_id, cache);
-            let total_amount = self.get_total_amount(&position, &asset_data, cache);
+            let total_amount_ray = self.get_total_amount_ray(&position, cache);
             let asset_egld_value_ray =
-                self.get_token_egld_value_ray(&total_amount, &asset_data.price);
+                self.get_token_egld_value_ray(&total_amount_ray, &asset_data.price);
 
             // Calculate proportion in RAY precision
             let proportion_ray =
@@ -439,13 +439,11 @@ pub trait PositionLiquidationModule:
                 self.mul_half_up(&bonus_units_ray, &position.liquidation_fees, RAY_PRECISION);
             let protocol_fee = self.rescale_half_up(&protocol_fee_ray, asset_data.asset_decimals);
 
+            let final_amount_ray = self.get_min(seized_units_with_bonus_ray, total_amount_ray);
+
             // Final rescale to token decimals - this is where unavoidable precision loss occurs
             // due to finite decimal precision of individual tokens (6 decimals for USDC, etc.)
-            let final_amount = self.get_min(
-                self.rescale_half_up(&seized_units_with_bonus_ray, asset_data.asset_decimals),
-                total_amount,
-            );
-
+            let final_amount = self.rescale_half_up(&final_amount_ray, asset_data.asset_decimals);
             let seized_asset = EgldOrEsdtTokenPayment::new(
                 position.asset_id.clone(),
                 0,
@@ -548,20 +546,24 @@ pub trait PositionLiquidationModule:
 
             let token_egld_amount = self.get_token_egld_value_ray(&amount_dec, &token_feed.price);
 
-            let amount = self.get_total_amount(&original_borrow, &token_feed, cache);
+            let amount = self.get_total_amount_ray(&original_borrow, cache);
             let borrowed_egld_amount = self.get_token_egld_value_ray(&amount, &token_feed.price);
             let mut payment = payment_ref.clone();
             if token_egld_amount > borrowed_egld_amount {
                 let egld_excess = token_egld_amount - borrowed_egld_amount.clone();
                 let original_excess_paid = self.convert_egld_to_tokens(&egld_excess, &token_feed);
                 let token_excess_amount = original_excess_paid.into_raw_units().clone();
-                payment.amount -= &token_excess_amount;
 
-                refunds.push(EgldOrEsdtTokenPayment::new(
-                    payment_ref.token_identifier.clone(),
-                    payment_ref.token_nonce,
-                    token_excess_amount,
-                ));
+                // Only create refund if amount is greater than zero
+                if token_excess_amount > BigUint::zero() {
+                    payment.amount -= &token_excess_amount;
+
+                    refunds.push(EgldOrEsdtTokenPayment::new(
+                        payment_ref.token_identifier.clone(),
+                        payment_ref.token_nonce,
+                        token_excess_amount,
+                    ));
+                }
 
                 total_repaid += &borrowed_egld_amount;
                 repaid_tokens.push((payment, borrowed_egld_amount, token_feed).into());
@@ -632,8 +634,8 @@ pub trait PositionLiquidationModule:
     ///
     /// # Returns
     /// Returns a tuple containing:
-    /// - `proportion_seized`: Value-weighted liquidation threshold (BPS precision)
-    /// - `weighted_bonus`: Value-weighted liquidation bonus rate (BPS precision)
+    /// - `proportion_seized`: Value-weighted liquidation threshold (RAY precision)
+    /// - `weighted_bonus`: Value-weighted liquidation bonus rate (RAY precision)
     fn calculate_seizure_proportions(
         &self,
         total_collateral_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -643,25 +645,18 @@ pub trait PositionLiquidationModule:
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
-        let mut proportion_seized = self.bps_zero();
-        let mut weighted_bonus = self.bps_zero();
+        let mut proportion_seized = self.ray_zero();
+        let mut weighted_bonus = self.ray_zero();
 
         for dp in positions {
             let feed = self.get_token_price(&dp.asset_id, cache);
-            let amount = self.get_total_amount(&dp, &feed, cache);
-            let egld_amount = self.get_token_egld_value(&amount, &feed.price);
-            let fraction = self.rescale_half_up(
-                &self.div_half_up(&egld_amount, total_collateral_in_egld, RAY_PRECISION),
-                BPS_PRECISION,
-            );
-            proportion_seized += self.rescale_half_up(
-                &self.mul_half_up(&fraction, &dp.liquidation_threshold, RAY_PRECISION),
-                BPS_PRECISION,
-            );
-            weighted_bonus += self.rescale_half_up(
-                &self.mul_half_up(&fraction, &dp.liquidation_bonus, RAY_PRECISION),
-                BPS_PRECISION,
-            );
+            let amount = self.get_total_amount_ray(&dp, cache);
+            let egld_amount = self.get_token_egld_value_ray(&amount, &feed.price);
+            let fraction = self.div_half_up(&egld_amount, total_collateral_in_egld, RAY_PRECISION);
+
+            proportion_seized +=
+                self.mul_half_up(&fraction, &dp.liquidation_threshold, RAY_PRECISION);
+            weighted_bonus += self.mul_half_up(&fraction, &dp.liquidation_bonus, RAY_PRECISION);
         }
 
         (proportion_seized, weighted_bonus)
@@ -716,7 +711,7 @@ pub trait PositionLiquidationModule:
     /// - `total_collateral_in_egld`: Total collateral value at current prices (EGLD-denominated) as RAY
     /// - `weighted_collateral_in_egld`: Liquidation-threshold-weighted collateral value as RAY
     /// - `proportion_seized`: Weighted seizure proportion across all collateral assets
-    /// - `base_liquidation_bonus`: Asset-weighted base liquidation bonus in BPS
+    /// - `base_liquidation_bonus`: Asset-weighted base liquidation bonus in RAY
     /// - `health_factor`: Current position health factor (< 1.0 for liquidatable positions)
     /// - `egld_payment`: Actual liquidator payment amount in EGLD (RAY precision)
     ///
@@ -725,7 +720,7 @@ pub trait PositionLiquidationModule:
     /// - `max_debt_to_repay_ray`: Maximum debt amount to repay (RAY precision)
     /// - `max_debt_to_repay_wad`: Maximum debt amount to repay (WAD precision)
     /// - `max_collateral_seized`: Total collateral value to seize including bonus
-    /// - `bonus_rate`: Applied liquidation bonus rate in basis points
+    /// - `bonus_rate`: Applied liquidation bonus rate in RAY precision
     fn calculate_liquidation_amounts(
         &self,
         total_debt_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -736,7 +731,6 @@ pub trait PositionLiquidationModule:
         health_factor: &ManagedDecimal<Self::Api, NumDecimals>,
         egld_payment_ray: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> (
-        ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
@@ -755,21 +749,15 @@ pub trait PositionLiquidationModule:
             estimated_max_repayable_debt_ray.clone()
         };
 
-        let liquidation_premium = bonus.clone() + self.bps();
+        let liquidation_premium = bonus.clone() + self.ray();
 
         let collateral_to_seize = self.mul_half_up(
             &final_repayment_amount_ray,
             &liquidation_premium,
-            WAD_PRECISION,
+            RAY_PRECISION,
         );
-        let final_repayment_amount =
-            self.rescale_half_up(&final_repayment_amount_ray, WAD_PRECISION);
-        (
-            final_repayment_amount_ray,
-            final_repayment_amount,
-            collateral_to_seize,
-            bonus,
-        )
+
+        (final_repayment_amount_ray, collateral_to_seize, bonus)
     }
 
     /// Processes excess liquidation payments using a reverse-chronological adjustment algorithm.
@@ -1052,7 +1040,7 @@ pub trait PositionLiquidationModule:
     /// # How It Works (Threshold Evaluation Logic)
     /// 1. **USD Conversion**: Converts debt and collateral from EGLD to USD using oracle prices
     /// 2. **Bad Debt Detection**: Checks if debt value exceeds collateral value
-    /// 3. **Threshold Validation**: Applies $5 USD thresholds for both debt and collateral
+    /// 3. **Threshold Validation**: Applies $5 USD thresholds for collateral
     /// 4. **Cleanup Qualification**: Returns true only if all criteria are met simultaneously
     ///
     /// # Mathematical Criteria (All Must Be True)
@@ -1064,7 +1052,6 @@ pub trait PositionLiquidationModule:
     /// Cleanup criteria:
     /// 1. has_bad_debt = total_usd_debt > total_usd_collateral
     /// 2. has_minimal_collateral = total_usd_collateral <= min_threshold
-    /// 3. has_significant_debt = total_usd_debt >= min_threshold
     /// ```
     ///
     /// # Economic Rationale
@@ -1091,9 +1078,8 @@ pub trait PositionLiquidationModule:
 
         let has_bad_debt = total_usd_debt > total_usd_collateral;
         let has_collateral_under_min_threshold = total_usd_collateral <= min_collateral_threshold;
-        let has_bad_debt_above_min_threshold = total_usd_debt >= min_collateral_threshold;
 
-        has_bad_debt && has_collateral_under_min_threshold && has_bad_debt_above_min_threshold
+        has_bad_debt && has_collateral_under_min_threshold
     }
 
     /// Executes comprehensive bad debt cleanup by liquidating all remaining positions and transferring losses to protocol reserves.

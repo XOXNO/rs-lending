@@ -169,6 +169,7 @@ risk management mechanisms.
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
+pub use common_constants::{BPS_PRECISION, RAY_PRECISION, WAD_PRECISION};
 use common_errors::{
     ERROR_FLASHLOAN_RESERVE_ASSET, ERROR_INSUFFICIENT_LIQUIDITY, ERROR_INVALID_ASSET,
     ERROR_STRATEGY_FEE_EXCEEDS_AMOUNT,

@@ -1,5 +1,5 @@
 use common_constants::RAY;
-use controller::{BPS_PRECISION, RAY_PRECISION, WAD_PRECISION};
+pub use common_constants::{BPS_PRECISION, RAY_PRECISION, WAD_PRECISION};
 use multiversx_sc::types::{
     EgldOrEsdtTokenIdentifier, EgldOrEsdtTokenPayment, ManagedDecimal, ManagedVec,
     MultiValueEncoded,
@@ -214,8 +214,14 @@ fn views_liquidation_estimation_unhealthy_position() {
     assert!(liquidation_estimate.seized_collaterals.len() > 0);
     assert!(liquidation_estimate.protocol_fees.len() > 0);
     assert!(liquidation_estimate.refunds.len() > 0);
-    assert!(liquidation_estimate.max_egld_payment > ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION));
-    assert!(liquidation_estimate.bonus_rate > ManagedDecimal::from_raw_units(BigUint::zero(), BPS_PRECISION));
+    assert!(
+        liquidation_estimate.max_egld_payment
+            > ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION)
+    );
+    assert!(
+        liquidation_estimate.bonus_rate
+            > ManagedDecimal::from_raw_units(BigUint::zero(), BPS_PRECISION)
+    );
 }
 
 /// Tests market index and market data views for multiple assets.
@@ -650,6 +656,12 @@ fn views_complex_liquidation_bad_debt_scenario() {
     assert_eq!(liquidation_estimate.seized_collaterals.len(), 2); // Both collateral types seized
     assert_eq!(liquidation_estimate.protocol_fees.len(), 2); // Fees for each seized asset
     assert_eq!(liquidation_estimate.refunds.len(), 3); // Refunds from the last to the first asset
-    assert!(liquidation_estimate.max_egld_payment > ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION));
-    assert!(liquidation_estimate.bonus_rate > ManagedDecimal::from_raw_units(BigUint::from(100u64), BPS_PRECISION));
+    assert!(
+        liquidation_estimate.max_egld_payment
+            > ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION)
+    );
+    assert!(
+        liquidation_estimate.bonus_rate
+            > ManagedDecimal::from_raw_units(BigUint::from(100u64), BPS_PRECISION)
+    );
 }

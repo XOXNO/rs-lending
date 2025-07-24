@@ -3,8 +3,6 @@
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
 
-pub use common_constants::{BPS_PRECISION, RAY_PRECISION, WAD_PRECISION};
-
 /// MarketParams defines the core parameters for a liquidity pool, including
 /// the interest rate model settings and the asset’s decimal precision.
 ///
@@ -115,7 +113,6 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
         }
     }
 
-    #[inline]
     pub fn make_amount_decimal(
         &self,
         amount: &BigUint<M>,
@@ -124,12 +121,10 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
         ManagedDecimal::from_raw_units(amount.clone(), scale)
     }
 
-    #[inline]
     pub fn zero_decimal(&self) -> ManagedDecimal<M, NumDecimals> {
         ManagedDecimal::from_raw_units(BigUint::zero(), self.scaled_amount.scale())
     }
 
-    #[inline]
     pub fn can_remove(&self) -> bool {
         self.scaled_amount.into_raw_units().eq(&BigUint::zero())
     }
@@ -159,42 +154,34 @@ pub struct AssetConfig<M: ManagedTypeApi> {
 }
 
 impl<M: ManagedTypeApi> AssetConfig<M> {
-    #[inline]
     pub fn can_supply(&self) -> bool {
         self.is_collateralizable
     }
 
-    #[inline]
     pub fn can_borrow(&self) -> bool {
         self.is_borrowable
     }
 
-    #[inline]
     pub fn is_isolated(&self) -> bool {
         self.is_isolated_asset
     }
 
-    #[inline]
     pub fn is_siloed_borrowing(&self) -> bool {
         self.is_siloed_borrowing
     }
 
-    #[inline]
     pub fn has_emode(&self) -> bool {
         self.e_mode_enabled
     }
 
-    #[inline]
     pub fn can_borrow_in_isolation(&self) -> bool {
         self.isolation_borrow_enabled
     }
 
-    #[inline]
     pub fn can_flashloan(&self) -> bool {
         self.is_flashloanable
     }
 
-    #[inline]
     pub fn get_flash_loan_fee(&self) -> ManagedDecimal<M, NumDecimals> {
         self.flashloan_fee.clone()
     }
@@ -224,12 +211,10 @@ pub struct EModeCategory<M: ManagedTypeApi> {
 }
 
 impl<M: ManagedTypeApi> EModeCategory<M> {
-    #[inline]
     pub fn is_deprecated(&self) -> bool {
         self.is_deprecated
     }
 
-    #[inline]
     pub fn get_id(&self) -> u8 {
         self.category_id
     }
@@ -244,12 +229,10 @@ pub struct EModeAssetConfig {
 }
 
 impl EModeAssetConfig {
-    #[inline]
     pub fn can_borrow(&self) -> bool {
         self.is_borrowable
     }
 
-    #[inline]
     pub fn can_supply(&self) -> bool {
         self.is_collateralizable
     }
@@ -268,22 +251,18 @@ pub struct AccountAttributes<M: ManagedTypeApi> {
 }
 
 impl<M: ManagedTypeApi> AccountAttributes<M> {
-    #[inline]
     pub fn has_emode(&self) -> bool {
         self.e_mode_category_id > 0
     }
 
-    #[inline]
     pub fn get_emode_id(&self) -> u8 {
         self.e_mode_category_id
     }
 
-    #[inline]
     pub fn is_isolated(&self) -> bool {
         self.is_isolated_position
     }
 
-    #[inline]
     pub fn get_isolated_token(&self) -> EgldOrEsdtTokenIdentifier<M> {
         // SAFETY: This is safe because all call sites guard with is_isolated() checks
         unsafe { self.isolated_token.clone().into_option().unwrap_unchecked() }

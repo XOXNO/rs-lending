@@ -145,6 +145,13 @@ pub trait Storage {
     #[storage_mapper("flash_loan_ongoing")]
     fn flash_loan_ongoing(&self) -> SingleValueMapper<bool>;
 
+    /// Get the position limits configuration
+    /// This storage mapper holds the maximum number of borrow and supply positions per NFT
+    /// Used to optimize gas costs during liquidations and prevent excessive position complexity
+    #[view(getPositionLimits)]
+    #[storage_mapper("position_limits")]
+    fn position_limits(&self) -> SingleValueMapper<PositionLimits>;
+
     /// PROXY STORAGE ///
     ///
     /// Retrieves the total scaled amount supplied to the pool.
@@ -243,11 +250,4 @@ pub trait Storage {
         &self,
         price_aggregator_address: ManagedAddress,
     ) -> SingleValueMapper<bool, ManagedAddress>;
-
-    /// Get the position limits configuration
-    /// This storage mapper holds the maximum number of borrow and supply positions per NFT
-    /// Used to optimize gas costs during liquidations and prevent excessive position complexity
-    #[view(getPositionLimits)]
-    #[storage_mapper("position_limits")]
-    fn position_limits(&self) -> SingleValueMapper<PositionLimits>;
 }

@@ -1,4 +1,6 @@
-use controller::{AssetConfig, BPS_PRECISION, WAD_PRECISION};
+pub use common_constants::{BPS_PRECISION, RAY_PRECISION, WAD_PRECISION};
+use controller::AssetConfig;
+
 use multiversx_sc::types::{BigUint, EsdtLocalRole, ManagedDecimal, TestAddress, TestSCAddress};
 use multiversx_sc_scenario::{
     api::StaticApi,

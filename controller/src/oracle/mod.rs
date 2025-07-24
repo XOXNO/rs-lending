@@ -866,7 +866,7 @@ pub trait OracleModule:
     /// - Last: 9500-10500 BPS (±5%)
     ///
     /// **Returns:** true if price deviation is within acceptable bounds
-    #[inline]
+
     fn is_within_anchor(
         &self,
         aggregator_price: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -1104,7 +1104,7 @@ pub trait OracleModule:
     /// - No data transformation that could introduce errors
     ///
     /// **Returns:** Structured PriceFeed with complete metadata
-    #[inline]
+
     fn make_price_feed(
         &self,
         token_pair: TokenPair<Self::Api>,

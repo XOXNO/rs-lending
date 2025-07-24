@@ -72,12 +72,12 @@ pub trait MathsModule: common_math::SharedMathModule {
     /// - Handles edge cases where token decimals differ significantly from EGLD
     ///
     /// # Arguments
-    /// - `amount_in_egld`: EGLD amount to convert (WAD precision)
+    /// - `amount_in_egld`: EGLD amount to convert (any precision)
     /// - `token_data`: Price feed data containing token price and decimal information
     ///
     /// # Returns
     /// - Token amount adjusted to the token's native decimal precision
-    #[inline]
+
     fn convert_egld_to_tokens(
         &self,
         amount_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -110,7 +110,7 @@ pub trait MathsModule: common_math::SharedMathModule {
     ///
     /// # Returns
     /// - Token amount in RAY precision (10^27) for intermediate calculations
-    #[inline]
+
     fn convert_egld_to_tokens_ray(
         &self,
         amount_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -144,7 +144,7 @@ pub trait MathsModule: common_math::SharedMathModule {
     ///
     /// # Returns
     /// - USD value in WAD precision (10^18) for protocol-wide consistency
-    #[inline]
+
     fn get_egld_usd_value(
         &self,
         amount: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -165,7 +165,7 @@ pub trait MathsModule: common_math::SharedMathModule {
     ///
     /// # Returns
     /// - EGLD value in WAD precision.
-    #[inline]
+
     fn get_token_egld_value(
         &self,
         amount: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -225,7 +225,7 @@ pub trait MathsModule: common_math::SharedMathModule {
     ///
     /// # Returns
     /// - EGLD value in RAY precision (10^27) for intermediate calculations
-    #[inline]
+
     fn get_token_egld_value_ray(
         &self,
         amount: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -276,13 +276,11 @@ pub trait MathsModule: common_math::SharedMathModule {
         if borrowed_value_in_egld == &self.ray_zero() {
             return self.double_ray();
         }
-        let hf = self.div_half_up(
+        self.div_half_up(
             weighted_collateral_in_egld,
             borrowed_value_in_egld,
             RAY_PRECISION,
-        );
-        sc_print!("hf: {}", hf);
-        hf
+        )
     }
 
     /// Calculates upper and lower bounds for a tolerance in basis points.
@@ -309,7 +307,7 @@ pub trait MathsModule: common_math::SharedMathModule {
     ///
     /// # Returns
     /// - Tuple of (upper_bound, lower_bound) in BPS precision
-    #[inline]
+
     fn calculate_tolerance_range(
         &self,
         tolerance: ManagedDecimal<Self::Api, NumDecimals>,
@@ -428,12 +426,12 @@ pub trait MathsModule: common_math::SharedMathModule {
     /// - **Linear Predictability**: Prevents gaming through predictable bonus progression
     ///
     /// # Arguments
-    /// - `current_hf`: Current health factor (WAD precision, 10^18)
-    /// - `target_hf`: Target health factor post-liquidation (WAD precision, 10^18)
-    /// - `min_bonus`: Minimum liquidation bonus (BPS precision, 10^4)
+    /// - `current_hf`: Current health factor (RAY precision, 10^27)
+    /// - `target_hf`: Target health factor post-liquidation (RAY precision, 10^27)
+    /// - `min_bonus`: Minimum liquidation bonus (RAY precision, 10^27)
     ///
     /// # Returns
-    /// - Liquidation bonus in BPS precision (10^4), range: [min_bonus, 1500]
+    /// - Liquidation bonus in RAY precision (10^27), range: [min_bonus, 1500]
     fn calculate_linear_bonus(
         &self,
         current_hf: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -457,13 +455,11 @@ pub trait MathsModule: common_math::SharedMathModule {
         // Clamp the scaled term between 0 and 1
         let clamped_term = self.get_min(scaled_term, self.ray());
         // Calculate the bonus range: max_bonus - min_bonus
-        let bonus_range = max_bonus.clone() - min_bonus.clone();
-        // Calculate the bonus increment: bonus_range * clamped_term
-        let bonus_increment = self.rescale_half_up(
-            &self.mul_half_up(&bonus_range, &clamped_term, RAY_PRECISION),
-            BPS_PRECISION,
-        );
 
+        let bonus_range = max_bonus.rescale(RAY_PRECISION) - min_bonus.clone();
+
+        // Calculate the bonus increment: bonus_range * clamped_term
+        let bonus_increment = self.mul_half_up(&bonus_range, &clamped_term, RAY_PRECISION);
         // Final bonus: min_bonus + bonus_increment
         min_bonus.clone() + bonus_increment
     }
@@ -807,7 +803,7 @@ pub trait MathsModule: common_math::SharedMathModule {
     ///
     /// **Integration with Dutch Auction**:
     /// This function serves as the simulation engine called by `estimate_liquidation_amount`
-    /// with different target health factors (1.02 and 1.01 WAD) to implement the
+    /// with different target health factors (1.02 and 1.01 RAY) to implement the
     /// progressive targeting strategy.
     ///
     /// **Mathematical Consistency**:
@@ -823,12 +819,12 @@ pub trait MathsModule: common_math::SharedMathModule {
     ///
     /// # Arguments
     /// - `weighted_collateral_in_egld`: Weighted collateral value in EGLD (RAY)
-    /// - `proportion_seized`: Proportion of collateral seized per unit debt (BPS)
+    /// - `proportion_seized`: Proportion of collateral seized per unit debt (RAY)
     /// - `total_collateral`: Total collateral value (RAY)
     /// - `total_debt`: Total debt value (RAY)
-    /// - `min_bonus`: Minimum liquidation bonus (BPS)
-    /// - `current_hf`: Current health factor (WAD)
-    /// - `target_hf`: Target post-liquidation health factor (WAD)
+    /// - `min_bonus`: Minimum liquidation bonus (RAY)
+    /// - `current_hf`: Current health factor (RAY)
+    /// - `target_hf`: Target post-liquidation health factor (RAY)
     ///
     /// # Returns
     /// - Tuple of (debt_to_repay, bonus, simulated_new_health_factor) in appropriate precisions

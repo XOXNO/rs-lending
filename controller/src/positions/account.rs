@@ -218,7 +218,7 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
     ///
     /// # Arguments
     /// - `nonce`: Account NFT nonce to validate for existence
-    #[inline]
+
     fn require_active_account(&self, nonce: u64) {
         require!(
             self.accounts().contains(&nonce),
@@ -254,7 +254,7 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
     ///
     /// # Returns
     /// - Tuple containing (NFT payment, caller address, validated attributes)
-    #[inline]
+
     fn validate_account(
         &self,
         return_account: bool,
@@ -307,7 +307,7 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
     ///
     /// # Errors
     /// - `ERROR_ADDRESS_IS_ZERO`: If address equals zero/empty address
-    #[inline]
+
     fn require_non_zero_address(&self, address: &ManagedAddress) {
         require!(!address.is_zero(), ERROR_ADDRESS_IS_ZERO);
     }

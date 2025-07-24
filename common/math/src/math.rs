@@ -8,7 +8,6 @@ multiversx_sc::imports!();
 
 #[multiversx_sc::module]
 pub trait SharedMathModule {
-    #[inline]
     fn mul_half_up(
         &self,
         a: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -32,7 +31,6 @@ pub trait SharedMathModule {
         self.to_decimal(rounded_product, precision)
     }
 
-    #[inline]
     fn div_half_up(
         &self,
         a: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -55,7 +53,6 @@ pub trait SharedMathModule {
         self.to_decimal(rounded_quotient, precision)
     }
 
-    #[inline]
     fn mul_half_up_signed(
         &self,
         a: &ManagedDecimalSigned<Self::Api, NumDecimals>,
@@ -85,7 +82,6 @@ pub trait SharedMathModule {
         ManagedDecimalSigned::from_raw_units(rounded_product, precision)
     }
 
-    #[inline]
     fn div_half_up_signed(
         &self,
         a: &ManagedDecimalSigned<Self::Api, NumDecimals>,
@@ -115,57 +111,46 @@ pub trait SharedMathModule {
         ManagedDecimalSigned::from_raw_units(rounded, precision)
     }
 
-    #[inline]
     fn to_decimal_wad(self, value: BigUint) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal(value, WAD_PRECISION)
     }
 
-    #[inline]
     fn bps_zero(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal_bps(BigUint::zero())
     }
 
-    #[inline]
     fn wad_zero(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal_wad(BigUint::zero())
     }
 
-    #[inline]
     fn ray_zero(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal_ray(BigUint::zero())
     }
 
-    #[inline]
     fn to_decimal_ray(self, value: BigUint) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal(value, RAY_PRECISION)
     }
 
-    #[inline]
     fn to_decimal_bps(self, value: BigUint) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal(value, BPS_PRECISION)
     }
 
-    #[inline]
     fn ray(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal(BigUint::from(RAY), RAY_PRECISION)
     }
 
-    #[inline]
     fn double_ray(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal(BigUint::from(DOUBLE_RAY), RAY_PRECISION)
     }
 
-    #[inline]
     fn wad(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal(BigUint::from(WAD), WAD_PRECISION)
     }
 
-    #[inline]
     fn bps(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal(BigUint::from(BPS), BPS_PRECISION)
     }
 
-    #[inline]
     fn to_decimal(
         self,
         value: BigUint,
@@ -174,7 +159,6 @@ pub trait SharedMathModule {
         ManagedDecimal::from_raw_units(value, precision)
     }
 
-    #[inline]
     fn rescale_half_up(
         &self,
         value: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -197,7 +181,6 @@ pub trait SharedMathModule {
         }
     }
 
-    #[inline]
     fn get_min(
         self,
         a: ManagedDecimal<Self::Api, NumDecimals>,
@@ -210,7 +193,6 @@ pub trait SharedMathModule {
         }
     }
 
-    #[inline]
     fn get_max(
         self,
         a: ManagedDecimal<Self::Api, NumDecimals>,

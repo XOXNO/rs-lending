@@ -79,7 +79,7 @@ pub trait ValidationModule:
     /// # Errors
     /// - `ERROR_ASSET_NOT_SUPPORTED`: Asset has no associated liquidity pool
     /// - `ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO`: Payment amount is zero or negative
-    #[inline]
+
     fn validate_payment(&self, payment: &EgldOrEsdtTokenPayment<Self::Api>) {
         let _ = self.require_asset_supported(&payment.token_identifier);
         self.require_amount_greater_than_zero(&payment.amount);
@@ -95,7 +95,7 @@ pub trait ValidationModule:
     ///
     /// # Errors
     /// - `ERROR_ASSET_NOT_SUPPORTED`: If no pool exists for the asset.
-    #[inline]
+
     fn require_asset_supported(&self, asset: &EgldOrEsdtTokenIdentifier) -> ManagedAddress {
         let map = self.pools_map(asset);
         require!(!map.is_empty(), ERROR_ASSET_NOT_SUPPORTED);
@@ -111,7 +111,7 @@ pub trait ValidationModule:
     ///
     /// # Errors
     /// - `ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO`: If the amount is zero or negative.
-    #[inline]
+
     fn require_amount_greater_than_zero(&self, amount: &BigUint) {
         require!(
             amount > &BigUint::zero(),
@@ -162,7 +162,7 @@ pub trait ValidationModule:
     ///
     /// # Errors
     /// - `ERROR_INVALID_SHARD`: Destination contract is on different shard
-    #[inline]
+
     fn validate_flash_loan_shard(&self, contract_address: &ManagedAddress) {
         let destination_shard_id = self.blockchain().get_shard_of_address(contract_address);
         let current_shard_id = self
@@ -222,7 +222,7 @@ pub trait ValidationModule:
     ///
     /// # Errors
     /// - `ERROR_INVALID_ENDPOINT`: Endpoint is empty or a built-in function
-    #[inline]
+
     fn validate_flash_loan_endpoint(&self, endpoint: &ManagedBuffer<Self::Api>) {
         require!(
             !self.blockchain().is_builtin_function(endpoint) && !endpoint.is_empty(),
@@ -273,7 +273,7 @@ pub trait ValidationModule:
     ///
     /// # Errors
     /// - `ERROR_FLASH_LOAN_ALREADY_ONGOING`: Reentrancy attempt detected
-    #[inline]
+
     fn reentrancy_guard(&self, flash_loan_ongoing: bool) {
         require!(!flash_loan_ongoing, ERROR_FLASH_LOAN_ALREADY_ONGOING);
     }
@@ -316,7 +316,7 @@ pub trait ValidationModule:
     ///
     /// # Errors  
     /// - `ERROR_POSITION_LIMIT_EXCEEDED`: Position limit would be exceeded
-    #[inline]
+
     fn validate_bulk_position_limits(
         &self,
         account_nonce: u64,

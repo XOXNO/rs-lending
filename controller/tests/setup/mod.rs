@@ -174,6 +174,40 @@ impl LendingPoolTestState {
             .run();
     }
 
+    /// Supply asset to the lending pool
+    pub fn supply_asset_den(
+        &mut self,
+        from: &TestAddress,
+        token_id: TestTokenIdentifier,
+        amount_to_transfer: BigUint<StaticApi>,
+        account_nonce: OptionalValue<u64>,
+        e_mode_category: OptionalValue<u8>,
+        _is_vault: bool,
+    ) {
+        let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
+
+        vec.push(EsdtTokenPayment::new(
+            token_id.to_token_identifier(),
+            0,
+            amount_to_transfer,
+        ));
+
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .supply(
+                match account_nonce.into_option() {
+                    Some(nonce) => OptionalValue::Some(nonce),
+                    None => OptionalValue::Some(0),
+                },
+                e_mode_category,
+            )
+            .multi_esdt(vec)
+            .run();
+    }
+
     /// Supply asset with error expectation
     pub fn supply_asset_error(
         &mut self,
@@ -498,6 +532,32 @@ impl LendingPoolTestState {
             EgldOrEsdtTokenIdentifier::esdt(asset_to_borrow.to_token_identifier()),
             0,
             amount * BigUint::from(10u64.pow(asset_decimals as u32)),
+        );
+        let mut array: MultiValueEncoded<StaticApi, EgldOrEsdtTokenPayment<StaticApi>> =
+            MultiValueEncoded::new();
+        array.push(asset);
+
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .borrow(array)
+            .esdt(TestEsdtTransfer(ACCOUNT_TOKEN, account_nonce, 1u64))
+            .run();
+    }
+
+    pub fn borrow_asset_den(
+        &mut self,
+        from: &TestAddress,
+        asset_to_borrow: TestTokenIdentifier,
+        amount: BigUint<StaticApi>,
+        account_nonce: u64,
+    ) {
+        let asset = EgldOrEsdtTokenPayment::new(
+            EgldOrEsdtTokenIdentifier::esdt(asset_to_borrow.to_token_identifier()),
+            0,
+            amount,
         );
         let mut array: MultiValueEncoded<StaticApi, EgldOrEsdtTokenPayment<StaticApi>> =
             MultiValueEncoded::new();

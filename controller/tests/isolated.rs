@@ -1,7 +1,9 @@
+pub use common_constants::WAD_PRECISION;
 use controller::{
     ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL, ERROR_DEBT_CEILING_REACHED,
-    ERROR_EMODE_CATEGORY_NOT_FOUND, ERROR_MIX_ISOLATED_COLLATERAL, WAD_PRECISION,
+    ERROR_EMODE_CATEGORY_NOT_FOUND, ERROR_MIX_ISOLATED_COLLATERAL,
 };
+
 use multiversx_sc::types::{EgldOrEsdtTokenIdentifier, ManagedDecimal, MultiValueEncoded};
 use multiversx_sc_scenario::imports::{BigUint, OptionalValue, TestAddress};
 pub mod constants;
