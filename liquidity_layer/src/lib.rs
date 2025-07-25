@@ -144,6 +144,7 @@ pub trait LiquidityPool:
     /// - Restricted to the contract owner (via the `#[upgrade]` attribute) to prevent unauthorized modifications.
     /// - Uses precise decimal conversions (`to_decimal_ray` and `to_decimal_bps`) to ensure consistency in calculations.
     /// - Logs changes via an event, enabling tracking and verification of updates.
+    #[only_owner]
     #[endpoint(updateParams)]
     fn update_params(
         &self,

@@ -440,34 +440,10 @@ deploy_controller() {
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 }
 
-# upgrade_controller() {
-#     mxpy --verbose contract upgrade ${ADDRESS} --bytecode=${PROJECT_CONTROLLER} --recall-nonce \
-#     --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
-#     --gas-limit=550000000 \
-#     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
-# }
-
 upgrade_controller() {
-    # Get all token IDs from the config file
-    local token_ids=($(jq -r 'to_entries[] | .value.token_id' "$MARKET_CONFIG_FILE"))
-    
-    if [ ${#token_ids[@]} -eq 0 ]; then
-        echo "No markets found in configuration"
-        exit 1
-    fi
-    
-    echo "Token IDs to claim revenue from: ${token_ids[*]}"
-    
-    # Prepare arguments for the contract call
-    local args=()
-    for token_id in "${token_ids[@]}"; do
-        args+=("str:$token_id")
-    done
-
     mxpy --verbose contract upgrade ${ADDRESS} --bytecode=${PROJECT_CONTROLLER} --recall-nonce \
     --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
     --gas-limit=550000000 \
-    --arguments "${args[@]}" \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 }
 
@@ -494,13 +470,10 @@ upgrade_market_template() {
     echo "Creating market for ${market_name}..."
     echo "Token ID: $(get_config_value "$market_name" "token_id")"
     
-    local args=( $(build_market_template_upgrade_args "$market_name") )
-
     mxpy contract upgrade ${LP_TEMPLATE_ADDRESS} \
     --bytecode=${PROJECT_MARKET} --recall-nonce \
     --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
     --gas-limit=250000000 \
-    --arguments "${args[@]}" \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 }
 
