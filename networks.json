@@ -6,8 +6,7 @@
       "controller": "erd1qqqqqqqqqqqqqpgq4jah0u2hcgem33c0q8lwwlv2au6x2ck3ah0sh00d8w",
       "lp_template": "erd1qqqqqqqqqqqqqpgqjr7w863gzzq0lsvf0hsr52cvvc6yku5cah0sap8kze",
       "price_aggregator": "erd1qqqqqqqqqqqqqpgqcd5jnctcnyhcqep70fwvr3y9eel52kt4ah0saez2dj",
-      "ash": "erd1qqqqqqqqqqqqqpgqglqtgt5m50njg6le3calj6hknfuuta2tnrzsuh2qlc",
-      "wegld": "erd1qqqqqqqqqqqqqpgqpv09kfzry5y4sj05udcngesat07umyj70n4sa2c0rp",
+      "swap_router_address": "erd1qqqqqqqqqqqqqpgqglqtgt5m50njg6le3calj6hknfuuta2tnrzsuh2qlc",
       "safe_price_view": "erd1qqqqqqqqqqqqqpgqcmnum66jxyfpcnvqk5eahj5n3ny4vkfn0n4szjjskv",
       "accumulator": "erd1qqqqqqqqqqqqqpgqyxfc4r5fmw2ljcgwxj2nuzv72y9ryvyhah0sgn5vv2"
     },
@@ -29,15 +28,12 @@
     "proxy": "https://gateway.xoxno.com",
     "chain_id": "1",
     "addresses": {
-      "controller": "erd1qqqqqqqqqqqqqpgq0lzzvt2faev4upyf44uhzvhjmca0qexj2jpsgrwcyz",
-      "lp_template": "erd1qqqqqqqqqqqqqpgqxg88vgw9qwmedm3jufstn2k3rvqk7mjj2jps08hwgu",
-      "aggregator": "erd1qqqqqqqqqqqqqpgqhe8t5jewz7fdkk7v5xk5nvv8xttcq4vv2jpsssmvuy",
-      "cex_aggregator": "erd1qqqqqqqqqqqqqpgqj9tjgqr36krezwkrtcs35j20zqj08mqj2jpsxnvy8j",
-      "ash": "erd1qqqqqqqqqqqqqpgqmr8u2ucp4h759hptfpltc5cxw5ngrdmj2jpsavj2fx",
-      "wegld": "erd1qqqqqqqqqqqqqpgqa0fsfshnff4n76jhcye6k7uvd7qacsq42jpsp6shh2",
-      "safe_price_view": "erd1qqqqqqqqqqqqqpgqwrzws56t3qnw6p28n3m5yjxlpdz4ewt42jpse6gg6u",
-      "accumulator": "erd1qqqqqqqqqqqqqpgqc8h0rf8cmgkpu48pz6zqwymfpnk24xj32jps2pu4em",
-      "price_aggregator": "erd1qqqqqqqqqqqqqpgqhe8t5jewz7fdkk7v5xk5nvv8xttcq4vv2jpsssmvuy"
+      "controller": "",
+      "lp_template": "",
+      "price_aggregator": "",
+      "swap_router_address": "erd1qqqqqqqqqqqqqpgqfnarkmhu6tgjgtpenya0dek54jcwkak23g6su00nwn",
+      "safe_price_view": "erd1qqqqqqqqqqqqqpgqtce4z8zzz76xjht3hak0hseshcmj3ush2jps2exxjn",
+      "accumulator": "erd1qqqqqqqqqqqqqpgq8538ku69p97lq4eug75y8d6g6yfwhd7c45qs4zvejt"
     },
     "submission_counts": 3,
     "oracles": [
@@ -50,7 +46,7 @@
     ],
     "account_token": {
       "name": "XOXNOLendingAccount",
-      "ticker": "XOLEND",
+      "ticker": "XOXNOLEND",
       "issue_cost": 50000000000000000
     },
     "ledger": {

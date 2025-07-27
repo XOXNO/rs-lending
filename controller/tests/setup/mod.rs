@@ -2338,17 +2338,6 @@ impl LendingPoolTestState {
             .run()
     }
 
-    /// Get EGLD wrapper address
-    pub fn get_egld_wrapper_address(&mut self) -> ManagedAddress<StaticApi> {
-        self.world
-            .query()
-            .to(self.lending_sc.clone())
-            .typed(proxy_lending_pool::ControllerProxy)
-            .wegld_wrapper()
-            .returns(ReturnsResult)
-            .run()
-    }
-
     /// Get swap router address
     pub fn get_swap_router_address(&mut self) -> ManagedAddress<StaticApi> {
         self.world
@@ -2541,8 +2530,7 @@ pub fn setup_lending_pool(
             price_aggregator_sc,
             safe_view_sc.clone(),
             accumulator_sc.clone(), // TODO: Add real accumulator
-            safe_view_sc.clone(),   // TODO Add wrap SC for WEGLD
-            safe_view_sc.clone(),   // TODO: Add ash SC
+            safe_view_sc.clone(),   // TODO: Add swap_router_address SC
         )
         .code(LENDING_POOL_PATH)
         .returns(ReturnsNewManagedAddress)

@@ -80,11 +80,6 @@ pub trait Storage {
     #[storage_mapper("safe_price_view")]
     fn safe_price_view(&self) -> SingleValueMapper<ManagedAddress>;
 
-    /// This storage mapper holds the address of the wrapper, used to convert between EGLD <-> WEGLD
-    #[view(getEGLDWrapperAddress)]
-    #[storage_mapper("wegld_wrapper_address")]
-    fn wegld_wrapper(&self) -> SingleValueMapper<ManagedAddress>;
-
     #[view(getSwapRouterAddress)]
     #[storage_mapper("swap_router_address")]
     fn swap_router(&self) -> SingleValueMapper<ManagedAddress>;

@@ -127,7 +127,7 @@ LEDGER_ADDRESS_INDEX=$(get_network_value "ledger.address_index")
 # Load addresses
 ADDRESS=$(get_network_value "addresses.controller")
 LP_TEMPLATE_ADDRESS=$(get_network_value "addresses.lp_template") 
-ASH_ADDRESS=$(get_network_value "addresses.ash")
+ASH_ADDRESS=$(get_network_value "addresses.swap_router_address")
 WEGLD_ADDRESS=$(get_network_value "addresses.wegld")
 SAFE_PRICE_VIEW_ADDRESS=$(get_network_value "addresses.safe_price_view")
 ACCUMULATOR_ADDRESS=$(get_network_value "addresses.accumulator")

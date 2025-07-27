@@ -51,7 +51,6 @@ pub trait Controller:
     /// - `price_aggregator_address`: Address of the price aggregator.
     /// - `safe_price_view_address`: Address for safe price views.
     /// - `accumulator_address`: Address for revenue accumulation.
-    /// - `wegld_address`: Address for wrapped EGLD.
     /// - `swap_router_address`: Address for Swap Router integration.
     #[init]
     fn init(
@@ -60,7 +59,6 @@ pub trait Controller:
         price_aggregator_address: &ManagedAddress,
         safe_price_view_address: &ManagedAddress,
         accumulator_address: &ManagedAddress,
-        wegld_address: &ManagedAddress,
         swap_router_address: &ManagedAddress,
     ) {
         self.liq_pool_template_address().set(lp_template_address);
@@ -68,7 +66,6 @@ pub trait Controller:
             .set(price_aggregator_address);
         self.safe_price_view().set(safe_price_view_address);
         self.accumulator_address().set(accumulator_address);
-        self.wegld_wrapper().set(wegld_address);
         self.swap_router().set(swap_router_address);
 
         // Initialize default position limits for gas optimization during liquidations

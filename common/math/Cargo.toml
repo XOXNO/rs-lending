@@ -12,3 +12,22 @@ version = "0.59.0"
 
 [dependencies.common-constants]
 path = "../constants"
+
+[dev-dependencies]
+multiversx-sc-scenario = { version = "0.59.0" }
+
+[[test]]
+name = "test_individual_functions"
+path = "tests/test_individual_functions.rs"
+
+[[test]]
+name = "test_rescale_example"
+path = "tests/test_rescale_example.rs"
+
+[[test]]
+name = "test_rounding_comprehensive"
+path = "tests/test_rounding_comprehensive.rs"
+
+[[test]]
+name = "test_edge_cases"
+path = "tests/test_edge_cases.rs"

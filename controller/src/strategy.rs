@@ -311,7 +311,7 @@ pub trait SnapModule:
 
         // Create new debt position via flash loan
         // This borrows the new debt token amount that will replace existing debt
-        self.handle_create_borrow_strategy(
+        let received_debt =  self.handle_create_borrow_strategy(
             account.token_nonce,
             new_debt_token,
             new_debt_amount_raw,
@@ -326,7 +326,7 @@ pub trait SnapModule:
         let received = self.swap_tokens(
             existing_debt_token,
             new_debt_token,
-            new_debt_amount_raw,
+            &received_debt.into_raw_units(),
             &caller,
             steps,
         );

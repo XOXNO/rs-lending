@@ -50,7 +50,6 @@ where
     /// - `price_aggregator_address`: Address of the price aggregator. 
     /// - `safe_price_view_address`: Address for safe price views. 
     /// - `accumulator_address`: Address for revenue accumulation. 
-    /// - `wegld_address`: Address for wrapped EGLD. 
     /// - `swap_router_address`: Address for Swap Router integration. 
     pub fn init<
         Arg0: ProxyArg<ManagedAddress<Env::Api>>,
@@ -58,15 +57,13 @@ where
         Arg2: ProxyArg<ManagedAddress<Env::Api>>,
         Arg3: ProxyArg<ManagedAddress<Env::Api>>,
         Arg4: ProxyArg<ManagedAddress<Env::Api>>,
-        Arg5: ProxyArg<ManagedAddress<Env::Api>>,
     >(
         self,
         lp_template_address: Arg0,
         price_aggregator_address: Arg1,
         safe_price_view_address: Arg2,
         accumulator_address: Arg3,
-        wegld_address: Arg4,
-        swap_router_address: Arg5,
+        swap_router_address: Arg4,
     ) -> TxTypedDeploy<Env, From, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
@@ -75,7 +72,6 @@ where
             .argument(&price_aggregator_address)
             .argument(&safe_price_view_address)
             .argument(&accumulator_address)
-            .argument(&wegld_address)
             .argument(&swap_router_address)
             .original_result()
     }
@@ -1293,16 +1289,6 @@ where
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getSafePriceAddress")
-            .original_result()
-    }
-
-    /// This storage mapper holds the address of the wrapper, used to convert between EGLD <-> WEGLD 
-    pub fn wegld_wrapper(
-        self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
-        self.wrapped_tx
-            .payment(NotPayable)
-            .raw_call("getEGLDWrapperAddress")
             .original_result()
     }
 
