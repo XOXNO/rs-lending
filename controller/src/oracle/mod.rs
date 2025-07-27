@@ -601,7 +601,9 @@ pub trait OracleModule:
         if result_ticker == cache.egld_ticker {
             self.to_decimal_wad(result.amount)
         } else {
-            self.get_token_price(&new_token_id, cache).price
+            let feed = self.get_token_price(&new_token_id, cache);
+            let amount_dec = self.to_decimal(result.amount, feed.asset_decimals);
+            self.get_token_egld_value(&amount_dec, &feed.price)
         }
     }
 
