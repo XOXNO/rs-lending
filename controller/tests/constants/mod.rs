@@ -29,9 +29,9 @@ pub const WAD: u128 = 1_000_000_000_000_000_000;
 pub const LTV: u128 = 7_500; // 75%
 pub const E_MODE_LTV: u128 = 8_000; // 80%
 pub const LIQ_THRESHOLD: u128 = 8_000; // 80%
-pub const E_MODE_LIQ_THRESHOLD: u128 = 8_500; // 85%
+pub const E_MODE_LIQ_THRESHOLD: u128 = 9_500; // 85%
 pub const LIQ_BONUS: u128 = 500; // 1%
-pub const E_MODE_LIQ_BONUS: u128 = 500; // 5%
+pub const E_MODE_LIQ_BONUS: u128 = 0; // 5%
 pub const LIQ_BASE_FEE: u128 = 500; // 1%
 pub const FLASH_LOAN_FEE: u128 = 50; // 0.05%
 
@@ -118,6 +118,8 @@ pub const PRICE_AGGREGATOR_PATH: MxscPath =
     MxscPath::new("../price_aggregator/output/price_aggregator.mxsc.json");
 
 pub const FLASH_MOCK_PATH: MxscPath = MxscPath::new("../flash_mock/output/flash_mock.mxsc.json");
+
+pub const SWAP_MOCK_PATH: MxscPath = MxscPath::new("../swap_mock/output/swap_mock.mxsc.json");
 
 pub const EGLD_LIQUID_STAKING_PATH: MxscPath =
     MxscPath::new("../proxys/egld_liquid_staking.mxsc.json");

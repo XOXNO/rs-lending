@@ -49,6 +49,9 @@ path = "../price_aggregator"
 [dependencies.flash-mock]
 path = "../flash_mock"
 
+[dependencies.swap-mock]
+path = "../swap_mock"
+
 [dev-dependencies]
 multiversx-sc-scenario = "0.59.0"
 rs-liquid-xoxno        = { git = "https://github.com/XOXNO/rs-liquid-xoxno" }

@@ -447,6 +447,26 @@ upgrade_controller() {
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 }
 
+pause_controller() {
+    echo "Pausing controller for network: $NETWORK"
+    echo "Contract address: $ADDRESS"
+    
+    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=10000000 \
+    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    --function="pause" \
+    --proxy=${PROXY} --chain=${CHAIN_ID} --send
+}
+
+unpause_controller() {
+    echo "Unpausing controller for network: $NETWORK"
+    echo "Contract address: $ADDRESS"
+    
+    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=10000000 \
+    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    --function="unpause" \
+    --proxy=${PROXY} --chain=${CHAIN_ID} --send
+}
+
 deploy_market_template() {
     local market_name=$1
     
@@ -884,6 +904,12 @@ case "$1" in
     "upgradeController")
         upgrade_controller
         ;;
+    "pauseController")
+        pause_controller
+        ;;
+    "unpauseController")
+        unpause_controller
+        ;;
     "setDecimals")
         if [ -z "$2" ]; then
             echo "Please specify a market name"
@@ -1006,6 +1032,8 @@ case "$1" in
         echo "Commands:"
         echo "  deployController               - Deploy a new controller contract"
         echo "  upgradeController              - Upgrade an existing controller contract"
+        echo "  pauseController                - Pause the controller contract"
+        echo "  unpauseController              - Unpause the controller contract"
         echo "  registerAccountToken           - Register a new account token for NFT positions"
         echo "  createMarket MARKET            - Create a new market with specified configuration"
         echo "  createOracle MARKET            - Create oracle for a market"

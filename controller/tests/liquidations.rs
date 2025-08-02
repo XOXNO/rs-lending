@@ -3,7 +3,7 @@ pub use common_constants::{BPS_PRECISION, RAY_PRECISION, WAD_PRECISION};
 
 use controller::ERROR_INSUFFICIENT_COLLATERAL;
 
-use multiversx_sc::types::{EgldOrEsdtTokenIdentifier, ManagedDecimal, MultiValueEncoded};
+use multiversx_sc::types::{EgldOrEsdtTokenIdentifier, ManagedDecimal, ManagedVec, MultiValueEncoded};
 use multiversx_sc_scenario::imports::{BigUint, OptionalValue, TestAddress};
 pub mod constants;
 pub mod proxys;
@@ -1085,4 +1085,128 @@ fn seize_dust_collateral_after_bad_debt_success_just_debt_no_collateral() {
         final_egld_revenue == initial_egld_revenue,
         "Protocol revenue should increase or stay same when dust collateral is seized"
     );
+}
+
+#[test]
+fn e_mode_liquidate_leave_bad_debt_success() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    state.change_timestamp(0);
+    setup_accounts(&mut state, supplier, borrower);
+
+    // Supplier provides liquidity across multiple assets ($5000 total)
+    state.supply_asset(
+        &supplier,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::Some(1),
+        false,
+    );
+
+    state.supply_asset(
+        &borrower,
+        EGLD_TOKEN,
+        BigUint::from(40u64), // $2500
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::Some(1),
+        false,
+    );
+
+    // Borrower takes loans
+    state.borrow_asset(
+        &borrower,
+        EGLD_TOKEN,
+        BigUint::from(15u64),
+        2,
+        EGLD_DECIMALS,
+    );
+
+    // Verify initial position health
+    let borrowed = state.get_total_borrow_in_egld(2);
+    let collateral = state.get_total_collateral_in_egld(2);
+    assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
+    assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
+    let mut days = 0;
+    while state.get_account_health_factor(2)
+        > ManagedDecimal::from_raw_units(BigUint::from(RAY), RAY_PRECISION)
+    {
+        state.change_timestamp(SECONDS_PER_DAY * days * 2650);
+        days += 1;
+    }
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
+    state.update_markets(&borrower, markets.clone());
+    let health_factor = state.get_account_health_factor(2);
+    println!("health_factor: {:?}", health_factor);
+    let supplied_liquidation = state.get_liquidation_collateral_available(2);
+    println!("supplied_liquidation: {:?}", supplied_liquidation);
+    let supplied = state.get_total_collateral_in_egld(2);
+    println!("supplied: {:?}", supplied);
+    let borrowed = state.get_total_borrow_in_egld(2);
+    println!("borrowed: {:?}", borrowed);
+    let estimated_liquidation_amount = state.liquidation_estimations(2, ManagedVec::new());
+    println!("estimated_bonus_rate: {:?}", estimated_liquidation_amount.bonus_rate * ManagedDecimal::from_raw_units(BigUint::from(100u64), 0));
+    println!("estimated_bonus_amount: {:?}", estimated_liquidation_amount.max_egld_payment);
+    for token in estimated_liquidation_amount.seized_collaterals {
+        println!("Seized collateral: {:?}", token.token_identifier);
+        println!("Seized amount: {:?}", token.amount);
+    }
+
+    for token in estimated_liquidation_amount.refunds {
+        println!("Refund: {:?}", token.token_identifier);
+        println!("Refund amount: {:?}", token.amount);
+    }
+
+    for token in estimated_liquidation_amount.protocol_fees {
+        println!("Protocol fee: {:?}", token.token_identifier);
+        println!("Protocol fee amount: {:?}", token.amount);
+    }
+
+    // Setup liquidator
+    let liquidator = TestAddress::new("liquidator");
+    state
+        .world
+        .account(liquidator)
+        .nonce(1)
+        .esdt_balance(
+            USDC_TOKEN,
+            BigUint::from(10000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
+        )
+        .esdt_balance(
+            EGLD_TOKEN,
+            BigUint::from(10000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+        );
+
+    // Get debt amounts before liquidation
+    let borrowed_egld = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+
+    let before_health = state.get_account_health_factor(2);
+    println!("before_health: {:?}", before_health);
+    // Liquidate EGLD debt first
+    state.liquidate_account_dem(
+        &liquidator,
+        &EGLD_TOKEN,
+        borrowed_egld.into_raw_units().clone(),
+        2,
+    );
+    let borrowed_egld = state.get_total_borrow_in_egld(2);
+    println!("borrowed_egld after liquidation: {:?}", borrowed_egld);
+    let supplied = state.get_total_collateral_in_egld(2);
+    println!("supplied after liquidation:      {:?}", supplied);
+    let after_health = state.get_account_health_factor(2);
+    println!("after_health: {:?}", after_health);
+    assert!(after_health < before_health);
+
+    state.clean_bad_debt(2);
+    let final_debt = state.get_total_borrow_in_egld(2);
+    println!("final_debt: {:?}", final_debt);
+    assert!(final_debt == ManagedDecimal::from_raw_units(BigUint::from(0u64), WAD_PRECISION));
+    let final_collateral = state.get_total_collateral_in_egld(2);
+    println!("final_collateral: {:?}", final_collateral);
+    assert!(final_collateral == ManagedDecimal::from_raw_units(BigUint::from(0u64), WAD_PRECISION));
 }

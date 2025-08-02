@@ -44,32 +44,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "common-math"
-version = "0.0.0"
-dependencies = [
- "common-constants",
- "multiversx-sc",
-]
-
-[[package]]
-name = "common-proxies"
-version = "0.0.0"
-dependencies = [
- "common-structs",
- "multiversx-sc",
-]
-
-[[package]]
-name = "common-rates"
-version = "0.0.0"
-dependencies = [
- "common-constants",
- "common-math",
- "common-structs",
- "multiversx-sc",
-]
-
-[[package]]
 name = "common-structs"
 version = "0.0.0"
 dependencies = [
@@ -79,49 +53,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "controller"
-version = "0.0.0"
-dependencies = [
- "common-constants",
- "common-errors",
- "common-events",
- "common-math",
- "common-proxies",
- "common-rates",
- "common-structs",
- "flash-mock",
- "liquidity_layer",
- "multiversx-sc",
- "multiversx-sc-modules",
- "multiversx-wegld-swap-sc",
- "price_aggregator",
- "swap-mock",
-]
-
-[[package]]
-name = "controller-wasm"
-version = "0.0.0"
-dependencies = [
- "controller",
- "multiversx-sc-wasm-adapter",
-]
-
-[[package]]
 name = "endian-type"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c34f04666d835ff5d62e058c3995147c06f42fe86ff053337632bca83e42702d"
-
-[[package]]
-name = "flash-mock"
-version = "0.0.0"
-dependencies = [
- "common-constants",
- "common-events",
- "common-structs",
- "multiversx-sc",
- "multiversx-sc-modules",
-]
 
 [[package]]
 name = "generic-array"
@@ -143,19 +78,6 @@ name = "hex-literal"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bcaaec4551594c969335c98c903c1397853d4198408ea609190f420500f6be71"
-
-[[package]]
-name = "liquidity_layer"
-version = "0.0.1"
-dependencies = [
- "common-constants",
- "common-errors",
- "common-events",
- "common-math",
- "common-rates",
- "common-structs",
- "multiversx-sc",
-]
 
 [[package]]
 name = "multiversx-chain-core"
@@ -239,16 +161,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "multiversx-wegld-swap-sc"
-version = "0.59.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67107edc4a0f69af701324de2ebe6846463165b55b280c4f7385d7a2e9e2e93c"
-dependencies = [
- "multiversx-sc",
- "multiversx-sc-modules",
-]
-
-[[package]]
 name = "nibble_vec"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -264,15 +176,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
-]
-
-[[package]]
-name = "price_aggregator"
-version = "0.59.0"
-dependencies = [
- "arrayvec",
- "multiversx-sc",
- "multiversx-sc-modules",
 ]
 
 [[package]]
@@ -318,6 +221,14 @@ dependencies = [
  "common-structs",
  "multiversx-sc",
  "multiversx-sc-modules",
+]
+
+[[package]]
+name = "swap_mock-wasm"
+version = "0.0.0"
+dependencies = [
+ "multiversx-sc-wasm-adapter",
+ "swap-mock",
 ]
 
 [[package]]

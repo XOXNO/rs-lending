@@ -9,7 +9,7 @@ POSITIONAL_ORACLE_ACTIONS := addOracles
 POSITIONAL_ADDRESS_ACTIONS := verifyMarket setAshSwap
 SIMPLE_ACTIONS := deployPriceAggregator upgradePriceAggregator pauseAggregator unpauseAggregator \
                   deployTemplateMarket upgradeTemplateMarket \
-                  deployController upgradeController \
+                  deployController upgradeController pauseController unpauseController \
                   registerToken claimRevenue \
                   listMarkets upgradeAllMarkets listEModeCategories \
                   verifyController verifyPriceAggregator
@@ -40,6 +40,8 @@ help:
 	@echo "    upgradePriceAggregator   - Upgrade the price aggregator contract" 
 	@echo "    upgradeTemplateMarket    - Upgrade the market template contract"
 	@echo "    upgradeController        - Upgrade the controller contract"
+	@echo "    pauseController          - Pause the controller contract"
+	@echo "    unpauseController        - Unpause the controller contract"
 	@echo "    upgradeAllMarkets        - Upgrade all markets"
 	@echo "    pauseAggregator          - Pause the price aggregator"
 	@echo "    unpauseAggregator        - Unpause the price aggregator"

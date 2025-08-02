@@ -1,0 +1,6 @@
+[contracts.main]
+name = "swap_mock"
+
+[[proxy]]
+path = "../controller/tests/proxys/proxy_swap_mock.rs"
+ 

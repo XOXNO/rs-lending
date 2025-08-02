@@ -238,10 +238,33 @@ pub trait EventsModule {
         #[indexed] total_collateral_usd: &ManagedDecimal<Self::Api, NumDecimals>,
     );
 
+    /// Emits an event when an asset's oracle is updated.
+    ///
+    /// # Parameters
+    /// - `asset`: The asset identifier.
+    /// - `oracle`: The updated oracle provider.
+    ///
+    /// # Returns
     #[event("update_asset_oracle")]
     fn update_asset_oracle_event(
         &self,
         #[indexed] asset: &EgldOrEsdtTokenIdentifier,
         #[indexed] oracle: &OracleProvider<Self::Api>,
+    );
+
+    /// Emits an event when an initial payment is received for a position of multiply mode.
+    ///
+    /// # Parameters
+    /// - `payment`: The initial payment.
+    /// - `nonce`: The nonce of the position.
+    ///
+    /// # Returns
+    #[event("initial_multiply_payment")]
+    fn initial_multiply_payment_event(
+        &self,
+        #[indexed] token_identifier: &EgldOrEsdtTokenIdentifier,
+        #[indexed] amount: &ManagedDecimal<Self::Api, NumDecimals>,
+        #[indexed] usd: ManagedDecimal<Self::Api, NumDecimals>,
+        #[indexed] nonce: u64,
     );
 }

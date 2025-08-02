@@ -255,6 +255,84 @@ pub trait OracleModule:
         }
     }
 
+    fn get_off_chain_lp_price(
+        &self,
+        configs: &OracleProvider<Self::Api>,
+        reserve_first: &ManagedDecimal<Self::Api, NumDecimals>,
+        reserve_second: &ManagedDecimal<Self::Api, NumDecimals>,
+        total_supply: &ManagedDecimal<Self::Api, NumDecimals>,
+        cache: &mut Cache<Self>,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        let oracle_base_token_id = cache.get_cached_oracle(&configs.base_token_id);
+        let oracle_quote_token_id = cache.get_cached_oracle(&configs.quote_token_id);
+
+        let off_chain_first_egld_price = self.find_token_price_in_egld_from_aggregator(
+            &oracle_base_token_id,
+            &configs.base_token_id,
+            cache,
+        );
+
+        let off_chain_second_egld_price = self.find_token_price_in_egld_from_aggregator(
+            &oracle_quote_token_id,
+            &configs.quote_token_id,
+            cache,
+        );
+
+        let off_chain_lp_price = self.get_lp_price(
+            configs,
+            &reserve_first,
+            &reserve_second,
+            &total_supply,
+            &off_chain_first_egld_price,
+            &off_chain_second_egld_price,
+        );
+
+        off_chain_lp_price
+    }
+
+    fn get_lp_reserves(
+        &self,
+        configs: &OracleProvider<Self::Api>,
+        cache: &mut Cache<Self>,
+    ) -> (
+        ManagedDecimal<Self::Api, NumDecimals>,
+        ManagedDecimal<Self::Api, NumDecimals>,
+        ManagedDecimal<Self::Api, NumDecimals>,
+    ) {
+        let (reserve_0, reserve_1, total_supply) =
+            self.get_reserves(&configs.oracle_contract_address);
+        let safe_first_token_feed = self.get_token_price(&configs.base_token_id, cache);
+        let safe_second_token_feed = self.get_token_price(&configs.quote_token_id, cache);
+
+        // Convert raw BigUint reserves to ManagedDecimal with token-specific precision
+        // This ensures consistent decimal arithmetic across different token denominations
+        let reserve_first = self.to_decimal(reserve_0, safe_first_token_feed.asset_decimals);
+        let reserve_second = self.to_decimal(reserve_1, safe_second_token_feed.asset_decimals);
+        let total_supply = self.to_decimal(total_supply, configs.asset_decimals);
+
+        (reserve_first, reserve_second, total_supply)
+    }
+
+    fn get_lp_on_chain_price(
+        &self,
+        configs: &OracleProvider<Self::Api>,
+        reserve_first: &ManagedDecimal<Self::Api, NumDecimals>,
+        reserve_second: &ManagedDecimal<Self::Api, NumDecimals>,
+        total_supply: &ManagedDecimal<Self::Api, NumDecimals>,
+        cache: &mut Cache<Self>,
+    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        let safe_first_token_feed = self.get_token_price(&configs.base_token_id, cache);
+        let safe_second_token_feed = self.get_token_price(&configs.quote_token_id, cache);
+
+        self.get_lp_price(
+            configs,
+            reserve_first,
+            reserve_second,
+            total_supply,
+            &safe_first_token_feed.price,
+            &safe_second_token_feed.price,
+        )
+    }
     /// Computes secure LP token price using the Arda LP pricing formula with multi-layered validation.
     ///
     /// **Purpose:** Calculates fair value for LP tokens while preventing price manipulation
@@ -285,65 +363,37 @@ pub trait OracleModule:
         configs: &OracleProvider<Self::Api>,
         cache: &mut Cache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let (reserve_0, reserve_1, total_supply) =
-            self.get_reserves(&configs.oracle_contract_address);
+        let (reserve_first, reserve_second, total_supply) = self.get_lp_reserves(configs, cache);
 
-        let safe_first_token_feed = self.get_token_price(&configs.base_token_id, cache);
-        let safe_second_token_feed = self.get_token_price(&configs.quote_token_id, cache);
-
-        // Convert raw BigUint reserves to ManagedDecimal with token-specific precision
-        // This ensures consistent decimal arithmetic across different token denominations
-        let reserve_first = self.to_decimal(reserve_0, safe_first_token_feed.asset_decimals);
-        let reserve_second = self.to_decimal(reserve_1, safe_second_token_feed.asset_decimals);
-        let total_supply = self.to_decimal(total_supply, configs.asset_decimals);
-
-        let safe_lp_price = self.get_lp_price(
+        let safe_lp_price = self.get_lp_on_chain_price(
             configs,
             &reserve_first,
             &reserve_second,
             &total_supply,
-            &safe_first_token_feed.price,
-            &safe_second_token_feed.price,
-        );
-
-        let oracle_base_token_id = cache.get_cached_oracle(&configs.base_token_id);
-        let oracle_quote_token_id = cache.get_cached_oracle(&configs.quote_token_id);
-
-        let off_chain_first_egld_price = self.find_token_price_in_egld_from_aggregator(
-            &oracle_base_token_id,
-            &configs.base_token_id,
             cache,
         );
 
-        let off_chain_second_egld_price = self.find_token_price_in_egld_from_aggregator(
-            &oracle_quote_token_id,
-            &configs.quote_token_id,
-            cache,
-        );
-
-        let off_chain_lp_price = self.get_lp_price(
+        let off_chain_lp_price = self.get_off_chain_lp_price(
             configs,
             &reserve_first,
             &reserve_second,
             &total_supply,
-            &off_chain_first_egld_price,
-            &off_chain_second_egld_price,
+            cache,
         );
 
-        let tolerances = &configs.tolerance;
         let avg_price = (safe_lp_price.clone() + off_chain_lp_price.clone()) / 2;
         if self.is_within_anchor(
             &safe_lp_price,
             &off_chain_lp_price,
-            &tolerances.first_upper_ratio,
-            &tolerances.first_lower_ratio,
+            &configs.tolerance.first_upper_ratio,
+            &configs.tolerance.first_lower_ratio,
         ) {
             safe_lp_price
         } else if self.is_within_anchor(
             &safe_lp_price,
             &off_chain_lp_price,
-            &tolerances.last_upper_ratio,
-            &tolerances.last_lower_ratio,
+            &configs.tolerance.last_upper_ratio,
+            &configs.tolerance.last_lower_ratio,
         ) {
             avg_price
         } else {
@@ -842,6 +892,33 @@ pub trait OracleModule:
             )
         }
     }
+    /// Helper function to check price tolerance against both bounds
+    fn check_price_tolerance(
+        &self,
+        price1: &ManagedDecimal<Self::Api, NumDecimals>,
+        price2: &ManagedDecimal<Self::Api, NumDecimals>,
+        first_upper: &ManagedDecimal<Self::Api, NumDecimals>,
+        first_lower: &ManagedDecimal<Self::Api, NumDecimals>,
+        last_upper: &ManagedDecimal<Self::Api, NumDecimals>,
+        last_lower: &ManagedDecimal<Self::Api, NumDecimals>,
+    ) -> (bool, bool) {
+        let within_first = self.is_within_anchor(
+            price1,
+            price2,
+            first_upper,
+            first_lower,
+        );
+        
+        let within_second = self.is_within_anchor(
+            price1,
+            price2,
+            last_upper,
+            last_lower,
+        );
+        
+        (within_first, within_second)
+    }
+
     /// Validates price deviation against anchor price using configurable tolerance bounds.
     ///
     /// **Purpose:** Implements the core price validation logic that prevents acceptance
@@ -1145,6 +1222,146 @@ pub trait OracleModule:
             .returns(ReturnsResult)
             .sync_call_readonly()
             .into_tuple()
+    }
+
+    /// Retrieves detailed price components and tolerance validation status for deviation analysis.
+    ///
+    /// **Purpose:** Provides comprehensive price information including individual price sources,
+    /// final calculated price, and tolerance compliance status for monitoring and analysis.
+    ///
+    /// **Returns:**
+    /// - `safe_price`: On-chain/TWAP price (if applicable)
+    /// - `aggregator_price`: Off-chain aggregator price (if applicable)  
+    /// - `final_price`: Actual price used by the protocol
+    /// - `within_first_tolerance`: True if prices are within ±2% bounds
+    /// - `within_second_tolerance`: True if prices are within ±5% bounds
+    ///
+    /// **Security considerations:**
+    /// - For derived tokens like LXOXNO, validates underlying asset (XOXNO) tolerance
+    /// - LP tokens check tolerance between on-chain and off-chain calculations
+    /// - Normal tokens compare aggregator vs safe price feeds
+    ///
+    /// **Usage:** Primarily for price monitoring, deviation alerts, and operational dashboards
+    fn get_price_components(
+        &self,
+        token_id: &EgldOrEsdtTokenIdentifier<Self::Api>,
+        cache: &mut Cache<Self>,
+    ) -> (
+        Option<ManagedDecimal<Self::Api, NumDecimals>>,
+        Option<ManagedDecimal<Self::Api, NumDecimals>>,
+        ManagedDecimal<Self::Api, NumDecimals>,
+        bool,
+        bool,
+    ) {
+        let ticker = self.get_token_ticker(token_id, cache);
+        if ticker == cache.egld_ticker {
+            return (
+                None,
+                None,
+                self.wad(),
+                true,
+                true,
+            );
+        }
+
+        let oracle_data = self.token_oracle(token_id);
+        require!(!oracle_data.is_empty(), ERROR_ORACLE_TOKEN_NOT_FOUND);
+        let configs = oracle_data.get();
+
+        match configs.oracle_type {
+            OracleType::Lp => {
+                // Reuse existing LP price functions
+                let (reserve_first, reserve_second, total_supply) = self.get_lp_reserves(&configs, cache);
+                
+                let safe_lp_price = self.get_lp_on_chain_price(
+                    &configs,
+                    &reserve_first,
+                    &reserve_second,
+                    &total_supply,
+                    cache,
+                );
+                
+                let off_chain_lp_price = self.get_off_chain_lp_price(
+                    &configs,
+                    &reserve_first,
+                    &reserve_second,
+                    &total_supply,
+                    cache,
+                );
+                
+                let (within_first, within_second) = self.check_price_tolerance(
+                    &safe_lp_price,
+                    &off_chain_lp_price,
+                    &configs.tolerance.first_upper_ratio,
+                    &configs.tolerance.first_lower_ratio,
+                    &configs.tolerance.last_upper_ratio,
+                    &configs.tolerance.last_lower_ratio,
+                );
+                
+                let final_price = self.get_safe_lp_price(&configs, cache);
+                
+                (
+                    Some(safe_lp_price),
+                    Some(off_chain_lp_price),
+                    final_price,
+                    within_first,
+                    within_second,
+                )
+            }
+            OracleType::Normal => {
+                let aggregator_price = self.get_aggregator_price_if_applicable(&configs, token_id, cache);
+                let safe_price = self.get_safe_price_if_applicable(&configs, token_id, cache);
+                let final_price = self.calculate_final_price(aggregator_price.clone(), safe_price.clone(), &configs, cache);
+                
+                let (within_first, within_second) = match (&aggregator_price, &safe_price) {
+                    (OptionalValue::Some(agg), OptionalValue::Some(safe)) => {
+                        self.check_price_tolerance(
+                            agg,
+                            safe,
+                            &configs.tolerance.first_upper_ratio,
+                            &configs.tolerance.first_lower_ratio,
+                            &configs.tolerance.last_upper_ratio,
+                            &configs.tolerance.last_lower_ratio,
+                        )
+                    }
+                    _ => (true, true), // Single source, no deviation
+                };
+                
+                // Convert OptionalValue to Option for consistent return type
+                let safe_price_opt = match safe_price {
+                    OptionalValue::Some(price) => Some(price),
+                    OptionalValue::None => None,
+                };
+                let aggregator_price_opt = match aggregator_price {
+                    OptionalValue::Some(price) => Some(price),
+                    OptionalValue::None => None,
+                };
+                
+                (safe_price_opt, aggregator_price_opt, final_price, within_first, within_second)
+            }
+            OracleType::Derived => {
+                let price = self.get_derived_price(&configs, cache, true);
+                
+                // SECURITY FIX: Check underlying asset tolerance for LXOXNO
+                let (within_first, within_second) = match configs.exchange_source {
+                    ExchangeSource::LXOXNO => {
+                        // Recursively check XOXNO tolerance status
+                        let (_, _, _, first, second) = self.get_price_components(&configs.base_token_id, cache);
+                        (first, second)
+                    },
+                    _ => (true, true), // XEGLD and LEGLD only depend on exchange rate contracts
+                };
+                
+                (
+                    None,
+                    None,
+                    price,
+                    within_first,
+                    within_second,
+                )
+            }
+            _ => sc_panic!(ERROR_INVALID_ORACLE_TOKEN_TYPE),
+        }
     }
 
     #[proxy]

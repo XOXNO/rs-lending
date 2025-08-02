@@ -452,7 +452,6 @@ pub trait RouterModule:
     ///
     /// # Errors
     /// - `ERROR_NO_ACCUMULATOR_FOUND`: Accumulator address not configured
-    #[only_owner]
     #[endpoint(claimRevenue)]
     fn claim_revenue(&self, assets: MultiValueEncoded<EgldOrEsdtTokenIdentifier>) {
         let mut cache = Cache::new(self);

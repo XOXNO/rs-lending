@@ -1,4 +1,5 @@
 multiversx_sc::imports!();
+multiversx_sc::derive_imports!();
 
 use common_errors::{
     ERROR_ASSETS_ARE_THE_SAME, ERROR_INVALID_PAYMENTS, ERROR_INVALID_POSITION_MODE,
@@ -10,6 +11,14 @@ use crate::{
     cache::Cache, helpers, oracle, positions, storage, utils, validation,
     ERROR_SWAP_COLLATERAL_NOT_SUPPORTED,
 };
+
+#[type_abi]
+#[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, Clone)]
+pub struct InitialMultiplyPayment<M: ManagedTypeApi> {
+    pub token_identifier: EgldOrEsdtTokenIdentifier<M>,
+    pub amount: ManagedDecimal<M, NumDecimals>,
+    pub nonce: u64,
+}
 
 #[multiversx_sc::module]
 pub trait SnapModule:
@@ -28,6 +37,7 @@ pub trait SnapModule:
     + positions::emode::EModeModule
     + positions::update::PositionUpdateModule
     + common_rates::InterestRates
+    + multiversx_sc_modules::pause::PauseModule
 {
     /// **MULTIPLY STRATEGY: Flash Loan Leverage Position Creation**
     ///
@@ -86,6 +96,7 @@ pub trait SnapModule:
         steps: ManagedArgBuffer<Self::Api>,
         steps_payment: OptionalValue<ManagedArgBuffer<Self::Api>>,
     ) {
+        self.require_not_paused();
         // Initialize secure cache with price safety enabled
         let mut cache = Cache::new(self);
         cache.allow_unsafe_price = false; // Enforce secure price feeds only
@@ -112,6 +123,25 @@ pub trait SnapModule:
             self.to_decimal(BigUint::zero(), collateral_oracle.asset_decimals);
         let mut debt_to_be_swapped = self.to_decimal(BigUint::zero(), debt_oracle.asset_decimals);
 
+        // Create or retrieve user's lending position account
+        // Handles isolated asset restrictions and efficiency mode configuration
+        let (account_nonce, nft_attributes) = self.get_or_create_account(
+            &caller,
+            collateral_config.is_isolated(), // Isolated assets require dedicated positions
+            mode,
+            OptionalValue::Some(e_mode_category),
+            opt_account.clone(),
+            opt_attributes,
+            // For isolated assets, restrict position to single collateral type
+            if collateral_config.is_isolated() {
+                Some(collateral_token.clone())
+            } else {
+                None
+            },
+        );
+
+        let mut initial_multiply_payment: Option<InitialMultiplyPayment<Self::Api>> = None;
+
         if opt_account.is_none() {
             // New position creation: validate single payment and determine token conversion path
             require!(payments.len() == 1, ERROR_INVALID_PAYMENTS);
@@ -129,12 +159,24 @@ pub trait SnapModule:
                     collateral_oracle.asset_decimals,
                 );
 
-                collateral_to_be_supplied += &collateral_received
+                collateral_to_be_supplied += &collateral_received;
+
+                initial_multiply_payment = Some(InitialMultiplyPayment {
+                    token_identifier: initial_payment.token_identifier.clone(),
+                    amount: collateral_received,
+                    nonce: account_nonce,
+                });
             } else if is_payment_same_as_debt {
                 // Payment in debt token: reduces flash loan requirement
                 let debt_amount_received =
                     self.to_decimal(initial_payment.amount.clone(), debt_oracle.asset_decimals);
                 debt_to_be_swapped += &debt_amount_received;
+
+                initial_multiply_payment = Some(InitialMultiplyPayment {
+                    token_identifier: initial_payment.token_identifier.clone(),
+                    amount: debt_amount_received,
+                    nonce: account_nonce,
+                });
             } else {
                 // Payment in different token: requires conversion to collateral
                 require!(steps_payment.is_some(), ERROR_MULTIPLY_REQUIRE_EXTRA_STEPS);
@@ -153,34 +195,23 @@ pub trait SnapModule:
                     self.to_decimal(received.amount, collateral_oracle.asset_decimals);
 
                 collateral_to_be_supplied += &collateral_received;
+
+                initial_multiply_payment = Some(InitialMultiplyPayment {
+                    token_identifier: received.token_identifier.clone(),
+                    amount: collateral_received,
+                    nonce: account_nonce,
+                });
             }
         } else {
             // Existing position enhancement: no additional payments allowed
             require!(payments.is_empty(), ERROR_INVALID_PAYMENTS);
         }
-
-        // Create or retrieve user's lending position account
-        // Handles isolated asset restrictions and efficiency mode configuration
-        let (account_nonce, nft_attributes) = self.get_or_create_account(
-            &caller,
-            collateral_config.is_isolated(), // Isolated assets require dedicated positions
-            mode,
-            OptionalValue::Some(e_mode_category),
-            opt_account,
-            opt_attributes,
-            // For isolated assets, restrict position to single collateral type
-            if collateral_config.is_isolated() {
-                Some(collateral_token.clone())
-            } else {
-                None
-            },
-        );
-
         // Ensure position is in leverage-compatible mode (not Normal or None)
         // This prevents accidental leverage on regular lending positions
         require!(
-            nft_attributes.mode != PositionMode::Normal
-                && nft_attributes.mode != PositionMode::None,
+            nft_attributes.mode == PositionMode::Multiply
+                || nft_attributes.mode == PositionMode::Long
+                || nft_attributes.mode == PositionMode::Short,
             ERROR_INVALID_POSITION_MODE
         );
 
@@ -195,7 +226,6 @@ pub trait SnapModule:
             &nft_attributes,
             &mut cache,
         );
-
         debt_to_be_swapped += &received_debt;
 
         // Convert borrowed debt tokens to collateral tokens via swap router
@@ -224,6 +254,15 @@ pub trait SnapModule:
         // CRITICAL: Validate position health after leverage creation
         // Ensures the position is not immediately liquidatable due to slippage or market conditions
         self.validate_is_healthy(account_nonce, &mut cache, None);
+
+        if let Some(initial_multiply_payment) = initial_multiply_payment {
+            self.emit_initial_multiply_payment(
+                &initial_multiply_payment.token_identifier,
+                &initial_multiply_payment.amount,
+                initial_multiply_payment.nonce,
+                &mut cache,
+            );
+        }
     }
 
     /// **SWAP DEBT STRATEGY: Convert Debt Position Between Different Tokens**
@@ -279,6 +318,7 @@ pub trait SnapModule:
         new_debt_token: &EgldOrEsdtTokenIdentifier,
         steps: ManagedArgBuffer<Self::Api>,
     ) {
+        self.require_not_paused();
         // Validate tokens are different - prevent no-op swaps
         require!(
             existing_debt_token != new_debt_token,
@@ -311,7 +351,7 @@ pub trait SnapModule:
 
         // Create new debt position via flash loan
         // This borrows the new debt token amount that will replace existing debt
-        let received_debt =  self.handle_create_borrow_strategy(
+        let received_debt = self.handle_create_borrow_strategy(
             account.token_nonce,
             new_debt_token,
             new_debt_amount_raw,
@@ -414,9 +454,10 @@ pub trait SnapModule:
         new_collateral: &EgldOrEsdtTokenIdentifier,
         steps: ManagedArgBuffer<Self::Api>,
     ) {
+        self.require_not_paused();
+
         // Initialize secure cache and enable reentrancy protection
         let mut cache = Cache::new(self);
-        cache.allow_unsafe_price = false; // Enforce secure price feeds only
         self.reentrancy_guard(cache.flash_loan_ongoing);
 
         // Extract payments and validate account ownership
@@ -426,6 +467,10 @@ pub trait SnapModule:
 
         // Extract account info (guaranteed to exist due to validation above)
         let account = unsafe { opt_account.unwrap_unchecked() };
+        let borrow_positions = self.positions(account.token_nonce, AccountPositionType::Borrow);
+        let allow_unsafe_price = borrow_positions.is_empty();
+        cache.allow_unsafe_price = allow_unsafe_price; // Enforce secure price feeds only
+
         let account_attributes = unsafe { opt_attributes.unwrap_unchecked() };
 
         // SECURITY: Prevent collateral swaps in isolated asset positions
@@ -471,9 +516,13 @@ pub trait SnapModule:
 
         // Remove the prices from the cache to have a fresh value after the swaps to prevent a bad HF
         cache.clean_prices_cache();
-        // CRITICAL: Validate position health after collateral swap completion
-        // Ensures the position is not liquidatable due to swap slippage or different liquidation thresholds
-        self.validate_is_healthy(account.token_nonce, &mut cache, None);
+
+        // If the position has debt, validate the health of the position
+        if !allow_unsafe_price {
+            // CRITICAL: Validate position health after collateral swap completion
+            // Ensures the position is not liquidatable due to swap slippage or different liquidation thresholds
+            self.validate_is_healthy(account.token_nonce, &mut cache, None);
+        }
     }
 
     /// **REPAY DEBT WITH COLLATERAL STRATEGY: Liquidate Collateral to Repay Debt**
@@ -532,6 +581,7 @@ pub trait SnapModule:
         close_position: bool,
         steps: OptionalValue<ManagedArgBuffer<Self::Api>>,
     ) {
+        self.require_not_paused();
         // Initialize secure cache and enable reentrancy protection
         let mut cache = Cache::new(self);
         cache.allow_unsafe_price = false; // Enforce secure price feeds only
@@ -839,5 +889,18 @@ pub trait SnapModule:
 
         // Return the accumulated target token amount
         wanted_result
+    }
+
+    fn emit_initial_multiply_payment(
+        &self,
+        token_identifier: &EgldOrEsdtTokenIdentifier,
+        amount: &ManagedDecimal<Self::Api, NumDecimals>,
+        nonce: u64,
+        cache: &mut Cache<Self>,
+    ) {
+        let price_feed = self.get_token_price(token_identifier, cache);
+        let egld_price = self.get_token_egld_value(amount, &price_feed.price);
+        let usd_price = self.get_egld_usd_value(&egld_price, &cache.egld_usd_price);
+        self.initial_multiply_payment_event(token_identifier, amount, usd_price, nonce);
     }
 }

@@ -371,7 +371,14 @@ pub struct MarketIndexView<M: ManagedTypeApi> {
     pub borrow_index: ManagedDecimal<M, NumDecimals>,
     pub egld_price: ManagedDecimal<M, NumDecimals>,
     pub usd_price: ManagedDecimal<M, NumDecimals>,
+    pub safe_price_egld: ManagedDecimal<M, NumDecimals>,
+    pub safe_price_usd: ManagedDecimal<M, NumDecimals>,
+    pub aggregator_price_egld: ManagedDecimal<M, NumDecimals>,
+    pub aggregator_price_usd: ManagedDecimal<M, NumDecimals>,
+    pub within_first_tolerance: bool,
+    pub within_second_tolerance: bool,
 }
+
 
 #[type_abi]
 #[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode, Clone)]

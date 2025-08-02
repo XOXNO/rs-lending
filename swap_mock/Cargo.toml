@@ -1,0 +1,28 @@
+[package]
+name    = "swap-mock"
+version = "0.0.0"
+authors = ["Mihai Eremia <mihai@xoxno.com>"]
+readme  = "README.md"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+doctest = false
+
+[dev-dependencies.multiversx-sc-scenario]
+version = "0.59.0"
+
+[dependencies.multiversx-sc]
+version = "0.59.0"
+
+[dependencies.multiversx-sc-modules]
+version = "0.59.0"
+
+[dependencies.common-structs]
+path = "../common/structs"
+
+[dependencies.common-events]
+path = "../common/events"
+
+[dependencies.common-constants]
+path = "../common/constants"

@@ -1673,7 +1673,7 @@ where
     }
 
     /// Retrieves the EGLD price of a token using oracle data. 
-    /// Accesses the token’s price feed directly. 
+    /// Accesses the token's price feed directly. 
     ///  
     /// # Arguments 
     /// - `token_id`: Token identifier (EGLD or ESDT) to query. 

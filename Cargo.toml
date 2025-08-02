@@ -16,4 +16,6 @@ members = [
     "price_aggregator/meta",
     "flash_mock",
     "flash_mock/meta",
+    "swap_mock",
+    "swap_mock/meta",
 ]

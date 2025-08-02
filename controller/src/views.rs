@@ -70,20 +70,46 @@ pub trait ViewsModule:
         assets: MultiValueEncoded<EgldOrEsdtTokenIdentifier>,
     ) -> ManagedVec<MarketIndexView<Self::Api>> {
         let mut cache = Cache::new(self);
+        cache.allow_unsafe_price = true;
+        // Views allow unsafe prices to show monitoring data even when protocol would block operations
+        // This matches the behavior of operational functions - cache defaults to allow_unsafe_price = true
         let mut markets = ManagedVec::new();
+
         for asset in assets {
             let indexes = self.update_asset_index(&asset, &mut cache, true);
-            let feed = self.get_token_price(&asset, &mut cache);
-            let usd = self.get_egld_usd_value(&feed.price, &cache.egld_usd_price);
+
+            // Get price components including safe and aggregator prices
+            let (safe_price, aggregator_price, final_price, within_first, within_second) =
+                self.get_price_components(&asset, &mut cache);
+
+            let usd_price = self.get_egld_usd_value(&final_price, &cache.egld_usd_price);
+
+            // Calculate USD prices for safe and aggregator prices if they exist
+            let safe_price_usd = safe_price
+                .as_ref()
+                .map(|price| self.get_egld_usd_value(price, &cache.egld_usd_price))
+                .unwrap_or(usd_price.clone());
+
+            let aggregator_price_usd = aggregator_price
+                .as_ref()
+                .map(|price| self.get_egld_usd_value(price, &cache.egld_usd_price))
+                .unwrap_or(usd_price.clone());
 
             markets.push(MarketIndexView {
                 asset_id: asset,
                 supply_index: indexes.supply_index,
                 borrow_index: indexes.borrow_index,
-                egld_price: feed.price,
-                usd_price: usd,
+                egld_price: final_price.clone(),
+                usd_price,
+                safe_price_egld: safe_price.unwrap_or(final_price.clone()),
+                safe_price_usd,
+                aggregator_price_egld: aggregator_price.unwrap_or(final_price),
+                aggregator_price_usd,
+                within_first_tolerance: within_first,
+                within_second_tolerance: within_second,
             });
         }
+
         markets
     }
 
@@ -330,7 +356,7 @@ pub trait ViewsModule:
     }
 
     /// Retrieves the EGLD price of a token using oracle data.
-    /// Accesses the token’s price feed directly.
+    /// Accesses the token's price feed directly.
     ///
     /// # Arguments
     /// - `token_id`: Token identifier (EGLD or ESDT) to query.

@@ -171,7 +171,9 @@ pub trait PositionUpdateModule:
         let index = match position_type {
             AccountPositionType::Borrow => market_index.borrow_index,
             AccountPositionType::Deposit => market_index.supply_index,
-            _ => return,
+            _ => {
+                sc_panic!("Invalid position type");
+            }
         };
 
         self.update_position_event(

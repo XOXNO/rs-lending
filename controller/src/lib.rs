@@ -42,6 +42,7 @@ pub trait Controller:
     + helpers::MathsModule
     + common_math::SharedMathModule
     + common_rates::InterestRates
+    + multiversx_sc_modules::pause::PauseModule
     + multiversx_sc_modules::default_issue_callbacks::DefaultIssueCallbacksModule
 {
     /// Initializes the lending pool contract with required addresses.
@@ -73,10 +74,14 @@ pub trait Controller:
             max_borrow_positions: 10,
             max_supply_positions: 10,
         });
+
+        self.unpause_endpoint();
     }
 
     #[upgrade]
-    fn upgrade(&self) {}
+    fn upgrade(&self) {
+        self.pause_endpoint();
+    }
 
     /// Supplies collateral to the lending pool.
     ///
@@ -91,6 +96,7 @@ pub trait Controller:
     #[allow_multiple_var_args]
     #[endpoint(supply)]
     fn supply(&self, opt_account_nonce: OptionalValue<u64>, e_mode_category: OptionalValue<u8>) {
+        self.require_not_paused();
         let mut cache = Cache::new(self);
         self.reentrancy_guard(cache.flash_loan_ongoing);
         // Validate and extract payment details
@@ -149,11 +155,15 @@ pub trait Controller:
     #[payable]
     #[endpoint(withdraw)]
     fn withdraw(&self, collaterals: MultiValueEncoded<EgldOrEsdtTokenPayment<Self::Api>>) {
+        self.require_not_paused();
         let (account_payment, caller, account_attributes) = self.validate_account(false);
 
         let mut cache = Cache::new(self);
         self.reentrancy_guard(cache.flash_loan_ongoing);
-        cache.allow_unsafe_price = false;
+        let borrow_positions =
+            self.positions(account_payment.token_nonce, AccountPositionType::Borrow);
+
+        cache.allow_unsafe_price = borrow_positions.len() == 0;
 
         // Process each withdrawal
         for collateral in collaterals {
@@ -193,6 +203,7 @@ pub trait Controller:
     #[payable]
     #[endpoint(borrow)]
     fn borrow(&self, borrowed_tokens: MultiValueEncoded<EgldOrEsdtTokenPayment<Self::Api>>) {
+        self.require_not_paused();
         let mut cache = Cache::new(self);
         self.reentrancy_guard(cache.flash_loan_ongoing);
         cache.allow_unsafe_price = false;
@@ -247,6 +258,7 @@ pub trait Controller:
     #[payable]
     #[endpoint(repay)]
     fn repay(&self, account_nonce: u64) {
+        self.require_not_paused();
         let mut cache = Cache::new(self);
         self.reentrancy_guard(cache.flash_loan_ongoing);
         let payments = self.call_value().all_transfers();
@@ -281,6 +293,7 @@ pub trait Controller:
     #[payable]
     #[endpoint(liquidate)]
     fn liquidate(&self, account_nonce: u64) {
+        self.require_not_paused();
         let payments = self.call_value().all_transfers();
         let caller = self.blockchain().get_caller();
         self.process_liquidation(account_nonce, &payments, &caller);
@@ -303,6 +316,7 @@ pub trait Controller:
         endpoint: ManagedBuffer<Self::Api>,
         mut arguments: ManagedArgBuffer<Self::Api>,
     ) {
+        self.require_not_paused();
         let mut cache = Cache::new(self);
         let caller = self.blockchain().get_caller();
         self.reentrancy_guard(cache.flash_loan_ongoing);
@@ -348,6 +362,7 @@ pub trait Controller:
         has_risks: bool,
         account_nonces: MultiValueEncoded<u64>,
     ) {
+        self.require_not_paused();
         self.require_asset_supported(&asset_id);
 
         let mut cache = Cache::new(self);
@@ -372,6 +387,7 @@ pub trait Controller:
     /// - `assets`: List of token identifiers to update.
     #[endpoint(updateIndexes)]
     fn update_indexes(&self, assets: MultiValueEncoded<EgldOrEsdtTokenIdentifier>) {
+        self.require_not_paused();
         let mut cache = Cache::new(self);
         self.reentrancy_guard(cache.flash_loan_ongoing);
         for asset_id in assets {
@@ -388,6 +404,7 @@ pub trait Controller:
     /// - `account_nonce`: NFT nonce of the account to clean.
     #[endpoint(cleanBadDebt)]
     fn clean_bad_debt(&self, account_nonce: u64) {
+        self.require_not_paused();
         let mut cache = Cache::new(self);
         self.reentrancy_guard(cache.flash_loan_ongoing);
         self.require_active_account(account_nonce);

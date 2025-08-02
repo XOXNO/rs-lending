@@ -1,6 +1,9 @@
 use crate::{
     constants::*,
-    proxys::{proxy_aggregator, proxy_flash_mock, proxy_lending_pool, proxy_liquidity_pool},
+    proxys::{
+        proxy_aggregator, proxy_flash_mock, proxy_lending_pool, proxy_liquidity_pool,
+        proxy_swap_mock,
+    },
 };
 use common_constants::{EGLD_TICKER, MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE};
 
@@ -50,10 +53,6 @@ pub static NFT_ROLES: &[EsdtLocalRole] = &[
 /// Main test state structure containing all the smart contract instances and addresses
 pub struct LendingPoolTestState {
     pub world: ScenarioWorld,
-    // pub lending_pool_whitebox: WhiteboxContract<controller::ContractObj<DebugApi>>,
-    // pub liquidity_pool_whitebox: WhiteboxContract<liquidity_layer::ContractObj<DebugApi>>,
-    // pub price_aggregator_whitebox: WhiteboxContract<price_aggregator::ContractObj<DebugApi>>,
-    // pub accumulator_whitebox: WhiteboxContract<rs_accumulator::ContractObj<DebugApi>>,
     pub accumulator_sc: ManagedAddress<StaticApi>,
     pub lending_sc: ManagedAddress<StaticApi>,
     pub template_address_liquidity_pool: ManagedAddress<StaticApi>,
@@ -69,6 +68,7 @@ pub struct LendingPoolTestState {
     pub lp_egld_market: ManagedAddress<StaticApi>,
     pub xoxno_market: ManagedAddress<StaticApi>,
     pub flash_mock: ManagedAddress<StaticApi>,
+    pub swap_mock: ManagedAddress<StaticApi>,
 }
 
 impl Default for LendingPoolTestState {
@@ -90,6 +90,7 @@ impl LendingPoolTestState {
 
         let accumulator_sc = setup_accumulator(&mut world);
         println!("accumulator_sc: {:?}", accumulator_sc);
+        let swap_mock = setup_swap_mock(&mut world);
         let (
             lending_sc,
             usdc_market,
@@ -107,10 +108,12 @@ impl LendingPoolTestState {
             &template_address_liquidity_pool,
             &price_aggregator_sc,
             &accumulator_sc,
+            &swap_mock,
         );
 
         let flash_mock = setup_flash_mock(&mut world);
         setup_flasher(&mut world, flash_mock.clone());
+        setup_swap_mock_owner(&mut world, swap_mock.clone());
         // For LP safe price simulation
         world.current_block().block_round(1500);
 
@@ -131,6 +134,7 @@ impl LendingPoolTestState {
             lp_egld_market,
             xoxno_market,
             flash_mock,
+            swap_mock,
         }
     }
 
@@ -1710,7 +1714,7 @@ impl LendingPoolTestState {
         mode: PositionMode,
         steps: ManagedArgBuffer<StaticApi>,
         steps_payment: OptionalValue<ManagedArgBuffer<StaticApi>>,
-        payments: ManagedVec<StaticApi, EsdtTokenPayment<StaticApi>>,
+        payments: ManagedVec<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
     ) {
         self.world
             .tx()
@@ -1726,7 +1730,7 @@ impl LendingPoolTestState {
                 steps,
                 steps_payment,
             )
-            .multi_esdt(payments)
+            .payment(payments)
             .run();
     }
 
@@ -1738,7 +1742,7 @@ impl LendingPoolTestState {
         new_debt_amount_raw: &BigUint<StaticApi>,
         new_debt_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
         steps: ManagedArgBuffer<StaticApi>,
-        account_payment: EsdtTokenPayment<StaticApi>,
+        account_payment: ManagedVec<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
     ) {
         self.world
             .tx()
@@ -1751,7 +1755,7 @@ impl LendingPoolTestState {
                 new_debt_token,
                 steps,
             )
-            .esdt(account_payment)
+            .payment(account_payment)
             .run();
     }
 
@@ -1763,7 +1767,7 @@ impl LendingPoolTestState {
         from_amount: BigUint<StaticApi>,
         new_collateral: &EgldOrEsdtTokenIdentifier<StaticApi>,
         steps: ManagedArgBuffer<StaticApi>,
-        account_payment: EsdtTokenPayment<StaticApi>,
+        account_payment: ManagedVec<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
     ) {
         self.world
             .tx()
@@ -1771,7 +1775,7 @@ impl LendingPoolTestState {
             .to(&self.lending_sc)
             .typed(proxy_lending_pool::ControllerProxy)
             .swap_collateral(current_collateral, from_amount, new_collateral, steps)
-            .esdt(account_payment)
+            .payment(account_payment)
             .run();
     }
 
@@ -1784,7 +1788,7 @@ impl LendingPoolTestState {
         to_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
         close_position: bool,
         steps: OptionalValue<ManagedArgBuffer<StaticApi>>,
-        account_payment: EsdtTokenPayment<StaticApi>,
+        account_payment: ManagedVec<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
     ) {
         self.world
             .tx()
@@ -1792,7 +1796,7 @@ impl LendingPoolTestState {
             .to(&self.lending_sc)
             .typed(proxy_lending_pool::ControllerProxy)
             .repay_debt_with_collateral(from_token, from_amount, to_token, close_position, steps)
-            .esdt(account_payment)
+            .payment(account_payment)
             .run();
     }
 
@@ -2480,6 +2484,7 @@ pub fn world() -> ScenarioWorld {
     blockchain.register_contract(ACCUMULATOR_PATH, accumulator::ContractBuilder);
 
     blockchain.register_contract(FLASH_MOCK_PATH, flash_mock::ContractBuilder);
+    blockchain.register_contract(SWAP_MOCK_PATH, swap_mock::ContractBuilder);
 
     blockchain
 }
@@ -2490,6 +2495,7 @@ pub fn setup_lending_pool(
     template_address_liquidity_pool: &ManagedAddress<StaticApi>,
     price_aggregator_sc: &ManagedAddress<StaticApi>,
     accumulator_sc: &ManagedAddress<StaticApi>,
+    swap_mock_sc: &ManagedAddress<StaticApi>,
 ) -> (
     ManagedAddress<StaticApi>,
     ManagedAddress<StaticApi>,
@@ -2529,8 +2535,8 @@ pub fn setup_lending_pool(
             template_address_liquidity_pool,
             price_aggregator_sc,
             safe_view_sc.clone(),
-            accumulator_sc.clone(), // TODO: Add real accumulator
-            safe_view_sc.clone(),   // TODO: Add swap_router_address SC
+            accumulator_sc.clone(),
+            swap_mock_sc.clone(),
         )
         .code(LENDING_POOL_PATH)
         .returns(ReturnsNewManagedAddress)
@@ -3102,6 +3108,19 @@ pub fn setup_flash_mock(world: &mut ScenarioWorld) -> ManagedAddress<StaticApi> 
     flash_mock
 }
 
+pub fn setup_swap_mock(world: &mut ScenarioWorld) -> ManagedAddress<StaticApi> {
+    let swap_mock = world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .typed(proxy_swap_mock::SwapMockProxy)
+        .init()
+        .code(SWAP_MOCK_PATH)
+        .returns(ReturnsNewManagedAddress)
+        .run();
+
+    swap_mock
+}
+
 /// Setup price aggregator
 pub fn setup_price_aggregator(world: &mut ScenarioWorld) -> ManagedAddress<StaticApi> {
     world.account(ORACLE_ADDRESS_1).nonce(1);
@@ -3458,6 +3477,112 @@ pub fn add_asset_to_e_mode_category(
         .run();
 }
 
+pub fn multiply(
+    world: &mut ScenarioWorld,
+    lending_sc: &ManagedAddress<StaticApi>,
+    e_mode_category: u8,
+    collateral_token: EgldOrEsdtTokenIdentifier<StaticApi>,
+    debt_to_flash_loan: BigUint<StaticApi>,
+    debt_token: EgldOrEsdtTokenIdentifier<StaticApi>,
+    mode: PositionMode,
+    steps: ManagedArgBuffer<StaticApi>,
+    steps_payment: OptionalValue<ManagedArgBuffer<StaticApi>>,
+) {
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(lending_sc)
+        .typed(proxy_lending_pool::ControllerProxy)
+        .multiply(
+            e_mode_category,
+            collateral_token,
+            debt_to_flash_loan,
+            debt_token,
+            mode,
+            steps,
+            match steps_payment.into_option() {
+                Some(payment) => OptionalValue::Some(payment),
+                None => OptionalValue::None,
+            },
+        )
+        .returns(ReturnsResult)
+        .run();
+}
+
+pub fn swap_collateral(
+    world: &mut ScenarioWorld,
+    lending_sc: &ManagedAddress<StaticApi>,
+    current_collateral: EgldOrEsdtTokenIdentifier<StaticApi>,
+    from_amount: BigUint<StaticApi>,
+    new_collateral: EgldOrEsdtTokenIdentifier<StaticApi>,
+    steps_payment: ManagedArgBuffer<StaticApi>,
+) {
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(lending_sc)
+        .typed(proxy_lending_pool::ControllerProxy)
+        .swap_collateral(
+            current_collateral,
+            from_amount,
+            new_collateral,
+            steps_payment,
+        )
+        .returns(ReturnsResult)
+        .run();
+}
+
+pub fn swap_debt(
+    world: &mut ScenarioWorld,
+    lending_sc: &ManagedAddress<StaticApi>,
+    existing_debt: EgldOrEsdtTokenIdentifier<StaticApi>,
+    new_debt_amount: BigUint<StaticApi>,
+    new_debt_token: EgldOrEsdtTokenIdentifier<StaticApi>,
+    steps_payment: ManagedArgBuffer<StaticApi>,
+) {
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(lending_sc)
+        .typed(proxy_lending_pool::ControllerProxy)
+        .swap_debt(
+            existing_debt,
+            new_debt_amount,
+            new_debt_token,
+            steps_payment,
+        )
+        .returns(ReturnsResult)
+        .run();
+}
+
+pub fn repay_debt_with_collateral(
+    world: &mut ScenarioWorld,
+    lending_sc: &ManagedAddress<StaticApi>,
+    from_token: EgldOrEsdtTokenIdentifier<StaticApi>,
+    from_amount: BigUint<StaticApi>,
+    to_token: EgldOrEsdtTokenIdentifier<StaticApi>,
+    close_position: bool,
+    steps_payment: OptionalValue<ManagedArgBuffer<StaticApi>>,
+) {
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(lending_sc)
+        .typed(proxy_lending_pool::ControllerProxy)
+        .repay_debt_with_collateral(
+            from_token,
+            from_amount,
+            to_token,
+            close_position,
+            match steps_payment.into_option() {
+                Some(payment) => OptionalValue::Some(payment),
+                None => OptionalValue::None,
+            },
+        )
+        .returns(ReturnsResult)
+        .run();
+}
+
 /// Setup market
 pub fn setup_market(
     world: &mut ScenarioWorld,
@@ -3709,6 +3834,55 @@ pub fn setup_flasher(world: &mut ScenarioWorld, flash: ManagedAddress<StaticApi>
     );
 }
 
+pub fn setup_swap_mock_owner(world: &mut ScenarioWorld, swap_mock: ManagedAddress<StaticApi>) {
+    world.set_egld_balance(swap_mock.clone(), BigUint::from(10000000000000u64));
+    world.set_esdt_balance(
+        swap_mock.clone(),
+        EGLD_TOKEN.as_bytes(),
+        BigUint::from(100000000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+    );
+    world.set_esdt_balance(
+        swap_mock.clone(),
+        XOXNO_TOKEN.as_bytes(),
+        BigUint::from(100000000u64) * BigUint::from(10u64).pow(XOXNO_DECIMALS as u32),
+    );
+    world.set_esdt_balance(
+        swap_mock.clone(),
+        ISOLATED_TOKEN.as_bytes(),
+        BigUint::from(100000000u64) * BigUint::from(10u64).pow(ISOLATED_DECIMALS as u32),
+    );
+    world.set_esdt_balance(
+        swap_mock.clone(),
+        CAPPED_TOKEN.as_bytes(),
+        BigUint::from(100000000u64) * BigUint::from(10u64).pow(CAPPED_DECIMALS as u32),
+    );
+    world.set_esdt_balance(
+        swap_mock.clone(),
+        SILOED_TOKEN.as_bytes(),
+        BigUint::from(100000000u64) * BigUint::from(10u64).pow(SILOED_DECIMALS as u32),
+    );
+    world.set_esdt_balance(
+        swap_mock.clone(),
+        XEGLD_TOKEN.as_bytes(),
+        BigUint::from(100000000u64) * BigUint::from(10u64).pow(XEGLD_DECIMALS as u32),
+    );
+    world.set_esdt_balance(
+        swap_mock.clone(),
+        SEGLD_TOKEN.as_bytes(),
+        BigUint::from(100000000u64) * BigUint::from(10u64).pow(SEGLD_DECIMALS as u32),
+    );
+    world.set_esdt_balance(
+        swap_mock.clone(),
+        LEGLD_TOKEN.as_bytes(),
+        BigUint::from(100000000u64) * BigUint::from(10u64).pow(LEGLD_DECIMALS as u32),
+    );
+    world.set_esdt_balance(
+        swap_mock,
+        USDC_TOKEN.as_bytes(),
+        BigUint::from(100000000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
+    );
+}
+
 // ============================================
 // HELPER FUNCTIONS FOR MARKET OPERATIONS
 // ============================================
@@ -3847,7 +4021,6 @@ impl LendingPoolTestState {
             .returns(ReturnsResult)
             .run()
     }
-
     /// Get market borrow rate
     pub fn get_market_borrow_rate(
         &mut self,
