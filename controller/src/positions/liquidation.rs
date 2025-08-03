@@ -95,7 +95,7 @@ pub trait PositionLiquidationModule:
             .values()
             .collect();
 
-        let (borrow_positions, map_debt_indexes) = self.get_borrow_positions(account_nonce, true);
+        let (borrow_positions, map_debt_indexes) = self.borrow_positions(account_nonce, true);
 
         let (debt_payment_in_egld_ray, mut repaid_tokens) = self.calculate_repayment_amounts(
             debt_payments,
@@ -239,10 +239,10 @@ pub trait PositionLiquidationModule:
         for collateral_data in seized_collaterals {
             let (seized_collateral, protocol_fee) = collateral_data.into_tuple();
             let mut deposit_position =
-                self.get_deposit_position(account_nonce, &seized_collateral.token_identifier);
-            let feed = self.get_token_price(&deposit_position.asset_id, &mut cache);
+                self.deposit_position(account_nonce, &seized_collateral.token_identifier);
+            let price_feed = self.token_price(&deposit_position.asset_id, &mut cache);
             let amount = deposit_position
-                .make_amount_decimal(&seized_collateral.amount, feed.asset_decimals);
+                .make_amount_decimal(&seized_collateral.amount, price_feed.asset_decimals);
             let _ = self.process_withdrawal(
                 account_nonce,
                 amount,
@@ -252,7 +252,7 @@ pub trait PositionLiquidationModule:
                 &mut cache,
                 &account_attributes,
                 &mut deposit_position,
-                &feed,
+                &price_feed,
             );
         }
     }
@@ -402,54 +402,57 @@ pub trait PositionLiquidationModule:
         let mut seized_amounts_by_collateral = ManagedVec::new();
 
         // Pre-calculate bonus multiplier
-        let bonus_multiplier = self.ray() + bonus_rate_ray.clone();
+        let bonus_multiplier_ray = self.ray() + bonus_rate_ray.clone();
 
         for position in deposit_positions {
-            let asset_data = self.get_token_price(&position.asset_id, cache);
-            let total_amount_ray = self.get_total_amount_ray(&position, cache);
+            let asset_price_feed = self.token_price(&position.asset_id, cache);
+            let total_amount_ray = self.total_amount_ray(&position, cache);
             let asset_egld_value_ray =
-                self.get_token_egld_value_ray(&total_amount_ray, &asset_data.price);
+                self.token_egld_value_ray(&total_amount_ray, &asset_price_feed.price_wad);
 
             // Calculate proportion in RAY precision
-            let proportion_ray =
+            let asset_proportion_ray =
                 self.div_half_up(&asset_egld_value_ray, total_collateral_value, RAY_PRECISION);
 
             // Calculate seized EGLD amount
             let seized_egld_ray =
-                self.mul_half_up(&proportion_ray, debt_to_be_repaid_ray, RAY_PRECISION);
+                self.mul_half_up(&asset_proportion_ray, debt_to_be_repaid_ray, RAY_PRECISION);
 
             // Apply liquidation bonus
             let seized_egld_with_bonus_ray =
-                self.mul_half_up(&seized_egld_ray, &bonus_multiplier, RAY_PRECISION);
+                self.mul_half_up(&seized_egld_ray, &bonus_multiplier_ray, RAY_PRECISION);
 
             // Convert back to token units
             let seized_units_with_bonus_ray =
-                self.convert_egld_to_tokens_ray(&seized_egld_with_bonus_ray, &asset_data);
+                self.convert_egld_to_tokens_ray(&seized_egld_with_bonus_ray, &asset_price_feed);
 
             // Calculate protocol fee on the bonus portion
             let seized_base_units_ray = self.div_half_up(
                 &seized_units_with_bonus_ray,
-                &bonus_multiplier,
+                &bonus_multiplier_ray,
                 RAY_PRECISION,
             );
-            let bonus_units_ray = seized_units_with_bonus_ray.clone() - seized_base_units_ray;
+            let liquidation_bonus_units_ray = seized_units_with_bonus_ray.clone() - seized_base_units_ray;
 
             // Protocol fee calculation
-            let protocol_fee_ray =
-                self.mul_half_up(&bonus_units_ray, &position.liquidation_fees, RAY_PRECISION);
-            let protocol_fee = self.rescale_half_up(&protocol_fee_ray, asset_data.asset_decimals);
+            let protocol_fee_ray = self.mul_half_up(
+                &liquidation_bonus_units_ray,
+                &position.liquidation_fees_bps,
+                RAY_PRECISION,
+            );
+            let protocol_fee_scaled = self.rescale_half_up(&protocol_fee_ray, asset_price_feed.asset_decimals);
 
-            let final_amount_ray = self.get_min(seized_units_with_bonus_ray, total_amount_ray);
+            let final_amount_ray = self.min(seized_units_with_bonus_ray, total_amount_ray);
 
             // Final rescale to token decimals - this is where unavoidable precision loss occurs
             // due to finite decimal precision of individual tokens (6 decimals for USDC, etc.)
-            let final_amount = self.rescale_half_up(&final_amount_ray, asset_data.asset_decimals);
+            let final_seizure_amount = self.rescale_half_up(&final_amount_ray, asset_price_feed.asset_decimals);
             let seized_asset = EgldOrEsdtTokenPayment::new(
                 position.asset_id.clone(),
                 0,
-                final_amount.into_raw_units().clone(),
+                final_seizure_amount.into_raw_units().clone(),
             );
-            seized_amounts_by_collateral.push((seized_asset, protocol_fee).into());
+            seized_amounts_by_collateral.push((seized_asset, protocol_fee_scaled).into());
         }
 
         seized_amounts_by_collateral
@@ -536,40 +539,37 @@ pub trait PositionLiquidationModule:
         let mut total_repaid = self.ray_zero();
         let mut repaid_tokens = ManagedVec::new();
         for payment_ref in repayments {
-            let token_feed = self.get_token_price(&payment_ref.token_identifier, cache);
-            let original_borrow = self.get_position_by_index(
-                &payment_ref.token_identifier,
-                borrows,
-                &borrows_index_map,
-            );
-            let amount_dec = self.to_decimal(payment_ref.amount.clone(), token_feed.asset_decimals);
+            let token_price_feed = self.token_price(&payment_ref.token_identifier, cache);
+            let original_borrow_position =
+                self.position_by_index(&payment_ref.token_identifier, borrows, &borrows_index_map);
+            let payment_amount_decimal = self.to_decimal(payment_ref.amount.clone(), token_price_feed.asset_decimals);
 
-            let token_egld_amount = self.get_token_egld_value_ray(&amount_dec, &token_feed.price);
+            let payment_egld_value_ray = self.token_egld_value_ray(&payment_amount_decimal, &token_price_feed.price_wad);
 
-            let amount = self.get_total_amount_ray(&original_borrow, cache);
-            let borrowed_egld_amount = self.get_token_egld_value_ray(&amount, &token_feed.price);
-            let mut payment = payment_ref.clone();
-            if token_egld_amount > borrowed_egld_amount {
-                let egld_excess = token_egld_amount - borrowed_egld_amount.clone();
-                let original_excess_paid = self.convert_egld_to_tokens(&egld_excess, &token_feed);
-                let token_excess_amount = original_excess_paid.into_raw_units().clone();
+            let outstanding_debt_ray = self.total_amount_ray(&original_borrow_position, cache);
+            let outstanding_debt_egld_ray = self.token_egld_value_ray(&outstanding_debt_ray, &token_price_feed.price_wad);
+            let mut adjusted_payment = payment_ref.clone();
+            if payment_egld_value_ray > outstanding_debt_egld_ray {
+                let excess_egld_ray = payment_egld_value_ray - outstanding_debt_egld_ray.clone();
+                let excess_token_amount_decimal = self.convert_egld_to_tokens(&excess_egld_ray, &token_price_feed);
+                let excess_token_units = excess_token_amount_decimal.into_raw_units().clone();
 
                 // Only create refund if amount is greater than zero
-                if token_excess_amount > BigUint::zero() {
-                    payment.amount -= &token_excess_amount;
+                if excess_token_units > BigUint::zero() {
+                    adjusted_payment.amount -= &excess_token_units;
 
                     refunds.push(EgldOrEsdtTokenPayment::new(
                         payment_ref.token_identifier.clone(),
                         payment_ref.token_nonce,
-                        token_excess_amount,
+                        excess_token_units,
                     ));
                 }
 
-                total_repaid += &borrowed_egld_amount;
-                repaid_tokens.push((payment, borrowed_egld_amount, token_feed).into());
+                total_repaid += &outstanding_debt_egld_ray;
+                repaid_tokens.push((adjusted_payment, outstanding_debt_egld_ray, token_price_feed).into());
             } else {
-                total_repaid += &token_egld_amount;
-                repaid_tokens.push((payment, token_egld_amount, token_feed).into());
+                total_repaid += &payment_egld_value_ray;
+                repaid_tokens.push((adjusted_payment, payment_egld_value_ray, token_price_feed).into());
             }
         }
 
@@ -648,15 +648,15 @@ pub trait PositionLiquidationModule:
         let mut proportion_seized = self.ray_zero();
         let mut weighted_bonus = self.ray_zero();
 
-        for dp in positions {
-            let feed = self.get_token_price(&dp.asset_id, cache);
-            let amount = self.get_total_amount_ray(&dp, cache);
-            let egld_amount = self.get_token_egld_value_ray(&amount, &feed.price);
-            let fraction = self.div_half_up(&egld_amount, total_collateral_in_egld, RAY_PRECISION);
+        for deposit_position in positions {
+            let price_feed = self.token_price(&deposit_position.asset_id, cache);
+            let position_amount_ray = self.total_amount_ray(&deposit_position, cache);
+            let position_egld_value_ray = self.token_egld_value_ray(&position_amount_ray, &price_feed.price_wad);
+            let portfolio_weight_ray = self.div_half_up(&position_egld_value_ray, total_collateral_in_egld, RAY_PRECISION);
 
             proportion_seized +=
-                self.mul_half_up(&fraction, &dp.liquidation_threshold, RAY_PRECISION);
-            weighted_bonus += self.mul_half_up(&fraction, &dp.liquidation_bonus, RAY_PRECISION);
+                self.mul_half_up(&portfolio_weight_ray, &deposit_position.liquidation_threshold_bps, RAY_PRECISION);
+            weighted_bonus += self.mul_half_up(&portfolio_weight_ray, &deposit_position.liquidation_bonus_bps, RAY_PRECISION);
         }
 
         (proportion_seized, weighted_bonus)
@@ -744,16 +744,16 @@ pub trait PositionLiquidationModule:
             health_factor,
         );
         let final_repayment_amount_ray = if egld_payment_ray > &self.ray_zero() {
-            self.get_min(egld_payment_ray.clone(), estimated_max_repayable_debt_ray)
+            self.min(egld_payment_ray.clone(), estimated_max_repayable_debt_ray)
         } else {
             estimated_max_repayable_debt_ray.clone()
         };
 
-        let liquidation_premium = bonus.clone() + self.ray();
+        let liquidation_premium_ray = bonus.clone() + self.ray();
 
         let collateral_to_seize = self.mul_half_up(
             &final_repayment_amount_ray,
-            &liquidation_premium,
+            &liquidation_premium_ray,
             RAY_PRECISION,
         );
 
@@ -833,12 +833,12 @@ pub trait PositionLiquidationModule:
         excess_in_egld: ManagedDecimal<Self::Api, NumDecimals>,
     ) {
         let mut remaining_excess = excess_in_egld;
-        let mut index = repaid_tokens.len();
-        while index > 0 && remaining_excess > self.ray_zero() {
-            index -= 1;
+        let mut current_index = repaid_tokens.len();
+        while current_index > 0 && remaining_excess > self.ray_zero() {
+            current_index -= 1;
 
             let (mut debt_payment, mut egld_asset_amount_ray, feed) =
-                repaid_tokens.get(index).clone().into_tuple();
+                repaid_tokens.get(current_index).clone().into_tuple();
 
             if egld_asset_amount_ray >= remaining_excess {
                 let excess_in_original = self.convert_egld_to_tokens(&remaining_excess, &feed);
@@ -851,12 +851,12 @@ pub trait PositionLiquidationModule:
                     excess_in_original.into_raw_units().clone(),
                 ));
                 let _ =
-                    repaid_tokens.set(index, (debt_payment, egld_asset_amount_ray, feed).into());
+                    repaid_tokens.set(current_index, (debt_payment, egld_asset_amount_ray, feed).into());
 
                 remaining_excess = self.ray_zero();
             } else {
                 refunds.push(debt_payment);
-                repaid_tokens.remove(index);
+                repaid_tokens.remove(current_index);
                 remaining_excess -= egld_asset_amount_ray;
             }
         }
@@ -881,7 +881,7 @@ pub trait PositionLiquidationModule:
     /// # Index Offset Handling
     /// The function implements a critical index correction:
     /// ```
-    /// stored_index = borrows_index_map.get(key_token)  // 1-based index
+    /// stored_index = borrows_index_map.get(token_id)  // 1-based index
     /// actual_index = stored_index - 1                  // Convert to 0-based
     /// position = borrows.get(actual_index)             // Vector access
     /// ```
@@ -903,7 +903,7 @@ pub trait PositionLiquidationModule:
     /// - **Scalable**: Performance doesn't degrade with position count
     ///
     /// # Arguments
-    /// - `key_token`: Token identifier to search for in the borrow positions
+    /// - `token_id`: Token identifier to search for in the borrow positions
     /// - `borrows`: Vector of all borrow positions for the account
     /// - `borrows_index_map`: Pre-computed mapping from token ID to vector index (1-based)
     ///
@@ -911,22 +911,22 @@ pub trait PositionLiquidationModule:
     /// - Clone of the AccountPosition corresponding to the specified token
     ///
     /// # Panics
-    /// - When `key_token` is not found in `borrows_index_map` (validation failure)
-    fn get_position_by_index(
+    /// - When `token_id` is not found in `borrows_index_map` (validation failure)
+    fn position_by_index(
         &self,
-        key_token: &EgldOrEsdtTokenIdentifier,
+        token_id: &EgldOrEsdtTokenIdentifier,
         borrows: &ManagedVec<AccountPosition<Self::Api>>,
         borrows_index_map: &ManagedMapEncoded<Self::Api, EgldOrEsdtTokenIdentifier, usize>,
     ) -> AccountPosition<Self::Api> {
         require!(
-            borrows_index_map.contains(key_token),
+            borrows_index_map.contains(token_id),
             "Token {} is not part of the mapper",
-            key_token
+            token_id
         );
-        let safe_index = borrows_index_map.get(key_token);
-        // -1 is required to by pass the issue of index = 0 which will throw at the above .contains
-        let index = safe_index - 1;
-        let position = borrows.get(index).clone();
+        let safe_index = borrows_index_map.get(token_id);
+        // -1 is required to by pass the issue of position_index = 0 which will throw at the above .contains
+        let position_index = safe_index - 1;
+        let position = borrows.get(position_index).clone();
 
         position
     }
@@ -1066,8 +1066,8 @@ pub trait PositionLiquidationModule:
         total_borrow: &ManagedDecimal<Self::Api, NumDecimals>,
         total_collateral: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> bool {
-        let total_usd_debt = self.get_egld_usd_value(total_borrow, &cache.egld_usd_price);
-        let total_usd_collateral = self.get_egld_usd_value(total_collateral, &cache.egld_usd_price);
+        let total_usd_debt = self.egld_usd_value(total_borrow, &cache.egld_usd_price_wad);
+        let total_usd_collateral = self.egld_usd_value(total_collateral, &cache.egld_usd_price_wad);
 
         // 5 USD
         let min_collateral_threshold = self.mul_half_up(
@@ -1156,8 +1156,8 @@ pub trait PositionLiquidationModule:
         // Add all remaining debt as bad debt, clean isolated debt if any
         let borrow_positions = self.positions(account_nonce, AccountPositionType::Borrow);
         for (token_id, mut position) in borrow_positions.iter() {
-            let feed = self.get_token_price(&token_id, cache);
-            let pool_address = cache.get_cached_pool_address(&token_id);
+            let feed = self.token_price(&token_id, cache);
+            let pool_address = cache.cached_pool_address(&token_id);
             if account_attributes.is_isolated() {
                 self.clear_position_isolated_debt(&mut position, &feed, &account_attributes, cache);
             }
@@ -1167,7 +1167,7 @@ pub trait PositionLiquidationModule:
                 .tx()
                 .to(pool_address)
                 .typed(proxy_pool::LiquidityPoolProxy)
-                .seize_position(position.clone(), feed.price.clone())
+                .seize_position(position.clone(), feed.price_wad.clone())
                 .returns(ReturnsResult)
                 .sync_call();
 
@@ -1175,7 +1175,7 @@ pub trait PositionLiquidationModule:
                 cache,
                 &position.zero_decimal(),
                 &updated_position,
-                feed.price.clone(),
+                feed.price_wad.clone(),
                 &caller,
                 &account_attributes,
             );
@@ -1184,14 +1184,14 @@ pub trait PositionLiquidationModule:
         // Seize all remaining collateral + interest
         let deposit_positions = self.positions(account_nonce, AccountPositionType::Deposit);
         for (token_id, position) in deposit_positions.iter() {
-            let feed = self.get_token_price(&token_id, cache);
-            let pool_address = cache.get_cached_pool_address(&token_id);
+            let feed = self.token_price(&token_id, cache);
+            let pool_address = cache.cached_pool_address(&token_id);
             // Call the seize_dust_collateral function on the liquidity pool
             let updated_position = self
                 .tx()
                 .to(pool_address)
                 .typed(proxy_pool::LiquidityPoolProxy)
-                .seize_position(position.clone(), feed.price.clone())
+                .seize_position(position.clone(), feed.price_wad.clone())
                 .returns(ReturnsResult)
                 .sync_call();
 
@@ -1199,7 +1199,7 @@ pub trait PositionLiquidationModule:
                 cache,
                 &position.zero_decimal(),
                 &updated_position,
-                feed.price,
+                feed.price_wad,
                 &caller,
                 &account_attributes,
             );

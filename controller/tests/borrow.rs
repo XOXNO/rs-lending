@@ -60,8 +60,8 @@ fn borrow_single_asset_against_collateral_success() {
     );
 
     // Verify the borrow and collateral positions are recorded
-    let borrowed_amount = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
-    let collateral_amount = state.get_collateral_amount_for_token(2, USDC_TOKEN);
+    let borrowed_amount = state.borrow_amount_for_token(2, EGLD_TOKEN);
+    let collateral_amount = state.collateral_amount_for_token(2, USDC_TOKEN);
 
     assert!(borrowed_amount > ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS));
     assert!(collateral_amount > ManagedDecimal::from_raw_units(BigUint::zero(), USDC_DECIMALS));
@@ -181,8 +181,8 @@ fn borrow_bulk_new_positions_success() {
     state.borrow_assets(2, &borrower, assets);
 
     // Verify both positions were created with exact amounts
-    let usdc_borrowed = state.get_borrow_amount_for_token(2, USDC_TOKEN);
-    let egld_borrowed = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+    let usdc_borrowed = state.borrow_amount_for_token(2, USDC_TOKEN);
+    let egld_borrowed = state.borrow_amount_for_token(2, EGLD_TOKEN);
     assert_eq!(usdc_borrowed.into_raw_units().clone(), usdc_borrow.amount);
     assert_eq!(egld_borrowed.into_raw_units().clone(), egld_borrow.amount);
 }
@@ -259,8 +259,8 @@ fn borrow_bulk_existing_positions_success() {
     state.borrow_assets(2, &borrower, assets);
 
     // Verify positions were updated (amounts should be greater than new borrow due to existing debt)
-    let usdc_total_borrowed = state.get_borrow_amount_for_token(2, USDC_TOKEN);
-    let egld_total_borrowed = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+    let usdc_total_borrowed = state.borrow_amount_for_token(2, USDC_TOKEN);
+    let egld_total_borrowed = state.borrow_amount_for_token(2, EGLD_TOKEN);
     assert!(usdc_total_borrowed.into_raw_units().clone() > usdc_borrow.amount);
     assert!(egld_total_borrowed.into_raw_units().clone() > egld_borrow.amount);
 }

@@ -5,6 +5,9 @@ use crate::structs::{DiscardSubmissionEvent, NewRoundEvent, TimestampedPrice, To
 
 #[multiversx_sc::module]
 pub trait EventsModule {
+    /// Emits event when price consensus is reached and new round is created.
+    /// Includes aggregated price, timestamp, and blockchain context.
+    /// Provides transparency for oracle consumers and auditors.
     fn emit_new_round_event(
         &self,
         token_pair: &TokenPair<Self::Api>,
@@ -35,6 +38,9 @@ pub trait EventsModule {
         #[indexed] new_round_event: &NewRoundEvent<Self::Api>,
     );
 
+    /// Emits event when oracle submission is rejected.
+    /// Records rejection reason: duplicate submission or timing violation.
+    /// Helps oracles debug submission failures.
     fn emit_discard_submission_event(
         &self,
         token_pair: &TokenPair<Self::Api>,

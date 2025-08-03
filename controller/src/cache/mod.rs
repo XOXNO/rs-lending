@@ -19,7 +19,7 @@ where
         ManagedMapEncoded<C::Api, EgldOrEsdtTokenIdentifier<C::Api>, OracleProvider<C::Api>>,
     pub market_indexes:
         ManagedMapEncoded<C::Api, EgldOrEsdtTokenIdentifier<C::Api>, MarketIndex<C::Api>>,
-    pub egld_usd_price: ManagedDecimal<C::Api, NumDecimals>,
+    pub egld_usd_price_wad: ManagedDecimal<C::Api, NumDecimals>,
     pub price_aggregator_sc: ManagedAddress<C::Api>,
     pub egld_ticker: ManagedBuffer<C::Api>,
     pub allow_unsafe_price: bool,
@@ -32,18 +32,21 @@ impl<'a, C> Cache<'a, C>
 where
     C: crate::oracle::OracleModule + crate::storage::Storage + common_rates::InterestRates,
 {
+    /// Creates new cache instance with initialized price feeds and oracle data.
+    /// Fetches EGLD price and sets up initial state for gas-optimized operations.
+    /// Returns cache with empty collections and current blockchain timestamp.
     pub fn new(sc_ref: &'a C) -> Self {
         let price_aggregator = sc_ref.price_aggregator_address().get();
         let egld_token_id = EgldOrEsdtTokenIdentifier::egld();
         let egld_provider = sc_ref.token_oracle(&egld_token_id).get();
         let mut asset_oracles = ManagedMapEncoded::new();
         asset_oracles.put(&egld_token_id, &egld_provider);
-        let egld_price_feed = sc_ref.get_aggregator_price_feed(
+        let egld_price_feed = sc_ref.aggregator_price_feed(
             egld_token_id.clone().into_name(),
             &price_aggregator,
             egld_provider.max_price_stale_seconds,
         );
-        let egld_usd_price = sc_ref.to_decimal_wad(egld_price_feed.price);
+        let egld_usd_price_wad = sc_ref.to_decimal_wad(egld_price_feed.price);
         let safe_price_view = sc_ref.safe_price_view().get();
 
         Cache {
@@ -53,7 +56,7 @@ where
             asset_pools: ManagedMapEncoded::new(),
             asset_oracles,
             market_indexes: ManagedMapEncoded::new(),
-            egld_usd_price,
+            egld_usd_price_wad,
             price_aggregator_sc: price_aggregator,
             egld_ticker: egld_token_id.into_name(),
             allow_unsafe_price: true,
@@ -63,8 +66,9 @@ where
         }
     }
 
-    // Clean the prices cache to have a fresh value after the swaps to prevent a bad HF
-    // This is used in the strategy to prevent a bad HF after the swaps
+    /// Clears price cache to force fresh price fetches after swaps.
+    /// Prevents stale prices from affecting health factor calculations.
+    /// Used in strategy operations where price accuracy is critical.
     pub fn clean_prices_cache(&mut self) {
         self.prices_cache = ManagedMapEncoded::new();
     }
@@ -77,12 +81,12 @@ where
     ///
     /// # Returns
     /// - `AssetConfig` for the specified token.
-    pub fn get_cached_asset_info(
+    pub fn cached_asset_info(
         &mut self,
         token_id: &EgldOrEsdtTokenIdentifier<C::Api>,
     ) -> AssetConfig<C::Api> {
-        let existing = self.asset_configs.contains(token_id);
-        if existing {
+        let is_cached = self.asset_configs.contains(token_id);
+        if is_cached {
             return self.asset_configs.get(token_id);
         }
 
@@ -92,12 +96,15 @@ where
         new
     }
 
-    pub fn get_cached_market_index(
+    /// Retrieves or caches market index data for a token.
+    /// Updates indexes through oracle if not cached, reducing repeated calculations.
+    /// Returns current supply and borrow indexes for the market.
+    pub fn cached_market_index(
         &mut self,
         token_id: &EgldOrEsdtTokenIdentifier<C::Api>,
     ) -> MarketIndex<C::Api> {
-        let existing = self.market_indexes.contains(token_id);
-        if existing {
+        let is_cached = self.market_indexes.contains(token_id);
+        if is_cached {
             return self.market_indexes.get(token_id);
         }
 
@@ -107,18 +114,21 @@ where
         new
     }
 
-    pub fn get_cached_oracle(
+    /// Retrieves or caches oracle provider configuration for a token.
+    /// Handles canonical token mapping for EGLD variants.
+    /// Returns oracle provider with price feed settings.
+    pub fn cached_oracle(
         &mut self,
         token_id: &EgldOrEsdtTokenIdentifier<C::Api>,
     ) -> OracleProvider<C::Api> {
-        let canonical_token_id = if self.sc_ref.get_token_ticker(token_id, self) == self.egld_ticker
+        let canonical_token_id = if self.sc_ref.token_ticker(token_id, self) == self.egld_ticker
         {
             EgldOrEsdtTokenIdentifier::egld()
         } else {
             token_id.clone()
         };
-        let existing = self.asset_oracles.contains(&canonical_token_id);
-        if existing {
+        let is_cached = self.asset_oracles.contains(&canonical_token_id);
+        if is_cached {
             return self.asset_oracles.get(&canonical_token_id);
         }
 
@@ -136,12 +146,12 @@ where
     ///
     /// # Returns
     /// - Pool address for the token.
-    pub fn get_cached_pool_address(
+    pub fn cached_pool_address(
         &mut self,
         token_id: &EgldOrEsdtTokenIdentifier<C::Api>,
     ) -> ManagedAddress<C::Api> {
-        let existing = self.asset_pools.contains(token_id);
-        if existing {
+        let is_cached = self.asset_pools.contains(token_id);
+        if is_cached {
             return self.asset_pools.get(token_id);
         }
 

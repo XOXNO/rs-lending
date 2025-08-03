@@ -142,14 +142,14 @@ pub trait OracleModule:
         cache: &mut Cache<Self>,
         simulate: bool,
     ) -> MarketIndex<Self::Api> {
-        let pool_address = cache.get_cached_pool_address(asset_id);
+        let pool_address = cache.cached_pool_address(asset_id);
         if simulate {
             let last_timestamp = self.last_timestamp(pool_address.clone()).get();
             let borrowed = self.borrowed(pool_address.clone()).get();
             let current_borrowed_index = self.borrow_index(pool_address.clone()).get();
             let supplied = self.supplied(pool_address.clone()).get();
             let current_supply_index = self.supply_index(pool_address.clone()).get();
-            let params = self.params(pool_address.clone()).get();
+            let parameters = self.parameters(pool_address.clone()).get();
             self.simulate_update_indexes(
                 cache.current_timestamp,
                 last_timestamp,
@@ -157,14 +157,14 @@ pub trait OracleModule:
                 current_borrowed_index,
                 supplied,
                 current_supply_index,
-                params,
+                parameters,
             )
         } else {
-            let asset_price = self.get_token_price(asset_id, cache);
+            let asset_price = self.token_price(asset_id, cache);
             self.tx()
                 .to(pool_address)
                 .typed(proxy_pool::LiquidityPoolProxy)
-                .update_indexes(asset_price.price)
+                .update_indexes(asset_price.price_wad)
                 .returns(ReturnsResult)
                 .sync_call()
         }
@@ -190,16 +190,16 @@ pub trait OracleModule:
     /// **Returns:** PriceFeedShort containing:
     /// - asset_decimals: Token's decimal precision
     /// - price: Current price in EGLD (WAD precision)
-    fn get_token_price(
+    fn token_price(
         &self,
         token_id: &EgldOrEsdtTokenIdentifier,
         cache: &mut Cache<Self>,
     ) -> PriceFeedShort<Self::Api> {
-        let ticker = self.get_token_ticker(token_id, cache);
+        let ticker = self.token_ticker(token_id, cache);
         if ticker == cache.egld_ticker {
             return PriceFeedShort {
                 asset_decimals: WAD_PRECISION,
-                price: self.wad(),
+                price_wad: self.wad(),
             };
         }
 
@@ -215,7 +215,7 @@ pub trait OracleModule:
         let price = self.find_price_feed(&data, token_id, cache);
         let feed = PriceFeedShort {
             asset_decimals: data.asset_decimals,
-            price,
+            price_wad: price,
         };
 
         cache.prices_cache.put(token_id, &feed);
@@ -246,16 +246,19 @@ pub trait OracleModule:
         cache: &mut Cache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         match configs.oracle_type {
-            OracleType::Derived => self.get_derived_price(configs, cache, true),
-            OracleType::Lp => self.get_safe_lp_price(configs, cache),
+            OracleType::Derived => self.derived_price(configs, cache, true),
+            OracleType::Lp => self.safe_lp_price(configs, cache),
             OracleType::Normal => {
-                self.get_normal_price_in_egld(configs, original_market_token, cache)
+                self.normal_price_in_egld(configs, original_market_token, cache)
             },
             _ => sc_panic!(ERROR_INVALID_ORACLE_TOKEN_TYPE),
         }
     }
 
-    fn get_off_chain_lp_price(
+    /// Calculates LP token price using off-chain aggregator prices for underlying assets.
+    /// Applies Arda formula with USD-based pricing for validation against on-chain price.
+    /// Returns LP price in EGLD using aggregator feeds for both tokens.
+    fn off_chain_lp_price(
         &self,
         configs: &OracleProvider<Self::Api>,
         reserve_first: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -263,8 +266,8 @@ pub trait OracleModule:
         total_supply: &ManagedDecimal<Self::Api, NumDecimals>,
         cache: &mut Cache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let oracle_base_token_id = cache.get_cached_oracle(&configs.base_token_id);
-        let oracle_quote_token_id = cache.get_cached_oracle(&configs.quote_token_id);
+        let oracle_base_token_id = cache.cached_oracle(&configs.base_token_id);
+        let oracle_quote_token_id = cache.cached_oracle(&configs.quote_token_id);
 
         let off_chain_first_egld_price = self.find_token_price_in_egld_from_aggregator(
             &oracle_base_token_id,
@@ -278,7 +281,7 @@ pub trait OracleModule:
             cache,
         );
 
-        let off_chain_lp_price = self.get_lp_price(
+        let off_chain_lp_price = self.lp_price(
             configs,
             &reserve_first,
             &reserve_second,
@@ -290,7 +293,10 @@ pub trait OracleModule:
         off_chain_lp_price
     }
 
-    fn get_lp_reserves(
+    /// Fetches current LP reserves and converts them to consistent decimal format.
+    /// Queries DEX contract for atomic snapshot of pool state including total supply.
+    /// Returns (reserve_first, reserve_second, total_supply) with proper decimal scaling.
+    fn lp_reserves(
         &self,
         configs: &OracleProvider<Self::Api>,
         cache: &mut Cache<Self>,
@@ -300,9 +306,9 @@ pub trait OracleModule:
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
         let (reserve_0, reserve_1, total_supply) =
-            self.get_reserves(&configs.oracle_contract_address);
-        let safe_first_token_feed = self.get_token_price(&configs.base_token_id, cache);
-        let safe_second_token_feed = self.get_token_price(&configs.quote_token_id, cache);
+            self.reserves(&configs.oracle_contract_address);
+        let safe_first_token_feed = self.token_price(&configs.base_token_id, cache);
+        let safe_second_token_feed = self.token_price(&configs.quote_token_id, cache);
 
         // Convert raw BigUint reserves to ManagedDecimal with token-specific precision
         // This ensures consistent decimal arithmetic across different token denominations
@@ -313,7 +319,10 @@ pub trait OracleModule:
         (reserve_first, reserve_second, total_supply)
     }
 
-    fn get_lp_on_chain_price(
+    /// Calculates LP token price using on-chain safe prices for underlying assets.
+    /// Applies Arda formula with TWAP-based pricing for manipulation resistance.
+    /// Returns LP price in EGLD using secure on-chain price feeds.
+    fn lp_on_chain_price(
         &self,
         configs: &OracleProvider<Self::Api>,
         reserve_first: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -321,16 +330,16 @@ pub trait OracleModule:
         total_supply: &ManagedDecimal<Self::Api, NumDecimals>,
         cache: &mut Cache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let safe_first_token_feed = self.get_token_price(&configs.base_token_id, cache);
-        let safe_second_token_feed = self.get_token_price(&configs.quote_token_id, cache);
+        let safe_first_token_feed = self.token_price(&configs.base_token_id, cache);
+        let safe_second_token_feed = self.token_price(&configs.quote_token_id, cache);
 
-        self.get_lp_price(
+        self.lp_price(
             configs,
             reserve_first,
             reserve_second,
             total_supply,
-            &safe_first_token_feed.price,
-            &safe_second_token_feed.price,
+            &safe_first_token_feed.price_wad,
+            &safe_second_token_feed.price_wad,
         )
     }
     /// Computes secure LP token price using the Arda LP pricing formula with multi-layered validation.
@@ -358,14 +367,14 @@ pub trait OracleModule:
     /// ```
     ///
     /// **Returns:** LP token price in EGLD per LP token (WAD precision)
-    fn get_safe_lp_price(
+    fn safe_lp_price(
         &self,
         configs: &OracleProvider<Self::Api>,
         cache: &mut Cache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let (reserve_first, reserve_second, total_supply) = self.get_lp_reserves(configs, cache);
+        let (reserve_first, reserve_second, total_supply) = self.lp_reserves(configs, cache);
 
-        let safe_lp_price = self.get_lp_on_chain_price(
+        let safe_lp_price = self.lp_on_chain_price(
             configs,
             &reserve_first,
             &reserve_second,
@@ -373,7 +382,7 @@ pub trait OracleModule:
             cache,
         );
 
-        let off_chain_lp_price = self.get_off_chain_lp_price(
+        let off_chain_lp_price = self.off_chain_lp_price(
             configs,
             &reserve_first,
             &reserve_second,
@@ -385,15 +394,15 @@ pub trait OracleModule:
         if self.is_within_anchor(
             &safe_lp_price,
             &off_chain_lp_price,
-            &configs.tolerance.first_upper_ratio,
-            &configs.tolerance.first_lower_ratio,
+            &configs.tolerance.first_upper_ratio_bps,
+            &configs.tolerance.first_lower_ratio_bps,
         ) {
             safe_lp_price
         } else if self.is_within_anchor(
             &safe_lp_price,
             &off_chain_lp_price,
-            &configs.tolerance.last_upper_ratio,
-            &configs.tolerance.last_lower_ratio,
+            &configs.tolerance.last_upper_ratio_bps,
+            &configs.tolerance.last_lower_ratio_bps,
         ) {
             avg_price
         } else {
@@ -428,17 +437,17 @@ pub trait OracleModule:
     /// - **LXOXNO:** XOXNO liquid staking (rate × underlying XOXNO price)
     ///
     /// **Returns:** Derivative token price in EGLD (WAD precision)
-    fn get_derived_price(
+    fn derived_price(
         &self,
         configs: &OracleProvider<Self::Api>,
         cache: &mut Cache<Self>,
         safe_price_check: bool,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         match configs.exchange_source {
-            ExchangeSource::XEGLD => self.get_xegld_derived_price(configs),
-            ExchangeSource::LEGLD => self.get_legld_derived_price(configs),
+            ExchangeSource::XEGLD => self.xegld_derived_price(configs),
+            ExchangeSource::LEGLD => self.legld_derived_price(configs),
             ExchangeSource::LXOXNO => {
-                self.get_lxoxno_derived_price(configs, cache, safe_price_check)
+                self.lxoxno_derived_price(configs, cache, safe_price_check)
             },
             _ => sc_panic!(ERROR_INVALID_EXCHANGE_SOURCE),
         }
@@ -465,7 +474,7 @@ pub trait OracleModule:
     /// ```
     ///
     /// **Returns:** LEGLD price in EGLD per LEGLD token (WAD precision)
-    fn get_legld_derived_price(
+    fn legld_derived_price(
         &self,
         configs: &OracleProvider<Self::Api>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
@@ -501,7 +510,7 @@ pub trait OracleModule:
     /// ```
     ///
     /// **Returns:** xEGLD price in EGLD per xEGLD token (WAD precision)
-    fn get_xegld_derived_price(
+    fn xegld_derived_price(
         &self,
         configs: &OracleProvider<Self::Api>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
@@ -538,7 +547,7 @@ pub trait OracleModule:
     /// ```
     ///
     /// **Returns:** LXOXNO price in EGLD per LXOXNO token (WAD precision)
-    fn get_lxoxno_derived_price(
+    fn lxoxno_derived_price(
         &self,
         configs: &OracleProvider<Self::Api>,
         cache: &mut Cache<Self>,
@@ -556,19 +565,19 @@ pub trait OracleModule:
         let ratio_dec = self.to_decimal(ratio, configs.asset_decimals);
 
         let main_price = if safe_price_check {
-            self.get_token_price(&configs.base_token_id, cache).price
+            self.token_price(&configs.base_token_id, cache).price_wad
         } else {
             // CONTEXT: When LXOXNO is used in LP tokens, we need aggregator pricing to avoid circular dependencies
             // Safe price check disabled to prevent infinite recursion in LP token pricing calculations
             // Aggregator provides direct XOXNO/USD price without TWAP validation
-            self.get_token_price_in_egld_from_aggregator(
+            self.token_price_in_egld_from_aggregator(
                 &configs.base_token_id,
                 configs.max_price_stale_seconds,
                 cache,
             )
         };
 
-        self.get_token_egld_value(&ratio_dec, &main_price)
+        self.token_egld_value(&ratio_dec, &main_price)
     }
 
     // --- Safe Price Functions ---
@@ -595,7 +604,7 @@ pub trait OracleModule:
     /// - **xExchange:** Safe price via dedicated view contract
     ///
     /// **Returns:** Token price in EGLD based on 15-minute TWAP (WAD precision)
-    fn get_safe_price(
+    fn safe_price(
         &self,
         configs: &OracleProvider<Self::Api>,
         token_id: &EgldOrEsdtTokenIdentifier,
@@ -647,13 +656,13 @@ pub trait OracleModule:
         };
 
         let new_token_id = EgldOrEsdtTokenIdentifier::esdt(result.token_identifier.clone());
-        let result_ticker = self.get_token_ticker(&new_token_id, cache);
+        let result_ticker = self.token_ticker(&new_token_id, cache);
         if result_ticker == cache.egld_ticker {
             self.to_decimal_wad(result.amount)
         } else {
-            let feed = self.get_token_price(&new_token_id, cache);
+            let feed = self.token_price(&new_token_id, cache);
             let amount_dec = self.to_decimal(result.amount, feed.asset_decimals);
-            self.get_token_egld_value(&amount_dec, &feed.price)
+            self.token_egld_value(&amount_dec, &feed.price_wad)
         }
     }
 
@@ -680,15 +689,15 @@ pub trait OracleModule:
     /// - **Source independence:** Aggregator and DEX provide different attack vectors
     ///
     /// **Returns:** Validated token price in EGLD (WAD precision)
-    fn get_normal_price_in_egld(
+    fn normal_price_in_egld(
         &self,
         configs: &OracleProvider<Self::Api>,
         original_market_token: &EgldOrEsdtTokenIdentifier,
         cache: &mut Cache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let aggregator_price =
-            self.get_aggregator_price_if_applicable(configs, original_market_token, cache);
-        let safe_price = self.get_safe_price_if_applicable(configs, original_market_token, cache);
+            self.aggregator_price_if_applicable(configs, original_market_token, cache);
+        let safe_price = self.safe_price_if_applicable(configs, original_market_token, cache);
         self.calculate_final_price(aggregator_price, safe_price, configs, cache)
     }
 
@@ -708,7 +717,7 @@ pub trait OracleModule:
     /// - Off-chain data requires independent validation
     ///
     /// **Returns:** OptionalValue<Price> - Some if aggregator enabled, None otherwise
-    fn get_aggregator_price_if_applicable(
+    fn aggregator_price_if_applicable(
         &self,
         configs: &OracleProvider<Self::Api>,
         original_market_token: &EgldOrEsdtTokenIdentifier,
@@ -717,7 +726,7 @@ pub trait OracleModule:
         if configs.pricing_method == PricingMethod::Aggregator
             || configs.pricing_method == PricingMethod::Mix
         {
-            OptionalValue::Some(self.get_token_price_in_egld_from_aggregator(
+            OptionalValue::Some(self.token_price_in_egld_from_aggregator(
                 original_market_token,
                 configs.max_price_stale_seconds,
                 cache,
@@ -743,7 +752,7 @@ pub trait OracleModule:
     /// - On-chain data provides manipulation resistance
     ///
     /// **Returns:** OptionalValue<Price> - Some if safe pricing enabled, None otherwise
-    fn get_safe_price_if_applicable(
+    fn safe_price_if_applicable(
         &self,
         configs: &OracleProvider<Self::Api>,
         original_market_token: &EgldOrEsdtTokenIdentifier,
@@ -752,7 +761,7 @@ pub trait OracleModule:
         if configs.pricing_method == PricingMethod::Safe
             || configs.pricing_method == PricingMethod::Mix
         {
-            OptionalValue::Some(self.get_safe_price(configs, original_market_token, cache))
+            OptionalValue::Some(self.safe_price(configs, original_market_token, cache))
         } else {
             OptionalValue::None
         }
@@ -783,26 +792,26 @@ pub trait OracleModule:
     /// **Returns:** Final validated price in EGLD (WAD precision)
     fn calculate_final_price(
         &self,
-        aggregator_price_opt: OptionalValue<ManagedDecimal<Self::Api, NumDecimals>>,
+        optional_aggregator_price: OptionalValue<ManagedDecimal<Self::Api, NumDecimals>>,
         safe_price_opt: OptionalValue<ManagedDecimal<Self::Api, NumDecimals>>,
         configs: &OracleProvider<Self::Api>,
         cache: &mut Cache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        match (aggregator_price_opt, safe_price_opt) {
+        match (optional_aggregator_price, safe_price_opt) {
             (OptionalValue::Some(aggregator_price), OptionalValue::Some(safe_price)) => {
                 let tolerances = &configs.tolerance;
                 if self.is_within_anchor(
                     &aggregator_price,
                     &safe_price,
-                    &tolerances.first_upper_ratio,
-                    &tolerances.first_lower_ratio,
+                    &tolerances.first_upper_ratio_bps,
+                    &tolerances.first_lower_ratio_bps,
                 ) {
                     safe_price
                 } else if self.is_within_anchor(
                     &aggregator_price,
                     &safe_price,
-                    &tolerances.last_upper_ratio,
-                    &tolerances.last_lower_ratio,
+                    &tolerances.last_upper_ratio_bps,
+                    &tolerances.last_lower_ratio_bps,
                 ) {
                     (aggregator_price + safe_price) / 2
                 } else {
@@ -844,18 +853,18 @@ pub trait OracleModule:
     /// ```
     ///
     /// **Returns:** Token price in EGLD per token unit (WAD precision)
-    fn get_token_price_in_egld_from_aggregator(
+    fn token_price_in_egld_from_aggregator(
         &self,
         token_id: &EgldOrEsdtTokenIdentifier,
         max_seconds_stale: u64,
         cache: &mut Cache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let ticker = self.get_token_ticker(token_id, cache);
+        let ticker = self.token_ticker(token_id, cache);
         let feed =
-            self.get_aggregator_price_feed(ticker, &cache.price_aggregator_sc, max_seconds_stale);
-        let token_usd_price = self.to_decimal_wad(feed.price);
+            self.aggregator_price_feed(ticker, &cache.price_aggregator_sc, max_seconds_stale);
+        let token_usd_price_wad = self.to_decimal_wad(feed.price);
         self.rescale_half_up(
-            &self.div_half_up(&token_usd_price, &cache.egld_usd_price, RAY_PRECISION),
+            &self.div_half_up(&token_usd_price_wad, &cache.egld_usd_price_wad, RAY_PRECISION),
             WAD_PRECISION,
         )
     }
@@ -883,16 +892,18 @@ pub trait OracleModule:
         cache: &mut Cache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         if configs.oracle_type == OracleType::Derived {
-            self.get_derived_price(configs, cache, false)
+            self.derived_price(configs, cache, false)
         } else {
-            self.get_token_price_in_egld_from_aggregator(
+            self.token_price_in_egld_from_aggregator(
                 token_id,
                 configs.max_price_stale_seconds,
                 cache,
             )
         }
     }
-    /// Helper function to check price tolerance against both bounds
+    /// Validates price deviation between two sources against configured tolerance bounds.
+    /// Checks both first (strict) and second (relaxed) tolerance thresholds.
+    /// Returns tuple (within_first_tolerance, within_second_tolerance) for decision logic.
     fn check_price_tolerance(
         &self,
         price1: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -953,11 +964,11 @@ pub trait OracleModule:
         upper_bound_ratio: &ManagedDecimal<Self::Api, NumDecimals>,
         lower_bound_ratio: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> bool {
-        let anchor_ratio = self.rescale_half_up(
+        let anchor_ratio_bps = self.rescale_half_up(
             &self.div_half_up(safe_price, aggregator_price, RAY_PRECISION),
             BPS_PRECISION,
         );
-        &anchor_ratio <= upper_bound_ratio && &anchor_ratio >= lower_bound_ratio
+        &anchor_ratio_bps <= upper_bound_ratio && &anchor_ratio_bps >= lower_bound_ratio
     }
 
     /// Retrieves token ticker with special handling for EGLD and WEGLD equivalence.
@@ -976,7 +987,7 @@ pub trait OracleModule:
     /// - **Cache usage:** Leverages cached ticker for efficiency
     ///
     /// **Returns:** Normalized token ticker for price feed queries
-    fn get_token_ticker(
+    fn token_ticker(
         &self,
         token_id: &EgldOrEsdtTokenIdentifier,
         cache: &mut Cache<Self>,
@@ -1026,7 +1037,7 @@ pub trait OracleModule:
     /// - Provides fair value regardless of pool balance manipulation
     ///
     /// **Returns:** LP token price in EGLD per LP token (WAD precision)
-    fn get_lp_price(
+    fn lp_price(
         &self,
         configs: &OracleProvider<Self::Api>,
         reserve_first: &ManagedDecimal<Self::Api, NumDecimals>, // Amount of Token A (scaled by WAD)
@@ -1047,27 +1058,27 @@ pub trait OracleModule:
         // STEP 1: Calculate constant product K = Reserve_A × Reserve_B
         // Mathematical foundation of the Arda LP pricing formula
         // Result precision: WAD (maintains 18 decimal precision)
-        let constant_product = self.mul_half_up(reserve_first, reserve_second, WAD_PRECISION);
+        let constant_product_wad = self.mul_half_up(reserve_first, reserve_second, WAD_PRECISION);
 
         // STEP 2: Calculate price ratios for geometric mean calculation
         // These ratios enable the sqrt transformations that make Arda formula manipulation-resistant
-        let price_ratio_x = self.div_half_up(price_b, price_a, WAD_PRECISION); // Price_B / Price_A (unitless, WAD)
-        let price_ratio_y = self.div_half_up(price_a, price_b, WAD_PRECISION); // Price_A / Price_B (unitless, WAD)
+        let price_ratio_x_wad = self.div_half_up(price_b, price_a, WAD_PRECISION); // Price_B / Price_A (unitless, WAD)
+        let price_ratio_y_wad = self.div_half_up(price_a, price_b, WAD_PRECISION); // Price_A / Price_B (unitless, WAD)
 
         // STEP 3: Prepare values for square root operations in Arda formula
         // These represent K × price_ratio terms used in the geometric mean calculation
         // Mathematical basis: sqrt(Reserve_A × Reserve_B × Price_ratio)
-        let inner_x = self.mul_half_up(&constant_product, &price_ratio_x, WAD_PRECISION);
-        let inner_y = self.mul_half_up(&constant_product, &price_ratio_y, WAD_PRECISION);
+        let inner_x_wad = self.mul_half_up(&constant_product_wad, &price_ratio_x_wad, WAD_PRECISION);
+        let inner_y_wad = self.mul_half_up(&constant_product_wad, &price_ratio_y_wad, WAD_PRECISION);
 
         // STEP 4a: Calculate modified reserve X' using geometric mean approach
         // X' = sqrt(K × Price_B/Price_A) where K is the constant product
         // Step 4a.1: Extract square root from WAD-precision value
-        let sqrt_raw_x = inner_x.into_raw_units().sqrt(); // sqrt(K × ratio * 10^18) = result * 10^9
+        let sqrt_raw_x_half_wad = inner_x_wad.into_raw_units().sqrt(); // sqrt(K × ratio * 10^18) = result * 10^9
 
         // Step 4a.2: Convert sqrt result to ManagedDecimal with half-WAD precision (9 decimals)
         // Square root of WAD value naturally has 9 decimals: sqrt(10^18) = 10^9
-        let sqrt_decimal_temp_x = self.to_decimal(sqrt_raw_x, WAD_HALF_PRECISION);
+        let sqrt_decimal_temp_x = self.to_decimal(sqrt_raw_x_half_wad, WAD_HALF_PRECISION);
 
         // Step 4a.3: Create scaling factor to restore full WAD precision
         // Need to multiply by 10^9 to get from 9 decimals back to 18 decimals
@@ -1080,8 +1091,8 @@ pub trait OracleModule:
 
         // STEP 4b: Calculate modified reserve Y' using same geometric mean approach
         // Y' = sqrt(K × Price_A/Price_B) - symmetric calculation to X'
-        let sqrt_raw_y = inner_y.into_raw_units().sqrt();
-        let sqrt_decimal_temp_y = self.to_decimal(sqrt_raw_y, WAD_HALF_PRECISION);
+        let sqrt_raw_y_half_wad = inner_y_wad.into_raw_units().sqrt();
+        let sqrt_decimal_temp_y = self.to_decimal(sqrt_raw_y_half_wad, WAD_HALF_PRECISION);
         // Step 4b.1-4: Apply same sqrt and scaling operations as X' calculation
         // Reuse scaling factor for efficiency and consistency
         let y_prime = self.mul_half_up(&sqrt_decimal_temp_y, &sqrt_wad_factor, WAD_PRECISION); // Y' in WAD precision
@@ -1092,7 +1103,7 @@ pub trait OracleModule:
         // Value_B = Y' × Price_B (modified reserve B valued at current price)
         let value_b = self.mul_half_up(&y_prime, price_b, WAD_PRECISION);
 
-        let lp_total_value_egld = value_a + value_b; // Total LP value in EGLD (WAD precision)
+        let lp_total_value_egld_wad = value_a + value_b; // Total LP value in EGLD (WAD precision)
 
         // STEP 6: Calculate final LP token price
         // Convert total_supply to WAD precision for consistent division
@@ -1100,7 +1111,7 @@ pub trait OracleModule:
         // Final calculation: LP_Price = Total_Value ÷ Total_Supply
         // Result: Price per LP token in EGLD (WAD precision)
         self.rescale_half_up(
-            &self.div_half_up(&lp_total_value_egld, &total_supply_wad, WAD_PRECISION),
+            &self.div_half_up(&lp_total_value_egld_wad, &total_supply_wad, WAD_PRECISION),
             WAD_PRECISION,
         )
     }
@@ -1129,7 +1140,7 @@ pub trait OracleModule:
     /// - Emergency situations may require immediate price updates
     ///
     /// **Returns:** PriceFeed with validated timestamp, price, and metadata
-    fn get_aggregator_price_feed(
+    fn aggregator_price_feed(
         &self,
         from_ticker: ManagedBuffer,
         price_aggregator_sc: &ManagedAddress,
@@ -1214,7 +1225,7 @@ pub trait OracleModule:
     /// - **Contract trust:** Relies on xExchange pair contract integrity
     ///
     /// **Returns:** (Reserve_Token0, Reserve_Token1, Total_LP_Supply)
-    fn get_reserves(&self, oracle_address: &ManagedAddress) -> (BigUint, BigUint, BigUint) {
+    fn reserves(&self, oracle_address: &ManagedAddress) -> (BigUint, BigUint, BigUint) {
         self.tx()
             .to(oracle_address)
             .typed(proxy_xexchange_pair::PairProxy)
@@ -1242,7 +1253,7 @@ pub trait OracleModule:
     /// - Normal tokens compare aggregator vs safe price feeds
     ///
     /// **Usage:** Primarily for price monitoring, deviation alerts, and operational dashboards
-    fn get_price_components(
+    fn price_components(
         &self,
         token_id: &EgldOrEsdtTokenIdentifier<Self::Api>,
         cache: &mut Cache<Self>,
@@ -1253,7 +1264,7 @@ pub trait OracleModule:
         bool,
         bool,
     ) {
-        let ticker = self.get_token_ticker(token_id, cache);
+        let ticker = self.token_ticker(token_id, cache);
         if ticker == cache.egld_ticker {
             return (
                 None,
@@ -1271,9 +1282,9 @@ pub trait OracleModule:
         match configs.oracle_type {
             OracleType::Lp => {
                 // Reuse existing LP price functions
-                let (reserve_first, reserve_second, total_supply) = self.get_lp_reserves(&configs, cache);
+                let (reserve_first, reserve_second, total_supply) = self.lp_reserves(&configs, cache);
                 
-                let safe_lp_price = self.get_lp_on_chain_price(
+                let safe_lp_price = self.lp_on_chain_price(
                     &configs,
                     &reserve_first,
                     &reserve_second,
@@ -1281,7 +1292,7 @@ pub trait OracleModule:
                     cache,
                 );
                 
-                let off_chain_lp_price = self.get_off_chain_lp_price(
+                let off_chain_lp_price = self.off_chain_lp_price(
                     &configs,
                     &reserve_first,
                     &reserve_second,
@@ -1292,13 +1303,13 @@ pub trait OracleModule:
                 let (within_first, within_second) = self.check_price_tolerance(
                     &safe_lp_price,
                     &off_chain_lp_price,
-                    &configs.tolerance.first_upper_ratio,
-                    &configs.tolerance.first_lower_ratio,
-                    &configs.tolerance.last_upper_ratio,
-                    &configs.tolerance.last_lower_ratio,
+                    &configs.tolerance.first_upper_ratio_bps,
+                    &configs.tolerance.first_lower_ratio_bps,
+                    &configs.tolerance.last_upper_ratio_bps,
+                    &configs.tolerance.last_lower_ratio_bps,
                 );
                 
-                let final_price = self.get_safe_lp_price(&configs, cache);
+                let final_price = self.safe_lp_price(&configs, cache);
                 
                 (
                     Some(safe_lp_price),
@@ -1309,8 +1320,8 @@ pub trait OracleModule:
                 )
             }
             OracleType::Normal => {
-                let aggregator_price = self.get_aggregator_price_if_applicable(&configs, token_id, cache);
-                let safe_price = self.get_safe_price_if_applicable(&configs, token_id, cache);
+                let aggregator_price = self.aggregator_price_if_applicable(&configs, token_id, cache);
+                let safe_price = self.safe_price_if_applicable(&configs, token_id, cache);
                 let final_price = self.calculate_final_price(aggregator_price.clone(), safe_price.clone(), &configs, cache);
                 
                 let (within_first, within_second) = match (&aggregator_price, &safe_price) {
@@ -1318,10 +1329,10 @@ pub trait OracleModule:
                         self.check_price_tolerance(
                             agg,
                             safe,
-                            &configs.tolerance.first_upper_ratio,
-                            &configs.tolerance.first_lower_ratio,
-                            &configs.tolerance.last_upper_ratio,
-                            &configs.tolerance.last_lower_ratio,
+                            &configs.tolerance.first_upper_ratio_bps,
+                            &configs.tolerance.first_lower_ratio_bps,
+                            &configs.tolerance.last_upper_ratio_bps,
+                            &configs.tolerance.last_lower_ratio_bps,
                         )
                     }
                     _ => (true, true), // Single source, no deviation
@@ -1332,21 +1343,21 @@ pub trait OracleModule:
                     OptionalValue::Some(price) => Some(price),
                     OptionalValue::None => None,
                 };
-                let aggregator_price_opt = match aggregator_price {
+                let optional_aggregator_price = match aggregator_price {
                     OptionalValue::Some(price) => Some(price),
                     OptionalValue::None => None,
                 };
                 
-                (safe_price_opt, aggregator_price_opt, final_price, within_first, within_second)
+                (safe_price_opt, optional_aggregator_price, final_price, within_first, within_second)
             }
             OracleType::Derived => {
-                let price = self.get_derived_price(&configs, cache, true);
+                let price = self.derived_price(&configs, cache, true);
                 
                 // SECURITY FIX: Check underlying asset tolerance for LXOXNO
                 let (within_first, within_second) = match configs.exchange_source {
                     ExchangeSource::LXOXNO => {
                         // Recursively check XOXNO tolerance status
-                        let (_, _, _, first, second) = self.get_price_components(&configs.base_token_id, cache);
+                        let (_, _, _, first, second) = self.price_components(&configs.base_token_id, cache);
                         (first, second)
                     },
                     _ => (true, true), // XEGLD and LEGLD only depend on exchange rate contracts

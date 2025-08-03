@@ -59,13 +59,13 @@ pub trait ViewsModule:
             seized_collaterals,
             protocol_fees,
             refunds,
-            max_egld_payment: self.rescale_half_up(&max_egld_payment_ray, WAD_PRECISION),
-            bonus_rate: self.rescale_half_up(&bonus_rate_ray, BPS_PRECISION),
+            max_egld_payment_wad: self.rescale_half_up(&max_egld_payment_ray, WAD_PRECISION),
+            bonus_rate_bps: self.rescale_half_up(&bonus_rate_ray, BPS_PRECISION),
         }
     }
 
     #[view(getAllMarketIndexes)]
-    fn get_all_market_indexes(
+    fn all_market_indexes(
         &self,
         assets: MultiValueEncoded<EgldOrEsdtTokenIdentifier>,
     ) -> ManagedVec<MarketIndexView<Self::Api>> {
@@ -80,31 +80,31 @@ pub trait ViewsModule:
 
             // Get price components including safe and aggregator prices
             let (safe_price, aggregator_price, final_price, within_first, within_second) =
-                self.get_price_components(&asset, &mut cache);
+                self.price_components(&asset, &mut cache);
 
-            let usd_price = self.get_egld_usd_value(&final_price, &cache.egld_usd_price);
+            let usd_price = self.egld_usd_value(&final_price, &cache.egld_usd_price_wad);
 
             // Calculate USD prices for safe and aggregator prices if they exist
             let safe_price_usd = safe_price
                 .as_ref()
-                .map(|price| self.get_egld_usd_value(price, &cache.egld_usd_price))
+                .map(|price| self.egld_usd_value(price, &cache.egld_usd_price_wad))
                 .unwrap_or(usd_price.clone());
 
             let aggregator_price_usd = aggregator_price
                 .as_ref()
-                .map(|price| self.get_egld_usd_value(price, &cache.egld_usd_price))
+                .map(|price| self.egld_usd_value(price, &cache.egld_usd_price_wad))
                 .unwrap_or(usd_price.clone());
 
             markets.push(MarketIndexView {
                 asset_id: asset,
-                supply_index: indexes.supply_index,
-                borrow_index: indexes.borrow_index,
-                egld_price: final_price.clone(),
-                usd_price,
-                safe_price_egld: safe_price.unwrap_or(final_price.clone()),
-                safe_price_usd,
-                aggregator_price_egld: aggregator_price.unwrap_or(final_price),
-                aggregator_price_usd,
+                supply_index_ray: indexes.supply_index_ray,
+                borrow_index_ray: indexes.borrow_index_ray,
+                egld_price_wad: final_price.clone(),
+                usd_price_wad: usd_price,
+                safe_price_egld_wad: safe_price.unwrap_or(final_price.clone()),
+                safe_price_usd_wad: safe_price_usd,
+                aggregator_price_egld_wad: aggregator_price.unwrap_or(final_price),
+                aggregator_price_usd_wad: aggregator_price_usd,
                 within_first_tolerance: within_first,
                 within_second_tolerance: within_second,
             });
@@ -122,7 +122,7 @@ pub trait ViewsModule:
     /// # Returns
     /// - Vector of `AssetExtendedConfigView` structs for each asset.
     #[view(getAllMarkets)]
-    fn get_all_markets(
+    fn all_markets(
         &self,
         assets: MultiValueEncoded<EgldOrEsdtTokenIdentifier>,
     ) -> ManagedVec<AssetExtendedConfigView<Self::Api>> {
@@ -130,14 +130,14 @@ pub trait ViewsModule:
         let mut markets = ManagedVec::new();
         for asset in assets {
             let pool_address = self.pools_map(&asset).get();
-            let feed = self.get_token_price(&asset, &mut cache);
-            let usd = self.get_egld_usd_value(&feed.price, &cache.egld_usd_price);
+            let feed = self.token_price(&asset, &mut cache);
+            let usd = self.egld_usd_value(&feed.price_wad, &cache.egld_usd_price_wad);
 
             markets.push(AssetExtendedConfigView {
                 asset_id: asset,
                 market_contract_address: pool_address,
-                price_in_egld: feed.price,
-                price_in_usd: usd,
+                price_in_egld_wad: feed.price_wad,
+                price_in_usd_wad: usd,
             });
         }
         markets
@@ -153,7 +153,7 @@ pub trait ViewsModule:
     /// - `bool`: `true` if the position can be liquidated.
     #[view(canBeLiquidated)]
     fn can_be_liquidated(&self, account_nonce: u64) -> bool {
-        let health_factor = self.get_health_factor(account_nonce);
+        let health_factor = self.health_factor(account_nonce);
         health_factor < self.ray()
     }
 
@@ -166,7 +166,7 @@ pub trait ViewsModule:
     /// # Returns
     /// - Health factor as a `ManagedDecimal` in WAD precision.
     #[view(getHealthFactor)]
-    fn get_health_factor(&self, account_nonce: u64) -> ManagedDecimal<Self::Api, NumDecimals> {
+    fn health_factor(&self, account_nonce: u64) -> ManagedDecimal<Self::Api, NumDecimals> {
         let mut cache = Cache::new(self);
         let deposit_positions = self.positions(account_nonce, AccountPositionType::Deposit);
 
@@ -196,18 +196,18 @@ pub trait ViewsModule:
     /// # Panics
     /// - If the token is not in the account’s collateral.
     #[view(getCollateralAmountForToken)]
-    fn get_collateral_amount_for_token(
+    fn collateral_amount_for_token(
         &self,
         account_nonce: u64,
         token_id: &EgldOrEsdtTokenIdentifier,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let mut cache = Cache::new(self);
-        let feed = self.get_token_price(token_id, &mut cache);
+        let feed = self.token_price(token_id, &mut cache);
         match self
             .positions(account_nonce, AccountPositionType::Deposit)
             .get(token_id)
         {
-            Some(dp) => self.get_total_amount(&dp, &feed, &mut cache),
+            Some(dp) => self.total_amount(&dp, &feed, &mut cache),
             None => sc_panic!("Token not existing in the account {}", token_id),
         }
     }
@@ -225,19 +225,19 @@ pub trait ViewsModule:
     /// # Panics
     /// - If the token is not in the account’s borrows.
     #[view(getBorrowAmountForToken)]
-    fn get_borrow_amount_for_token(
+    fn borrow_amount_for_token(
         &self,
         account_nonce: u64,
         token_id: &EgldOrEsdtTokenIdentifier,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let mut cache = Cache::new(self);
         cache.allow_unsafe_price = false;
-        let feed = self.get_token_price(token_id, &mut cache);
+        let feed = self.token_price(token_id, &mut cache);
         match self
             .positions(account_nonce, AccountPositionType::Borrow)
             .get(token_id)
         {
-            Some(bp) => self.get_total_amount(&bp, &feed, &mut cache),
+            Some(bp) => self.total_amount(&bp, &feed, &mut cache),
             None => sc_panic!("Token not existing in the account {}", token_id),
         }
     }
@@ -251,7 +251,7 @@ pub trait ViewsModule:
     /// # Returns
     /// - Total borrow value in EGLD as a `ManagedDecimal`.
     #[view(getTotalBorrowInEgld)]
-    fn get_total_borrow_in_egld(
+    fn total_borrow_in_egld(
         &self,
         account_nonce: u64,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
@@ -274,7 +274,7 @@ pub trait ViewsModule:
     /// # Returns
     /// - Total collateral value in EGLD as a `ManagedDecimal`.
     #[view(getTotalCollateralInEgld)]
-    fn get_total_collateral_in_egld(
+    fn total_collateral_in_egld(
         &self,
         account_nonce: u64,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
@@ -283,10 +283,10 @@ pub trait ViewsModule:
         let mut cache = Cache::new(self);
         cache.allow_unsafe_price = false;
 
-        deposit_positions.values().fold(self.wad_zero(), |acc, dp| {
-            let feed = self.get_token_price(&dp.asset_id, &mut cache);
-            let amount = self.get_total_amount_ray(&dp, &mut cache);
-            acc + self.get_token_egld_value(&amount, &feed.price)
+        deposit_positions.values().fold(self.wad_zero(), |accumulator, dp| {
+            let feed = self.token_price(&dp.asset_id, &mut cache);
+            let amount = self.total_amount_ray(&dp, &mut cache);
+            accumulator + self.token_egld_value(&amount, &feed.price_wad)
         })
     }
 
@@ -299,7 +299,7 @@ pub trait ViewsModule:
     /// # Returns
     /// - Liquidation collateral in EGLD as a `ManagedDecimal`.
     #[view(getLiquidationCollateralAvailable)]
-    fn get_liquidation_collateral_available(
+    fn liquidation_collateral_available(
         &self,
         account_nonce: u64,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
@@ -322,7 +322,7 @@ pub trait ViewsModule:
     /// # Returns
     /// - LTV-weighted collateral in EGLD as a `ManagedDecimal`.
     #[view(getLtvCollateralInEgld)]
-    fn get_ltv_collateral_in_egld(
+    fn ltv_collateral_in_egld(
         &self,
         account_nonce: u64,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
@@ -345,14 +345,14 @@ pub trait ViewsModule:
     /// # Returns
     /// - USD price of the token as a `ManagedDecimal`.
     #[view(getTokenPriceUSD)]
-    fn get_usd_price(
+    fn usd_price(
         &self,
         token_id: &EgldOrEsdtTokenIdentifier,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let mut cache = Cache::new(self);
-        let data = self.get_token_price(token_id, &mut cache);
+        let data = self.token_price(token_id, &mut cache);
 
-        self.get_egld_usd_value(&data.price, &cache.egld_usd_price)
+        self.egld_usd_value(&data.price_wad, &cache.egld_usd_price_wad)
     }
 
     /// Retrieves the EGLD price of a token using oracle data.
@@ -364,13 +364,13 @@ pub trait ViewsModule:
     /// # Returns
     /// - EGLD price of the token as a `ManagedDecimal`.
     #[view(getTokenPriceEGLD)]
-    fn get_egld_price(
+    fn egld_price(
         &self,
         token_id: &EgldOrEsdtTokenIdentifier,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let mut cache = Cache::new(self);
-        let data = self.get_token_price(token_id, &mut cache);
+        let data = self.token_price(token_id, &mut cache);
 
-        data.price
+        data.price_wad
     }
 }

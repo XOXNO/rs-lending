@@ -43,37 +43,9 @@ where
     From: TxFrom<Env>,
     Gas: TxGas<Env>,
 {
-    /// Initializes the liquidity pool for a specific asset. 
-    ///  
-    /// **Purpose**: Sets up the initial state of the liquidity pool, including the asset, interest rate parameters, 
-    /// supply and borrow indexes, and other key variables, preparing it for lending operations. 
-    ///  
-    /// **Process**: 
-    /// 1. Stores the pool's asset identifier. 
-    /// 2. Configures interest rate parameters (`max_borrow_rate`, `base_borrow_rate`, `slope1`, `slope2`, `slope3`, `mid_utilization`, `optimal_utilization`, `reserve_factor`) 
-    ///    by converting `BigUint` inputs to `ManagedDecimal` with appropriate scaling (RAY for rates, BPS for reserve factor). 
-    /// 3. Initializes the borrow and supply indexes to `RAY` (representing 1.0 in the system's precision). 
-    /// 4. Sets initial values for supplied, reserves, borrowed, and revenue to zero, using the asset's decimal precision. 
-    /// 5. Records the current blockchain timestamp converted to milliseconds as the last update time. 
-    ///  
-    /// ### Parameters 
-    /// - `asset`: The asset identifier (`EgldOrEsdtTokenIdentifier`) for the pool. 
-    /// - `max_borrow_rate`: Maximum borrow rate (`BigUint`), scaled to RAY precision. 
-    /// - `base_borrow_rate`: Base borrow rate (`BigUint`), scaled to RAY precision. 
-    /// - `slope1`: Slope before optimal utilization (`BigUint`), scaled to RAY precision. 
-    /// - `slope2`: Slope after optimal utilization (`BigUint`), scaled to RAY precision. 
-    /// - `slope3`: Slope for high utilization (`BigUint`), scaled to RAY precision. 
-    /// - `mid_utilization`: Midpoint utilization ratio (`BigUint`), scaled to RAY precision. 
-    /// - `optimal_utilization`: Optimal utilization ratio (`BigUint`), scaled to RAY precision. 
-    /// - `reserve_factor`: Fraction of interest reserved as protocol fee (`BigUint`), scaled to BPS precision. 
-    /// - `asset_decimals`: Number of asset_decimals for the asset (`usize`). 
-    ///  
-    /// ### Returns 
-    /// - Nothing (void function). 
-    ///  
-    /// **Security Considerations**: 
-    /// - Ensures all critical state variables (asset, parameters, indexes, etc.) are initialized to prevent uninitialized storage vulnerabilities. 
-    /// - Uses precise decimal conversions (`to_decimal_ray` and `to_decimal_bps`) to maintain calculation accuracy. 
+    /// Initializes a new liquidity pool with asset configuration and interest rate parameters. 
+    /// Sets up initial indexes (RAY), validates rate parameters, and records pool asset details. 
+    /// All supplied/borrowed/revenue amounts start at zero. 
     pub fn init<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
@@ -124,6 +96,8 @@ where
     To: TxTo<Env>,
     Gas: TxGas<Env>,
 {
+    /// Handles contract upgrade with empty implementation. 
+    /// Allows code updates without state migration requirements. 
     pub fn upgrade(
         self,
     ) -> TxTypedUpgrade<Env, From, To, NotPayable, Gas, ()> {
@@ -143,33 +117,9 @@ where
     To: TxTo<Env>,
     Gas: TxGas<Env>,
 {
-    /// Upgrades the liquidity pool parameters. 
-    ///  
-    /// **Purpose**: Updates the pool's interest rate parameters and reserve factor to adapt to changing market conditions 
-    /// or protocol requirements, ensuring flexibility in pool management. 
-    ///  
-    /// **Process**: 
-    /// 1. Emits an event (`market_params_event`) with the new parameters for transparency and auditability. 
-    /// 2. Updates the existing pool parameters by converting `BigUint` inputs to `ManagedDecimal` with appropriate scaling. 
-    ///  
-    /// ### Parameters 
-    /// - `max_borrow_rate`: New maximum borrow rate (`BigUint`), scaled to RAY precision. 
-    /// - `base_borrow_rate`: New base borrow rate (`BigUint`), scaled to RAY precision. 
-    /// - `slope1`: New slope before optimal utilization (`BigUint`), scaled to RAY precision. 
-    /// - `slope2`: New slope after optimal utilization (`BigUint`), scaled to RAY precision. 
-    /// - `slope3`: New slope for high utilization (`BigUint`), scaled to RAY precision. 
-    /// - `mid_utilization`: New midpoint utilization ratio (`BigUint`), scaled to RAY precision. 
-    /// - `optimal_utilization`: New optimal utilization ratio (`BigUint`), scaled to RAY precision. 
-    /// - `reserve_factor`: New fraction of interest reserved as protocol fee (`BigUint`), scaled to BPS precision. 
-    /// - `asset_price`: New asset price (`ManagedDecimal<Self::Api, NumDecimals>`). 
-    ///  
-    /// ### Returns 
-    /// - Nothing (void function). 
-    ///  
-    /// **Security Considerations**: 
-    /// - Restricted to the contract owner (via the `#[upgrade]` attribute) to prevent unauthorized modifications. 
-    /// - Uses precise decimal conversions (`to_decimal_ray` and `to_decimal_bps`) to ensure consistency in calculations. 
-    /// - Logs changes via an event, enabling tracking and verification of updates. 
+    /// Updates pool interest rate parameters and reserve factor. 
+    /// Validates new parameters and emits event for transparency. 
+    /// Only callable by owner. 
     pub fn update_params<
         Arg0: ProxyArg<BigUint<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
@@ -257,12 +207,12 @@ where
     ///  
     /// # Returns 
     /// - `MarketParams<Self::Api>`: The market configuration. 
-    pub fn params(
+    pub fn parameters(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, common_structs::MarketParams<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getParams")
+            .raw_call("getParameters")
             .original_result()
     }
 
@@ -309,19 +259,9 @@ where
             .original_result()
     }
 
-    /// Updates the market's borrow and supply indexes based on elapsed time since the last update. 
-    ///  
-    /// **Purpose**: Ensures the pool's interest calculations reflect the latest state by computing an interest factor based on time elapsed and applying it to the borrow and supply indexes. 
-    ///  
-    /// **Process**: 
-    /// 1. Creates a `Cache` to snapshot the current pool state. 
-    /// 2. Calls `global_sync` to update the borrow and supply indexes. 
-    /// 3. Emits a market state event to log the updated state. 
-    ///  
-    /// # Arguments 
-    /// - `price`: The current price of the pool asset (`ManagedDecimal<Self::Api, NumDecimals>`). 
-    ///  
-    /// **Security Considerations**: Restricted to the owner (via controller contract) to ensure controlled updates. 
+    /// Updates borrow and supply indexes based on elapsed time since last update. 
+    /// Synchronizes global pool state and emits market update event. 
+    /// Returns current market indexes. 
     pub fn update_indexes<
         Arg0: ProxyArg<ManagedDecimal<Env::Api, usize>>,
     >(
@@ -335,25 +275,9 @@ where
             .original_result()
     }
 
-    /// Supplies assets to the lending pool, increasing reserves and the supplier's position. 
-    ///  
-    /// **Purpose**: Allows users to deposit assets into the pool to earn interest, increasing available liquidity. 
-    ///  
-    /// **Process**: 
-    /// 1. Retrieves and validates the payment amount using `get_payment_amount`. 
-    /// 2. Updates global indexes and the supplier's position with accrued interest. 
-    /// 3. Adds the supplied amount to the position, reserves, and total supplied. 
-    /// 4. Emits a market state event. 
-    ///  
-    /// # Arguments 
-    /// - `position`: The supplier's current position (`AccountPosition<Self::Api>`). 
-    /// - `price`: The asset price for market update (`ManagedDecimal<Self::Api, NumDecimals>`). 
-    ///  
-    /// # Returns 
-    /// - `AccountPosition<Self::Api>`: The updated position with the new supply amount. 
-    ///  
-    /// **Security Considerations**: Validates the asset type via `get_payment_amount` to ensure only the pool's asset is supplied. 
-    /// Can only be called by the owner (via controller contract). 
+    /// Processes asset deposit, adding to reserves and updating supplier position. 
+    /// Validates payment asset and converts amount to scaled tokens. 
+    /// Returns updated position with accrued interest. 
     pub fn supply<
         Arg0: ProxyArg<common_structs::AccountPosition<Env::Api>>,
         Arg1: ProxyArg<ManagedDecimal<Env::Api, usize>>,
@@ -369,28 +293,9 @@ where
             .original_result()
     }
 
-    /// Borrows assets from the pool against a user's collateral. 
-    ///  
-    /// **Purpose**: Enables users to borrow assets, deducting from reserves and increasing their debt. 
-    ///  
-    /// **Process**: 
-    /// 1. Updates global indexes and the borrower's position with accrued interest. 
-    /// 2. Verifies sufficient reserves are available. 
-    /// 3. Increases the borrower's debt and total borrowed, then deducts from reserves. 
-    /// 4. Transfers the borrowed amount to the caller. 
-    /// 5. Emits a market state event. 
-    ///  
-    /// # Arguments 
-    /// - `initial_caller`: The borrower's address (`ManagedAddress`). 
-    /// - `amount`: The amount to borrow (`ManagedDecimal<Self::Api, NumDecimals>`). 
-    /// - `position`: The borrower's current position (`AccountPosition<Self::Api>`). 
-    /// - `price`: The asset price for market update (`ManagedDecimal<Self::Api, NumDecimals>`). 
-    ///  
-    /// # Returns 
-    /// - `AccountPosition<Self::Api>`: The updated borrow position. 
-    ///  
-    /// **Security Considerations**: Uses `require!` to ensure sufficient liquidity, preventing over-borrowing. 
-    /// Can only be called by the owner (via controller contract). 
+    /// Borrows assets against collateral, transferring funds to caller. 
+    /// Validates sufficient liquidity and updates debt position. 
+    /// Returns updated borrow position. 
     pub fn borrow<
         Arg0: ProxyArg<ManagedAddress<Env::Api>>,
         Arg1: ProxyArg<ManagedDecimal<Env::Api, usize>>,
@@ -413,56 +318,9 @@ where
             .original_result()
     }
 
-    /// Withdraws assets from the pool, supporting both normal withdrawals and liquidations. 
-    ///  
-    /// **Purpose**: Enables suppliers to redeem their scaled tokens for underlying assets, 
-    /// realizing accumulated interest, or facilitates liquidation of collateral. 
-    ///  
-    /// **Mathematical Process**: 
-    /// 1. **Global Sync**: Update indexes to include latest interest 
-    /// 2. **Current Value Calculation**: `current_value = scaled_position * supply_index` 
-    /// 3. **Withdrawal Amount Determination**: 
-    ///    - Full withdrawal: `amount = min(requested, current_value)` 
-    ///    - Partial withdrawal: `amount = requested` 
-    /// 4. **Scaling Conversion**: `scaled_to_burn = amount / supply_index` 
-    /// 5. **Fee Processing** (if liquidation): `net_amount = gross_amount - liquidation_fee` 
-    /// 6. **State Updates**: 
-    ///    - `position.scaled_amount -= scaled_to_burn` 
-    ///    - `total_supplied -= scaled_to_burn` 
-    ///  
-    /// **Interest Realization Formula**: 
-    /// ``` 
-    /// // Interest earned since supply: 
-    /// interest = scaled_tokens * (current_supply_index - supply_index_at_deposit) 
-    /// total_withdrawal = principal + interest - fees 
-    /// ``` 
-    ///  
-    /// **Liquidation Fee Mechanism**: 
-    /// During liquidations, a protocol fee may be deducted: 
-    /// ``` 
-    /// net_transfer = gross_withdrawal - liquidation_fee 
-    /// protocol_revenue += liquidation_fee (scaled) 
-    /// ``` 
-    ///  
-    /// **Reserve Validation**: 
-    /// Ensures sufficient contract balance exists for the withdrawal. 
-    ///  
-    /// # Arguments 
-    /// - `initial_caller`: Recipient of withdrawn assets 
-    /// - `amount`: Requested withdrawal amount 
-    /// - `position`: User's current supply position 
-    /// - `is_liquidation`: Flag for liquidation-specific processing 
-    /// - `protocol_fee_opt`: Optional liquidation fee to deduct 
-    /// - `price`: Asset price for event logging 
-    ///  
-    /// # Returns 
-    /// - Updated position with reduced scaled supply 
-    ///  
-    /// **Security Considerations**: 
-    /// - Amount capping prevents over-withdrawal 
-    /// - Reserve validation ensures liquidity availability 
-    /// - Fee validation prevents insufficient withdrawal amounts 
-    /// - Scaled burning maintains pool integrity 
+    /// Withdraws assets from supply position, handling liquidation fees if applicable. 
+    /// Supports full/partial withdrawals and burns corresponding scaled tokens. 
+    /// Returns updated position with reduced supply. 
     pub fn withdraw<
         Arg0: ProxyArg<ManagedAddress<Env::Api>>,
         Arg1: ProxyArg<ManagedDecimal<Env::Api, usize>>,
@@ -491,60 +349,9 @@ where
             .original_result()
     }
 
-    /// Processes a repayment for a borrow position, handling full or partial repayments with overpayment refunds. 
-    ///  
-    /// **Purpose**: Reduces borrower debt by burning scaled debt tokens proportional to the 
-    /// payment amount, automatically handling interest and refunding overpayments. 
-    ///  
-    /// **Mathematical Process**: 
-    /// 1. **Global Sync**: Update borrow index to accrue latest interest 
-    /// 2. **Current Debt Calculation**: `current_debt = scaled_debt * current_borrow_index` 
-    /// 3. **Repayment Allocation**: 
-    ///    - If `payment >= current_debt`: Full repayment + overpayment 
-    ///    - If `payment < current_debt`: Partial repayment 
-    /// 4. **Scaling Conversion**: 
-    ///    - Full: `scaled_to_burn = entire_scaled_position` 
-    ///    - Partial: `scaled_to_burn = payment / current_borrow_index` 
-    /// 5. **State Updates**: 
-    ///    - `position.scaled_amount -= scaled_to_burn` 
-    ///    - `total_borrowed -= scaled_to_burn` 
-    /// 6. **Overpayment Handling**: `refund = max(0, payment - current_debt)` 
-    ///  
-    /// **Debt Reduction Formula**: 
-    /// ``` 
-    /// // Current total debt including interest: 
-    /// total_debt = scaled_debt * current_borrow_index 
-    ///  
-    /// // Proportion of debt being repaid: 
-    /// repayment_ratio = min(1, payment_amount / total_debt) 
-    /// scaled_to_burn = scaled_debt * repayment_ratio 
-    /// ``` 
-    ///  
-    /// **Interest Payment Mechanism**: 
-    /// Interest is automatically included in the debt calculation through 
-    /// the borrow index, so borrowers pay accrued interest proportionally. 
-    ///  
-    /// **Overpayment Protection**: 
-    /// Excess payments are automatically refunded to prevent loss of funds: 
-    /// ``` 
-    /// if payment > total_debt: 
-    ///     actual_payment = total_debt 
-    ///     refund = payment - total_debt 
-    /// ``` 
-    ///  
-    /// # Arguments 
-    /// - `initial_caller`: Address to receive any overpayment refund 
-    /// - `position`: User's current borrow position 
-    /// - `price`: Asset price for event logging 
-    ///  
-    /// # Returns 
-    /// - Updated position with reduced scaled debt 
-    ///  
-    /// **Security Considerations**: 
-    /// - Asset validation prevents wrong token repayments 
-    /// - Overpayment refunds prevent accidental loss 
-    /// - Scaled burning maintains precise debt tracking 
-    /// - Global sync ensures fair interest calculation 
+    /// Repays borrowed amount, reducing debt and refunding overpayments. 
+    /// Handles both full and partial repayments with interest included. 
+    /// Returns updated position with reduced debt. 
     pub fn repay<
         Arg0: ProxyArg<ManagedAddress<Env::Api>>,
         Arg1: ProxyArg<common_structs::AccountPosition<Env::Api>>,
@@ -563,65 +370,9 @@ where
             .original_result()
     }
 
-    /// Provides a flash loan from the pool, enabling temporary borrowing without collateral within a single transaction. 
-    ///  
-    /// **Purpose**: Facilitates atomic operations like arbitrage, liquidations, or complex DeFi strategies 
-    /// by providing instant liquidity that must be repaid with fees in the same transaction. 
-    ///  
-    /// **Mathematical Process**: 
-    /// 1. **Liquidity Validation**: Verify `amount <= available_reserves` 
-    /// 2. **Fee Calculation**: `required_repayment = amount * (1 + fee_rate)` 
-    /// 3. **Asset Transfer**: Send `amount` to target contract 
-    /// 4. **External Execution**: Call target contract with provided parameters 
-    /// 5. **Repayment Validation**: Ensure `back_transfer >= required_repayment` 
-    /// 6. **Protocol Revenue**: `fee = repayment - amount`, add to treasury 
-    ///  
-    /// **Flash Loan Fee Formula**: 
-    /// ``` 
-    /// fee_basis_points = fees_parameter  // e.g., 30 = 0.30% 
-    /// fee_rate = fee_basis_points / 10000 
-    /// required_repayment = loan_amount * (1 + fee_rate) 
-    /// protocol_fee = repayment_amount - loan_amount 
-    /// ``` 
-    ///  
-    /// **Atomic Transaction Requirement**: 
-    /// The entire flash loan operation must complete in a single transaction: 
-    /// ``` 
-    /// 1. Borrow assets from pool 
-    /// 2. Execute arbitrary logic (arbitrage, liquidation, etc.) 
-    /// 3. Repay loan + fees to pool 
-    /// 4. Transaction reverts if repayment insufficient 
-    /// ``` 
-    ///  
-    /// **Reentrancy Protection**: 
-    /// Cache is dropped before external call to prevent state manipulation: 
-    /// ``` 
-    /// // State snapshot before external call 
-    /// drop(cache); 
-    /// // External call execution 
-    /// let result = contract.call(); 
-    /// // Fresh state validation after call 
-    /// validate_repayment(); 
-    /// ``` 
-    ///  
-    /// **Revenue Distribution**: 
-    /// Flash loan fees are added directly to protocol treasury as scaled supply tokens. 
-    ///  
-    /// # Arguments 
-    /// - `borrowed_token`: Asset to borrow (must match pool asset) 
-    /// - `amount`: Loan amount in asset decimals 
-    /// - `contract_address`: Target contract for strategy execution 
-    /// - `endpoint`: Function to call on target contract 
-    /// - `arguments`: Parameters for the external call 
-    /// - `fees`: Fee rate in basis points (e.g., 30 = 0.30%) 
-    /// - `price`: Asset price for event logging 
-    ///  
-    /// **Security Considerations**: 
-    /// - Reentrancy protection via cache dropping 
-    /// - Asset validation prevents wrong token loans 
-    /// - Reserve validation ensures liquidity availability 
-    /// - Repayment validation enforces fee collection 
-    /// - Atomic execution prevents partial failures 
+    /// Provides atomic flash loan with fee collection. 
+    /// Transfers amount to target contract, validates repayment, adds protocol revenue. 
+    /// Must be repaid with fees in same transaction. 
     pub fn flash_loan<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg1: ProxyArg<ManagedDecimal<Env::Api, usize>>,
@@ -653,64 +404,9 @@ where
             .original_result()
     }
 
-    /// Creates a leveraged strategy position by borrowing assets with upfront fee collection. 
-    ///  
-    /// **Purpose**: Enables creation of leveraged positions (e.g., leveraged staking, yield farming) 
-    /// where users borrow assets to amplify their exposure, with strategy fees collected upfront. 
-    ///  
-    /// **Mathematical Process**: 
-    /// 1. **Liquidity Validation**: Verify `strategy_amount <= available_reserves` 
-    /// 2. **Fee Deduction**: `amount_to_send = strategy_amount - strategy_fee` 
-    /// 3. **Scaling Conversion**: `scaled_debt = strategy_amount / current_borrow_index` 
-    /// 4. **Position Update**: `new_scaled_debt = old_scaled_debt + scaled_debt` 
-    /// 5. **Pool State Update**: `total_borrowed += scaled_debt` 
-    /// 6. **Revenue Collection**: Add `strategy_fee` to protocol treasury 
-    /// 7. **Asset Transfer**: Send `amount_to_send` to user for strategy execution 
-    ///  
-    /// **Strategy Debt Structure**: 
-    /// ``` 
-    /// // User receives less than borrowed amount due to fee deduction: 
-    /// assets_received = strategy_amount - strategy_fee 
-    /// debt_created = strategy_amount (fee NOT included in debt) 
-    /// protocol_fee = strategy_fee (one-time charge, no interest) 
-    /// ``` 
-    ///  
-    /// **Interest Accrual on Principal Only**: 
-    /// Only the borrowed principal accrues interest over time: 
-    /// ``` 
-    /// initial_scaled_debt = strategy_amount / borrow_index_at_creation 
-    /// future_debt = initial_scaled_debt * current_borrow_index 
-    /// total_repayment_needed = future_debt (fees already paid upfront) 
-    /// ``` 
-    ///  
-    /// **Leveraged Position Example**: 
-    /// ``` 
-    /// User wants 2x leverage on 100 USDC: 
-    /// 1. User supplies 100 USDC as collateral 
-    /// 2. Strategy borrows 100 USDC (with 1% fee = 1 USDC) 
-    /// 3. User receives 99 USDC to buy more assets (100 - 1 fee) 
-    /// 4. User's debt: 100 USDC (accruing interest, fee not included) 
-    /// 5. User's exposure: 199 USDC worth of assets 
-    /// ``` 
-    ///  
-    /// **Fee Collection Model**: 
-    /// Strategy fees are collected upfront and added to protocol revenue, 
-    /// providing immediate income while the borrowed amount generates ongoing interest. 
-    ///  
-    /// # Arguments 
-    /// - `position`: User's existing borrow position for this asset 
-    /// - `strategy_amount`: Amount to borrow for strategy execution 
-    /// - `strategy_fee`: Upfront fee charged for strategy creation 
-    /// - `price`: Asset price for event logging 
-    ///  
-    /// # Returns 
-    /// - Updated position with increased scaled debt (amount + fee) 
-    ///  
-    /// **Security Considerations**: 
-    /// - Liquidity validation prevents over-borrowing 
-    /// - Asset validation ensures correct token 
-    /// - Upfront fee collection reduces protocol risk 
-    /// - Debt includes fee to prevent undercollateralization 
+    /// Creates leveraged position by borrowing with upfront fee deduction. 
+    /// User receives (amount - fee) but owes full amount plus interest. 
+    /// Returns updated position with increased debt. 
     pub fn create_strategy<
         Arg0: ProxyArg<common_structs::AccountPosition<Env::Api>>,
         Arg1: ProxyArg<ManagedDecimal<Env::Api, usize>>,
@@ -733,61 +429,9 @@ where
             .original_result()
     }
 
-    /// Socializes bad debt by immediately reducing the supply index, distributing losses among all suppliers. 
-    ///  
-    /// **Purpose**: Prevents supplier flight during bad debt events by immediately socializing 
-    /// losses rather than allowing infinite interest accrual on uncollectable debt. 
-    ///  
-    /// **Problem Being Solved**: 
-    /// Traditional bad debt handling creates a race condition where rational suppliers 
-    /// would withdraw immediately upon learning of bad debt, leaving remaining suppliers 
-    /// to bear disproportionate losses. This mechanism prevents such dynamics. 
-    ///  
-    /// **Mathematical Process**: 
-    /// 1. **Current Debt Calculation**: `bad_debt = scaled_debt * current_borrow_index` 
-    /// 2. **Total Supply Value**: `total_value = total_scaled_supply * current_supply_index` 
-    /// 3. **Loss Ratio Calculation**: `loss_ratio = bad_debt / total_value` 
-    /// 4. **Supply Index Reduction**: `new_supply_index = old_supply_index * (1 - loss_ratio)` 
-    /// 5. **Debt Removal**: Remove scaled debt from total borrowed 
-    /// 6. **Position Clearing**: Set position scaled amount to zero 
-    ///  
-    /// **Socialization Formula**: 
-    /// ``` 
-    /// // Immediate loss distribution: 
-    /// total_supplier_value = total_scaled_supplied * supply_index 
-    /// loss_per_unit = bad_debt_amount / total_supplier_value 
-    /// new_supply_index = old_supply_index * (1 - loss_per_unit) 
-    ///  
-    /// // Each supplier's loss: 
-    /// supplier_loss = supplier_scaled_tokens * old_supply_index * loss_per_unit 
-    /// supplier_new_value = supplier_scaled_tokens * new_supply_index 
-    /// ``` 
-    ///  
-    /// **Prevention of Supplier Flight**: 
-    /// By applying losses immediately and proportionally, no supplier can avoid 
-    /// their share by withdrawing after bad debt is discovered. 
-    ///  
-    /// **Economic Rationale**: 
-    /// - Spreads losses fairly among all participants 
-    /// - Maintains pool stability during stress events 
-    /// - Prevents bank-run scenarios 
-    /// - Eliminates need for bad debt tracking/provisioning 
-    ///  
-    /// **Impact on Existing Positions**: 
-    /// All existing supply positions instantly lose value proportional to the bad debt, 
-    /// but their scaled token amounts remain unchanged. 
-    ///  
-    /// # Arguments 
-    /// - `position`: The insolvent borrow position to clear 
-    /// - `price`: Asset price for event logging 
-    ///  
-    /// # Returns 
-    /// - Cleared position with zero scaled debt 
-    ///  
-    /// **Security Considerations**: 
-    /// - Immediate application prevents gaming/arbitrage 
-    /// - Proportional distribution ensures fairness 
-    /// - Supply index has minimum floor to prevent total collapse 
+    /// Socializes bad debt by reducing supply index or seizes dust collateral. 
+    /// For borrow positions: applies loss to all suppliers immediately. 
+    /// For supply positions: adds dust to protocol revenue. 
     pub fn seize_position<
         Arg0: ProxyArg<common_structs::AccountPosition<Env::Api>>,
         Arg1: ProxyArg<ManagedDecimal<Env::Api, usize>>,
@@ -804,73 +448,9 @@ where
             .original_result()
     }
 
-    /// Claims accumulated protocol revenue and transfers it to the owner. 
-    ///  
-    /// **Purpose**: Enables protocol owner to withdraw earned revenue from various sources 
-    /// including interest spreads, flash loan fees, strategy fees, and liquidation fees. 
-    ///  
-    /// **Mathematical Process**: 
-    /// 1. **Global Sync**: Update indexes to include latest revenue 
-    /// 2. **Revenue Validation**: Return zero payment if no revenue accumulated 
-    /// 3. **Revenue Calculation**: `revenue_actual = revenue_scaled * current_supply_index` 
-    /// 4. **Available Balance Check**: `amount_to_transfer = min(current_reserves, treasury_actual)` 
-    /// 5. **Symmetric Accounting Update**: Burn revenue from both `cache.revenue` and `cache.supplied` 
-    /// 6. **Precision Safety**: Use minimum values when precision drift occurs 
-    /// 7. **Transfer Execution**: Send claimed amount to controller 
-    ///  
-    /// **Revenue Sources**: 
-    /// ``` 
-    /// Protocol Revenue += { 
-    ///     interest_spread: (borrow_rate - supply_rate) * borrowed_amount * time 
-    ///     flash_loan_fees: loan_amount * flash_fee_rate 
-    ///     strategy_fees: strategy_amount * strategy_fee_rate 
-    ///     liquidation_fees: liquidated_amount * liquidation_fee_rate 
-    ///     dust_collateral: seized_dust_amounts 
-    /// } 
-    /// ``` 
-    ///  
-    /// **Symmetric Accounting Logic**: 
-    /// ``` 
-    /// // Standard case - sufficient supplied balance: 
-    /// if supplied >= revenue_scaled: 
-    ///     cache.revenue -= revenue_scaled 
-    ///     cache.supplied -= revenue_scaled 
-    ///  
-    /// // Precision drift protection: 
-    /// else: 
-    ///     scaled_burn = min(calculated_burn, min(revenue, supplied)) 
-    ///     cache.revenue -= actual_revenue_burn 
-    ///     cache.supplied -= actual_supplied_burn 
-    /// ``` 
-    ///  
-    /// **Precision Safety Mechanisms**: 
-    /// Uses minimum values to handle potential precision drift between 
-    /// `cache.revenue` and `cache.supplied` that can occur from rounding 
-    /// operations throughout the protocol's lifetime. 
-    ///  
-    /// **Reserve Constraints**: 
-    /// Revenue withdrawal is limited by available contract balance to ensure 
-    /// user withdrawals remain possible: `transfer = min(reserves, revenue_value)`. 
-    ///  
-    /// **Accounting Precision**: 
-    /// Uses scaled amounts to maintain precision in revenue tracking, 
-    /// with symmetric burning of both revenue and supplied to prevent orphaned tokens. 
-    ///  
-    /// **Revenue Realization**: 
-    /// Revenue is stored as scaled supply tokens that appreciate with the supply index, 
-    /// ensuring protocol revenue grows alongside user deposits. 
-    ///  
-    /// # Arguments 
-    /// - `price`: Asset price for event logging 
-    ///  
-    /// # Returns 
-    /// - Payment object representing the claimed revenue amount 
-    ///  
-    /// # **Security Considerations**: 
-    /// - Reserve validation ensures pool liquidity preservation 
-    /// - Symmetric accounting prevents orphaned supply tokens 
-    /// - Precision safety prevents underflow from rounding drift 
-    /// - Only callable by owner (controller contract) 
+    /// Claims accumulated protocol revenue and transfers to owner. 
+    /// Revenue includes interest spreads, fees, and liquidation penalties. 
+    /// Limited by available reserves to preserve user withdrawals. 
     pub fn claim_revenue<
         Arg0: ProxyArg<ManagedDecimal<Env::Api, usize>>,
     >(
@@ -884,302 +464,99 @@ where
             .original_result()
     }
 
-    /// Retrieves the current capital utilization of the pool. 
-    ///  
-    /// **Purpose**: Calculates the percentage of supplied assets currently being borrowed, 
-    /// which is the primary driver of interest rates in the lending protocol. 
-    ///  
-    /// **Mathematical Formula**: 
-    /// ``` 
-    /// total_borrowed_value = borrowed_scaled * current_borrow_index 
-    /// total_supplied_value = supplied_scaled * current_supply_index 
-    /// utilization = total_borrowed_value / total_supplied_value 
-    /// ``` 
-    ///  
-    /// **Utilization Impact on Rates**: 
-    /// - Low utilization (0-80%): Gradual rate increases 
-    /// - High utilization (80%+): Steep rate increases (above kink point) 
-    /// - 100% utilization: Maximum borrow rates to incentivize repayment 
-    ///  
-    /// **Edge Cases**: 
-    /// - Zero supply: Returns 0% utilization (no funds to borrow) 
-    /// - Zero borrows: Returns 0% utilization (full liquidity available) 
-    ///  
-    /// # Returns 
-    /// - Utilization ratio as a decimal (0.0 to 1.0, where 1.0 = 100%) 
-    pub fn get_capital_utilisation(
+    /// Returns current pool utilization ratio (borrowed_value / supplied_value). 
+    /// Used for interest rate calculations and pool health monitoring. 
+    /// Returns 0 if no supply exists. 
+    pub fn capital_utilisation(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getCapitalUtilisation")
+            .raw_call("capitalUtilisation")
             .original_result()
     }
 
-    /// Retrieves the total actual balance of the asset held by the pool contract. 
-    ///  
-    /// **Purpose**: Returns the current liquidity available for withdrawals and new borrows, 
-    /// representing the pool's immediate cash position. 
-    ///  
-    /// **Calculation**: 
-    /// ``` 
-    /// reserves = blockchain.get_sc_balance(asset_id) 
-    /// ``` 
-    /// This is the raw token balance held by the smart contract. 
-    ///  
-    /// **Reserve Dynamics**: 
-    /// - Increases with: User deposits, loan repayments, flash loan fees 
-    /// - Decreases with: User withdrawals, new loans, flash loan disbursements 
-    /// - Should equal: Total supplied value - Total borrowed value + Accrued fees 
-    ///  
-    /// **Liquidity Constraints**: 
-    /// Available reserves limit: 
-    /// - Maximum withdrawal amounts 
-    /// - Maximum new borrow amounts 
-    /// - Flash loan capacity 
-    ///  
-    /// **Critical for**: 
-    /// - Liquidity monitoring 
-    /// - Maximum transaction sizing 
-    /// - Protocol solvency verification 
-    ///  
-    /// # Returns 
-    /// - Current asset balance of the pool contract in asset decimals 
-    pub fn get_reserves(
+    /// Returns total asset balance held by pool contract. 
+    /// Represents immediately available liquidity for withdrawals and loans. 
+    /// Balance changes with deposits, withdrawals, borrows, and repayments. 
+    pub fn reserves(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getReserves")
+            .raw_call("reserves")
             .original_result()
     }
 
-    /// Retrieves the current deposit rate for the pool. 
-    ///  
-    /// **Purpose**: Calculates the annual percentage yield (APY) that suppliers earn 
-    /// on their deposits, based on current pool utilization and borrower interest. 
-    ///  
-    /// **Mathematical Formula**: 
-    /// ``` 
-    /// deposit_rate = borrow_rate * utilization * (1 - reserve_factor) 
-    /// ``` 
-    ///  
-    /// **Rate Derivation Process**: 
-    /// 1. **Utilization Calculation**: `borrowed_value / supplied_value` 
-    /// 2. **Borrow Rate Lookup**: Rate based on utilization curve 
-    /// 3. **Revenue Sharing**: Split between suppliers and protocol 
-    /// 4. **Effective Rate**: `borrow_rate * utilization * supplier_share` 
-    ///  
-    /// **Economic Logic**: 
-    /// - Higher utilization → Higher borrow rates → Higher deposit rates 
-    /// - Reserve factor reduces supplier share (protocol revenue) 
-    /// - Rate automatically adjusts to market conditions 
-    ///  
-    /// **Example Calculation**: 
-    /// ``` 
-    /// utilization = 80% 
-    /// borrow_rate = 10% APR 
-    /// reserve_factor = 20% 
-    /// deposit_rate = 10% * 80% * (1 - 20%) = 6.4% APR 
-    /// ``` 
-    ///  
-    /// # Returns 
-    /// - Annual deposit rate as a decimal (e.g., 0.064 = 6.4% APR) 
-    pub fn get_deposit_rate(
+    /// Returns current annual percentage yield for suppliers. 
+    /// Calculated as: borrow_rate * utilization * (1 - reserve_factor). 
+    /// Higher utilization and borrow rates increase deposit yields. 
+    pub fn deposit_rate(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getDepositRate")
+            .raw_call("depositRate")
             .original_result()
     }
 
-    /// Retrieves the current borrow rate for the pool. 
-    ///  
-    /// **Purpose**: Calculates the annual percentage rate (APR) that borrowers pay 
-    /// for loans, based on current pool utilization and rate curve parameters. 
-    ///  
-    /// **Mathematical Formula**: 
-    /// ``` 
-    /// if utilization <= kink_point: 
-    ///     rate = base_rate + (utilization * slope1) 
-    /// else: 
-    ///     rate = base_rate + (kink_point * slope1) + ((utilization - kink_point) * slope2) 
-    /// ``` 
-    ///  
-    /// **Rate Curve Properties**: 
-    /// - **Base Rate**: Minimum rate even at 0% utilization 
-    /// - **Slope1**: Gradual increase up to kink point (typically 80%) 
-    /// - **Kink Point**: Utilization threshold for steep rate increases 
-    /// - **Slope2**: Steep increase above kink to discourage over-borrowing 
-    ///  
-    /// **Economic Purpose**: 
-    /// - Low rates at low utilization encourage borrowing 
-    /// - Moderate rates at medium utilization maintain equilibrium 
-    /// - High rates at high utilization protect pool liquidity 
-    /// - Maximum rates near 100% utilization force repayment 
-    ///  
-    /// **Example Rate Curve**: 
-    /// ``` 
-    /// Utilization:  0%    40%    80%    95% 
-    /// Borrow Rate:  2%    6%     10%    50% 
-    /// ``` 
-    ///  
-    /// # Returns 
-    /// - Annual borrow rate as a decimal (e.g., 0.10 = 10% APR) 
-    pub fn get_borrow_rate(
+    /// Returns current annual percentage rate for borrowers. 
+    /// Uses piecewise linear rate model with kink point. 
+    /// Rates increase steeply above optimal utilization to protect liquidity. 
+    pub fn borrow_rate(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getBorrowRate")
+            .raw_call("borrowRate")
             .original_result()
     }
 
-    /// Retrieves the time delta since the last update. 
-    ///  
-    /// **Purpose**: Returns the elapsed time since the last global synchronization, 
-    /// indicating how much interest has accrued but not yet been applied to indexes. 
-    ///  
-    /// **Time Measurement**: 
-    /// ``` 
-    /// delta_ms = current_block_timestamp * 1000 - last_timestamp 
-    /// ``` 
-    ///  
-    /// **Interest Accrual Relationship**: 
-    /// - Larger deltas → More accumulated interest awaiting application 
-    /// - Zero delta → Indexes are fully up to date 
-    /// - Regular updates minimize compound interest approximation errors 
-    ///  
-    /// **Usage**: 
-    /// - Monitor pool update frequency 
-    /// - Calculate pending interest before transactions 
-    /// - Estimate gas costs for index updates 
-    ///  
-    /// # Returns 
-    /// - Time elapsed since last update in milliseconds 
-    pub fn get_delta_time(
+    /// Returns milliseconds elapsed since last pool synchronization. 
+    /// Indicates accumulated interest awaiting index updates. 
+    /// Larger deltas mean more pending interest calculations. 
+    pub fn delta_time(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, u64> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getDeltaTime")
+            .raw_call("deltaTime")
             .original_result()
     }
 
-    /// Retrieves the protocol revenue accrued from borrow interest fees, scaled to the asset's decimals. 
-    ///  
-    /// **Purpose**: Returns the current value of protocol treasury holdings, 
-    /// representing accumulated revenue from various protocol operations. 
-    ///  
-    /// **Calculation**: 
-    /// ``` 
-    /// revenue_actual = revenue_scaled * current_supply_index 
-    /// ``` 
-    ///  
-    /// **Revenue Sources**: 
-    /// - Interest rate spreads (reserve factor percentage) 
-    /// - Flash loan fees 
-    /// - Strategy creation fees 
-    /// - Liquidation fees 
-    /// - Seized dust collateral 
-    ///  
-    /// **Revenue Appreciation**: 
-    /// Protocol revenue is stored as scaled supply tokens that appreciate 
-    /// with the supply index, ensuring the treasury earns interest on its holdings. 
-    ///  
-    /// **Claimable Amount**: 
-    /// The actual claimable amount may be limited by available pool reserves, 
-    /// ensuring user withdrawal capacity is preserved. 
-    ///  
-    /// # Returns 
-    /// - Current protocol revenue value in asset decimals 
-    pub fn get_protocol_revenue(
+    /// Returns accumulated protocol revenue value in asset decimals. 
+    /// Revenue from interest spreads, fees, and liquidations. 
+    /// Stored as scaled tokens that appreciate with supply index. 
+    pub fn protocol_revenue(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getProtocolRevenue")
+            .raw_call("protocolRevenue")
             .original_result()
     }
 
-    /// Retrieves the total amount supplied to the pool. 
-    ///  
-    /// **Purpose**: Returns the current total value of all user deposits including accrued interest, 
-    /// representing the total funds available for borrowing and protocol operations. 
-    ///  
-    /// **Calculation**: 
-    /// ``` 
-    /// supplied_actual = supplied_scaled * current_supply_index 
-    /// ``` 
-    ///  
-    /// **Value Components**: 
-    /// - Original user deposits (principal) 
-    /// - Accrued interest from borrower payments 
-    /// - Protocol revenue (treasury holdings) 
-    ///  
-    /// **Supply Growth Mechanism**: 
-    /// Total supplied value increases through: 
-    /// - New user deposits 
-    /// - Interest payments from borrowers 
-    /// - Flash loan and strategy fees 
-    /// - Supply index appreciation over time 
-    ///  
-    /// **Relationship to Reserves**: 
-    /// ``` 
-    /// supplied_value = borrowed_value + available_reserves + protocol_revenue 
-    /// ``` 
-    ///  
-    /// # Returns 
-    /// - Total supplied value including interest in asset decimals 
-    pub fn get_supplied_amount(
+    /// Returns total value of all deposits including accrued interest. 
+    /// Includes user deposits, earned interest, and protocol revenue. 
+    /// Grows through deposits and supply index appreciation. 
+    pub fn supplied_amount(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getSuppliedAmount")
+            .raw_call("suppliedAmount")
             .original_result()
     }
 
-    /// Retrieves the total amount borrowed from the pool. 
-    ///  
-    /// **Purpose**: Returns the current total debt owed by all borrowers including accrued interest, 
-    /// representing the total outstanding obligations to the pool. 
-    ///  
-    /// **Calculation**: 
-    /// ``` 
-    /// borrowed_actual = borrowed_scaled * current_borrow_index 
-    /// ``` 
-    ///  
-    /// **Debt Components**: 
-    /// - Original borrowed principal amounts 
-    /// - Compound interest accrued over time 
-    /// - Strategy fees included in debt positions 
-    ///  
-    /// **Debt Growth Mechanism**: 
-    /// Total borrowed value increases through: 
-    /// - New borrowing activity 
-    /// - Compound interest accrual 
-    /// - Strategy creation with upfront fees 
-    /// - Borrow index appreciation over time 
-    ///  
-    /// **Interest Generation**: 
-    /// The difference between borrowed and supplied values represents 
-    /// the interest being generated for suppliers and protocol revenue. 
-    ///  
-    /// **Utilization Calculation**: 
-    /// ``` 
-    /// utilization = total_borrowed / total_supplied 
-    /// ``` 
-    ///  
-    /// # Returns 
-    /// - Total borrowed value including interest in asset decimals 
-    pub fn get_borrowed_amount(
+    /// Returns total debt owed by all borrowers including accrued interest. 
+    /// Includes principal and compound interest through borrow index. 
+    /// Grows through new borrows and interest accrual over time. 
+    pub fn borrowed_amount(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedDecimal<Env::Api, usize>> {
         self.wrapped_tx
             .payment(NotPayable)
-            .raw_call("getBorrowedAmount")
+            .raw_call("borrowedAmount")
             .original_result()
     }
 }

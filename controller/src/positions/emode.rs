@@ -50,9 +50,9 @@ pub trait EModeModule: storage::Storage {
         if let (Some(category), Some(asset_emode_config)) = (category, asset_emode_config) {
             asset_config.is_collateralizable = asset_emode_config.is_collateralizable;
             asset_config.is_borrowable = asset_emode_config.is_borrowable;
-            asset_config.loan_to_value = category.loan_to_value.clone();
-            asset_config.liquidation_threshold = category.liquidation_threshold.clone();
-            asset_config.liquidation_bonus = category.liquidation_bonus.clone();
+            asset_config.loan_to_value_bps = category.loan_to_value_bps.clone();
+            asset_config.liquidation_threshold_bps = category.liquidation_threshold_bps.clone();
+            asset_config.liquidation_bonus_bps = category.liquidation_bonus_bps.clone();
         }
     }
 
@@ -156,7 +156,7 @@ pub trait EModeModule: storage::Storage {
     ///
     /// # Returns
     /// - `Option<EModeAssetConfig>` with asset-specific e-mode settings
-    fn get_token_e_mode_config(
+    fn token_e_mode_config(
         &self,
         e_mode_id: u8,
         token_id: &EgldOrEsdtTokenIdentifier,
@@ -210,12 +210,12 @@ pub trait EModeModule: storage::Storage {
     ///
     /// # Returns
     /// - `Option<EModeCategory>` with complete category configuration
-    fn get_e_mode_category(&self, e_mode_id: u8) -> Option<EModeCategory<Self::Api>> {
+    fn e_mode_category(&self, e_mode_id: u8) -> Option<EModeCategory<Self::Api>> {
         if e_mode_id == 0 {
             return None;
         }
 
-        let e_mode_categories = self.e_mode_category();
+        let e_mode_categories = self.e_mode_categories();
         require!(
             e_mode_categories.contains_key(&e_mode_id),
             ERROR_EMODE_CATEGORY_NOT_FOUND

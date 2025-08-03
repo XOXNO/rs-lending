@@ -21,6 +21,9 @@ pub trait PriceAggregator:
     + views::ViewsModule
     + admin::AdminModule
 {
+    /// Submits a single price feed from oracle for token pair.
+    /// Validates oracle status and timestamp before processing submission.
+    /// Triggers new round creation when submission threshold is met.
     #[endpoint(submit)]
     fn submit(
         &self,
@@ -37,6 +40,9 @@ pub trait PriceAggregator:
         self.submit_unchecked(from, to, price);
     }
 
+    /// Submits multiple price feeds in a single transaction for gas efficiency.
+    /// Each submission is validated independently before processing.
+    /// Enables oracles to update multiple token pairs atomically.
     #[endpoint(submitBatch)]
     fn submit_batch(
         &self,

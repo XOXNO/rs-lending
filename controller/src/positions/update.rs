@@ -44,7 +44,7 @@ pub trait PositionUpdateModule:
     ///
     /// # Returns
     /// - Tuple containing (position vector, optional index mapping)
-    fn get_borrow_positions(
+    fn borrow_positions(
         &self,
         account_nonce: u64,
         should_return_map: bool,
@@ -56,9 +56,9 @@ pub trait PositionUpdateModule:
         let mut updated_positions = ManagedVec::new();
         let mut position_index_map = ManagedMapEncoded::new();
 
-        for (index, asset_id) in borrow_positions_map.keys().enumerate() {
+        for (position_index, asset_id) in borrow_positions_map.keys().enumerate() {
             if should_return_map {
-                let safe_index = index + 1; // Avoid zero index issues
+                let safe_index = position_index + 1; // Avoid zero index issues
                 position_index_map.put(&asset_id, &safe_index);
             }
 
@@ -167,10 +167,10 @@ pub trait PositionUpdateModule:
         attributes: &AccountAttributes<Self::Api>,
     ) {
         let position_type = position.position_type.clone();
-        let market_index = cache.get_cached_market_index(&position.asset_id);
+        let market_index = cache.cached_market_index(&position.asset_id);
         let index = match position_type {
-            AccountPositionType::Borrow => market_index.borrow_index,
-            AccountPositionType::Deposit => market_index.supply_index,
+            AccountPositionType::Borrow => market_index.borrow_index_ray,
+            AccountPositionType::Deposit => market_index.supply_index_ray,
             _ => {
                 sc_panic!("Invalid position type");
             }

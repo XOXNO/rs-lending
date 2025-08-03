@@ -42,9 +42,9 @@ pub trait Storage {
     ///
     /// # Returns
     /// - `MarketParams<Self::Api>`: The market configuration.
-    #[view(getParams)]
+    #[view(getParameters)]
     #[storage_mapper("params")]
-    fn params(&self) -> SingleValueMapper<MarketParams<Self::Api>>;
+    fn parameters(&self) -> SingleValueMapper<MarketParams<Self::Api>>;
 
     /// Retrieves the current borrow index.
     ///

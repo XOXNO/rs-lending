@@ -160,7 +160,7 @@ pub trait RouterModule:
         optimal_utilization: BigUint,
         reserve_factor: BigUint,
         ltv: BigUint,
-        liquidation_threshold: BigUint,
+        liquidation_threshold_bps: BigUint,
         liquidation_base_bonus: BigUint,
         liquidation_max_fee: BigUint,
         can_be_collateral: bool,
@@ -172,8 +172,8 @@ pub trait RouterModule:
         flashloan_enabled: bool,
         can_borrow_in_isolation: bool,
         asset_decimals: usize,
-        borrow_cap: BigUint,
-        supply_cap: BigUint,
+        borrow_cap_wad: BigUint,
+        supply_cap_wad: BigUint,
     ) -> ManagedAddress {
         require!(
             self.pools_map(&base_asset).is_empty(),
@@ -203,33 +203,33 @@ pub trait RouterModule:
             .set(self.to_decimal(BigUint::zero(), asset_decimals));
 
         require!(
-            liquidation_threshold > ltv,
+            liquidation_threshold_bps > ltv,
             ERROR_INVALID_LIQUIDATION_THRESHOLD
         );
 
         let asset_config = &AssetConfig {
-            loan_to_value: self.to_decimal_bps(ltv),
-            liquidation_threshold: self.to_decimal_bps(liquidation_threshold),
-            liquidation_bonus: self.to_decimal_bps(liquidation_base_bonus),
-            liquidation_fees: self.to_decimal_bps(liquidation_max_fee),
-            borrow_cap: if borrow_cap == BigUint::zero() {
+            loan_to_value_bps: self.to_decimal_bps(ltv),
+            liquidation_threshold_bps: self.to_decimal_bps(liquidation_threshold_bps),
+            liquidation_bonus_bps: self.to_decimal_bps(liquidation_base_bonus),
+            liquidation_fees_bps: self.to_decimal_bps(liquidation_max_fee),
+            borrow_cap_wad: if borrow_cap_wad == BigUint::zero() {
                 None
             } else {
-                Some(borrow_cap)
+                Some(borrow_cap_wad)
             },
-            supply_cap: if supply_cap == BigUint::zero() {
+            supply_cap_wad: if supply_cap_wad == BigUint::zero() {
                 None
             } else {
-                Some(supply_cap)
+                Some(supply_cap_wad)
             },
             is_collateralizable: can_be_collateral,
             is_borrowable: can_be_borrowed,
             e_mode_enabled: false,
             is_isolated_asset: is_isolated,
-            isolation_debt_ceiling_usd: self.to_decimal_wad(debt_ceiling_usd),
+            isolation_debt_ceiling_usd_wad: self.to_decimal_wad(debt_ceiling_usd),
             is_siloed_borrowing: is_siloed,
             is_flashloanable: flashloan_enabled,
-            flashloan_fee: self.to_decimal_bps(flash_loan_fee),
+            flashloan_fee_bps: self.to_decimal_bps(flash_loan_fee),
             isolation_borrow_enabled: can_borrow_in_isolation,
         };
 
@@ -269,7 +269,7 @@ pub trait RouterModule:
     fn upgrade_liquidity_pool(&self, base_asset: &EgldOrEsdtTokenIdentifier) {
         require!(!self.pools_map(base_asset).is_empty(), ERROR_NO_POOL_FOUND);
 
-        let pool_address = self.get_pool_address(base_asset);
+        let pool_address = self.pool_address(base_asset);
         self.upgrade_pool(pool_address);
     }
 
@@ -289,7 +289,7 @@ pub trait RouterModule:
     ) {
         require!(!self.pools_map(base_asset).is_empty(), ERROR_NO_POOL_FOUND);
 
-        let pool_address = self.get_pool_address(base_asset);
+        let pool_address = self.pool_address(base_asset);
         self.update_pool_params(
             pool_address,
             base_asset,
@@ -304,6 +304,9 @@ pub trait RouterModule:
         );
     }
 
+    /// Deploys new liquidity pool contract from template with interest rate model.
+    /// Initializes pool with asset configuration and returns deployed contract address.
+    /// Ensures upgradeable code metadata for future protocol improvements.
     fn create_pool(
         &self,
         base_asset: &EgldOrEsdtTokenIdentifier,
@@ -343,6 +346,9 @@ pub trait RouterModule:
             .sync_call()
     }
 
+    /// Updates existing pool's interest rate model and reserve parameters.
+    /// Synchronizes with latest asset price before applying new configuration.
+    /// Used by governance to adjust market parameters without redeployment.
     fn update_pool_params(
         &self,
         lp_address: ManagedAddress,
@@ -357,7 +363,7 @@ pub trait RouterModule:
         reserve_factor: BigUint,
     ) {
         let mut cache = Cache::new(self);
-        let feed = self.get_token_price(base_asset, &mut cache);
+        let feed = self.token_price(base_asset, &mut cache);
         self.tx()
             .to(lp_address)
             .typed(proxy_pool::LiquidityPoolProxy)
@@ -370,11 +376,14 @@ pub trait RouterModule:
                 mid_utilization,
                 optimal_utilization,
                 reserve_factor,
-                feed.price,
+                feed.price_wad,
             )
             .sync_call()
     }
 
+    /// Upgrades pool contract code to latest template version.
+    /// Preserves pool state while updating implementation logic.
+    /// Exits current execution context after initiating upgrade.
     fn upgrade_pool(&self, lp_address: ManagedAddress) {
         require!(
             !self.liq_pool_template_address().is_empty(),
@@ -464,13 +473,13 @@ pub trait RouterModule:
 
         let accumulator_address = accumulator_address_mapper.get();
         for asset in assets {
-            let pool_address = cache.get_cached_pool_address(&asset);
-            let data = self.get_token_price(&asset, &mut cache);
+            let pool_address = cache.cached_pool_address(&asset);
+            let data = self.token_price(&asset, &mut cache);
             let revenue = self
                 .tx()
                 .to(pool_address)
                 .typed(proxy_pool::LiquidityPoolProxy)
-                .claim_revenue(data.price.clone())
+                .claim_revenue(data.price_wad.clone())
                 .returns(ReturnsResult)
                 .sync_call();
 

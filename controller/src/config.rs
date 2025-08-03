@@ -109,46 +109,46 @@ pub trait ConfigModule:
         first_tolerance: BigUint,
         last_tolerance: BigUint,
         max_price_stale_seconds: u64,
-        one_dex_pair_id: OptionalValue<usize>,
+        optional_one_dex_pair_id: OptionalValue<usize>,
     ) {
         let mapper = self.token_oracle(market_token);
 
         require!(mapper.is_empty(), ERROR_ORACLE_TOKEN_EXISTING);
-        let one_dex_id = match one_dex_pair_id {
+        let one_dex_pair_id = match optional_one_dex_pair_id {
             OptionalValue::Some(id) => id,
             OptionalValue::None => 0,
         };
         let first_token_id = match source {
             ExchangeSource::LXOXNO => {
-                let token_id = self
+                let first_token_id = self
                     .tx()
                     .to(contract_address)
                     .typed(proxy_lxoxno::RsLiquidXoxnoProxy)
                     .main_token()
                     .returns(ReturnsResult)
                     .sync_call_readonly();
-                EgldOrEsdtTokenIdentifier::esdt(token_id)
+                EgldOrEsdtTokenIdentifier::esdt(first_token_id)
             },
             ExchangeSource::Onedex => {
-                require!(one_dex_id > 0, ERROR_INVALID_ONEDEX_PAIR_ID);
-                let token_id = self
+                require!(one_dex_pair_id > 0, ERROR_INVALID_ONEDEX_PAIR_ID);
+                let first_token_id = self
                     .tx()
                     .to(contract_address)
                     .typed(proxy_onedex::OneDexProxy)
-                    .pair_first_token_id(one_dex_id)
+                    .pair_first_token_id(one_dex_pair_id)
                     .returns(ReturnsResult)
                     .sync_call_readonly();
-                EgldOrEsdtTokenIdentifier::esdt(token_id)
+                EgldOrEsdtTokenIdentifier::esdt(first_token_id)
             },
             ExchangeSource::XExchange => {
-                let token_id = self
+                let first_token_id = self
                     .tx()
                     .to(contract_address)
                     .typed(proxy_xexchange_pair::PairProxy)
                     .first_token_id()
                     .returns(ReturnsResult)
                     .sync_call_readonly();
-                EgldOrEsdtTokenIdentifier::esdt(token_id)
+                EgldOrEsdtTokenIdentifier::esdt(first_token_id)
             },
             ExchangeSource::XEGLD => EgldOrEsdtTokenIdentifier::egld(),
             ExchangeSource::LEGLD => EgldOrEsdtTokenIdentifier::egld(),
@@ -173,7 +173,7 @@ pub trait ConfigModule:
                     .tx()
                     .to(contract_address)
                     .typed(proxy_onedex::OneDexProxy)
-                    .pair_second_token_id(one_dex_id)
+                    .pair_second_token_id(one_dex_pair_id)
                     .returns(ReturnsResult)
                     .sync_call_readonly();
                 EgldOrEsdtTokenIdentifier::esdt(token_id)
@@ -197,7 +197,7 @@ pub trait ConfigModule:
             asset_decimals: decimals,
             pricing_method,
             tolerance,
-            onedex_pair_id: one_dex_id,
+            onedex_pair_id: one_dex_pair_id,
             max_price_stale_seconds,
         };
         self.update_asset_oracle_event(market_token, &oracle);
@@ -394,16 +394,16 @@ pub trait ConfigModule:
         let last_id = map.get();
         let category = EModeCategory {
             category_id: last_id + 1,
-            loan_to_value: self.to_decimal_bps(ltv),
-            liquidation_threshold: self.to_decimal_bps(liquidation_threshold),
-            liquidation_bonus: self.to_decimal_bps(liquidation_bonus),
+            loan_to_value_bps: self.to_decimal_bps(ltv),
+            liquidation_threshold_bps: self.to_decimal_bps(liquidation_threshold),
+            liquidation_bonus_bps: self.to_decimal_bps(liquidation_bonus),
             is_deprecated: false,
         };
 
         map.set(category.category_id);
 
         self.update_e_mode_category_event(&category);
-        self.e_mode_category()
+        self.e_mode_categories()
             .insert(category.category_id, category);
     }
 
@@ -418,7 +418,7 @@ pub trait ConfigModule:
     #[only_owner]
     #[endpoint(editEModeCategory)]
     fn edit_e_mode_category(&self, category: EModeCategory<Self::Api>) {
-        let mut map = self.e_mode_category();
+        let mut map = self.e_mode_categories();
         require!(
             map.contains_key(&category.category_id),
             ERROR_EMODE_CATEGORY_NOT_FOUND
@@ -439,19 +439,19 @@ pub trait ConfigModule:
     #[only_owner]
     #[endpoint(removeEModeCategory)]
     fn remove_e_mode_category(&self, category_id: u8) {
-        let mut map = self.e_mode_category();
+        let mut map = self.e_mode_categories();
         require!(
             map.contains_key(&category_id),
             ERROR_EMODE_CATEGORY_NOT_FOUND
         );
 
-        let assets = self
+        let asset_list = self
             .e_mode_assets(category_id)
             .keys()
             .collect::<ManagedVec<_>>();
 
-        for asset in &assets {
-            self.remove_asset_from_e_mode_category(asset.clone_value(), category_id);
+        for asset_id in &asset_list {
+            self.remove_asset_from_e_mode_category(asset_id.clone_value(), category_id);
         }
         let mut old_info = unsafe { map.get(&category_id).unwrap_unchecked() };
         old_info.is_deprecated = true;
@@ -484,7 +484,7 @@ pub trait ConfigModule:
         can_be_borrowed: bool,
     ) {
         require!(
-            self.e_mode_category().contains_key(&category_id),
+            self.e_mode_categories().contains_key(&category_id),
             ERROR_EMODE_CATEGORY_NOT_FOUND
         );
         require!(
@@ -648,25 +648,25 @@ pub trait ConfigModule:
         let old_config = map.get();
 
         let new_config = &AssetConfig {
-            loan_to_value: self.to_decimal_bps(loan_to_value),
-            liquidation_threshold: self.to_decimal_bps(liquidation_threshold),
-            liquidation_bonus: self.to_decimal_bps(liquidation_bonus),
-            liquidation_fees: self.to_decimal_bps(liquidation_fees),
+            loan_to_value_bps: self.to_decimal_bps(loan_to_value),
+            liquidation_threshold_bps: self.to_decimal_bps(liquidation_threshold),
+            liquidation_bonus_bps: self.to_decimal_bps(liquidation_bonus),
+            liquidation_fees_bps: self.to_decimal_bps(liquidation_fees),
             e_mode_enabled: old_config.e_mode_enabled,
             is_isolated_asset,
-            isolation_debt_ceiling_usd: self.to_decimal_wad(isolation_debt_ceiling_usd),
+            isolation_debt_ceiling_usd_wad: self.to_decimal_wad(isolation_debt_ceiling_usd),
             is_siloed_borrowing,
             is_flashloanable,
-            flashloan_fee: self.to_decimal_bps(flashloan_fee),
+            flashloan_fee_bps: self.to_decimal_bps(flashloan_fee),
             is_collateralizable,
             is_borrowable,
             isolation_borrow_enabled,
-            borrow_cap: if borrow_cap == BigUint::zero() {
+            borrow_cap_wad: if borrow_cap == BigUint::zero() {
                 None
             } else {
                 Some(borrow_cap)
             },
-            supply_cap: if supply_cap == BigUint::zero() {
+            supply_cap_wad: if supply_cap == BigUint::zero() {
                 None
             } else {
                 Some(supply_cap)

@@ -5,521 +5,546 @@
 [![Coverage](https://img.shields.io/badge/coverage-90%25-brightgreen.svg)]()
 [![Security Audit](https://img.shields.io/badge/security-audited-green.svg)]()
 
-A next-generation decentralized lending and borrowing protocol built on MultiversX, featuring advanced risk management, NFT-powered positions, and sophisticated liquidation mechanisms. Designed for institutional-grade security and capital efficiency.
+Enterprise-grade decentralized lending protocol built on MultiversX blockchain. Features NFT-based position management, multi-source oracle protection, sophisticated liquidation mechanisms, and institutional-level security architecture.
 
-## Overview
+## What We Do
 
-The MultiversX Lending Protocol is a comprehensive DeFi solution that enables:
+**Decentralized Money Markets**: The protocol creates isolated lending pools for digital assets where users can supply assets to earn yield or borrow against collateral. Each asset has its own liquidity pool with dynamic interest rates based on supply and demand.
 
-- **Dynamic Lending & Borrowing**: Supply assets to earn yield or borrow against collateral with algorithmically-determined interest rates
-- **NFT-Powered Position Management**: Each lending position is represented as an NFT, enabling multiple isolated positions per wallet
-- **Advanced Risk Management**: E-Mode, isolated markets, and siloed borrowing for optimal capital efficiency
-- **Sophisticated Liquidation Engine**: Dutch auction mechanism with algebraic models targeting optimal health factors
-- **Flash Loan Infrastructure**: Uncollateralized loans for arbitrage, refinancing, and complex DeFi strategies
+**Why**: Traditional DeFi lending suffers from oracle manipulation vulnerabilities, liquidation cascades, and poor capital efficiency. Our protocol solves these through:
+- **Multi-source oracle validation** with TWAP protection (±2% tolerance primary, ±5% secondary)  
+- **NFT-based position isolation** preventing cross-contamination between strategies
+- **Immediate bad debt socialization** eliminating bank run scenarios
+- **Sophisticated liquidation bonuses** targeting optimal health factors (1.01-1.02)
+
+**How**: Users interact with a Controller contract that manages positions as NFTs, while individual Liquidity Layer contracts handle the core financial mechanics. Price feeds come through a multi-source aggregator with built-in manipulation resistance.
+
+## Core Features
+
+### 🏦 **Supply & Earn**
+- Deposit assets into lending pools to earn compound interest
+- Interest accrues through scaled token appreciation (no need to claim)
+- Multiple supply positions per NFT with automatic yield optimization
+- Revenue from borrower interest payments and protocol fees
+
+### 💳 **Borrow Against Collateral**  
+- Take loans against supplied collateral with dynamic interest rates
+- Support for over-collateralized positions with configurable LTV ratios
+- Multiple borrow positions per NFT for portfolio diversification
+- Automatic interest compounding using Taylor series calculations
+
+### ⚡ **Flash Loans**
+- Uncollateralized loans repaid within the same transaction
+- 0.50% fee structure for arbitrage and liquidation strategies  
+- Reentrancy protection through state management and validation
+- Cross-shard execution support for complex DeFi strategies
+
+### 🎯 **Advanced Position Management**
+- **NFT-Based Positions**: Each position is an NFT enabling isolated risk management
+- **E-Mode Categories**: Higher efficiency for correlated assets (up to 92.5% LTV)
+- **Isolated Markets**: Single-collateral positions for risk containment
+- **Position Limits**: Maximum 10 supply + 10 borrow positions per NFT (gas optimization)
+
+### 🛡️ **Liquidation & Risk Management**
+- Health factor-based liquidations when collateral value falls below debt
+- Dynamic liquidation bonuses (1.5%-15%) targeting health factors of 1.01-1.02
+- Bad debt cleanup for positions under $5 USD value
+- Immediate loss socialization across all suppliers to prevent bank runs
 
 ## Architecture
 
-### Core Components
+### System Design
 
 ```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Controller    │    │ Liquidity Layer  │    │ Price Aggregator│
-│   (Main Logic)  │◄──►│  (Pool Manager)  │◄──►│  (Oracle Hub)   │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
+                    ┌─────────────────────────────────────┐
+                    │           Controller                │
+                    │     (Main Protocol Logic)          │
+                    │   • Position Management (NFTs)     │
+                    │   • Risk Calculations              │
+                    │   • User Interface                 │
+                    └──────────────┬──────────────────────┘
+                                   │
+            ┌──────────────────────┼──────────────────────┐
+            │                      │                      │
+            ▼                      ▼                      ▼
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│ Liquidity Layer │    │ Price Aggregator│    │   Position NFT  │
+│ (EGLD Pool)     │    │  (Oracle Hub)   │    │   Collection    │
+│ • Supply/Borrow │    │ • Multi-source  │    │ • Account Mgmt  │
+│ • Interest Calc │    │ • TWAP Validation│    │ • Risk Isolation│
+│ • Flash Loans   │    │ • Price Feeds   │    │ • Bulk Operations│
+└─────────────────┘    └─────────────────┘    └─────────────────┘
          │                        │                        │
          ▼                        ▼                        ▼
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│ Position NFTs   │    │   Asset Markets  │    │ External Oracles│
-│ (Account Mgmt)  │    │ (Individual Pools)│    │  (Price Feeds)  │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│ Other Asset     │    │ External Oracles│    │ Account         │
+│ Pools (USDC,    │    │ • DEX Prices    │    │ Attributes      │
+│ USDT, etc.)     │    │ • Fed Prices    │    │ • E-Mode        │
+└─────────────────┘    │ • LP Tokens     │    │ • Isolation     │
+                       └─────────────────┘    └─────────────────┘
 ```
 
-### Mathematical Foundations
+### Mathematical Precision
 
-The protocol operates with high-precision arithmetic:
+**Triple-Precision System**:
+- **RAY (1e27)**: Interest indexes, internal calculations, scaled amounts
+- **WAD (1e18)**: Asset amounts, price calculations, user-facing values  
+- **BPS (1e4)**: Percentages, fees, risk parameters
 
-- **RAY Precision**: 27 decimals (1e27) for interest calculations
-- **WAD Precision**: 18 decimals (1e18) for asset amounts
-- **BPS Precision**: 4 decimals (10,000) for percentages
-
-#### Interest Rate Model
-
-The protocol uses a multi-slope interest rate model:
-
-```
-rate = base_rate + (utilization_rate × slope1)  [if utilization ≤ mid_utilization]
-rate = base_rate + slope1 + ((utilization_rate - mid_utilization) × slope2)  [if mid_utilization < utilization ≤ optimal_utilization]
-rate = base_rate + slope1 + slope2 + ((utilization_rate - optimal_utilization) × slope3)  [if utilization > optimal_utilization]
-```
-
-Where:
-- `utilization_rate = total_debt / (total_supply + total_debt)`
-- Interest compounds continuously using exponential calculations
-
-#### Health Factor Calculation
-
-```
-health_factor = weighted_collateral_value / total_debt_value
+**Interest Rate Model** (3-tier piecewise linear):
+```rust
+if utilization < mid_utilization:
+    rate = base_rate + (utilization * slope1 / mid_utilization)
+else if utilization < optimal_utilization:  
+    rate = base_rate + slope1 + ((utilization - mid_utilization) * slope2 / ...)
+else:
+    rate = base_rate + slope1 + slope2 + ((utilization - optimal_utilization) * slope3 / ...)
 ```
 
-A position becomes liquidatable when `health_factor < 1.0`.
-
-## Security Features
-
-### Multi-Layered Oracle Protection
-
-- **TWAP Integration**: Time-weighted average prices to prevent manipulation
-- **Deviation Tolerance**: Configurable price deviation limits (0.5% - 50% first tolerance, 1.5% - 100% last tolerance)
-- **Multiple Oracle Sources**: Support for various price feed providers
-- **Circuit Breakers**: Automatic pausing on extreme price movements
-
-### Liquidation Mechanisms
-
-#### Dutch Auction Model
-
-The protocol implements a sophisticated liquidation system targeting health factors of 1.02/1.01:
-
-```
-liquidation_bonus = min(
-    MAX_LIQUIDATION_BONUS,
-    linear_scaling × (1 - health_factor) × K_SCALING_FACTOR
-)
+**Compound Interest** (Taylor Series, 5-term precision):
+```rust
+compound_factor = 1 + x + x²/2! + x³/3! + x⁴/4! + x⁵/5!
+where x = interest_rate * time_delta_ms
 ```
 
-Where:
-- `MAX_LIQUIDATION_BONUS = 15%`
-- `K_SCALING_FACTOR = 200%`
-- Dynamic bonus scaling prevents over-liquidation
+**Health Factor**:
+```rust
+health_factor = Σ(collateral_value_i * ltv_i) / Σ(debt_value_j)
+// Liquidatable when health_factor < 1.0
+```
 
-#### Bad Debt Management
+## Security Architecture
 
-- **Threshold Detection**: Positions below $5 USD trigger bad debt cleanup
-- **Immediate Socialization**: Bad debt is distributed across all suppliers through supply index reduction
-- **Proportional Impact**: Bad debt impact is proportional to each supplier's share
+### 🛡️ **Multi-Source Oracle Protection**
 
-### Risk Isolation
+**Primary Validation (±2% Tolerance)**:
+- Uses TWAP price from Safe Price View for stability
+- Validates against Aggregator price for manipulation detection
+- Falls back to averaged price if deviation is within ±5%
 
-#### E-Mode (Efficiency Mode)
+**Secondary Protection**:
+- 15-minute TWAP freshness requirement prevents stale price attacks
+- Configurable tolerance bounds (0.5%-50% primary, 1.5%-100% secondary)
+- LP token pricing using Arda formula with reserve validation
 
-For correlated assets within the same risk category:
-- Higher LTV ratios (up to 92.5%)
-- Lower liquidation thresholds (as low as 95.5%)
-- Reduced liquidation bonuses (1.5%)
-
-#### Market Types
-
-1. **Standard Markets**: Cross-collateral borrowing with standard risk parameters
-2. **Isolated Markets**: Single collateral type per position
-3. **Siloed Markets**: Restricted borrowing to specific asset types
-
-#### Position Limits
-
-**Gas Optimization for Liquidations**: The protocol implements governance-controlled position limits to ensure efficient liquidation operations:
-
-- **Maximum Positions per NFT**: 10 borrow + 10 supply = 20 total positions
-- **Liquidation Gas Protection**: Limits prevent positions from becoming unliquidatable due to gas constraints
-- **Health Factor Calculations**: Each liquidation must iterate through all positions to calculate health factors
-- **Protocol Safety**: Excessive positions could cause denial-of-service during liquidation attempts
-
-**Default Limits**:
-```json
-{
-  "max_borrow_positions": 10,
-  "max_supply_positions": 10
+**Code Evidence**:
+```rust
+// Lines 800-831 in controller/src/oracle/mod.rs
+if self.is_within_anchor(&aggregator_price, &safe_price, 
+    &tolerances.first_upper_ratio_bps, &tolerances.first_lower_ratio_bps) {
+    safe_price // Use TWAP price (±2% tolerance)
+} else if self.is_within_anchor(/* ±5% tolerance */) {
+    (aggregator_price + safe_price) / 2 // Average both sources
+} else {
+    require!(cache.allow_unsafe_price, ERROR_UN_SAFE_PRICE_NOT_ALLOWED);
+    safe_price // Block dangerous operations during high deviation
 }
 ```
 
-**Governance Control**: Position limits are adjustable by protocol governance to accommodate:
-- Network gas limit changes
-- Optimization improvements
-- Market condition requirements
-- Emergency adjustments
+### 🔒 **Access Control & Reentrancy Protection**
 
-## Installation & Deployment
+**Flash Loan State Guards**:
+- Global flash loan flag prevents concurrent execution
+- All user functions check `!flash_loan_ongoing` before proceeding
+- Cache-based state management with atomic commits
+
+**Controller-Only Functions**:
+- Liquidity layer functions restricted to `only_owner` (controller)
+- Administrative functions require owner permissions
+- Position limits enforced at protocol level
+
+**Code Evidence**:
+```rust
+// Lines 277-279 in controller/src/validation.rs  
+fn reentrancy_guard(&self, flash_loan_ongoing: bool) {
+    require!(!flash_loan_ongoing, ERROR_FLASH_LOAN_ALREADY_ONGOING);
+}
+```
+
+### ⚡ **Liquidation Security**
+
+**Health Factor Targeting**:
+- Dynamic liquidation bonuses target health factors of 1.01-1.02
+- Linear scaling from 1.5% to 15% based on position health
+- Bad debt cleanup for positions under $5 USD to prevent dust attacks
+
+**Bad Debt Socialization**:
+- Immediate supply index reduction distributes losses proportionally
+- Prevents bank run scenarios where informed users exit early
+- Minimum index floor prevents total pool collapse
+
+**Position Limits (Gas Safety)**:
+- Maximum 10 supply + 10 borrow positions per NFT
+- Prevents liquidation DoS through gas exhaustion
+- Governance-adjustable based on network conditions
+
+### 🎯 **Mathematical Precision Protection**
+
+**Triple-Precision System**:
+- RAY (27 decimals) for internal calculations prevents rounding errors
+- Half-up rounding (banker's rounding) ensures consistent behavior
+- Overflow protection through BigUint arithmetic
+
+**Interest Rate Security**:
+- Taylor series compound interest (5-term precision) prevents manipulation
+- Per-millisecond rate conversion eliminates timing attacks
+- Rate caps prevent infinite interest rate scenarios
+
+### 🏦 **Risk Isolation Mechanisms**
+
+**E-Mode Categories**:
+- Correlated asset groupings with higher efficiency (up to 92.5% LTV)
+- Asset correlation assumptions built into risk parameters
+- Category-specific liquidation thresholds and bonuses
+
+**Market Isolation**:
+- **Standard Markets**: Cross-collateral borrowing with standard parameters
+- **Isolated Markets**: Single collateral type per position
+- **Siloed Markets**: Restricted borrowing to specific asset types
+
+**NFT-Based Position Management**:
+- Each position is an NFT enabling risk isolation between strategies
+- Account attributes track E-Mode, isolation status, and position type
+- Bulk operations with validation across multiple positions
+
+## Quick Start
 
 ### Prerequisites
+- Rust 1.75+ with MultiversX SC framework
+- MultiversX CLI (`mxpy`) for deployment
+- `jq` for JSON configuration processing
 
-- Rust 1.75+
-- MultiversX SDK (`mxpy`)
-- `jq` for JSON processing
-
-### Local Development
-
+### Build & Test
 ```bash
-# Clone the repository
-git clone https://github.com/your-org/rs-lending.git
-cd rs-lending
+# Build all contracts
+make build
 
-# Install dependencies
-cargo build
-
-# Run tests
+# Run comprehensive test suite  
 cargo test
 
-# Build WebAssembly contracts
-make build-all
+# Run specific test categories
+cargo test liquidations
+cargo test interest_rate_investigation
+cargo test rounding_attack_test
 ```
 
 ### Network Deployment
-
 ```bash
-# Make scripts executable
+# Make deployment scripts executable
 chmod +x configs/script.sh
 
 # Deploy to devnet
-make devnet deployController
-make devnet createMarket EGLD
+make devnet deployController       # Deploy main controller
+make devnet deployPriceAggregator # Deploy oracle aggregator
+make devnet createMarket EGLD     # Create EGLD lending market
 
 # Deploy to mainnet
 make mainnet deployController
 make mainnet createMarket EGLD
 ```
 
-## Usage
+## Usage Examples
 
-### For Users
+### 🏦 **Supplying Assets**
+```bash
+# Supply EGLD to earn yield (creates position NFT)
+make devnet supply EGLD 1.0
 
-#### Supplying Assets
-
-```rust
-// Supply EGLD to earn yield
-controller.supply(token_id: "EGLD", amount: 1000000000000000000u64) // 1 EGLD
+# Supply with E-Mode for higher efficiency  
+mxpy contract call [controller_address] \
+  --function="supply" \
+  --arguments 0 1 \  # optional_account_nonce, e_mode_category
+  --value=1000000000000000000 \  # 1 EGLD
+  --gas-limit=10000000
 ```
 
-#### Borrowing Against Collateral
-
-```rust
-// Borrow USDC against EGLD collateral
-controller.borrow(
-    account_nft_nonce: 1,
-    token_id: "USDC",
-    amount: 500000000u64  // 500 USDC
-)
+### 💳 **Borrowing Against Collateral**
+```bash
+# Borrow USDC against EGLD collateral
+mxpy contract call [controller_address] \
+  --function="borrow" \
+  --arguments [encoded_borrowed_tokens] \
+  --gas-limit=15000000
 ```
 
-#### Flash Loans
-
-```rust
-// Execute flash loan strategy
-controller.flash_loan(
-    receiver: address,
-    assets: vec!["EGLD"],
-    amounts: vec![1000000000000000000u64],
-    params: encoded_params
-)
+### ⚡ **Flash Loans**
+```bash
+# Execute flash loan for arbitrage/liquidation
+mxpy contract call [controller_address] \
+  --function="flashLoan" \
+  --arguments [target_contract] [endpoint] [loan_amounts] [params] \
+  --gas-limit=20000000
 ```
 
-### For Liquidators
+### 🎯 **Liquidations**
+```bash
+# Liquidate unhealthy position
+make devnet liquidate [account_nonce] 
 
-#### Liquidation Execution
-
-```rust
-// Liquidate unhealthy position
-controller.liquidate(
-    account_nft_nonce: 123,
-    debt_token_id: "USDC",
-    debt_to_cover: 100000000u64,  // 100 USDC
-    collateral_token_id: "EGLD"
-)
+# Check liquidation eligibility
+make devnet calculateHealthFactor [account_nonce]
 ```
 
 ## API Reference
 
-### Core Functions
+### Core User Functions
 
-| Function | Description | Parameters |
-|----------|-------------|------------|
-| `supply` | Deposit assets to earn yield | `token_id`, `amount` |
-| `withdraw` | Withdraw supplied assets | `account_nft_nonce`, `token_id`, `amount` |
-| `borrow` | Borrow against collateral | `account_nft_nonce`, `token_id`, `amount` |
-| `repay` | Repay borrowed assets | `account_nft_nonce`, `token_id`, `amount` |
-| `liquidate` | Liquidate unhealthy positions | `account_nft_nonce`, `debt_token_id`, `debt_to_cover`, `collateral_token_id` |
-| `flash_loan` | Execute uncollateralized loan | `receiver`, `assets`, `amounts`, `params` |
+| Function | Description | Inputs | Security |
+|----------|-------------|--------|----------|
+| `supply` | Deposit assets to earn yield | `optional_account_nonce`, `e_mode_category` + payment | Pause check, reentrancy guard, payment validation |
+| `withdraw` | Withdraw supplied assets | `collaterals: Vec<TokenPayment>` + NFT payment | Account validation, health factor check if has debt |
+| `borrow` | Borrow against collateral | `borrowed_tokens: Vec<TokenPayment>` + NFT payment | Health factor validation, utilization caps |
+| `repay` | Repay borrowed assets | `account_nonce` + payment | Overpayment protection, position cleanup |
+| `liquidate` | Liquidate unhealthy positions | `account_nonce` + payment | Health factor < 1.0, bonus calculation |
+| `flashLoan` | Execute uncollateralized loan | `token`, `amount`, `target_contract`, `endpoint`, `args` | Shard validation, fee enforcement, same-tx repayment |
 
-### Governance Functions
+### Administrative Functions
 
-| Function | Description | Parameters |
-|----------|-------------|------------|
-| `setPositionLimits` | Configure position limits per NFT | `max_borrow_positions`, `max_supply_positions` |
-| `editAssetConfig` | Update asset risk parameters | `asset`, `ltv`, `liquidation_threshold`, etc. |
-| `addEModeCategory` | Create new e-mode category | `ltv`, `liquidation_threshold`, `liquidation_bonus` |
-| `setAggregator` | Set price aggregator address | `aggregator_address` |
+| Function | Description | Access Control | Parameters |
+|----------|-------------|----------------|------------|
+| `editAssetConfig` | Update asset risk parameters | `only_owner` | `asset`, `ltv`, `liquidation_threshold`, `liquidation_bonus` |
+| `addEModeCategory` | Create efficiency mode category | `only_owner` | `category_id`, `ltv`, `liquidation_threshold`, `liquidation_bonus` |
+| `setPositionLimits` | Configure gas-safe position limits | `only_owner` | `max_borrow_positions`, `max_supply_positions` |
+| `setAggregator` | Set price aggregator contract | `only_owner` | `aggregator_address` |
+| `setSafePriceView` | Set TWAP price oracle | `only_owner` | `safe_price_view_address` |
 
-### View Functions
+### Key View Functions
 
-| Function | Description | Returns |
-|----------|-------------|---------|
-| `get_user_position` | Get account position details | `AccountPosition` |
-| `get_market_configuration` | Get market parameters | `MarketConfiguration` |
-| `calculate_health_factor` | Calculate position health | `ManagedDecimal` |
-| `get_user_account_data` | Get comprehensive account data | `UserAccountData` |
-| `getPositionLimits` | Get current position limits | `PositionLimits` |
+| Function | Description | Returns | Usage |
+|----------|-------------|---------|-------|
+| `health_factor` | Calculate position health | `ManagedDecimal` | Liquidation eligibility |
+| `user_account_data` | Comprehensive account info | `UserAccountData` | Position overview |
+| `all_markets` | List all asset markets | `Vec<AssetMarket>` | Market discovery |
+| `all_market_indexes` | Current interest indexes | `Vec<MarketIndex>` | APY calculations |
+| `capital_utilisation` | Pool utilization ratio | `ManagedDecimal` | Interest rate modeling |
+| `borrow_rate` / `deposit_rate` | Current APR/APY | `ManagedDecimal` | Yield estimation |
 
 ## Configuration
 
 ### Market Parameters
 
-Markets are configured with the following parameters:
+Each asset market is configured with risk and interest rate parameters:
 
 ```json
 {
   "EGLD": {
-    "ltv": "7500",                    // 75.00% loan-to-value
-    "liquidation_threshold": "8000",   // 80.00% liquidation threshold
-    "liquidation_bonus": "550",        // 5.50% liquidation bonus
-    "borrow_cap": "2000000",          // 2M EGLD borrow cap
-    "supply_cap": "2000000",          // 2M EGLD supply cap
-    "base_rate": "1",                 // 1% base interest rate
-    "reserve_factor": "500"           // 5.00% reserve factor
+    "ltv": "7500",                      // 75.00% max loan-to-value
+    "liquidation_threshold": "8000",    // 80.00% liquidation trigger  
+    "liquidation_bonus": "550",         // 5.50% liquidator reward
+    "borrow_cap": "20000",             // 20K EGLD max total borrows
+    "supply_cap": "20000",             // 20K EGLD max total supply
+    "base_rate": "1",                  // 1% base interest rate
+    "max_rate": "69",                  // 69% maximum interest rate  
+    "slope1": "5",                     // 5% slope until mid utilization
+    "slope2": "15",                    // 15% slope until optimal utilization
+    "slope3": "50",                    // 50% slope above optimal utilization
+    "mid_utilization": "65",           // 65% first kink point
+    "optimal_utilization": "90",       // 90% second kink point
+    "reserve_factor": "2500",          // 25.00% protocol fee
+    "flash_loan_fee": "50"             // 0.50% flash loan fee
   }
 }
 ```
 
 ### E-Mode Categories
 
+Efficiency mode for correlated assets with higher LTV ratios:
+
 ```json
 {
   "1": {
     "name": "EGLD Derivatives",
-    "ltv": "9250",                    // 92.50%
-    "liquidation_threshold": "9550",   // 95.50%
-    "liquidation_bonus": "150",        // 1.50%
+    "ltv": "9250",                     // 92.50% higher efficiency
+    "liquidation_threshold": "9550",   // 95.50% tighter liquidation
+    "liquidation_bonus": "150",        // 1.50% reduced bonus
     "assets": {
       "EGLD": {
-        "can_be_collateral": "0x01",
-        "can_be_borrowed": "0x01"
+        "can_be_collateral": "0x01",   // Can be used as collateral
+        "can_be_borrowed": "0x01"      // Can be borrowed in E-Mode
       }
     }
   }
 }
 ```
 
-## Testing
+### Position Limits
 
-### Running Tests
-
-```bash
-# Run all tests
-cargo test
-
-# Run specific test module
-cargo test liquidations
-
-# Run with coverage
-cargo test --coverage
-```
-
-### Test Coverage
-
-The protocol maintains >90% test coverage across:
-- Core lending/borrowing functionality
-- Liquidation mechanisms
-- Oracle price feeds
-- Risk management features
-- Edge cases and error conditions
-
-## Security Considerations
-
-### Audited Components
-
-- ✅ Interest rate calculations
-- ✅ Liquidation algorithms
-- ✅ Oracle price feeds
-- ✅ Flash loan mechanisms
-- ✅ Position management
-- ✅ Mathematical precision
-
-### Known Limitations
-
-- Oracle dependency for price feeds
-- Gas optimization ongoing
-- Governance mechanisms in development
-
-## Contributing
-
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
-
-### Development Workflow
-
-1. Fork the repository
-2. Create a feature branch
-3. Implement changes with tests
-4. Submit a pull request
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-**Disclaimer**: This protocol involves financial risk. Users should understand the risks before participating. Past performance does not guarantee future results.
-
-# MultiversX Lending Protocol Network Configuration
-
-This repository contains network-aware scripts for deploying and managing the MultiversX Lending Protocol across different networks (devnet, mainnet).
-
-## Setup
-
-1. Make sure you have the following dependencies installed:
-
-   - `jq` (JSON processor)
-   - `mxpy` (MultiversX SDK)
-   - `make` (optional, for using Makefile targets)
-
-2. Make the scripts executable:
-   ```bash
-   chmod +x configs/script.sh
-   ```
-
-## Network Configuration
-
-The system uses three types of configuration files:
-
-1. **networks.json** - Contains network-specific settings:
-   - Network endpoints (proxy, chain ID)
-   - Contract addresses
-   - Oracle addresses
-   - Account token details
-   - File paths for WASM binaries
-   - Ledger configuration
-
-2. **Network-specific market configs** - Contain market parameters:
-   - Located in `configs/`
-   - `devnet_market_configs.json` - Market configurations for devnet
-   - `mainnet_market_configs.json` - Market configurations for mainnet
-
-3. **E-Mode configuration** - Contains E-Mode categories and their settings:
-   - Located in `configs/emodes.json`
-   - Defines E-Mode categories per network
-   - Specifies assets and their parameters for each category
-
-## Usage
-
-
-```bash
-make <network> <command> [arguments]
-
-# Examples:
-make devnet createMarket EGLD
-make devnet addEModeCategory 1
-make devnet addAssetToEMode 1 EGLD
-make devnet show EGLD
-make devnet listMarkets
-```
-
-## Common Operations
-
-### Controller Management
-```bash
-# Deploy controller
-make devnet deployController
-
-# Upgrade controller
-make devnet upgradeController
-
-# Register account token
-make devnet registerAccountToken
-```
-
-### Market Management
-```bash
-# Create market
-make devnet createMarket EGLD
-
-# Upgrade specific market
-make devnet upgradeMarket EGLD
-
-# Upgrade all markets
-make devnet upgradeAllMarkets
-
-# Show market configuration
-make devnet show EGLD
-
-# List all markets
-make devnet listMarkets
-
-# Edit asset configuration
-make devnet editAssetConfig EGLD
-```
-
-### Oracle Management
-```bash
-# Create oracle for a market
-make devnet createOracle EGLD
-
-# Edit oracle tolerance
-make devnet editOracleTolerance EGLD
-
-# Deploy price aggregator
-make devnet deployPriceAggregator
-
-# Add oracles to price aggregator
-make devnet addOracles <address1> [address2] [address3] ...
-
-# Pause/unpause price aggregator
-make devnet pauseAggregator
-make devnet unpauseAggregator
-```
-
-### E-Mode Management
-```bash
-# List E-Mode categories
-make devnet listEModeCategories
-
-# Add new E-Mode category
-make devnet addEModeCategory 1
-
-# Add asset to E-Mode category
-make devnet addAssetToEMode 1 EGLD
-```
-
-### Revenue Management
-```bash
-# Claim revenue from all markets
-make devnet claimRevenue
-```
-
-## Market Configuration Structure
-
-Market configurations use human-readable values that are automatically scaled when used in transactions:
+Gas-optimized position limits to ensure liquidatable positions:
 
 ```json
 {
+  "max_borrow_positions": 10,   // Max debt positions per NFT
+  "max_supply_positions": 10    // Max collateral positions per NFT  
+}
+```
+
+## Testing & Quality Assurance
+
+### Comprehensive Test Suite
+
+```bash
+# Core functionality tests
+cargo test tests                        # Basic lending operations
+cargo test liquidations                 # Liquidation mechanisms  
+cargo test emode                       # E-Mode functionality
+cargo test isolated                    # Isolated market behavior
+
+# Security & edge case tests  
+cargo test rounding_attack_test        # Precision manipulation protection
+cargo test simple_rounding_test        # Mathematical rounding validation
+cargo test interest_rate_investigation # Interest calculation accuracy
+
+# Simulation tests
+cargo test simulation                  # Complex scenario modeling
+cargo test strategy                   # Strategy operation validation
+```
+
+### Coverage Areas
+- **Mathematical Precision**: RAY/WAD/BPS arithmetic, rounding behavior
+- **Oracle Security**: TWAP validation, tolerance bounds, manipulation resistance  
+- **Liquidation Logic**: Health factor calculations, bonus scaling, bad debt handling
+- **Flash Loan Security**: Reentrancy protection, fee enforcement, cross-shard validation
+- **Position Management**: NFT-based isolation, E-Mode categories, position limits
+- **Interest Rates**: Taylor series calculations, utilization-based rate models
+
+### Key Test Files
+- `controller/tests/liquidations.rs` - Liquidation scenarios and edge cases
+- `controller/tests/rounding_attack_test.rs` - Precision manipulation defenses
+- `controller/tests/interest_rate_investigation.rs` - Interest calculation validation
+- `controller/tests/simulation.rs` - End-to-end protocol behavior
+
+## Security Assessment
+
+### ✅ **Verified Security Features**
+- **Oracle Manipulation Resistance**: Multi-source validation with ±2%/±5% tolerance bounds
+- **Reentrancy Protection**: Flash loan state guards across all user functions
+- **Mathematical Precision**: 27-decimal RAY precision with banker's rounding
+- **Liquidation Security**: Dynamic bonuses targeting 1.01-1.02 health factors
+- **Bad Debt Mitigation**: Immediate socialization preventing bank run scenarios
+- **Position Isolation**: NFT-based risk separation with configurable limits
+
+### ⚠️ **Monitored Risk Areas**
+- **Oracle Dependency**: External price feed reliability during market stress
+- **Gas Limit Constraints**: Position limits ensure liquidatable positions
+- **E-Mode Correlations**: Asset correlation assumptions require monitoring
+- **Flash Loan Complexity**: Multi-contract interactions increase attack surface
+
+### 🔍 **Continuous Monitoring**
+- Price feed freshness and deviation tracking
+- Liquidation efficiency and gas usage monitoring  
+- Bad debt accumulation and socialization effectiveness
+- Interest rate model performance under various utilization levels
+
+## Development & Contributing
+
+### Setup
+```bash
+git clone https://github.com/multiversx/mx-lending-sc
+cd mx-lending-sc
+make build
+cargo test
+```
+
+### Architecture Guidelines
+- **Security First**: All changes require security analysis
+- **Mathematical Precision**: Maintain RAY/WAD/BPS precision standards
+- **Gas Efficiency**: Consider liquidation gas costs in design decisions
+- **Test Coverage**: Comprehensive tests for all functionality
+
+### Development Workflow
+1. Security analysis for proposed changes
+2. Implementation with comprehensive tests
+3. Mathematical precision verification
+4. Gas usage analysis and optimization
+5. Code review and audit consideration
+
+## License & Disclaimer
+
+**License**: MIT License - see [LICENSE](LICENSE)
+
+**Security Disclaimer**: This is experimental financial software. Users should:
+- Understand smart contract risks and potential for loss of funds
+- Start with small amounts and test thoroughly
+- Monitor positions actively, especially during market volatility
+- Understand liquidation mechanics and health factor requirements
+
+**Audit Status**: Internal security review completed. External audit recommended before mainnet deployment with significant TVL.
+
+---
+
+# Network Deployment Guide
+
+## Quick Deployment Commands
+
+### Prerequisites
+```bash
+# Install dependencies
+sudo apt install jq          # JSON processor
+pip install multiversx-sdk   # MultiversX CLI tools
+chmod +x configs/script.sh   # Make deployment scripts executable
+```
+
+### Network Operations
+```bash
+# Core deployment sequence
+make devnet deployController        # Deploy main controller contract
+make devnet deployPriceAggregator  # Deploy oracle aggregator
+make devnet createMarket EGLD      # Create EGLD lending market
+
+# Market management
+make devnet createMarket USDC      # Add USDC market
+make devnet editAssetConfig EGLD   # Update EGLD risk parameters
+make devnet listMarkets            # View all deployed markets
+
+# E-Mode configuration
+make devnet addEModeCategory 1     # Add correlated asset category
+make devnet addAssetToEMode 1 EGLD # Add EGLD to E-Mode category
+make devnet listEModeCategories    # View E-Mode configurations
+
+# Oracle management
+make devnet createOracle EGLD      # Deploy EGLD price oracle
+make devnet editOracleTolerance EGLD  # Update tolerance bounds
+make devnet addOracles <oracle_addresses> # Add price feed sources
+
+# Administrative operations
+make devnet registerAccountToken   # Register position NFT collection
+make devnet claimRevenue          # Claim accumulated protocol fees
+make devnet pauseAggregator       # Emergency pause price feeds
+```
+
+## Configuration Files
+
+### Market Parameters (`configs/devnet_market_configs.json`)
+```json
+{
   "EGLD": {
-    "token_id": "EGLD",
-    "ltv": "7500",                    // 75.00%
-    "liquidation_threshold": "8000",   // 80.00%
-    "liquidation_bonus": "550",        // 5.50%
-    "borrow_cap": "20000",            // 20,000 EGLD
-    "supply_cap": "20000",            // 20,000 EGLD
-    "base_rate": "1",                 // 1%
-    "max_rate": "69",                 // 69%
-    "slope1": "5",                    // 5%
-    "slope2": "15",                   // 15%
-    "slope3": "50",                   // 50%
-    "mid_utilization": "65",          // 65%
-    "optimal_utilization": "90",      // 90%
-    "reserve_factor": "2500",         // 25.00%
-    "oracle_decimals": "18"           // Used for scaling caps
+    "ltv": "7500",                    // 75% loan-to-value ratio
+    "liquidation_threshold": "8000",  // 80% liquidation trigger
+    "liquidation_bonus": "550",       // 5.5% liquidator reward
+    "borrow_cap": "20000",           // 20K EGLD max borrows
+    "supply_cap": "20000",           // 20K EGLD max supply
+    "base_rate": "1",                // 1% base interest rate
+    "reserve_factor": "2500"         // 25% protocol fee
   }
 }
 ```
 
-## E-Mode Configuration Structure
-
+### E-Mode Categories (`configs/emodes.json`)
 ```json
 {
   "devnet": {
     "1": {
       "name": "EGLD Derivatives",
-      "ltv": "9250",                  // 92.50%
-      "liquidation_threshold": "9550", // 95.50%
-      "liquidation_bonus": "150",      // 1.50%
-      "assets": {
-        "EGLD": {
-          "can_be_collateral": "0x01",
-          "can_be_borrowed": "0x01"
-        }
-      }
+      "ltv": "9250",                  // 92.5% higher efficiency
+      "liquidation_threshold": "9550", // 95.5% liquidation threshold
+      "liquidation_bonus": "150"      // 1.5% reduced liquidator bonus
     }
   }
 }
 ```
+
+### Network Settings (`configs/networks.json`)
+- Network endpoints and chain IDs
+- Contract deployment addresses
+- Oracle configuration
+- Account and token details

@@ -50,7 +50,7 @@ pub trait LendingUtilsModule:
     ///
     /// # Errors
     /// - `ERROR_NO_POOL_FOUND`: If no pool exists for the asset.
-    fn get_pool_address(&self, asset: &EgldOrEsdtTokenIdentifier) -> ManagedAddress {
+    fn pool_address(&self, asset: &EgldOrEsdtTokenIdentifier) -> ManagedAddress {
         let pool_address = self.pools_map(asset).get();
         require!(!pool_address.is_zero(), ERROR_NO_POOL_FOUND);
         pool_address
@@ -101,36 +101,38 @@ pub trait LendingUtilsModule:
     /// # Returns
     /// Current position amount in asset's native decimal precision
 
-    fn get_total_amount(
+    fn total_amount(
         &self,
         position: &AccountPosition<Self::Api>,
         feed: &PriceFeedShort<Self::Api>,
         cache: &mut Cache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let indexes = cache.get_cached_market_index(&position.asset_id);
+        let indexes = cache.cached_market_index(&position.asset_id);
         let index = if position.position_type == AccountPositionType::Deposit {
-            indexes.supply_index
+            indexes.supply_index_ray
         } else {
-            indexes.borrow_index
+            indexes.borrow_index_ray
         };
 
-        self.scaled_to_original(&position.scaled_amount, &index, feed.asset_decimals)
+        self.scaled_to_original(&position.scaled_amount_ray, &index, feed.asset_decimals)
     }
 
-    // Similar to get_total_amount but returns the result in RAY precision
-    fn get_total_amount_ray(
+    /// Calculates current position amount with interest accrual in RAY precision.
+    /// Multiplies scaled amount by appropriate index without decimal conversion.
+    /// Returns high-precision value for internal calculations and aggregations.
+    fn total_amount_ray(
         &self,
         position: &AccountPosition<Self::Api>,
         cache: &mut Cache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let indexes = cache.get_cached_market_index(&position.asset_id);
+        let indexes = cache.cached_market_index(&position.asset_id);
         let index = if position.position_type == AccountPositionType::Deposit {
-            indexes.supply_index
+            indexes.supply_index_ray
         } else {
-            indexes.borrow_index
+            indexes.borrow_index_ray
         };
 
-        self.scaled_to_original_ray(&position.scaled_amount, &index)
+        self.scaled_to_original_ray(&position.scaled_amount_ray, &index)
     }
 
     /// Computes multiple collateral valuations for risk assessment and borrowing capacity.
@@ -203,15 +205,15 @@ pub trait LendingUtilsModule:
         let mut ltv_collateral = self.ray_zero();
 
         for position in positions {
-            let feed = self.get_token_price(&position.asset_id, cache);
-            let amount = self.get_total_amount_ray(&position, cache);
-            let amount_egld = self.get_token_egld_value_ray(&amount, &feed.price);
+            let price_feed = self.token_price(&position.asset_id, cache);
+            let amount = self.total_amount_ray(&position, cache);
+            let amount_egld = self.token_egld_value_ray(&amount, &price_feed.price_wad);
 
             total_collateral += &amount_egld;
             weighted_collateral +=
-                self.mul_half_up(&amount_egld, &position.liquidation_threshold, RAY_PRECISION);
+                self.mul_half_up(&amount_egld, &position.liquidation_threshold_bps, RAY_PRECISION);
             ltv_collateral +=
-                self.mul_half_up(&amount_egld, &position.loan_to_value, RAY_PRECISION);
+                self.mul_half_up(&amount_egld, &position.loan_to_value_bps, RAY_PRECISION);
         }
 
         (weighted_collateral, total_collateral, ltv_collateral)
@@ -231,10 +233,10 @@ pub trait LendingUtilsModule:
         positions: &ManagedVec<AccountPosition<Self::Api>>,
         cache: &mut Cache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        positions.iter().fold(self.ray_zero(), |acc, position| {
-            let feed = self.get_token_price(&position.asset_id, cache);
-            let amount = self.get_total_amount_ray(&position, cache);
-            acc + self.get_token_egld_value_ray(&amount, &feed.price)
+        positions.iter().fold(self.ray_zero(), |accumulator, position| {
+            let price_feed = self.token_price(&position.asset_id, cache);
+            let amount = self.total_amount_ray(&position, cache);
+            accumulator + self.token_egld_value_ray(&amount, &price_feed.price_wad)
         })
     }
 

@@ -135,7 +135,7 @@ fn isolated_borrow_within_debt_ceiling_success() {
     );
 
     // Verify debt ceiling usage is tracked
-    let debt_usage = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
+    let debt_usage = state.used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
     assert!(debt_usage > ManagedDecimal::from_raw_units(BigUint::zero(), ISOLATED_DECIMALS));
 
     // Repay more than owed (overpayment)
@@ -148,7 +148,7 @@ fn isolated_borrow_within_debt_ceiling_success() {
     );
 
     // Verify debt ceiling usage is cleared
-    let final_debt_usage = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
+    let final_debt_usage = state.used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
     assert!(final_debt_usage == ManagedDecimal::from_raw_units(BigUint::zero(), ISOLATED_DECIMALS));
 }
 
@@ -245,7 +245,7 @@ fn isolated_debt_ceiling_with_interest_accrual() {
     );
 
     // Verify initial debt ceiling usage
-    let initial_debt_usage = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
+    let initial_debt_usage = state.used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
     assert!(
         initial_debt_usage > ManagedDecimal::from_raw_units(BigUint::zero(), ISOLATED_DECIMALS)
     );
@@ -268,7 +268,7 @@ fn isolated_debt_ceiling_with_interest_accrual() {
     );
 
     // Verify debt ceiling usage still exists (interest not fully covered)
-    let final_debt_usage = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
+    let final_debt_usage = state.used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
     assert!(final_debt_usage > ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION));
 }
 
@@ -324,7 +324,7 @@ fn isolated_liquidation_reduces_debt_ceiling() {
     );
 
     // Record initial debt ceiling usage
-    let initial_debt_usage = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
+    let initial_debt_usage = state.used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
     assert!(
         initial_debt_usage > ManagedDecimal::from_raw_units(BigUint::zero(), ISOLATED_DECIMALS)
     );
@@ -345,14 +345,14 @@ fn isolated_liquidation_reduces_debt_ceiling() {
     );
 
     // Verify debt ceiling reduced after liquidation
-    let post_liquidation_usage = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
+    let post_liquidation_usage = state.used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
     assert!(post_liquidation_usage < initial_debt_usage);
 
     // Clean remaining bad debt
     state.clean_bad_debt(2);
 
     // Verify debt ceiling fully cleared
-    let final_debt_usage = state.get_used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
+    let final_debt_usage = state.used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
     assert_eq!(
         final_debt_usage,
         ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS)

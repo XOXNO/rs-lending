@@ -16,14 +16,14 @@ multiversx_sc::derive_imports!();
 #[type_abi]
 #[derive(TopEncode, TopDecode, Clone)]
 pub struct MarketParams<M: ManagedTypeApi> {
-    pub max_borrow_rate: ManagedDecimal<M, NumDecimals>,
-    pub base_borrow_rate: ManagedDecimal<M, NumDecimals>,
-    pub slope1: ManagedDecimal<M, NumDecimals>,
-    pub slope2: ManagedDecimal<M, NumDecimals>,
-    pub slope3: ManagedDecimal<M, NumDecimals>,
-    pub mid_utilization: ManagedDecimal<M, NumDecimals>,
-    pub optimal_utilization: ManagedDecimal<M, NumDecimals>,
-    pub reserve_factor: ManagedDecimal<M, NumDecimals>,
+    pub max_borrow_rate_ray: ManagedDecimal<M, NumDecimals>,
+    pub base_borrow_rate_ray: ManagedDecimal<M, NumDecimals>,
+    pub slope1_ray: ManagedDecimal<M, NumDecimals>,
+    pub slope2_ray: ManagedDecimal<M, NumDecimals>,
+    pub slope3_ray: ManagedDecimal<M, NumDecimals>,
+    pub mid_utilization_ray: ManagedDecimal<M, NumDecimals>,
+    pub optimal_utilization_ray: ManagedDecimal<M, NumDecimals>,
+    pub reserve_factor_bps: ManagedDecimal<M, NumDecimals>,
     pub asset_id: EgldOrEsdtTokenIdentifier<M>,
     pub asset_decimals: usize,
 }
@@ -63,12 +63,12 @@ pub enum PositionMode {
 pub struct AccountPosition<M: ManagedTypeApi> {
     pub position_type: AccountPositionType,
     pub asset_id: EgldOrEsdtTokenIdentifier<M>,
-    pub scaled_amount: ManagedDecimal<M, NumDecimals>,
+    pub scaled_amount_ray: ManagedDecimal<M, NumDecimals>,
     pub account_nonce: u64,
-    pub liquidation_threshold: ManagedDecimal<M, NumDecimals>,
-    pub liquidation_bonus: ManagedDecimal<M, NumDecimals>,
-    pub liquidation_fees: ManagedDecimal<M, NumDecimals>,
-    pub loan_to_value: ManagedDecimal<M, NumDecimals>,
+    pub liquidation_threshold_bps: ManagedDecimal<M, NumDecimals>,
+    pub liquidation_bonus_bps: ManagedDecimal<M, NumDecimals>,
+    pub liquidation_fees_bps: ManagedDecimal<M, NumDecimals>,
+    pub loan_to_value_bps: ManagedDecimal<M, NumDecimals>,
 }
 
 impl<M: ManagedTypeApi> AccountPosition<M> {
@@ -90,29 +90,30 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
     ///
     /// # Returns
     /// - `AccountPosition`: A new AccountPosition instance.
-    #[inline(always)]
     pub fn new(
         position_type: AccountPositionType,
         asset_id: EgldOrEsdtTokenIdentifier<M>,
-        scaled_amount: ManagedDecimal<M, NumDecimals>,
+        scaled_amount_ray: ManagedDecimal<M, NumDecimals>,
         account_nonce: u64,
-        liquidation_threshold: ManagedDecimal<M, NumDecimals>,
-        liquidation_bonus: ManagedDecimal<M, NumDecimals>,
-        liquidation_fees: ManagedDecimal<M, NumDecimals>,
-        loan_to_value: ManagedDecimal<M, NumDecimals>,
+        liquidation_threshold_bps: ManagedDecimal<M, NumDecimals>,
+        liquidation_bonus_bps: ManagedDecimal<M, NumDecimals>,
+        liquidation_fees_bps: ManagedDecimal<M, NumDecimals>,
+        loan_to_value_bps: ManagedDecimal<M, NumDecimals>,
     ) -> Self {
         AccountPosition {
             position_type,
             asset_id,
-            scaled_amount,
+            scaled_amount_ray,
             account_nonce,
-            liquidation_threshold,
-            liquidation_bonus,
-            liquidation_fees,
-            loan_to_value,
+            liquidation_threshold_bps,
+            liquidation_bonus_bps,
+            liquidation_fees_bps,
+            loan_to_value_bps,
         }
     }
 
+    /// Converts BigUint amount to ManagedDecimal with specified scale.
+    /// Used for position amount conversions in calculations.
     pub fn make_amount_decimal(
         &self,
         amount: &BigUint<M>,
@@ -121,12 +122,16 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
         ManagedDecimal::from_raw_units(amount.clone(), scale)
     }
 
+    /// Returns zero value with same precision as position's scaled amount.
+    /// Used for initialization and comparisons.
     pub fn zero_decimal(&self) -> ManagedDecimal<M, NumDecimals> {
-        ManagedDecimal::from_raw_units(BigUint::zero(), self.scaled_amount.scale())
+        ManagedDecimal::from_raw_units(BigUint::zero(), self.scaled_amount_ray.scale())
     }
 
+    /// Checks if position can be removed (has zero balance).
+    /// Used for cleanup and position management.
     pub fn can_remove(&self) -> bool {
-        self.scaled_amount.into_raw_units().eq(&BigUint::zero())
+        self.scaled_amount_ray.into_raw_units().eq(&BigUint::zero())
     }
 }
 
@@ -136,54 +141,70 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
 #[type_abi]
 #[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode, Clone)]
 pub struct AssetConfig<M: ManagedTypeApi> {
-    pub loan_to_value: ManagedDecimal<M, NumDecimals>,
-    pub liquidation_threshold: ManagedDecimal<M, NumDecimals>,
-    pub liquidation_bonus: ManagedDecimal<M, NumDecimals>,
-    pub liquidation_fees: ManagedDecimal<M, NumDecimals>,
+    pub loan_to_value_bps: ManagedDecimal<M, NumDecimals>,
+    pub liquidation_threshold_bps: ManagedDecimal<M, NumDecimals>,
+    pub liquidation_bonus_bps: ManagedDecimal<M, NumDecimals>,
+    pub liquidation_fees_bps: ManagedDecimal<M, NumDecimals>,
     pub is_collateralizable: bool,
     pub is_borrowable: bool,
     pub e_mode_enabled: bool,
     pub is_isolated_asset: bool,
-    pub isolation_debt_ceiling_usd: ManagedDecimal<M, NumDecimals>,
+    pub isolation_debt_ceiling_usd_wad: ManagedDecimal<M, NumDecimals>,
     pub is_siloed_borrowing: bool,
     pub is_flashloanable: bool,
-    pub flashloan_fee: ManagedDecimal<M, NumDecimals>,
+    pub flashloan_fee_bps: ManagedDecimal<M, NumDecimals>,
     pub isolation_borrow_enabled: bool,
-    pub borrow_cap: Option<BigUint<M>>,
-    pub supply_cap: Option<BigUint<M>>,
+    pub borrow_cap_wad: Option<BigUint<M>>,
+    pub supply_cap_wad: Option<BigUint<M>>,
 }
 
 impl<M: ManagedTypeApi> AssetConfig<M> {
+    /// Checks if asset can be used as collateral.
+    /// Returns true if asset is collateralizable.
     pub fn can_supply(&self) -> bool {
         self.is_collateralizable
     }
 
+    /// Checks if asset can be borrowed.
+    /// Returns true if borrowing is enabled for this asset.
     pub fn can_borrow(&self) -> bool {
         self.is_borrowable
     }
 
+    /// Checks if asset is in isolation mode.
+    /// Isolated assets have special collateral restrictions.
     pub fn is_isolated(&self) -> bool {
         self.is_isolated_asset
     }
 
+    /// Checks if asset has siloed borrowing restrictions.
+    /// Siloed assets cannot be borrowed with other collateral types.
     pub fn is_siloed_borrowing(&self) -> bool {
         self.is_siloed_borrowing
     }
 
+    /// Checks if asset is enabled for e-mode.
+    /// E-mode allows higher capital efficiency for correlated assets.
     pub fn has_emode(&self) -> bool {
         self.e_mode_enabled
     }
 
+    /// Checks if asset can be borrowed in isolation mode.
+    /// Only specific stablecoins allowed for isolated borrowing.
     pub fn can_borrow_in_isolation(&self) -> bool {
         self.isolation_borrow_enabled
     }
 
+    /// Checks if asset is enabled for flash loans.
+    /// Returns flashloanable status.
     pub fn can_flashloan(&self) -> bool {
         self.is_flashloanable
     }
 
-    pub fn get_flash_loan_fee(&self) -> ManagedDecimal<M, NumDecimals> {
-        self.flashloan_fee.clone()
+    /// Returns flash loan fee in basis points.
+    /// Used to calculate fees for flash loan operations.
+    pub fn flash_loan_fee(&self) -> ManagedDecimal<M, NumDecimals> {
+        self.flashloan_fee_bps.clone()
     }
 }
 
@@ -195,8 +216,8 @@ impl<M: ManagedTypeApi> AssetConfig<M> {
 pub struct AssetExtendedConfigView<M: ManagedTypeApi> {
     pub asset_id: EgldOrEsdtTokenIdentifier<M>,
     pub market_contract_address: ManagedAddress<M>,
-    pub price_in_egld: ManagedDecimal<M, NumDecimals>,
-    pub price_in_usd: ManagedDecimal<M, NumDecimals>,
+    pub price_in_egld_wad: ManagedDecimal<M, NumDecimals>,
+    pub price_in_usd_wad: ManagedDecimal<M, NumDecimals>,
 }
 
 /// EModeCategory represents a risk category for e-mode assets, defining parameters like LTV and liquidation settings.
@@ -204,18 +225,22 @@ pub struct AssetExtendedConfigView<M: ManagedTypeApi> {
 #[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode, Clone)]
 pub struct EModeCategory<M: ManagedTypeApi> {
     pub category_id: u8,
-    pub loan_to_value: ManagedDecimal<M, NumDecimals>,
-    pub liquidation_threshold: ManagedDecimal<M, NumDecimals>,
-    pub liquidation_bonus: ManagedDecimal<M, NumDecimals>,
+    pub loan_to_value_bps: ManagedDecimal<M, NumDecimals>,
+    pub liquidation_threshold_bps: ManagedDecimal<M, NumDecimals>,
+    pub liquidation_bonus_bps: ManagedDecimal<M, NumDecimals>,
     pub is_deprecated: bool,
 }
 
 impl<M: ManagedTypeApi> EModeCategory<M> {
+    /// Checks if e-mode category is deprecated.
+    /// Deprecated categories cannot be used for new positions.
     pub fn is_deprecated(&self) -> bool {
         self.is_deprecated
     }
 
-    pub fn get_id(&self) -> u8 {
+    /// Returns the e-mode category ID.
+    /// Used for category identification and mapping.
+    pub fn id(&self) -> u8 {
         self.category_id
     }
 }
@@ -229,10 +254,14 @@ pub struct EModeAssetConfig {
 }
 
 impl EModeAssetConfig {
+    /// Checks if asset can be borrowed in e-mode.
+    /// Returns e-mode borrowing eligibility.
     pub fn can_borrow(&self) -> bool {
         self.is_borrowable
     }
 
+    /// Checks if asset can be supplied as collateral in e-mode.
+    /// Returns e-mode collateral eligibility.
     pub fn can_supply(&self) -> bool {
         self.is_collateralizable
     }
@@ -251,19 +280,27 @@ pub struct AccountAttributes<M: ManagedTypeApi> {
 }
 
 impl<M: ManagedTypeApi> AccountAttributes<M> {
+    /// Checks if account has e-mode enabled.
+    /// E-mode category ID > 0 indicates active e-mode.
     pub fn has_emode(&self) -> bool {
         self.e_mode_category_id > 0
     }
 
-    pub fn get_emode_id(&self) -> u8 {
+    /// Returns the account's e-mode category ID.
+    /// 0 means no e-mode, >0 indicates specific e-mode category.
+    pub fn emode_id(&self) -> u8 {
         self.e_mode_category_id
     }
 
+    /// Checks if account is in isolation mode.
+    /// Isolated positions have restricted collateral usage.
     pub fn is_isolated(&self) -> bool {
         self.is_isolated_position
     }
 
-    pub fn get_isolated_token(&self) -> EgldOrEsdtTokenIdentifier<M> {
+    /// Returns the isolated asset token identifier.
+    /// SAFETY: Only call after verifying is_isolated() returns true.
+    pub fn isolated_token(&self) -> EgldOrEsdtTokenIdentifier<M> {
         // SAFETY: This is safe because all call sites guard with is_isolated() checks
         unsafe { self.isolated_token.clone().into_option().unwrap_unchecked() }
     }
@@ -340,7 +377,7 @@ pub struct OracleProvider<M: ManagedTypeApi> {
 #[type_abi]
 #[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode, Clone)]
 pub struct PriceFeedShort<M: ManagedTypeApi> {
-    pub price: ManagedDecimal<M, NumDecimals>,
+    pub price_wad: ManagedDecimal<M, NumDecimals>,
     pub asset_decimals: usize,
 }
 
@@ -349,32 +386,32 @@ pub struct PriceFeedShort<M: ManagedTypeApi> {
 #[type_abi]
 #[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode)]
 pub struct OraclePriceFluctuation<M: ManagedTypeApi> {
-    pub first_upper_ratio: ManagedDecimal<M, NumDecimals>,
-    pub first_lower_ratio: ManagedDecimal<M, NumDecimals>,
-    pub last_upper_ratio: ManagedDecimal<M, NumDecimals>,
-    pub last_lower_ratio: ManagedDecimal<M, NumDecimals>,
+    pub first_upper_ratio_bps: ManagedDecimal<M, NumDecimals>,
+    pub first_lower_ratio_bps: ManagedDecimal<M, NumDecimals>,
+    pub last_upper_ratio_bps: ManagedDecimal<M, NumDecimals>,
+    pub last_lower_ratio_bps: ManagedDecimal<M, NumDecimals>,
 }
 
 /// MarketIndex represents the interest index for a market.
 #[type_abi]
 #[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode)]
 pub struct MarketIndex<M: ManagedTypeApi> {
-    pub borrow_index: ManagedDecimal<M, NumDecimals>,
-    pub supply_index: ManagedDecimal<M, NumDecimals>,
+    pub borrow_index_ray: ManagedDecimal<M, NumDecimals>,
+    pub supply_index_ray: ManagedDecimal<M, NumDecimals>,
 }
 
 #[type_abi]
 #[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode, Clone)]
 pub struct MarketIndexView<M: ManagedTypeApi> {
     pub asset_id: EgldOrEsdtTokenIdentifier<M>,
-    pub supply_index: ManagedDecimal<M, NumDecimals>,
-    pub borrow_index: ManagedDecimal<M, NumDecimals>,
-    pub egld_price: ManagedDecimal<M, NumDecimals>,
-    pub usd_price: ManagedDecimal<M, NumDecimals>,
-    pub safe_price_egld: ManagedDecimal<M, NumDecimals>,
-    pub safe_price_usd: ManagedDecimal<M, NumDecimals>,
-    pub aggregator_price_egld: ManagedDecimal<M, NumDecimals>,
-    pub aggregator_price_usd: ManagedDecimal<M, NumDecimals>,
+    pub supply_index_ray: ManagedDecimal<M, NumDecimals>,
+    pub borrow_index_ray: ManagedDecimal<M, NumDecimals>,
+    pub egld_price_wad: ManagedDecimal<M, NumDecimals>,
+    pub usd_price_wad: ManagedDecimal<M, NumDecimals>,
+    pub safe_price_egld_wad: ManagedDecimal<M, NumDecimals>,
+    pub safe_price_usd_wad: ManagedDecimal<M, NumDecimals>,
+    pub aggregator_price_egld_wad: ManagedDecimal<M, NumDecimals>,
+    pub aggregator_price_usd_wad: ManagedDecimal<M, NumDecimals>,
     pub within_first_tolerance: bool,
     pub within_second_tolerance: bool,
 }
@@ -386,8 +423,8 @@ pub struct LiquidationEstimate<M: ManagedTypeApi> {
     pub seized_collaterals: ManagedVec<M, EgldOrEsdtTokenPayment<M>>,
     pub protocol_fees: ManagedVec<M, EgldOrEsdtTokenPayment<M>>,
     pub refunds: ManagedVec<M, EgldOrEsdtTokenPayment<M>>,
-    pub max_egld_payment: ManagedDecimal<M, NumDecimals>,
-    pub bonus_rate: ManagedDecimal<M, NumDecimals>,
+    pub max_egld_payment_wad: ManagedDecimal<M, NumDecimals>,
+    pub bonus_rate_bps: ManagedDecimal<M, NumDecimals>,
 }
 
 /// PositionLimits defines the maximum number of positions an NFT can hold.

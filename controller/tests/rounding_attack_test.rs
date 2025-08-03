@@ -51,7 +51,7 @@ fn test_rounding_attack_with_minimum_amounts() {
 
     // Get initial collateral balance
     let initial_collateral =
-        state.get_collateral_amount_for_token(attacker_account_nonce, USDC_TOKEN);
+        state.collateral_amount_for_token(attacker_account_nonce, USDC_TOKEN);
     println!("Initial collateral: {:?}", initial_collateral);
 
     // Try to borrow the smallest possible amount (1 unit = 0.000001 USDC)
@@ -65,7 +65,7 @@ fn test_rounding_attack_with_minimum_amounts() {
     );
 
     // Record initial borrow amount
-    let initial_borrow = state.get_borrow_amount_for_token(attacker_account_nonce, USDC_TOKEN);
+    let initial_borrow = state.borrow_amount_for_token(attacker_account_nonce, USDC_TOKEN);
     println!("Initial borrow amount: {:?}", initial_borrow);
 
     // Fast forward time to accrue interest
@@ -85,7 +85,7 @@ fn test_rounding_attack_with_minimum_amounts() {
 
     // Check borrow amount after interest
     let borrow_after_interest =
-        state.get_borrow_amount_for_token(attacker_account_nonce, USDC_TOKEN);
+        state.borrow_amount_for_token(attacker_account_nonce, USDC_TOKEN);
     println!("Borrow amount after 1 year: {:?}", borrow_after_interest);
 
     // Calculate interest accrued
@@ -94,7 +94,7 @@ fn test_rounding_attack_with_minimum_amounts() {
 
     // Try to withdraw all collateral (should fail due to outstanding debt)
     let total_collateral =
-        state.get_collateral_amount_for_token(attacker_account_nonce, USDC_TOKEN);
+        state.collateral_amount_for_token(attacker_account_nonce, USDC_TOKEN);
     state.withdraw_asset_error(
         &attacker,
         USDC_TOKEN,
@@ -114,7 +114,7 @@ fn test_rounding_attack_with_minimum_amounts() {
 
     // Now withdraw all collateral
     let final_collateral =
-        state.get_collateral_amount_for_token(attacker_account_nonce, USDC_TOKEN);
+        state.collateral_amount_for_token(attacker_account_nonce, USDC_TOKEN);
     state.withdraw_asset_den(
         &attacker,
         USDC_TOKEN,
@@ -191,9 +191,9 @@ fn test_rapid_small_transaction_attack() {
     let mut total_repaid = BigUint::zero();
 
     // Perform 100 small borrow-repay cycles
-    for i in 0..100 {
+    for cycle_number in 0..100 {
         // Small time advancement to simulate realistic transaction spacing
-        state.change_timestamp(i); // 1 second between transactions
+        state.change_timestamp(cycle_number); // 1 second between transactions
 
         // Borrow 0.01 USDC
         let borrow_amount = BigUint::from(10_000u64); // 0.01 USDC
@@ -206,7 +206,7 @@ fn test_rapid_small_transaction_attack() {
         total_borrowed += &borrow_amount;
 
         // Immediately repay
-        let debt = state.get_borrow_amount_for_token(attacker_account_nonce, USDC_TOKEN);
+        let debt = state.borrow_amount_for_token(attacker_account_nonce, USDC_TOKEN);
         state.repay_asset_deno(
             &attacker,
             &USDC_TOKEN,
@@ -283,16 +283,16 @@ fn test_rounding_at_precision_boundaries() {
     let borrow_amount = BigUint::from(333_333u64);
     state.borrow_asset_den(&borrower, USDC_TOKEN, borrow_amount, borrower_account_nonce);
 
-    let utilisation = state.get_market_utilization(state.usdc_market.clone());
+    let utilisation = state.market_utilization(state.usdc_market.clone());
     println!("Utilisation: {:?}", utilisation);
 
     // Check initial borrow
-    let initial_debt = state.get_borrow_amount_for_token(borrower_account_nonce, USDC_TOKEN);
+    let initial_debt = state.borrow_amount_for_token(borrower_account_nonce, USDC_TOKEN);
     println!("Initial debt after borrow: {:?}", initial_debt);
 
     // Also check total deposits before interest accrual
     let initial_collateral =
-        state.get_collateral_amount_for_token(borrower_account_nonce, USDC_TOKEN);
+        state.collateral_amount_for_token(borrower_account_nonce, USDC_TOKEN);
     println!("Initial collateral: {:?}", initial_collateral);
 
     // Debug: Check what happens after the tiny supply
@@ -303,9 +303,9 @@ fn test_rounding_at_precision_boundaries() {
 
     // Trigger interest update
     println!("Before tiny supply - checking positions...");
-    let debt_before_supply = state.get_borrow_amount_for_token(borrower_account_nonce, USDC_TOKEN);
+    let debt_before_supply = state.borrow_amount_for_token(borrower_account_nonce, USDC_TOKEN);
     let collateral_before_supply =
-        state.get_collateral_amount_for_token(borrower_account_nonce, USDC_TOKEN);
+        state.collateral_amount_for_token(borrower_account_nonce, USDC_TOKEN);
     println!("Debt before supply: {:?}", debt_before_supply);
     println!("Collateral before supply: {:?}", collateral_before_supply);
 
@@ -321,8 +321,8 @@ fn test_rounding_at_precision_boundaries() {
     println!("After tiny supply - positions updated");
 
     // Get updated positions
-    let collateral = state.get_collateral_amount_for_token(borrower_account_nonce, USDC_TOKEN);
-    let debt = state.get_borrow_amount_for_token(borrower_account_nonce, USDC_TOKEN);
+    let collateral = state.collateral_amount_for_token(borrower_account_nonce, USDC_TOKEN);
+    let debt = state.borrow_amount_for_token(borrower_account_nonce, USDC_TOKEN);
 
     println!("Collateral after 1 month: {:?}", collateral);
     println!("Debt after 1 month: {:?}", debt);

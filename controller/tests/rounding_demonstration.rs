@@ -55,7 +55,7 @@ fn test_rounding_with_small_amounts() {
     );
 
     // Check initial borrow
-    let initial_borrow = state.get_borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
+    let initial_borrow = state.borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
     println!("Initial borrow (1 unit): {}", initial_borrow);
 
     // Advance time by 1 year to accrue interest
@@ -72,7 +72,7 @@ fn test_rounding_with_small_amounts() {
     );
 
     // Check borrow after interest
-    let borrow_after_interest = state.get_borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
+    let borrow_after_interest = state.borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
     println!("Borrow after 1 year: {}", borrow_after_interest);
 
     // Calculate interest accrued
@@ -117,7 +117,7 @@ fn test_rounding_with_small_amounts() {
         borrower_nonce,
     );
 
-    let borrow_with_decimals = state.get_borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
+    let borrow_with_decimals = state.borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
     println!("Borrow amount with decimals: {}", borrow_with_decimals);
 
     // Assert: Verify exact decimal handling
@@ -140,7 +140,7 @@ fn test_rounding_with_small_amounts() {
         false,
     );
 
-    let final_borrow = state.get_borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
+    let final_borrow = state.borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
     println!("Final borrow after interest: {}", final_borrow);
 
     // Assert: Verify interest calculation on decimal amounts
@@ -154,8 +154,8 @@ fn test_rounding_with_small_amounts() {
     );
 
     // Check protocol state
-    let reserves = state.get_market_reserves(state.usdc_market.clone());
-    let revenue = state.get_market_revenue(state.usdc_market.clone());
+    let reserves = state.market_reserves(state.usdc_market.clone());
+    let revenue = state.market_revenue(state.usdc_market.clone());
 
     println!("\n=== Protocol State ===");
     println!("Reserves: {}", reserves);

@@ -32,44 +32,44 @@ pub trait PositionBorrowModule:
     fn handle_create_borrow_strategy(
         &self,
         account_nonce: u64,
-        new_debt_token: &EgldOrEsdtTokenIdentifier,
+        debt_token_id: &EgldOrEsdtTokenIdentifier,
         amount_raw: &BigUint,
         debt_config: &mut AssetConfig<Self::Api>,
         caller: &ManagedAddress,
         account_attributes: &AccountAttributes<Self::Api>,
         cache: &mut Cache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        self.require_asset_supported(new_debt_token);
+        self.require_asset_supported(debt_token_id);
 
-        let e_mode = self.get_e_mode_category(account_attributes.e_mode_category_id);
+        let e_mode = emode::EModeModule::e_mode_category(self, account_attributes.e_mode_category_id);
         self.ensure_e_mode_not_deprecated(&e_mode);
-        let e_mode_id = account_attributes.get_emode_id();
+        let e_mode_id = account_attributes.emode_id();
         // Validate e-mode constraints first
-        let debt_emode_config = self.get_token_e_mode_config(e_mode_id, new_debt_token);
+        let debt_emode_config = self.token_e_mode_config(e_mode_id, debt_token_id);
         self.ensure_e_mode_compatible_with_asset(debt_config, e_mode_id);
         // Update asset config if NFT has active e-mode
         self.apply_e_mode_to_asset_config(debt_config, &e_mode, debt_emode_config);
         require!(debt_config.can_borrow(), ERROR_ASSET_NOT_BORROWABLE);
 
-        let (borrows, _) = self.get_borrow_positions(account_nonce, false);
+        let (borrows, _) = self.borrow_positions(account_nonce, false);
 
         let borrow_position =
-            self.get_or_create_borrow_position(account_nonce, debt_config, new_debt_token);
+            self.get_or_create_borrow_position(account_nonce, debt_config, debt_token_id);
 
-        let feed = self.get_token_price(new_debt_token, cache);
-        let amount = borrow_position.make_amount_decimal(amount_raw, feed.asset_decimals);
+        let price_feed = self.token_price(debt_token_id, cache);
+        let amount = borrow_position.make_amount_decimal(amount_raw, price_feed.asset_decimals);
 
-        self.validate_borrow_cap(debt_config, &amount, new_debt_token, cache);
+        self.validate_borrow_cap(debt_config, &amount, debt_token_id, cache);
 
-        self.handle_isolated_debt(cache, &amount, account_attributes, &feed);
+        self.handle_isolated_debt(cache, &amount, account_attributes, &price_feed);
 
-        let flash_fee = amount.clone() * debt_config.flashloan_fee.clone() / self.bps();
+        let flash_fee = amount.clone() * debt_config.flashloan_fee_bps.clone() / self.bps();
 
-        let pool_address = cache.get_cached_pool_address(&borrow_position.asset_id);
+        let pool_address = cache.cached_pool_address(&borrow_position.asset_id);
 
         self.validate_borrow_asset(
             debt_config,
-            new_debt_token,
+            debt_token_id,
             account_attributes,
             &borrows,
             cache,
@@ -84,7 +84,7 @@ pub trait PositionBorrowModule:
                 borrow_position,
                 amount.clone(),
                 flash_fee.clone(),
-                feed.price.clone(),
+                price_feed.price_wad.clone(),
             )
             .returns(ReturnsResult)
             .returns(ReturnsBackTransfersReset)
@@ -94,7 +94,7 @@ pub trait PositionBorrowModule:
             cache,
             &amount,
             &updated_borrow_position,
-            feed.price,
+            price_feed.price_wad,
             caller,
             account_attributes,
         );
@@ -103,10 +103,10 @@ pub trait PositionBorrowModule:
         require!(back_transfers.payments.len() == 1, ERROR_INVALID_PAYMENTS);
         let payment = back_transfers.payments.get(0);
         require!(
-            payment.token_identifier == *new_debt_token,
+            payment.token_identifier == *debt_token_id,
             ERROR_WRONG_TOKEN
         );
-        self.to_decimal(payment.amount.clone(), feed.asset_decimals)
+        self.to_decimal(payment.amount.clone(), price_feed.asset_decimals)
     }
 
     /// Manages a borrow operation, updating positions and handling isolated debt.
@@ -114,7 +114,7 @@ pub trait PositionBorrowModule:
     ///
     /// # Arguments
     /// - `account_nonce`: Position NFT nonce.
-    /// - `borrow_token_id`: Token to borrow.
+    /// - `token_id`: Token to borrow.
     /// - `amount`: Borrow amount.
     /// - `amount_in_usd`: USD value of the borrow.
     /// - `caller`: Borrower's address.
@@ -129,7 +129,7 @@ pub trait PositionBorrowModule:
     fn handle_borrow_position(
         &self,
         account_nonce: u64,
-        borrow_token_id: &EgldOrEsdtTokenIdentifier,
+        token_id: &EgldOrEsdtTokenIdentifier,
         amount: ManagedDecimal<Self::Api, NumDecimals>,
         caller: &ManagedAddress,
         asset_config: &AssetConfig<Self::Api>,
@@ -137,16 +137,16 @@ pub trait PositionBorrowModule:
         feed: &PriceFeedShort<Self::Api>,
         cache: &mut Cache<Self>,
     ) -> AccountPosition<Self::Api> {
-        let pool_address = cache.get_cached_pool_address(borrow_token_id);
+        let pool_address = cache.cached_pool_address(token_id);
         let mut borrow_position =
-            self.get_or_create_borrow_position(account_nonce, asset_config, borrow_token_id);
+            self.get_or_create_borrow_position(account_nonce, asset_config, token_id);
 
         borrow_position = self.execute_borrow(
             pool_address,
             caller,
             amount.clone(),
             borrow_position,
-            &feed.price,
+            &feed.price_wad,
         );
 
         self.store_updated_position(account_nonce, &borrow_position);
@@ -155,7 +155,7 @@ pub trait PositionBorrowModule:
             cache,
             &amount,
             &borrow_position,
-            feed.price.clone(),
+            feed.price_wad.clone(),
             caller,
             account,
         );
@@ -208,11 +208,11 @@ pub trait PositionBorrowModule:
         if !account_attributes.is_isolated() {
             return;
         }
-        let egld_amount = self.get_token_egld_value(amount, &feed.price);
-        let amount_in_usd = self.get_egld_usd_value(&egld_amount, &cache.egld_usd_price);
+        let egld_amount = self.token_egld_value(amount, &feed.price_wad);
+        let amount_in_usd = self.egld_usd_value(&egld_amount, &cache.egld_usd_price_wad);
 
-        let isolated_token = account_attributes.get_isolated_token();
-        let collateral_config = cache.get_cached_asset_info(&isolated_token);
+        let isolated_token = account_attributes.isolated_token();
+        let collateral_config = cache.cached_asset_info(&isolated_token);
         self.validate_isolated_debt_ceiling(
             &collateral_config,
             &isolated_token,
@@ -244,10 +244,10 @@ pub trait PositionBorrowModule:
                 token_id.clone(),
                 self.ray_zero(),
                 account_nonce,
-                borrow_asset_config.liquidation_threshold.clone(),
-                borrow_asset_config.liquidation_bonus.clone(),
-                borrow_asset_config.liquidation_fees.clone(),
-                borrow_asset_config.loan_to_value.clone(),
+                borrow_asset_config.liquidation_threshold_bps.clone(),
+                borrow_asset_config.liquidation_bonus_bps.clone(),
+                borrow_asset_config.liquidation_fees_bps.clone(),
+                borrow_asset_config.loan_to_value_bps.clone(),
             )
         })
     }
@@ -265,14 +265,14 @@ pub trait PositionBorrowModule:
         asset: &EgldOrEsdtTokenIdentifier,
         cache: &mut Cache<Self>,
     ) {
-        match &asset_config.borrow_cap {
+        match &asset_config.borrow_cap_wad {
             Some(borrow_cap) => {
-                let pool = cache.get_cached_pool_address(asset);
+                let pool = cache.cached_pool_address(asset);
                 let total_borrow_scaled = self.borrowed(pool.clone()).get();
-                let index = cache.get_cached_market_index(asset);
+                let index = cache.cached_market_index(asset);
                 let borrowed_amount = self.scaled_to_original(
                     &total_borrow_scaled,
-                    &index.borrow_index,
+                    &index.borrow_index_ray,
                     amount.scale(),
                 );
 
@@ -311,7 +311,7 @@ pub trait PositionBorrowModule:
     ///
     /// # Arguments
     /// - `ltv_base_amount`: LTV-weighted collateral in EGLD.
-    /// - `borrow_token_id`: Token to borrow.
+    /// - `token_id`: Token to borrow.
     /// - `amount_raw`: Raw borrow amount.
     /// - `borrow_positions`: Current borrow positions.
     /// - `cache`: Mutable storage cache.
@@ -324,7 +324,7 @@ pub trait PositionBorrowModule:
         feed: &PriceFeedShort<Self::Api>,
         cache: &mut Cache<Self>,
     ) {
-        let egld_amount = self.get_token_egld_value_ray(amount, &feed.price);
+        let egld_amount = self.token_egld_value_ray(amount, &feed.price_wad);
         let egld_total_borrowed = self.calculate_total_borrow_in_egld(borrow_positions, cache);
 
         self.validate_borrow_collateral(ltv_base_amount, &egld_total_borrowed, &egld_amount);
@@ -334,14 +334,14 @@ pub trait PositionBorrowModule:
     ///
     /// # Arguments
     /// - `asset_config`: Borrowed asset configuration.
-    /// - `borrow_token_id`: Token to borrow.
+    /// - `token_id`: Token to borrow.
     /// - `nft_attributes`: NFT attributes.
     /// - `borrow_positions`: Current borrow positions.
     /// - `cache`: Mutable storage cache.
     fn validate_borrow_asset(
         &self,
         asset_config: &AssetConfig<Self::Api>,
-        borrow_token_id: &EgldOrEsdtTokenIdentifier,
+        token_id: &EgldOrEsdtTokenIdentifier,
         nft_attributes: &AccountAttributes<Self::Api>,
         borrow_positions: &ManagedVec<AccountPosition<Self::Api>>,
         cache: &mut Cache<Self>,
@@ -365,12 +365,12 @@ pub trait PositionBorrowModule:
         // Check if trying to borrow a different asset when there's a siloed position
         if borrow_positions.len() == 1 {
             let first_position = borrow_positions.get(0);
-            let first_asset_config = cache.get_cached_asset_info(&first_position.asset_id);
+            let first_asset_config = cache.cached_asset_info(&first_position.asset_id);
 
             // If either the existing position or new borrow is siloed, they must be the same asset
             if first_asset_config.is_siloed_borrowing() || asset_config.is_siloed_borrowing() {
                 require!(
-                    borrow_token_id == &first_position.asset_id,
+                    token_id == &first_position.asset_id,
                     ERROR_ASSET_NOT_BORROWABLE_IN_SILOED
                 );
             }
@@ -393,7 +393,7 @@ pub trait PositionBorrowModule:
         let total_debt = current_debt + amount_to_borrow_in_dollars.clone();
 
         require!(
-            total_debt <= asset_config.isolation_debt_ceiling_usd,
+            total_debt <= asset_config.isolation_debt_ceiling_usd_wad,
             ERROR_DEBT_CEILING_REACHED
         );
     }
@@ -457,8 +457,8 @@ pub trait PositionBorrowModule:
         self.validate_payment(borrowed_token);
 
         // Get and validate asset configuration
-        let mut asset_config = cache.get_cached_asset_info(&borrowed_token.token_identifier);
-        let feed = self.get_token_price(&borrowed_token.token_identifier, cache);
+        let mut asset_config = cache.cached_asset_info(&borrowed_token.token_identifier);
+        let price_feed = self.token_price(&borrowed_token.token_identifier, cache);
 
         self.validate_borrow_asset(
             &asset_config,
@@ -469,19 +469,19 @@ pub trait PositionBorrowModule:
         );
 
         // Apply e-mode configuration
-        let asset_emode_config = self.get_token_e_mode_config(
-            account_attributes.get_emode_id(),
+        let asset_emode_config = self.token_e_mode_config(
+            account_attributes.emode_id(),
             &borrowed_token.token_identifier,
         );
-        self.ensure_e_mode_compatible_with_asset(&asset_config, account_attributes.get_emode_id());
+        self.ensure_e_mode_compatible_with_asset(&asset_config, account_attributes.emode_id());
         self.apply_e_mode_to_asset_config(&mut asset_config, e_mode, asset_emode_config);
 
         require!(asset_config.can_borrow(), ERROR_ASSET_NOT_BORROWABLE);
 
-        let amount = self.to_decimal(borrowed_token.amount.clone(), feed.asset_decimals);
+        let amount = self.to_decimal(borrowed_token.amount.clone(), price_feed.asset_decimals);
 
         // Validate borrow amounts and caps
-        self.validate_ltv_collateral(ltv_collateral, &amount, borrows, &feed, cache);
+        self.validate_ltv_collateral(ltv_collateral, &amount, borrows, &price_feed, cache);
         self.validate_borrow_cap(
             &asset_config,
             &amount,
@@ -489,7 +489,7 @@ pub trait PositionBorrowModule:
             cache,
         );
 
-        self.handle_isolated_debt(cache, &amount, account_attributes, &feed);
+        self.handle_isolated_debt(cache, &amount, account_attributes, &price_feed);
 
         // Handle the borrow position
         let updated_position = self.handle_borrow_position(
@@ -499,7 +499,7 @@ pub trait PositionBorrowModule:
             caller,
             &asset_config,
             account_attributes,
-            &feed,
+            &price_feed,
             cache,
         );
 

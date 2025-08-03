@@ -67,9 +67,9 @@ fn multiply_strategy_success_payment_as_collateral_flow() {
         payments,
     );
 
-    let total_debt = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+    let total_debt = state.borrow_amount_for_token(2, EGLD_TOKEN);
     assert_eq!(total_debt.into_raw_units().clone(), wanted_debt);
-    let market_revenue = state.get_market_revenue(state.egld_market.clone());
+    let market_revenue = state.market_revenue(state.egld_market.clone());
     assert_eq!(
         market_revenue.into_raw_units().clone(),
         BigUint::from(WAD) / 2u64
@@ -131,7 +131,7 @@ fn multiply_strategy_success_payment_as_debt_flow() {
         payments,
     );
 
-    let total_debt = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+    let total_debt = state.borrow_amount_for_token(2, EGLD_TOKEN);
     assert_eq!(total_debt.into_raw_units().clone(), wanted_debt);
 }
 
@@ -196,7 +196,7 @@ fn multiply_strategy_success_payment_as_random_token_flow() {
         payments,
     );
 
-    let total_debt = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+    let total_debt = state.borrow_amount_for_token(2, EGLD_TOKEN);
     assert_eq!(total_debt.into_raw_units().clone(), wanted_debt);
 }
 
@@ -255,9 +255,9 @@ fn multiply_strategy_success_payment_as_collateral_flow_increase_leverage() {
         payments,
     );
 
-    let total_debt = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+    let total_debt = state.borrow_amount_for_token(2, EGLD_TOKEN);
     assert_eq!(total_debt.into_raw_units().clone(), wanted_debt);
-    let market_revenue = state.get_market_revenue(state.egld_market.clone());
+    let market_revenue = state.market_revenue(state.egld_market.clone());
     assert_eq!(
         market_revenue.into_raw_units().clone(),
         BigUint::from(WAD) / 2u64
@@ -337,9 +337,9 @@ fn swap_debt() {
         payments,
     );
 
-    let total_debt = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+    let total_debt = state.borrow_amount_for_token(2, EGLD_TOKEN);
     assert_eq!(total_debt.into_raw_units().clone(), wanted_debt);
-    let market_revenue = state.get_market_revenue(state.egld_market.clone());
+    let market_revenue = state.market_revenue(state.egld_market.clone());
     assert_eq!(
         market_revenue.into_raw_units().clone(),
         BigUint::from(WAD) / 2u64
@@ -433,9 +433,9 @@ fn repay_debt_with_collateral_full_close_position() {
         payments,
     );
 
-    let total_debt = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+    let total_debt = state.borrow_amount_for_token(2, EGLD_TOKEN);
     assert_eq!(total_debt.into_raw_units().clone(), wanted_debt);
-    let market_revenue = state.get_market_revenue(state.egld_market.clone());
+    let market_revenue = state.market_revenue(state.egld_market.clone());
     assert_eq!(
         market_revenue.into_raw_units().clone(),
         BigUint::from(WAD) / 2u64
@@ -458,7 +458,7 @@ fn repay_debt_with_collateral_full_close_position() {
         OptionalValue::None,
         nft_payment.clone(),
     );
-    let total_debt = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+    let total_debt = state.borrow_amount_for_token(2, EGLD_TOKEN);
     println!("total_debt: {:?}", total_debt);
     let mut steps_swap = ManagedArgBuffer::<StaticApi>::new();
     steps_swap.push_arg(EgldOrEsdtTokenIdentifier::<StaticApi>::from(
@@ -473,9 +473,9 @@ fn repay_debt_with_collateral_full_close_position() {
         steps_swap.clone(),
         nft_payment.clone(),
     );
-    let total_collateral = state.get_collateral_amount_for_token(2, XEGLD_TOKEN);
+    let total_collateral = state.collateral_amount_for_token(2, XEGLD_TOKEN);
     println!("total_collateral: {:?}", total_collateral);
-    let total_debt = state.get_borrow_amount_for_token(2, XEGLD_TOKEN);
+    let total_debt = state.borrow_amount_for_token(2, XEGLD_TOKEN);
     println!("total_debt: {:?}", total_debt);
     let mut repay_steps = ManagedArgBuffer::<StaticApi>::new();
     repay_steps.push_arg(EgldOrEsdtTokenIdentifier::<StaticApi>::from(
@@ -548,9 +548,9 @@ fn repay_debt_with_collateral_partial() {
         payments,
     );
 
-    let total_debt = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+    let total_debt = state.borrow_amount_for_token(2, EGLD_TOKEN);
     assert_eq!(total_debt.into_raw_units().clone(), wanted_debt);
-    let market_revenue = state.get_market_revenue(state.egld_market.clone());
+    let market_revenue = state.market_revenue(state.egld_market.clone());
     assert_eq!(
         market_revenue.into_raw_units().clone(),
         BigUint::from(WAD) / 2u64
@@ -573,7 +573,7 @@ fn repay_debt_with_collateral_partial() {
         OptionalValue::None,
         nft_payment.clone(),
     );
-    let total_debt = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+    let total_debt = state.borrow_amount_for_token(2, EGLD_TOKEN);
     println!("total_debt: {:?}", total_debt);
     let mut steps_swap = ManagedArgBuffer::<StaticApi>::new();
     steps_swap.push_arg(EgldOrEsdtTokenIdentifier::<StaticApi>::from(
@@ -588,9 +588,9 @@ fn repay_debt_with_collateral_partial() {
         steps_swap.clone(),
         nft_payment.clone(),
     );
-    let total_collateral = state.get_collateral_amount_for_token(2, XEGLD_TOKEN);
+    let total_collateral = state.collateral_amount_for_token(2, XEGLD_TOKEN);
     println!("total_collateral: {:?}", total_collateral);
-    let total_debt = state.get_borrow_amount_for_token(2, XEGLD_TOKEN);
+    let total_debt = state.borrow_amount_for_token(2, XEGLD_TOKEN);
     println!("total_debt: {:?}", total_debt);
     let mut repay_steps = ManagedArgBuffer::<StaticApi>::new();
     repay_steps.push_arg(EgldOrEsdtTokenIdentifier::<StaticApi>::from(
@@ -663,9 +663,9 @@ fn swap_collateral() {
         payments,
     );
 
-    let total_debt = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+    let total_debt = state.borrow_amount_for_token(2, EGLD_TOKEN);
     assert_eq!(total_debt.into_raw_units().clone(), wanted_debt);
-    let market_revenue = state.get_market_revenue(state.egld_market.clone());
+    let market_revenue = state.market_revenue(state.egld_market.clone());
     assert_eq!(
         market_revenue.into_raw_units().clone(),
         BigUint::from(WAD) / 2u64
@@ -694,7 +694,7 @@ fn swap_collateral() {
         EGLD_TOKEN.as_bytes(),
     ));
     steps_swap.push_arg(BigUint::<StaticApi>::from(100u64) * BigUint::from(WAD));
-    let total_collateral = state.get_collateral_amount_for_token(2, XEGLD_TOKEN);
+    let total_collateral = state.collateral_amount_for_token(2, XEGLD_TOKEN);
     state.swap_collateral(
         &borrower,
         &EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),

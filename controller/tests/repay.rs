@@ -56,8 +56,8 @@ fn repay_full_debt_with_interest_and_overpayment_success() {
     );
 
     // Verify initial debt and collateral positions
-    let initial_debt = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
-    let collateral = state.get_collateral_amount_for_token(2, USDC_TOKEN);
+    let initial_debt = state.borrow_amount_for_token(2, EGLD_TOKEN);
+    let collateral = state.collateral_amount_for_token(2, USDC_TOKEN);
 
     assert!(initial_debt > ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS));
     assert!(collateral > ManagedDecimal::from_raw_units(BigUint::zero(), USDC_DECIMALS));
@@ -72,7 +72,7 @@ fn repay_full_debt_with_interest_and_overpayment_success() {
     state.update_markets(&borrower, markets.clone());
 
     // Verify debt increased due to interest
-    let debt_with_interest = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+    let debt_with_interest = state.borrow_amount_for_token(2, EGLD_TOKEN);
     assert!(debt_with_interest > initial_debt);
 
     // Repay 51 EGLD (initial 50 + extra to cover interest and overpay)
@@ -86,5 +86,5 @@ fn repay_full_debt_with_interest_and_overpayment_success() {
 
     // Verify debt position was fully cleared
     let custom_error_message = format!("Token not existing in the account {}", EGLD_TOKEN.as_str());
-    state.get_borrow_amount_for_token_non_existing(2, EGLD_TOKEN, custom_error_message.as_bytes());
+    state.borrow_amount_for_token_non_existing(2, EGLD_TOKEN, custom_error_message.as_bytes());
 }

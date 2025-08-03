@@ -54,9 +54,9 @@ pub trait PositionRepayModule:
         position_attributes: &AccountAttributes<Self::Api>,
     ) {
         if position_attributes.is_isolated() {
-            let debt_usd_amount = self.get_egld_usd_value(repay_amount, &cache.egld_usd_price);
+            let debt_usd_amount = self.egld_usd_value(repay_amount, &cache.egld_usd_price_wad);
             self.adjust_isolated_debt_usd(
-                &position_attributes.get_isolated_token(),
+                &position_attributes.isolated_token(),
                 debt_usd_amount,
                 false,
             );
@@ -100,11 +100,11 @@ pub trait PositionRepayModule:
         cache: &mut Cache<Self>,
     ) {
         if position_attributes.is_isolated() {
-            let amount = self.get_total_amount_ray(position, cache);
-            let egld_amount = self.get_token_egld_value_ray(&amount, &feed.price);
-            let debt_usd_amount = self.get_egld_usd_value(&egld_amount, &cache.egld_usd_price);
+            let amount = self.total_amount_ray(position, cache);
+            let egld_amount = self.token_egld_value_ray(&amount, &feed.price_wad);
+            let debt_usd_amount = self.egld_usd_value(&egld_amount, &cache.egld_usd_price_wad);
             self.adjust_isolated_debt_usd(
-                &position_attributes.get_isolated_token(),
+                &position_attributes.isolated_token(),
                 debt_usd_amount,
                 false,
             );
@@ -138,7 +138,7 @@ pub trait PositionRepayModule:
     ///
     /// # Arguments
     /// - `account_nonce`: Position NFT nonce for storage operations
-    /// - `repay_token_id`: Token identifier being repaid
+    /// - `token_id`: Token identifier being repaid
     /// - `repay_amount`: Repayment amount in asset decimals
     /// - `caller`: Repayer's address for token transfer
     /// - `repay_amount_in_egld`: EGLD value for isolated debt tracking
@@ -148,7 +148,7 @@ pub trait PositionRepayModule:
     fn process_repayment(
         &self,
         account_nonce: u64,
-        repay_token_id: &EgldOrEsdtTokenIdentifier,
+        token_id: &EgldOrEsdtTokenIdentifier,
         repay_amount: &ManagedDecimal<Self::Api, NumDecimals>,
         caller: &ManagedAddress,
         repay_amount_in_egld: ManagedDecimal<Self::Api, NumDecimals>,
@@ -157,7 +157,7 @@ pub trait PositionRepayModule:
         position_attributes: &AccountAttributes<Self::Api>,
     ) {
         let mut borrow_position =
-            self.validate_borrow_position_existence(account_nonce, repay_token_id);
+            self.validate_borrow_position_existence(account_nonce, token_id);
 
         self.update_isolated_debt_after_repayment(
             &repay_amount_in_egld,
@@ -165,14 +165,14 @@ pub trait PositionRepayModule:
             position_attributes,
         );
 
-        let pool_address = cache.get_cached_pool_address(repay_token_id);
+        let pool_address = cache.cached_pool_address(token_id);
 
         borrow_position = self
             .tx()
             .to(pool_address)
             .typed(proxy_pool::LiquidityPoolProxy)
-            .repay(caller, borrow_position.clone(), feed.price.clone())
-            .egld_or_single_esdt(repay_token_id, 0, repay_amount.into_raw_units())
+            .repay(caller, borrow_position.clone(), feed.price_wad.clone())
+            .egld_or_single_esdt(token_id, 0, repay_amount.into_raw_units())
             .returns(ReturnsResult)
             .sync_call();
 
@@ -180,7 +180,7 @@ pub trait PositionRepayModule:
             cache,
             repay_amount,
             &borrow_position,
-            feed.price.clone(),
+            feed.price_wad.clone(),
             caller,
             position_attributes,
         );

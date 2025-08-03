@@ -78,6 +78,9 @@ pub trait Controller:
         self.unpause_endpoint();
     }
 
+    /// Handles contract upgrade by pausing all operations.
+    /// Ensures safe state during code updates to prevent inconsistencies.
+    /// Contract remains paused until manually unpaused after upgrade.
     #[upgrade]
     fn upgrade(&self) {
         self.pause_endpoint();
@@ -95,13 +98,13 @@ pub trait Controller:
     #[payable]
     #[allow_multiple_var_args]
     #[endpoint(supply)]
-    fn supply(&self, opt_account_nonce: OptionalValue<u64>, e_mode_category: OptionalValue<u8>) {
+    fn supply(&self, optional_account_nonce: OptionalValue<u64>, e_mode_category: OptionalValue<u8>) {
         self.require_not_paused();
         let mut cache = Cache::new(self);
         self.reentrancy_guard(cache.flash_loan_ongoing);
         // Validate and extract payment details
-        let (collaterals, opt_account, caller, opt_attributes) =
-            self.validate_supply_payment(false, true, opt_account_nonce);
+        let (collaterals, optional_account, caller, optional_attributes) =
+            self.validate_supply_payment(false, true, optional_account_nonce);
 
         require!(
             !collaterals.is_empty(),
@@ -112,7 +115,7 @@ pub trait Controller:
         let first_collateral = collaterals.get(0);
         self.validate_payment(&first_collateral);
 
-        let first_asset_info = cache.get_cached_asset_info(&first_collateral.token_identifier);
+        let first_asset_info = cache.cached_asset_info(&first_collateral.token_identifier);
 
         // If the asset is isolated, we can only supply one collateral not a bulk
         if first_asset_info.is_isolated() {
@@ -120,7 +123,7 @@ pub trait Controller:
         }
 
         // Get or create account position
-        let opt_isolated_token = if first_asset_info.is_isolated() {
+        let optional_isolated_token = if first_asset_info.is_isolated() {
             Some(first_collateral.token_identifier.clone())
         } else {
             None
@@ -130,9 +133,9 @@ pub trait Controller:
             first_asset_info.is_isolated(),
             PositionMode::Normal,
             e_mode_category,
-            opt_account,
-            opt_attributes,
-            opt_isolated_token,
+            optional_account,
+            optional_attributes,
+            optional_isolated_token,
         );
 
         // Process the deposit
@@ -169,14 +172,14 @@ pub trait Controller:
         for collateral in collaterals {
             self.validate_payment(&collateral);
             let mut deposit_position = self
-                .get_deposit_position(account_payment.token_nonce, &collateral.token_identifier);
-            let feed = self.get_token_price(&deposit_position.asset_id, &mut cache);
-            let amount =
+                .deposit_position(account_payment.token_nonce, &collateral.token_identifier);
+            let feed = self.token_price(&deposit_position.asset_id, &mut cache);
+            let amount_wad =
                 deposit_position.make_amount_decimal(&collateral.amount, feed.asset_decimals);
 
             let _ = self.process_withdrawal(
                 account_payment.token_nonce,
-                amount,
+                amount_wad,
                 &caller,
                 false,
                 None,
@@ -221,9 +224,9 @@ pub trait Controller:
 
         let is_bulk_borrow = borrowed_tokens.len() > 1;
         let (mut borrows, mut borrow_index_mapper) =
-            self.get_borrow_positions(account_nonce, is_bulk_borrow);
+            self.borrow_positions(account_nonce, is_bulk_borrow);
 
-        let e_mode = self.get_e_mode_category(account_attributes.get_emode_id());
+        let e_mode = self.e_mode_category(account_attributes.emode_id());
         self.ensure_e_mode_not_deprecated(&e_mode);
 
         // Validate position limits for all new borrow positions in this transaction
@@ -269,16 +272,16 @@ pub trait Controller:
         for payment_raw in payments.iter() {
             self.validate_payment(&payment_raw);
 
-            let feed = self.get_token_price(&payment_raw.token_identifier, &mut cache);
-            let amount = self.to_decimal(payment_raw.amount.clone(), feed.asset_decimals);
-            let egld_value = self.get_token_egld_value(&amount, &feed.price);
+            let feed = self.token_price(&payment_raw.token_identifier, &mut cache);
+            let amount_wad = self.to_decimal(payment_raw.amount.clone(), feed.asset_decimals);
+            let egld_value_wad = self.token_egld_value(&amount_wad, &feed.price_wad);
 
             self.process_repayment(
                 account_nonce,
                 &payment_raw.token_identifier,
-                &amount,
+                &amount_wad,
                 &caller,
-                egld_value,
+                egld_value_wad,
                 &feed,
                 &mut cache,
                 &account_attributes,
@@ -311,7 +314,7 @@ pub trait Controller:
     fn flash_loan(
         &self,
         borrowed_asset_id: &EgldOrEsdtTokenIdentifier,
-        amount: BigUint,
+        amount_raw: BigUint,
         contract_address: &ManagedAddress,
         endpoint: ManagedBuffer<Self::Api>,
         mut arguments: ManagedArgBuffer<Self::Api>,
@@ -320,15 +323,15 @@ pub trait Controller:
         let mut cache = Cache::new(self);
         let caller = self.blockchain().get_caller();
         self.reentrancy_guard(cache.flash_loan_ongoing);
-        let asset_config = cache.get_cached_asset_info(borrowed_asset_id);
+        let asset_config = cache.cached_asset_info(borrowed_asset_id);
         require!(asset_config.can_flashloan(), ERROR_FLASHLOAN_NOT_ENABLED);
 
-        let pool_address = cache.get_cached_pool_address(borrowed_asset_id);
+        let pool_address = cache.cached_pool_address(borrowed_asset_id);
         self.validate_flash_loan_shard(contract_address);
-        self.require_amount_greater_than_zero(&amount);
+        self.require_amount_greater_than_zero(&amount_raw);
         self.validate_flash_loan_endpoint(&endpoint);
 
-        let feed = self.get_token_price(borrowed_asset_id, &mut cache);
+        let feed = self.token_price(borrowed_asset_id, &mut cache);
         self.flash_loan_ongoing().set(true);
         arguments.push_arg(caller);
         self.tx()
@@ -336,12 +339,12 @@ pub trait Controller:
             .typed(proxy_pool::LiquidityPoolProxy)
             .flash_loan(
                 borrowed_asset_id,
-                self.to_decimal(amount, feed.asset_decimals),
+                self.to_decimal(amount_raw, feed.asset_decimals),
                 contract_address,
                 endpoint,
                 arguments,
-                asset_config.flashloan_fee.clone(),
-                feed.price.clone(),
+                asset_config.flashloan_fee_bps.clone(),
+                feed.price_wad.clone(),
             )
             .returns(ReturnsResult)
             .sync_call();
@@ -367,7 +370,7 @@ pub trait Controller:
 
         let mut cache = Cache::new(self);
         self.reentrancy_guard(cache.flash_loan_ongoing);
-        let mut asset_config = cache.get_cached_asset_info(&asset_id);
+        let mut asset_config = cache.cached_asset_info(&asset_id);
 
         for account_nonce in account_nonces {
             self.require_active_account(account_nonce);
@@ -414,7 +417,7 @@ pub trait Controller:
             .values()
             .collect();
 
-        let (borrow_positions, _) = self.get_borrow_positions(account_nonce, false);
+        let (borrow_positions, _) = self.borrow_positions(account_nonce, false);
 
         let (_, total_collateral, _) = self.calculate_collateral_values(&collaterals, &mut cache);
         let total_borrow = self.calculate_total_borrow_in_egld(&borrow_positions, &mut cache);

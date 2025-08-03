@@ -1271,21 +1271,21 @@ impl LendingPoolTestState {
                 BigUint::from(mid_utilization),
                 BigUint::from(optimal_utilization),
                 BigUint::from(reserve_factor),
-                config.loan_to_value.into_raw_units(),
-                config.liquidation_threshold.into_raw_units(),
-                config.liquidation_bonus.into_raw_units(),
-                config.liquidation_fees.into_raw_units(),
+                config.loan_to_value_bps.into_raw_units(),
+                config.liquidation_threshold_bps.into_raw_units(),
+                config.liquidation_bonus_bps.into_raw_units(),
+                config.liquidation_fees_bps.into_raw_units(),
                 config.is_collateralizable,
                 config.is_borrowable,
                 config.is_isolated_asset,
-                config.isolation_debt_ceiling_usd.into_raw_units(),
-                config.flashloan_fee.into_raw_units(),
+                config.isolation_debt_ceiling_usd_wad.into_raw_units(),
+                config.flashloan_fee_bps.into_raw_units(),
                 config.is_siloed_borrowing,
                 config.is_flashloanable,
                 config.isolation_borrow_enabled,
                 asset_decimals,
-                config.borrow_cap.unwrap_or(BigUint::zero()),
-                config.supply_cap.unwrap_or(BigUint::zero()),
+                config.borrow_cap_wad.unwrap_or(BigUint::zero()),
+                config.supply_cap_wad.unwrap_or(BigUint::zero()),
             )
             .returns(ReturnsNewManagedAddress)
             .run();
@@ -1341,21 +1341,21 @@ impl LendingPoolTestState {
                 BigUint::from(mid_utilization),
                 BigUint::from(optimal_utilization),
                 BigUint::from(reserve_factor),
-                config.loan_to_value.into_raw_units(),
-                config.liquidation_threshold.into_raw_units(),
-                config.liquidation_bonus.into_raw_units(),
-                config.liquidation_fees.into_raw_units(),
+                config.loan_to_value_bps.into_raw_units(),
+                config.liquidation_threshold_bps.into_raw_units(),
+                config.liquidation_bonus_bps.into_raw_units(),
+                config.liquidation_fees_bps.into_raw_units(),
                 config.is_collateralizable,
                 config.is_borrowable,
                 config.is_isolated_asset,
-                config.isolation_debt_ceiling_usd.into_raw_units(),
-                config.flashloan_fee.into_raw_units(),
+                config.isolation_debt_ceiling_usd_wad.into_raw_units(),
+                config.flashloan_fee_bps.into_raw_units(),
                 config.is_siloed_borrowing,
                 config.is_flashloanable,
                 config.isolation_borrow_enabled,
                 18usize, // Default decimals, should be passed as parameter
-                config.borrow_cap.unwrap_or(BigUint::zero()),
-                config.supply_cap.unwrap_or(BigUint::zero()),
+                config.borrow_cap_wad.unwrap_or(BigUint::zero()),
+                config.supply_cap_wad.unwrap_or(BigUint::zero()),
             )
             .returns(ReturnsNewManagedAddress)
             .run()
@@ -1805,7 +1805,7 @@ impl LendingPoolTestState {
     // ============================================
 
     /// Get USD price
-    pub fn get_usd_price(
+    pub fn usd_price(
         &mut self,
         token_id: TestTokenIdentifier,
     ) -> ManagedDecimal<StaticApi, NumDecimals> {
@@ -1813,13 +1813,13 @@ impl LendingPoolTestState {
             .query()
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .get_usd_price(token_id)
+            .usd_price(token_id)
             .returns(ReturnsResult)
             .run()
     }
 
     /// Get EGLD price
-    pub fn get_egld_price(
+    pub fn egld_price(
         &mut self,
         token_id: TestTokenIdentifier,
     ) -> ManagedDecimal<StaticApi, NumDecimals> {
@@ -1827,24 +1827,24 @@ impl LendingPoolTestState {
             .query()
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .get_egld_price(token_id)
+            .egld_price(token_id)
             .returns(ReturnsResult)
             .run()
     }
 
     /// Get USD price with error
-    pub fn get_usd_price_error(&mut self, token_id: TestTokenIdentifier, error_message: &[u8]) {
+    pub fn usd_price_error(&mut self, token_id: TestTokenIdentifier, error_message: &[u8]) {
         self.world
             .query()
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .get_usd_price(token_id)
+            .usd_price(token_id)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
     }
 
     // /// Get safe price by timestamp offset
-    // pub fn get_safe_price_by_timestamp_offset(
+    // pub fn safe_price_by_timestamp_offset(
     //     &mut self,
     //     token_id: EgldOrEsdtTokenIdentifier<StaticApi>,
     //     offset: u64,
@@ -1870,7 +1870,7 @@ impl LendingPoolTestState {
     }
 
     /// Get account health factor
-    pub fn get_account_health_factor(
+    pub fn account_health_factor(
         &mut self,
         account_position: u64,
     ) -> ManagedDecimal<StaticApi, NumDecimals> {
@@ -1878,7 +1878,7 @@ impl LendingPoolTestState {
             .query()
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .get_health_factor(account_position)
+            .health_factor(account_position)
             .returns(ReturnsResult)
             .run()
     }
@@ -1888,7 +1888,7 @@ impl LendingPoolTestState {
     // ============================================
 
     /// Get collateral amount for token
-    pub fn get_collateral_amount_for_token(
+    pub fn collateral_amount_for_token(
         &mut self,
         account_position: u64,
         token_id: TestTokenIdentifier,
@@ -1897,13 +1897,13 @@ impl LendingPoolTestState {
             .query()
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .get_collateral_amount_for_token(account_position, token_id)
+            .collateral_amount_for_token(account_position, token_id)
             .returns(ReturnsResult)
             .run()
     }
 
     /// Get collateral amount for non-existing token
-    pub fn get_collateral_amount_for_token_non_existing(
+    pub fn collateral_amount_for_token_non_existing(
         &mut self,
         account_position: u64,
         token_id: TestTokenIdentifier,
@@ -1913,13 +1913,13 @@ impl LendingPoolTestState {
             .query()
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .get_collateral_amount_for_token(account_position, token_id)
+            .collateral_amount_for_token(account_position, token_id)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
     }
 
     /// Get borrow amount for token
-    pub fn get_borrow_amount_for_token(
+    pub fn borrow_amount_for_token(
         &mut self,
         account_position: u64,
         token_id: TestTokenIdentifier,
@@ -1928,13 +1928,13 @@ impl LendingPoolTestState {
             .query()
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .get_borrow_amount_for_token(account_position, token_id)
+            .borrow_amount_for_token(account_position, token_id)
             .returns(ReturnsResult)
             .run()
     }
 
     /// Get borrow amount for non-existing token
-    pub fn get_borrow_amount_for_token_non_existing(
+    pub fn borrow_amount_for_token_non_existing(
         &mut self,
         account_position: u64,
         token_id: TestTokenIdentifier,
@@ -1944,13 +1944,13 @@ impl LendingPoolTestState {
             .query()
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .get_borrow_amount_for_token(account_position, token_id)
+            .borrow_amount_for_token(account_position, token_id)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
     }
 
     /// Get total borrow in EGLD
-    pub fn get_total_borrow_in_egld(
+    pub fn total_borrow_in_egld(
         &mut self,
         account_position: u64,
     ) -> ManagedDecimal<StaticApi, NumDecimals> {
@@ -1958,21 +1958,13 @@ impl LendingPoolTestState {
             .query()
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .get_total_borrow_in_egld(account_position)
+            .total_borrow_in_egld(account_position)
             .returns(ReturnsResult)
             .run()
     }
 
     /// Get total borrow in EGLD (big)
-    pub fn get_total_borrow_in_egld_big(
-        &mut self,
-        account_position: u64,
-    ) -> ManagedDecimal<StaticApi, NumDecimals> {
-        self.get_total_borrow_in_egld(account_position)
-    }
-
-    /// Get total collateral in EGLD
-    pub fn get_total_collateral_in_egld(
+    pub fn total_borrow_in_egld_big(
         &mut self,
         account_position: u64,
     ) -> ManagedDecimal<StaticApi, NumDecimals> {
@@ -1980,21 +1972,27 @@ impl LendingPoolTestState {
             .query()
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .get_total_collateral_in_egld(account_position)
+            .total_borrow_in_egld(account_position)
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get total collateral in EGLD
+    pub fn total_collateral_in_egld(
+        &mut self,
+        account_position: u64,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .total_collateral_in_egld(account_position)
             .returns(ReturnsResult)
             .run()
     }
 
     /// Get total collateral in EGLD (big)
-    pub fn get_total_collateral_in_egld_big(
-        &mut self,
-        account_position: u64,
-    ) -> ManagedDecimal<StaticApi, NumDecimals> {
-        self.get_total_collateral_in_egld(account_position)
-    }
-
-    /// Get LTV collateral in EGLD
-    pub fn get_ltv_collateral_in_egld(
+    pub fn total_collateral_in_egld_big(
         &mut self,
         account_position: u64,
     ) -> ManagedDecimal<StaticApi, NumDecimals> {
@@ -2002,13 +2000,27 @@ impl LendingPoolTestState {
             .query()
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .get_ltv_collateral_in_egld(account_position)
+            .total_collateral_in_egld(account_position)
+            .returns(ReturnsResult)
+            .run()
+    }
+
+    /// Get LTV collateral in EGLD
+    pub fn ltv_collateral_in_egld(
+        &mut self,
+        account_position: u64,
+    ) -> ManagedDecimal<StaticApi, NumDecimals> {
+        self.world
+            .query()
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .ltv_collateral_in_egld(account_position)
             .returns(ReturnsResult)
             .run()
     }
 
     /// Get liquidation collateral available
-    pub fn get_liquidation_collateral_available(
+    pub fn liquidation_collateral_available(
         &mut self,
         account_position: u64,
     ) -> ManagedDecimal<StaticApi, NumDecimals> {
@@ -2016,7 +2028,7 @@ impl LendingPoolTestState {
             .query()
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .get_liquidation_collateral_available(account_position)
+            .liquidation_collateral_available(account_position)
             .returns(ReturnsResult)
             .run()
     }
@@ -2075,7 +2087,7 @@ impl LendingPoolTestState {
     // ============================================
 
     /// Get all market indexes
-    pub fn get_all_market_indexes(
+    pub fn all_market_indexes(
         &mut self,
         assets: MultiValueEncoded<StaticApi, EgldOrEsdtTokenIdentifier<StaticApi>>,
     ) -> ManagedVec<StaticApi, MarketIndexView<StaticApi>> {
@@ -2083,13 +2095,13 @@ impl LendingPoolTestState {
             .query()
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .get_all_market_indexes(assets)
+            .all_market_indexes(assets)
             .returns(ReturnsResult)
             .run()
     }
 
     /// Get all markets
-    pub fn get_all_markets(
+    pub fn all_markets(
         &mut self,
         assets: MultiValueEncoded<StaticApi, EgldOrEsdtTokenIdentifier<StaticApi>>,
     ) -> ManagedVec<StaticApi, AssetExtendedConfigView<StaticApi>> {
@@ -2097,13 +2109,13 @@ impl LendingPoolTestState {
             .query()
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .get_all_markets(assets)
+            .all_markets(assets)
             .returns(ReturnsResult)
             .run()
     }
 
     /// Get used isolated asset debt in USD
-    pub fn get_used_isolated_asset_debt_usd(
+    pub fn used_isolated_asset_debt_usd(
         &mut self,
         token_id: &TestTokenIdentifier,
     ) -> ManagedDecimal<StaticApi, NumDecimals> {
@@ -2121,7 +2133,7 @@ impl LendingPoolTestState {
     // ============================================
 
     /// Get pools list
-    pub fn get_pools(&mut self) -> MultiValueEncoded<StaticApi, ManagedAddress<StaticApi>> {
+    pub fn pools(&mut self) -> MultiValueEncoded<StaticApi, ManagedAddress<StaticApi>> {
         self.world
             .query()
             .to(self.lending_sc.clone())
@@ -2132,7 +2144,7 @@ impl LendingPoolTestState {
     }
 
     /// Get account data
-    pub fn get_account(&mut self, account_nonce: u64) -> AccountAttributes<StaticApi> {
+    pub fn account(&mut self, account_nonce: u64) -> AccountAttributes<StaticApi> {
         self.world
             .query()
             .to(self.lending_sc.clone())
@@ -2143,7 +2155,7 @@ impl LendingPoolTestState {
     }
 
     /// Get account nonce for address
-    pub fn get_last_account_nonce(&mut self) -> u64 {
+    pub fn last_account_nonce(&mut self) -> u64 {
         self.world
             .query()
             .to(self.lending_sc.clone())
@@ -2154,7 +2166,7 @@ impl LendingPoolTestState {
     }
 
     /// Get all accounts
-    pub fn get_accounts(&mut self) -> MultiValueEncoded<StaticApi, u64> {
+    pub fn accounts(&mut self) -> MultiValueEncoded<StaticApi, u64> {
         self.world
             .query()
             .to(self.lending_sc.clone())
@@ -2165,7 +2177,7 @@ impl LendingPoolTestState {
     }
 
     /// Get account attributes
-    pub fn get_account_attributes(&mut self, account_nonce: u64) -> AccountAttributes<StaticApi> {
+    pub fn account_attributes(&mut self, account_nonce: u64) -> AccountAttributes<StaticApi> {
         self.world
             .query()
             .to(self.lending_sc.clone())
@@ -2175,7 +2187,7 @@ impl LendingPoolTestState {
             .run()
     }
 
-    pub fn get_market_borrow_index(
+    pub fn market_borrow_index(
         &mut self,
         market_address: ManagedAddress<StaticApi>,
     ) -> ManagedDecimal<StaticApi, NumDecimals> {
@@ -2188,7 +2200,7 @@ impl LendingPoolTestState {
             .run()
     }
 
-    pub fn get_market_supply_index(
+    pub fn market_supply_index(
         &mut self,
         market_address: ManagedAddress<StaticApi>,
     ) -> ManagedDecimal<StaticApi, NumDecimals> {
@@ -2201,7 +2213,7 @@ impl LendingPoolTestState {
             .run()
     }
 
-    pub fn get_market_supplied(
+    pub fn market_supplied(
         &mut self,
         market_address: ManagedAddress<StaticApi>,
     ) -> ManagedDecimal<StaticApi, NumDecimals> {
@@ -2214,7 +2226,7 @@ impl LendingPoolTestState {
             .run()
     }
 
-    pub fn get_market_protocol_revenue(
+    pub fn market_protocol_revenue(
         &mut self,
         market_address: ManagedAddress<StaticApi>,
     ) -> ManagedDecimal<StaticApi, NumDecimals> {
@@ -2222,12 +2234,12 @@ impl LendingPoolTestState {
             .query()
             .to(market_address)
             .typed(proxy_liquidity_pool::LiquidityPoolProxy)
-            .get_protocol_revenue()
+            .protocol_revenue()
             .returns(ReturnsResult)
             .run()
     }
 
-    pub fn get_market_borrowed_amount(
+    pub fn market_borrowed_amount(
         &mut self,
         market_address: ManagedAddress<StaticApi>,
     ) -> ManagedDecimal<StaticApi, NumDecimals> {
@@ -2235,12 +2247,12 @@ impl LendingPoolTestState {
             .query()
             .to(market_address)
             .typed(proxy_liquidity_pool::LiquidityPoolProxy)
-            .get_borrowed_amount()
+            .borrowed_amount()
             .returns(ReturnsResult)
             .run()
     }
 
-    pub fn get_market_supplied_amount(
+    pub fn market_supplied_amount(
         &mut self,
         market_address: ManagedAddress<StaticApi>,
     ) -> ManagedDecimal<StaticApi, NumDecimals> {
@@ -2248,12 +2260,12 @@ impl LendingPoolTestState {
             .query()
             .to(market_address)
             .typed(proxy_liquidity_pool::LiquidityPoolProxy)
-            .get_supplied_amount()
+            .supplied_amount()
             .returns(ReturnsResult)
             .run()
     }
 
-    pub fn get_market_borrowed(
+    pub fn market_borrowed(
         &mut self,
         market_address: ManagedAddress<StaticApi>,
     ) -> ManagedDecimal<StaticApi, NumDecimals> {
@@ -2267,7 +2279,7 @@ impl LendingPoolTestState {
     }
 
     /// Get positions
-    pub fn get_positions(
+    pub fn positions(
         &mut self,
         account_nonce: u64,
         position_type: AccountPositionType,
@@ -2285,7 +2297,7 @@ impl LendingPoolTestState {
     }
 
     /// Get liquidity pool template address
-    pub fn get_liq_pool_template_address(&mut self) -> ManagedAddress<StaticApi> {
+    pub fn liq_pool_template_address(&mut self) -> ManagedAddress<StaticApi> {
         self.world
             .query()
             .to(self.lending_sc.clone())
@@ -2296,7 +2308,7 @@ impl LendingPoolTestState {
     }
 
     /// Get accumulator address
-    pub fn get_accumulator_address(&mut self) -> ManagedAddress<StaticApi> {
+    pub fn accumulator_address(&mut self) -> ManagedAddress<StaticApi> {
         self.world
             .query()
             .to(self.lending_sc.clone())
@@ -2307,7 +2319,7 @@ impl LendingPoolTestState {
     }
 
     /// Get pool address for asset
-    pub fn get_pool_address(
+    pub fn pool_address(
         &mut self,
         asset: EgldOrEsdtTokenIdentifier<StaticApi>,
     ) -> ManagedAddress<StaticApi> {
@@ -2321,7 +2333,7 @@ impl LendingPoolTestState {
     }
 
     /// Get price aggregator address
-    pub fn get_price_aggregator_address(&mut self) -> ManagedAddress<StaticApi> {
+    pub fn price_aggregator_address(&mut self) -> ManagedAddress<StaticApi> {
         self.world
             .query()
             .to(self.lending_sc.clone())
@@ -2332,7 +2344,7 @@ impl LendingPoolTestState {
     }
 
     /// Get safe price address
-    pub fn get_safe_price_address(&mut self) -> ManagedAddress<StaticApi> {
+    pub fn safe_price_address(&mut self) -> ManagedAddress<StaticApi> {
         self.world
             .query()
             .to(self.lending_sc.clone())
@@ -2343,7 +2355,7 @@ impl LendingPoolTestState {
     }
 
     /// Get swap router address
-    pub fn get_swap_router_address(&mut self) -> ManagedAddress<StaticApi> {
+    pub fn swap_router_address(&mut self) -> ManagedAddress<StaticApi> {
         self.world
             .query()
             .to(self.lending_sc.clone())
@@ -2354,7 +2366,7 @@ impl LendingPoolTestState {
     }
 
     /// Get asset configuration
-    pub fn get_asset_config(
+    pub fn asset_config(
         &mut self,
         asset: EgldOrEsdtTokenIdentifier<StaticApi>,
     ) -> AssetConfig<StaticApi> {
@@ -2379,20 +2391,20 @@ impl LendingPoolTestState {
     }
 
     /// Get e-modes
-    pub fn get_e_modes(
+    pub fn e_modes(
         &mut self,
     ) -> MultiValueEncoded<StaticApi, MultiValue2<u8, EModeCategory<StaticApi>>> {
         self.world
             .query()
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
-            .e_mode_category()
+            .e_mode_categories()
             .returns(ReturnsResult)
             .run()
     }
 
     /// Get asset e-modes
-    pub fn get_asset_e_modes(
+    pub fn asset_e_modes(
         &mut self,
         asset: EgldOrEsdtTokenIdentifier<StaticApi>,
     ) -> MultiValueEncoded<StaticApi, u8> {
@@ -2406,7 +2418,7 @@ impl LendingPoolTestState {
     }
 
     /// Get e-modes assets
-    pub fn get_e_modes_assets(
+    pub fn e_modes_assets(
         &mut self,
         category_id: u8,
     ) -> MultiValueEncoded<
@@ -2423,7 +2435,7 @@ impl LendingPoolTestState {
     }
 
     /// Get isolated asset debt in USD
-    pub fn get_isolated_asset_debt_usd(
+    pub fn isolated_asset_debt_usd(
         &mut self,
         asset: EgldOrEsdtTokenIdentifier<StaticApi>,
     ) -> ManagedDecimal<StaticApi, NumDecimals> {
@@ -2437,7 +2449,7 @@ impl LendingPoolTestState {
     }
 
     /// Get token oracle
-    pub fn get_token_oracle(
+    pub fn token_oracle(
         &mut self,
         token: EgldOrEsdtTokenIdentifier<StaticApi>,
     ) -> OracleProvider<StaticApi> {
@@ -3605,21 +3617,24 @@ pub fn setup_market(
             BigUint::from(U_MID),
             BigUint::from(U_OPTIMAL),
             BigUint::from(RESERVE_FACTOR),
-            config.config.loan_to_value.into_raw_units(),
-            config.config.liquidation_threshold.into_raw_units(),
-            config.config.liquidation_bonus.into_raw_units(),
-            config.config.liquidation_fees.into_raw_units(),
+            config.config.loan_to_value_bps.into_raw_units(),
+            config.config.liquidation_threshold_bps.into_raw_units(),
+            config.config.liquidation_bonus_bps.into_raw_units(),
+            config.config.liquidation_fees_bps.into_raw_units(),
             config.config.is_collateralizable,
             config.config.is_borrowable,
             config.config.is_isolated_asset,
-            config.config.isolation_debt_ceiling_usd.into_raw_units(),
-            config.config.flashloan_fee.into_raw_units(),
+            config
+                .config
+                .isolation_debt_ceiling_usd_wad
+                .into_raw_units(),
+            config.config.flashloan_fee_bps.into_raw_units(),
             config.config.is_siloed_borrowing,
             config.config.is_flashloanable,
             config.config.isolation_borrow_enabled,
             config.asset_decimals,
-            config.config.borrow_cap.unwrap_or(BigUint::zero()),
-            config.config.supply_cap.unwrap_or(BigUint::zero()),
+            config.config.borrow_cap_wad.unwrap_or(BigUint::zero()),
+            config.config.supply_cap_wad.unwrap_or(BigUint::zero()),
         )
         .returns(ReturnsResult)
         .run();
@@ -4009,7 +4024,7 @@ impl LendingPoolTestState {
         }
     }
     /// Get market utilization rate
-    pub fn get_market_utilization(
+    pub fn market_utilization(
         &mut self,
         market_address: ManagedAddress<StaticApi>,
     ) -> ManagedDecimal<StaticApi, NumDecimals> {
@@ -4017,12 +4032,12 @@ impl LendingPoolTestState {
             .query()
             .to(market_address)
             .typed(proxy_liquidity_pool::LiquidityPoolProxy)
-            .get_capital_utilisation()
+            .capital_utilisation()
             .returns(ReturnsResult)
             .run()
     }
     /// Get market borrow rate
-    pub fn get_market_borrow_rate(
+    pub fn market_borrow_rate(
         &mut self,
         market_address: ManagedAddress<StaticApi>,
     ) -> ManagedDecimal<StaticApi, NumDecimals> {
@@ -4030,13 +4045,13 @@ impl LendingPoolTestState {
             .query()
             .to(market_address)
             .typed(proxy_liquidity_pool::LiquidityPoolProxy)
-            .get_borrow_rate()
+            .borrow_rate()
             .returns(ReturnsResult)
             .run()
     }
 
     /// Get market supply rate
-    pub fn get_market_supply_rate(
+    pub fn market_supply_rate(
         &mut self,
         market_address: ManagedAddress<StaticApi>,
     ) -> ManagedDecimal<StaticApi, NumDecimals> {
@@ -4044,13 +4059,13 @@ impl LendingPoolTestState {
             .query()
             .to(market_address)
             .typed(proxy_liquidity_pool::LiquidityPoolProxy)
-            .get_deposit_rate()
+            .deposit_rate()
             .returns(ReturnsResult)
             .run()
     }
 
     /// Get market reserves
-    pub fn get_market_reserves(
+    pub fn market_reserves(
         &mut self,
         market_address: ManagedAddress<StaticApi>,
     ) -> ManagedDecimal<StaticApi, NumDecimals> {
@@ -4058,13 +4073,13 @@ impl LendingPoolTestState {
             .query()
             .to(market_address)
             .typed(proxy_liquidity_pool::LiquidityPoolProxy)
-            .get_reserves()
+            .reserves()
             .returns(ReturnsResult)
             .run()
     }
 
     /// Get market revenue
-    pub fn get_market_revenue(
+    pub fn market_revenue(
         &mut self,
         market_address: ManagedAddress<StaticApi>,
     ) -> ManagedDecimal<StaticApi, NumDecimals> {
@@ -4072,7 +4087,7 @@ impl LendingPoolTestState {
             .query()
             .to(market_address)
             .typed(proxy_liquidity_pool::LiquidityPoolProxy)
-            .get_protocol_revenue()
+            .protocol_revenue()
             .returns(ReturnsResult)
             .run()
     }

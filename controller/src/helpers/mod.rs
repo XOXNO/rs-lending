@@ -24,11 +24,11 @@ multiversx_sc::imports!();
 ///
 /// ### Dynamic Liquidation Bonus
 /// - **Formula**: `bonus = min_bonus + (max_bonus - min_bonus) * min(k * gap, 1)`
-/// - **Where**: `gap = (target_hf - current_hf) / target_hf`
+/// - **Where**: `gap = (target_health_factor - current_health_factor) / target_health_factor`
 /// - **Scaling**: Linear with k=200%, capped at 15% maximum bonus
 ///
 /// ### Algebraic Liquidation Model
-/// - **Formula**: `d_ideal = (target_hf * total_debt - weighted_collateral) / (target_hf - proportion_seized * (1 + bonus))`
+/// - **Formula**: `d_ideal = (target_health_factor * total_debt - weighted_collateral) / (target_health_factor - proportion_seized * (1 + bonus))`
 /// - **Purpose**: Determines optimal debt repayment to achieve target health factor
 /// - **Fallback**: Uses d_max when d_ideal is negative or denominator approaches zero
 ///
@@ -116,7 +116,7 @@ pub trait MathsModule: common_math::SharedMathModule {
         amount_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
         token_data: &PriceFeedShort<Self::Api>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        self.div_half_up(amount_in_egld, &token_data.price, RAY_PRECISION)
+        self.div_half_up(amount_in_egld, &token_data.price_wad, RAY_PRECISION)
     }
 
     /// Computes the USD value of a token amount using its price.
@@ -145,7 +145,7 @@ pub trait MathsModule: common_math::SharedMathModule {
     /// # Returns
     /// - USD value in WAD precision (10^18) for protocol-wide consistency
 
-    fn get_egld_usd_value(
+    fn egld_usd_value(
         &self,
         amount: &ManagedDecimal<Self::Api, NumDecimals>,
         token_price: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -166,7 +166,7 @@ pub trait MathsModule: common_math::SharedMathModule {
     /// # Returns
     /// - EGLD value in WAD precision.
 
-    fn get_token_egld_value(
+    fn token_egld_value(
         &self,
         amount: &ManagedDecimal<Self::Api, NumDecimals>,
         token_price: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -226,7 +226,7 @@ pub trait MathsModule: common_math::SharedMathModule {
     /// # Returns
     /// - EGLD value in RAY precision (10^27) for intermediate calculations
 
-    fn get_token_egld_value_ray(
+    fn token_egld_value_ray(
         &self,
         amount: &ManagedDecimal<Self::Api, NumDecimals>,
         token_price: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -315,10 +315,10 @@ pub trait MathsModule: common_math::SharedMathModule {
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
-        let upper = self.bps() + tolerance;
-        let lower = self.div_half_up(&self.bps(), &upper, BPS_PRECISION);
+        let upper_bound_bps = self.bps() + tolerance;
+        let lower_bound_bps = self.div_half_up(&self.bps(), &upper_bound_bps, BPS_PRECISION);
 
-        (upper, lower)
+        (upper_bound_bps, lower_bound_bps)
     }
 
     /// Validates and computes oracle price fluctuation tolerances.
@@ -384,10 +384,10 @@ pub trait MathsModule: common_math::SharedMathModule {
             self.calculate_tolerance_range(self.to_decimal_bps(last_tolerance.clone()));
 
         OraclePriceFluctuation {
-            first_upper_ratio,
-            first_lower_ratio,
-            last_upper_ratio,
-            last_lower_ratio,
+            first_upper_ratio_bps: first_upper_ratio,
+            first_lower_ratio_bps: first_lower_ratio,
+            last_upper_ratio_bps: last_upper_ratio,
+            last_lower_ratio_bps: last_lower_ratio,
         }
     }
 
@@ -399,7 +399,7 @@ pub trait MathsModule: common_math::SharedMathModule {
     ///
     /// **Mathematical Formula**:
     /// ```
-    /// gap = (target_hf - current_hf) / target_hf
+    /// gap = (target_health_factor - current_health_factor) / target_health_factor
     /// scaled_term = min(k * gap, 1.0)  // Clamped to [0, 1]
     /// bonus = min_bonus + (max_bonus - min_bonus) * scaled_term
     /// ```
@@ -416,9 +416,9 @@ pub trait MathsModule: common_math::SharedMathModule {
     /// 4. **Linear Scaling**: Predictable bonus progression encourages timely liquidations
     ///
     /// **Scaling Examples**:
-    /// - `current_hf = 0.95, target_hf = 1.01`: gap ≈ 5.9%, bonus ≈ min + 11.8% of range
-    /// - `current_hf = 0.80, target_hf = 1.01`: gap ≈ 20.8%, bonus ≈ min + 41.6% of range
-    /// - `current_hf = 0.50, target_hf = 1.01`: gap ≈ 50.5%, bonus = max (clamped)
+    /// - `current_health_factor = 0.95, target_health_factor = 1.01`: gap ≈ 5.9%, bonus ≈ min + 11.8% of range
+    /// - `current_health_factor = 0.80, target_health_factor = 1.01`: gap ≈ 20.8%, bonus ≈ min + 41.6% of range
+    /// - `current_health_factor = 0.50, target_health_factor = 1.01`: gap ≈ 50.5%, bonus = max (clamped)
     ///
     /// **Security Considerations**:
     /// - **Overflow Protection**: Clamping prevents bonus calculation overflow
@@ -426,42 +426,42 @@ pub trait MathsModule: common_math::SharedMathModule {
     /// - **Linear Predictability**: Prevents gaming through predictable bonus progression
     ///
     /// # Arguments
-    /// - `current_hf`: Current health factor (RAY precision, 10^27)
-    /// - `target_hf`: Target health factor post-liquidation (RAY precision, 10^27)
+    /// - `current_health_factor`: Current health factor (RAY precision, 10^27)
+    /// - `target_health_factor`: Target health factor post-liquidation (RAY precision, 10^27)
     /// - `min_bonus`: Minimum liquidation bonus (RAY precision, 10^27)
     ///
     /// # Returns
     /// - Liquidation bonus in RAY precision (10^27), range: [min_bonus, 1500]
     fn calculate_linear_bonus(
         &self,
-        current_hf: &ManagedDecimal<Self::Api, NumDecimals>,
-        target_hf: &ManagedDecimal<Self::Api, NumDecimals>,
+        current_health_factor: &ManagedDecimal<Self::Api, NumDecimals>,
+        target_health_factor: &ManagedDecimal<Self::Api, NumDecimals>,
         min_bonus: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         // Capped at 15%
         let max_bonus = self.to_decimal_bps(BigUint::from(MAX_LIQUIDATION_BONUS));
 
         // Scaling factor of 200%
-        let k = self.to_decimal_bps(BigUint::from(K_SCALLING_FACTOR));
+        let k_scaling_factor_bps = self.to_decimal_bps(BigUint::from(K_SCALLING_FACTOR));
 
-        // Calculate the health factor gap: (target_hf - current_hf) / target_hf
-        let gap = self.div_half_up(
-            &(target_hf.clone() - current_hf.clone()),
-            target_hf,
+        // Calculate the health factor gap: (target_health_factor - current_health_factor) / target_health_factor
+        let health_factor_gap_ratio_ray = self.div_half_up(
+            &(target_health_factor.clone() - current_health_factor.clone()),
+            target_health_factor,
             RAY_PRECISION,
         );
         // Calculate the scaled term: k * gap
-        let scaled_term = self.mul_half_up(&k, &gap, RAY_PRECISION);
+        let scaled_term_ray = self.mul_half_up(&k_scaling_factor_bps, &health_factor_gap_ratio_ray, RAY_PRECISION);
         // Clamp the scaled term between 0 and 1
-        let clamped_term = self.get_min(scaled_term, self.ray());
+        let clamped_term_ray = self.min(scaled_term_ray, self.ray());
         // Calculate the bonus range: max_bonus - min_bonus
 
-        let bonus_range = max_bonus.rescale(RAY_PRECISION) - min_bonus.clone();
+        let bonus_range_ray = max_bonus.rescale(RAY_PRECISION) - min_bonus.clone();
 
         // Calculate the bonus increment: bonus_range * clamped_term
-        let bonus_increment = self.mul_half_up(&bonus_range, &clamped_term, RAY_PRECISION);
+        let bonus_increment_ray = self.mul_half_up(&bonus_range_ray, &clamped_term_ray, RAY_PRECISION);
         // Final bonus: min_bonus + bonus_increment
-        min_bonus.clone() + bonus_increment
+        min_bonus.clone() + bonus_increment_ray
     }
 
     /// Computes debt repayment, bonus, and new health factor for a liquidation.
@@ -472,34 +472,34 @@ pub trait MathsModule: common_math::SharedMathModule {
     ///
     /// **Algebraic Liquidation Formula**:
     /// ```
-    /// d_ideal = (target_hf * total_debt - weighted_collateral) /
-    ///           (target_hf - proportion_seized * (1 + bonus))
+    /// d_ideal = (target_health_factor * total_debt - weighted_collateral) /
+    ///           (target_health_factor - proportion_seized * (1 + bonus))
     /// ```
     ///
     /// **Where**:
     /// - `d_ideal`: Optimal debt repayment to achieve target health factor
-    /// - `target_hf`: Desired post-liquidation health factor
+    /// - `target_health_factor`: Desired post-liquidation health factor
     /// - `proportion_seized`: Fraction of collateral seized per unit debt repaid
     /// - `bonus`: Liquidation bonus rate (additional reward for liquidator)
     ///
     /// **Mathematical Derivation**:
     /// Starting from the target health factor equation:
     /// ```
-    /// target_hf = (weighted_collateral - seized_weighted) / (total_debt - d)
+    /// target_health_factor = (weighted_collateral - seized_weighted) / (total_debt - d)
     ///
     /// Where: seized_weighted = d * proportion_seized * (1 + bonus)
     ///
     /// Solving for d:
-    /// target_hf * (total_debt - d) = weighted_collateral - d * proportion_seized * (1 + bonus)
-    /// target_hf * total_debt - target_hf * d = weighted_collateral - d * proportion_seized * (1 + bonus)
-    /// target_hf * total_debt - weighted_collateral = target_hf * d - d * proportion_seized * (1 + bonus)
-    /// target_hf * total_debt - weighted_collateral = d * (target_hf - proportion_seized * (1 + bonus))
+    /// target_health_factor * (total_debt - d) = weighted_collateral - d * proportion_seized * (1 + bonus)
+    /// target_health_factor * total_debt - target_health_factor * d = weighted_collateral - d * proportion_seized * (1 + bonus)
+    /// target_health_factor * total_debt - weighted_collateral = target_health_factor * d - d * proportion_seized * (1 + bonus)
+    /// target_health_factor * total_debt - weighted_collateral = d * (target_health_factor - proportion_seized * (1 + bonus))
     ///
-    /// Therefore: d = (target_hf * total_debt - weighted_collateral) / (target_hf - proportion_seized * (1 + bonus))
+    /// Therefore: d = (target_health_factor * total_debt - weighted_collateral) / (target_health_factor - proportion_seized * (1 + bonus))
     /// ```
     ///
     /// **Edge Case Handling**:
-    /// 1. **Division by Zero**: When `target_hf == proportion_seized * (1 + bonus)`, uses `d_max`
+    /// 1. **Division by Zero**: When `target_health_factor == proportion_seized * (1 + bonus)`, uses `d_max`
     /// 2. **Negative d_ideal**: When position cannot be made healthy, uses `d_max` (full liquidation)
     /// 3. **Excess Liquidation**: `d_ideal` is capped at `d_max` to prevent over-liquidation
     ///
@@ -526,7 +526,7 @@ pub trait MathsModule: common_math::SharedMathModule {
     /// - `proportion_seized`: Proportion of collateral seized per unit debt (BPS precision)
     /// - `liquidation_bonus`: Liquidation bonus rate (BPS precision)
     /// - `total_debt`: Total debt value (RAY precision)
-    /// - `target_hf`: Target post-liquidation health factor (RAY precision)
+    /// - `target_health_factor`: Target post-liquidation health factor (RAY precision)
     ///
     /// # Returns
     /// - Tuple of (debt_to_repay, liquidation_bonus, new_health_factor) in appropriate precisions
@@ -537,7 +537,7 @@ pub trait MathsModule: common_math::SharedMathModule {
         proportion_seized: &ManagedDecimal<Self::Api, NumDecimals>,
         liquidation_bonus: &ManagedDecimal<Self::Api, NumDecimals>,
         total_debt: &ManagedDecimal<Self::Api, NumDecimals>,
-        target_hf: ManagedDecimal<Self::Api, NumDecimals>,
+        target_health_factor: ManagedDecimal<Self::Api, NumDecimals>,
     ) -> (
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
@@ -548,37 +548,37 @@ pub trait MathsModule: common_math::SharedMathModule {
 
         // Convert to signed for intermediate calculations
         let total_debt_ray_signed = total_debt.clone().into_signed();
-        let target_health = target_hf.clone().into_signed();
+        let target_health = target_health_factor.clone().into_signed();
         let weighted_collateral_ray = weighted_collateral.clone().into_signed();
 
         // Compute 1 + b
-        let one_plus_bonus = self.bps() + liquidation_bonus.clone();
-        let d_max = self.div_half_up(
+        let one_plus_bonus_bps = self.bps() + liquidation_bonus.clone();
+        let d_max_ray = self.div_half_up(
             &self.mul_half_up(total_collateral, &bps, RAY_PRECISION),
-            &one_plus_bonus,
+            &one_plus_bonus_bps,
             RAY_PRECISION,
         );
 
-        let denominator_term = self
-            .mul_half_up(proportion_seized, &one_plus_bonus, RAY_PRECISION)
+        let denominator_term_signed = self
+            .mul_half_up(proportion_seized, &one_plus_bonus_bps, RAY_PRECISION)
             .into_signed();
 
         // Avoid edge case where target_health == denominator_term which would result in division by zero
-        let debt_to_repay_ray = if target_health == denominator_term {
-            d_max
+        let debt_to_repay_ray = if target_health == denominator_term_signed {
+            d_max_ray
         } else {
             // Compute d_ideal
-            let numerator_term =
+            let numerator_term_signed =
                 self.mul_half_up_signed(&target_health, &total_debt_ray_signed, RAY_PRECISION);
-            let numerator = numerator_term - weighted_collateral_ray;
-            let denominator = target_health - denominator_term;
-            let d_ideal = self.div_half_up_signed(&numerator, &denominator, RAY_PRECISION);
+            let numerator_signed = numerator_term_signed - weighted_collateral_ray;
+            let denominator_signed = target_health - denominator_term_signed;
+            let d_ideal_signed = self.div_half_up_signed(&numerator_signed, &denominator_signed, RAY_PRECISION);
 
-            // Determine debt_to_repay, will fall back to d_max if d_ideal is negative since it's not possible to be heatlhy anymore
-            if d_ideal.sign() == Sign::Minus {
-                d_max
+            // Determine debt_to_repay, will fall back to d_max if d_ideal is negative since it's not possible to be healthy anymore
+            if d_ideal_signed.sign() == Sign::Minus {
+                d_max_ray
             } else {
-                self.get_min(d_ideal.into_unsigned_or_fail(), d_max)
+                self.min(d_ideal_signed.into_unsigned_or_fail(), d_max_ray)
             }
         };
 
@@ -608,7 +608,7 @@ pub trait MathsModule: common_math::SharedMathModule {
     /// ```
     /// 1. Primary Target: 1.02 WAD (102% health factor)
     ///    - Attempt liquidation targeting 102% health factor
-    ///    - If achievable (new_hf >= 1.0), return this result
+    ///    - If achievable (new_health_factor >= 1.0), return this result
     ///
     /// 2. Secondary Target: 1.01 WAD (101% health factor)
     ///    - If primary target fails to achieve safe health factor
@@ -655,7 +655,7 @@ pub trait MathsModule: common_math::SharedMathModule {
     /// - `total_collateral`: Total collateral value (RAY)
     /// - `total_debt`: Total debt value (RAY)
     /// - `min_bonus`: Minimum liquidation bonus (BPS)
-    /// - `current_hf`: Current health factor (RAY)
+    /// - `current_health_factor`: Current health factor (RAY)
     ///
     /// # Returns
     /// - Tuple of (optimal_debt_to_repay, calculated_bonus) in appropriate precisions
@@ -666,41 +666,41 @@ pub trait MathsModule: common_math::SharedMathModule {
         total_collateral: &ManagedDecimal<Self::Api, NumDecimals>,
         total_debt: &ManagedDecimal<Self::Api, NumDecimals>,
         min_bonus: &ManagedDecimal<Self::Api, NumDecimals>,
-        current_hf: &ManagedDecimal<Self::Api, NumDecimals>,
+        current_health_factor: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> (
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
         let ray = self.ray();
 
-        let target_best = ray.clone().into_raw_units() / 50u32 + ray.into_raw_units(); // 1.02 RAY
+        let target_health_factor_primary_ray = ray.clone().into_raw_units() / 50u32 + ray.into_raw_units(); // 1.02 RAY
 
-        let (safest_debt, safest_bonus, safe_new_hf) = self.simulate_liquidation(
+        let (safest_debt_ray, safest_bonus_ray, safe_new_health_factor_ray) = self.simulate_liquidation(
             weighted_collateral_in_egld,
             proportion_seized,
             total_collateral,
             total_debt,
             min_bonus,
-            current_hf,
-            self.to_decimal_ray(target_best),
+            current_health_factor,
+            self.to_decimal_ray(target_health_factor_primary_ray),
         );
 
-        if safe_new_hf >= self.ray() {
-            return (safest_debt, safest_bonus);
+        if safe_new_health_factor_ray >= self.ray() {
+            return (safest_debt_ray, safest_bonus_ray);
         }
 
-        let target_best_second = ray.clone().into_raw_units() / 100u32 + ray.into_raw_units(); // 1.01 RAY
-        let (limit_debt, limit_bonus, _) = self.simulate_liquidation(
+        let target_health_factor_secondary_ray = ray.clone().into_raw_units() / 100u32 + ray.into_raw_units(); // 1.01 RAY
+        let (limit_debt_ray, limit_bonus_ray, _) = self.simulate_liquidation(
             weighted_collateral_in_egld,
             proportion_seized,
             total_collateral,
             total_debt,
             min_bonus,
-            current_hf,
-            self.to_decimal_ray(target_best_second),
+            current_health_factor,
+            self.to_decimal_ray(target_health_factor_secondary_ray),
         );
 
-        (limit_debt, limit_bonus)
+        (limit_debt_ray, limit_bonus_ray)
     }
 
     /// Calculates the new health factor after a liquidation operation.
@@ -766,21 +766,21 @@ pub trait MathsModule: common_math::SharedMathModule {
         proportion_seized: &ManagedDecimal<Self::Api, NumDecimals>,
         liquidation_bonus: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let one_plus_bonus = self.bps() + liquidation_bonus.clone();
+        let one_plus_bonus_bps = self.bps() + liquidation_bonus.clone();
 
         // Compute seized_weighted
-        let seized = self.mul_half_up(proportion_seized, debt_to_repay_ray, RAY_PRECISION);
-        let seized_weighted_raw = self.mul_half_up(&seized, &one_plus_bonus, RAY_PRECISION);
-        let seized_weighted = self.get_min(seized_weighted_raw, weighted_collateral_ray.clone());
+        let seized_proportion_ray = self.mul_half_up(proportion_seized, debt_to_repay_ray, RAY_PRECISION);
+        let seized_weighted_raw_ray = self.mul_half_up(&seized_proportion_ray, &one_plus_bonus_bps, RAY_PRECISION);
+        let seized_weighted_ray = self.min(seized_weighted_raw_ray, weighted_collateral_ray.clone());
         // Compute new weighted collateral and total debt
-        let new_weighted_ray = weighted_collateral_ray.clone() - seized_weighted;
+        let new_weighted_collateral_ray = weighted_collateral_ray.clone() - seized_weighted_ray;
         let new_total_debt_ray = if debt_to_repay_ray >= total_debt_ray {
             self.ray_zero()
         } else {
             total_debt_ray.clone() - debt_to_repay_ray.clone()
         };
         // Compute new_health_factor
-        self.compute_health_factor(&new_weighted_ray, &new_total_debt_ray)
+        self.compute_health_factor(&new_weighted_collateral_ray, &new_total_debt_ray)
     }
 
     /// Simulates a liquidation to estimate debt repayment, bonus, and new health factor.
@@ -792,10 +792,10 @@ pub trait MathsModule: common_math::SharedMathModule {
     /// **Simulation Process**:
     /// ```
     /// 1. Calculate dynamic bonus based on health factor gap
-    ///    bonus = calculate_linear_bonus(current_hf, target_hf, min_bonus)
+    ///    bonus = calculate_linear_bonus(current_health_factor, target_health_factor, min_bonus)
     ///
     /// 2. Compute optimal liquidation parameters
-    ///    (debt_to_repay, _, new_hf) = compute_liquidation_details(...)
+    ///    (debt_to_repay, _, new_health_factor) = compute_liquidation_details(...)
     ///
     /// 3. Return complete liquidation scenario
     ///    return (debt_to_repay, bonus, new_health_factor)
@@ -823,8 +823,8 @@ pub trait MathsModule: common_math::SharedMathModule {
     /// - `total_collateral`: Total collateral value (RAY)
     /// - `total_debt`: Total debt value (RAY)
     /// - `min_bonus`: Minimum liquidation bonus (RAY)
-    /// - `current_hf`: Current health factor (RAY)
-    /// - `target_hf`: Target post-liquidation health factor (RAY)
+    /// - `current_health_factor`: Current health factor (RAY)
+    /// - `target_health_factor`: Target post-liquidation health factor (RAY)
     ///
     /// # Returns
     /// - Tuple of (debt_to_repay, bonus, simulated_new_health_factor) in appropriate precisions
@@ -835,22 +835,22 @@ pub trait MathsModule: common_math::SharedMathModule {
         total_collateral: &ManagedDecimal<Self::Api, NumDecimals>,
         total_debt: &ManagedDecimal<Self::Api, NumDecimals>,
         min_bonus: &ManagedDecimal<Self::Api, NumDecimals>,
-        current_hf: &ManagedDecimal<Self::Api, NumDecimals>,
-        target_hf: ManagedDecimal<Self::Api, NumDecimals>,
+        current_health_factor: &ManagedDecimal<Self::Api, NumDecimals>,
+        target_health_factor: ManagedDecimal<Self::Api, NumDecimals>,
     ) -> (
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
-        let bonus = self.calculate_linear_bonus(current_hf, &target_hf, min_bonus);
+        let calculated_bonus_ray = self.calculate_linear_bonus(current_health_factor, &target_health_factor, min_bonus);
 
         self.compute_liquidation_details(
             total_collateral,
             weighted_collateral_in_egld,
             proportion_seized,
-            &bonus,
+            &calculated_bonus_ray,
             total_debt,
-            target_hf,
+            target_health_factor,
         )
     }
 }

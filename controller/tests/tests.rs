@@ -68,9 +68,9 @@ fn edge_case_100_percent_utilization_rounding() {
     markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
     markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
 
-    let borrowed = state.get_borrow_amount_for_token(1, EGLD_TOKEN);
-    let collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
-    let utilization = state.get_market_utilization(state.egld_market.clone());
+    let borrowed = state.borrow_amount_for_token(1, EGLD_TOKEN);
+    let collateral = state.collateral_amount_for_token(1, EGLD_TOKEN);
+    let utilization = state.market_utilization(state.egld_market.clone());
 
     assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS));
     assert!(collateral > ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS));
@@ -83,10 +83,10 @@ fn edge_case_100_percent_utilization_rounding() {
     state.update_markets(&supplier, markets.clone());
 
     // Check balances after interest accrual
-    let borrowed_after = state.get_borrow_amount_for_token(1, EGLD_TOKEN);
-    let collateral_after = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
-    let revenue = state.get_market_revenue(state.egld_market.clone());
-    let reserves = state.get_market_reserves(state.egld_market.clone());
+    let borrowed_after = state.borrow_amount_for_token(1, EGLD_TOKEN);
+    let collateral_after = state.collateral_amount_for_token(1, EGLD_TOKEN);
+    let revenue = state.market_revenue(state.egld_market.clone());
+    let reserves = state.market_reserves(state.egld_market.clone());
 
     // Verify interest accrued correctly
     assert!(borrowed_after > borrowed);
@@ -108,7 +108,7 @@ fn edge_case_100_percent_utilization_rounding() {
     );
 
     // Check post-repayment state
-    let collateral_final = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    let collateral_final = state.collateral_amount_for_token(1, EGLD_TOKEN);
 
     // Full withdrawal
     state.withdraw_asset_den(
@@ -119,8 +119,8 @@ fn edge_case_100_percent_utilization_rounding() {
     );
 
     // Verify final state
-    let reserves_final = state.get_market_reserves(state.egld_market.clone());
-    let revenue_post_withdraw = state.get_market_revenue(state.egld_market.clone());
+    let reserves_final = state.market_reserves(state.egld_market.clone());
+    let revenue_post_withdraw = state.market_revenue(state.egld_market.clone());
 
     assert!(reserves_final >= revenue_post_withdraw);
     let diff = reserves_final - revenue_post_withdraw;
@@ -182,7 +182,7 @@ fn edge_case_overpayment_reserve_accumulation() {
     state.change_timestamp(1111u64);
     state.update_markets(&supplier, markets.clone());
 
-    let reserves = state.get_market_reserves(state.egld_market.clone());
+    let reserves = state.market_reserves(state.egld_market.clone());
 
     // Verify initial reserves are zero
     assert_eq!(
@@ -201,12 +201,12 @@ fn edge_case_overpayment_reserve_accumulation() {
 
     // Verify borrow no longer exists
     let custom_error_message = format!("Token not existing in the account {}", EGLD_TOKEN.as_str());
-    state.get_borrow_amount_for_token_non_existing(1, EGLD_TOKEN, custom_error_message.as_bytes());
+    state.borrow_amount_for_token_non_existing(1, EGLD_TOKEN, custom_error_message.as_bytes());
 
     // Check reserves accumulated from overpayment
-    let collateral_after = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
-    let revenue_after = state.get_market_revenue(state.egld_market.clone());
-    let reserves_after = state.get_market_reserves(state.egld_market.clone());
+    let collateral_after = state.collateral_amount_for_token(1, EGLD_TOKEN);
+    let revenue_after = state.market_revenue(state.egld_market.clone());
+    let reserves_after = state.market_reserves(state.egld_market.clone());
 
     assert!(
         reserves_after >= collateral_after + revenue_after,
@@ -219,9 +219,9 @@ fn edge_case_overpayment_reserve_accumulation() {
     // Update markets and verify consistency
     state.update_markets(&supplier, markets.clone());
 
-    let reserves_final = state.get_market_reserves(state.egld_market.clone());
-    let revenue_final = state.get_market_revenue(state.egld_market.clone());
-    let collateral_final = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    let reserves_final = state.market_reserves(state.egld_market.clone());
+    let revenue_final = state.market_revenue(state.egld_market.clone());
+    let collateral_final = state.collateral_amount_for_token(1, EGLD_TOKEN);
 
     assert!(
         reserves_final >= collateral_final.clone() + revenue_final,
@@ -237,8 +237,8 @@ fn edge_case_overpayment_reserve_accumulation() {
     );
 
     // Final state verification
-    let reserves_end = state.get_market_reserves(state.egld_market.clone());
-    let revenue_end = state.get_market_revenue(state.egld_market.clone());
+    let reserves_end = state.market_reserves(state.egld_market.clone());
+    let revenue_end = state.market_revenue(state.egld_market.clone());
     assert!(reserves_end >= revenue_end);
 }
 
@@ -324,7 +324,7 @@ fn market_complete_exit_multi_user() {
         );
 
     // Borrower repays full debt
-    let borrow_amount = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+    let borrow_amount = state.borrow_amount_for_token(2, EGLD_TOKEN);
     state.repay_asset_deno(
         &borrower,
         &EGLD_TOKEN,
@@ -334,7 +334,7 @@ fn market_complete_exit_multi_user() {
 
     // Verify borrow no longer exists
     let custom_error_message = format!("Token not existing in the account {}", EGLD_TOKEN.as_str());
-    state.get_borrow_amount_for_token_non_existing(2, EGLD_TOKEN, custom_error_message.as_bytes());
+    state.borrow_amount_for_token_non_existing(2, EGLD_TOKEN, custom_error_message.as_bytes());
     state.claim_revenue(EGLD_TOKEN);
     state.claim_revenue(USDC_TOKEN);
     // Update markets significantly later
@@ -342,7 +342,7 @@ fn market_complete_exit_multi_user() {
     state.update_markets(&borrower, markets.clone());
 
     // Borrower withdraws all collateral
-    let supplied_collateral = state.get_collateral_amount_for_token(2, USDC_TOKEN);
+    let supplied_collateral = state.collateral_amount_for_token(2, USDC_TOKEN);
     state.withdraw_asset_den(
         &borrower,
         USDC_TOKEN,
@@ -352,7 +352,7 @@ fn market_complete_exit_multi_user() {
 
     // Verify collateral removed
     let custom_error_message = format!("Token not existing in the account {}", USDC_TOKEN.as_str());
-    state.get_collateral_amount_for_token_non_existing(
+    state.collateral_amount_for_token_non_existing(
         2,
         USDC_TOKEN,
         custom_error_message.as_bytes(),
@@ -375,7 +375,7 @@ fn market_complete_exit_multi_user() {
         );
 
     // Supplier withdraws all funds
-    let supplied_collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    let supplied_collateral = state.collateral_amount_for_token(1, EGLD_TOKEN);
     state.withdraw_asset_den(
         &supplier,
         EGLD_TOKEN,
@@ -384,14 +384,14 @@ fn market_complete_exit_multi_user() {
     );
 
     let custom_error_message = format!("Token not existing in the account {}", EGLD_TOKEN.as_str());
-    state.get_collateral_amount_for_token_non_existing(
+    state.collateral_amount_for_token_non_existing(
         1,
         EGLD_TOKEN,
         custom_error_message.as_bytes(),
     );
 
     // Owner withdraws remaining funds
-    let supplied_collateral = state.get_collateral_amount_for_token(3, EGLD_TOKEN);
+    let supplied_collateral = state.collateral_amount_for_token(3, EGLD_TOKEN);
     state.withdraw_asset_den(
         &OWNER_ADDRESS,
         EGLD_TOKEN,
@@ -399,22 +399,22 @@ fn market_complete_exit_multi_user() {
         3,
     );
 
-    state.get_collateral_amount_for_token_non_existing(
+    state.collateral_amount_for_token_non_existing(
         3,
         EGLD_TOKEN,
         custom_error_message.as_bytes(),
     );
 
     // Verify final reserve state
-    let reserves = state.get_market_reserves(state.egld_market.clone());
-    let revenue = state.get_market_revenue(state.egld_market.clone());
+    let reserves = state.market_reserves(state.egld_market.clone());
+    let revenue = state.market_revenue(state.egld_market.clone());
     assert!(reserves >= revenue);
 
     state.claim_revenue(EGLD_TOKEN);
     state.claim_revenue(USDC_TOKEN);
 
-    let reserves = state.get_market_reserves(state.egld_market.clone());
-    let revenue = state.get_market_revenue(state.egld_market.clone());
+    let reserves = state.market_reserves(state.egld_market.clone());
+    let revenue = state.market_revenue(state.egld_market.clone());
     assert!(reserves == revenue);
 }
 
@@ -467,8 +467,8 @@ fn interest_accrual_long_term_high_utilization() {
     );
 
     // Record initial amounts
-    let initial_borrow = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
-    let initial_supply = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    let initial_borrow = state.borrow_amount_for_token(2, EGLD_TOKEN);
+    let initial_supply = state.collateral_amount_for_token(1, EGLD_TOKEN);
 
     let mut markets = MultiValueEncoded::new();
     markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
@@ -478,8 +478,8 @@ fn interest_accrual_long_term_high_utilization() {
     state.update_markets(&supplier, markets.clone());
 
     // Verify significant interest accrual
-    let final_borrow = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
-    let final_supply = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    let final_borrow = state.borrow_amount_for_token(2, EGLD_TOKEN);
+    let final_supply = state.collateral_amount_for_token(1, EGLD_TOKEN);
 
     assert!(final_borrow > initial_borrow);
     assert!(final_supply > initial_supply);
@@ -493,7 +493,7 @@ fn interest_accrual_long_term_high_utilization() {
     );
 
     // Verify final state
-    let final_supply_after_repay = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    let final_supply_after_repay = state.collateral_amount_for_token(1, EGLD_TOKEN);
 
     // Supply should have grown from interest
     assert!(final_supply_after_repay > initial_supply);
@@ -559,7 +559,7 @@ fn interest_accrual_multiple_suppliers_different_times() {
     );
 
     // Record supplier1's initial position
-    let supplier1_initial = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    let supplier1_initial = state.collateral_amount_for_token(1, EGLD_TOKEN);
 
     // Advance time before second supplier
     let mut markets = MultiValueEncoded::new();
@@ -577,16 +577,16 @@ fn interest_accrual_multiple_suppliers_different_times() {
         OptionalValue::None,
         false,
     );
-    let supplier2_initial = state.get_collateral_amount_for_token(2, EGLD_TOKEN);
+    let supplier2_initial = state.collateral_amount_for_token(2, EGLD_TOKEN);
 
     // Continue for another period
     state.change_timestamp(SECONDS_PER_DAY * 60);
     state.update_markets(&supplier1, markets.clone());
 
     // Check final positions
-    let supplier1_final = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
-    let supplier2_final = state.get_collateral_amount_for_token(2, EGLD_TOKEN);
-    let borrower_debt = state.get_borrow_amount_for_token(3, EGLD_TOKEN);
+    let supplier1_final = state.collateral_amount_for_token(1, EGLD_TOKEN);
+    let supplier2_final = state.collateral_amount_for_token(2, EGLD_TOKEN);
+    let borrower_debt = state.borrow_amount_for_token(3, EGLD_TOKEN);
 
     // Supplier1 should have earned more interest (longer time)
     let supplier1_interest = supplier1_final.clone() - supplier1_initial.clone();
@@ -615,8 +615,8 @@ fn interest_accrual_multiple_suppliers_different_times() {
         2,
     );
     // Verify clean exit
-    let reserves = state.get_market_reserves(state.egld_market.clone());
-    let revenue = state.get_market_revenue(state.egld_market.clone());
+    let reserves = state.market_reserves(state.egld_market.clone());
+    let revenue = state.market_revenue(state.egld_market.clone());
     assert!(reserves >= revenue);
 }
 
@@ -693,7 +693,7 @@ fn oracle_unsafe_price_supply_allowed() {
     );
 
     // Verify supply was successful
-    let collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    let collateral = state.collateral_amount_for_token(1, EGLD_TOKEN);
     assert!(collateral > ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS));
 }
 
@@ -911,7 +911,7 @@ fn oracle_unsafe_price_repay_allowed() {
     );
 
     // Verify repayment was successful
-    let remaining_borrow = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+    let remaining_borrow = state.borrow_amount_for_token(2, EGLD_TOKEN);
     assert!(
         remaining_borrow
             < ManagedDecimal::from_raw_units(
@@ -974,15 +974,15 @@ fn configuration_update_with_existing_supply() {
         &BigUint::from(555u64),  // liquidation_bonus
         &BigUint::from(1800u64), // 18% reserve_factor
         config.config.is_isolated_asset,
-        config.config.isolation_debt_ceiling_usd.into_raw_units(),
+        config.config.isolation_debt_ceiling_usd_wad.into_raw_units(),
         config.config.is_siloed_borrowing,
         config.config.is_flashloanable,
-        config.config.flashloan_fee.into_raw_units(),
+        config.config.flashloan_fee_bps.into_raw_units(),
         config.config.is_collateralizable,
         config.config.is_borrowable,
         config.config.isolation_borrow_enabled,
-        &config.config.borrow_cap.unwrap_or(BigUint::from(0u64)),
-        &config.config.supply_cap.unwrap_or(BigUint::from(0u64)),
+        &config.config.borrow_cap_wad.unwrap_or(BigUint::from(0u64)),
+        &config.config.supply_cap_wad.unwrap_or(BigUint::from(0u64)),
         None,
     );
 
@@ -993,7 +993,7 @@ fn configuration_update_with_existing_supply() {
     state.update_markets(&borrower, markets);
 
     // Verify interest accrual with new rates
-    let borrow_amount = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
+    let borrow_amount = state.borrow_amount_for_token(2, EGLD_TOKEN);
     assert!(
         borrow_amount
             > ManagedDecimal::from_raw_units(
@@ -1056,15 +1056,15 @@ fn configuration_update_endpoint_safe_values() {
         &BigUint::from(500u64),  // 5% liquidation_bonus
         &BigUint::from(1800u64), // 18% reserve_factor
         config.config.is_isolated_asset,
-        config.config.isolation_debt_ceiling_usd.into_raw_units(),
+        config.config.isolation_debt_ceiling_usd_wad.into_raw_units(),
         config.config.is_siloed_borrowing,
         config.config.is_flashloanable,
-        config.config.flashloan_fee.into_raw_units(),
+        config.config.flashloan_fee_bps.into_raw_units(),
         config.config.is_collateralizable,
         config.config.is_borrowable,
         config.config.isolation_borrow_enabled,
-        &config.config.borrow_cap.unwrap_or(BigUint::from(0u64)),
-        &config.config.supply_cap.unwrap_or(BigUint::from(0u64)),
+        &config.config.borrow_cap_wad.unwrap_or(BigUint::from(0u64)),
+        &config.config.supply_cap_wad.unwrap_or(BigUint::from(0u64)),
         None,
     );
 }
@@ -1103,15 +1103,15 @@ fn configuration_update_risky_values_no_borrows() {
         &BigUint::from(555u64),
         &BigUint::from(600u64),
         config.config.is_isolated_asset,
-        config.config.isolation_debt_ceiling_usd.into_raw_units(),
+        config.config.isolation_debt_ceiling_usd_wad.into_raw_units(),
         config.config.is_siloed_borrowing,
         config.config.is_flashloanable,
-        config.config.flashloan_fee.into_raw_units(),
+        config.config.flashloan_fee_bps.into_raw_units(),
         true,  // is_collateralizable = false
         false, // is_borrowable = false
         false, // isolation_borrow_enabled = false
-        &config.config.borrow_cap.unwrap_or(BigUint::from(0u64)),
-        &config.config.supply_cap.unwrap_or(BigUint::from(0u64)),
+        &config.config.borrow_cap_wad.unwrap_or(BigUint::from(0u64)),
+        &config.config.supply_cap_wad.unwrap_or(BigUint::from(0u64)),
         None,
     );
     // Supply without borrows
@@ -1171,7 +1171,7 @@ fn configuration_update_risky_values_with_borrows_allowed() {
     );
 
     // Get health factor before update
-    let health_before = state.get_account_health_factor(2);
+    let health_before = state.account_health_factor(2);
 
     // Update XEGLD configuration to reduce collateral value
     let config = get_xegld_config();
@@ -1182,15 +1182,15 @@ fn configuration_update_risky_values_with_borrows_allowed() {
         &BigUint::from(640u64),
         &BigUint::from(640u64),
         config.config.is_isolated_asset,
-        config.config.isolation_debt_ceiling_usd.into_raw_units(),
+        config.config.isolation_debt_ceiling_usd_wad.into_raw_units(),
         config.config.is_siloed_borrowing,
         config.config.is_flashloanable,
-        config.config.flashloan_fee.into_raw_units(),
+        config.config.flashloan_fee_bps.into_raw_units(),
         config.config.is_collateralizable,
         config.config.is_borrowable,
         config.config.isolation_borrow_enabled,
-        &config.config.borrow_cap.unwrap_or(BigUint::from(0u64)),
-        &config.config.supply_cap.unwrap_or(BigUint::from(0u64)),
+        &config.config.borrow_cap_wad.unwrap_or(BigUint::from(0u64)),
+        &config.config.supply_cap_wad.unwrap_or(BigUint::from(0u64)),
         None,
     );
 
@@ -1211,7 +1211,7 @@ fn configuration_update_risky_values_with_borrows_allowed() {
     );
 
     // Verify health factor still safe
-    let health_after = state.get_account_health_factor(2);
+    let health_after = state.account_health_factor(2);
     assert!(health_after >= ManagedDecimal::from_raw_units(BigUint::from(1u64), 27));
 
     // Health should decrease due to lower collateral value
@@ -1271,15 +1271,15 @@ fn configuration_update_risky_values_health_factor_violation() {
         &BigUint::from(600u64),
         &BigUint::from(600u64),
         config.config.is_isolated_asset,
-        config.config.isolation_debt_ceiling_usd.into_raw_units(),
+        config.config.isolation_debt_ceiling_usd_wad.into_raw_units(),
         config.config.is_siloed_borrowing,
         config.config.is_flashloanable,
-        config.config.flashloan_fee.into_raw_units(),
+        config.config.flashloan_fee_bps.into_raw_units(),
         config.config.is_collateralizable,
         config.config.is_borrowable,
         config.config.isolation_borrow_enabled,
-        &config.config.borrow_cap.unwrap_or(BigUint::from(0u64)),
-        &config.config.supply_cap.unwrap_or(BigUint::from(0u64)),
+        &config.config.borrow_cap_wad.unwrap_or(BigUint::from(0u64)),
+        &config.config.supply_cap_wad.unwrap_or(BigUint::from(0u64)),
         None,
     );
 
@@ -1313,15 +1313,15 @@ fn configuration_update_invalid_ltv_threshold_relationship() {
         &BigUint::from(555u64),
         &BigUint::from(600u64),
         config.config.is_isolated_asset,
-        config.config.isolation_debt_ceiling_usd.into_raw_units(),
+        config.config.isolation_debt_ceiling_usd_wad.into_raw_units(),
         config.config.is_siloed_borrowing,
         config.config.is_flashloanable,
-        config.config.flashloan_fee.into_raw_units(),
+        config.config.flashloan_fee_bps.into_raw_units(),
         config.config.is_collateralizable,
         config.config.is_borrowable,
         config.config.isolation_borrow_enabled,
-        &config.config.borrow_cap.unwrap_or(BigUint::from(0u64)),
-        &config.config.supply_cap.unwrap_or(BigUint::from(0u64)),
+        &config.config.borrow_cap_wad.unwrap_or(BigUint::from(0u64)),
+        &config.config.supply_cap_wad.unwrap_or(BigUint::from(0u64)),
         Some(ERROR_INVALID_LIQUIDATION_THRESHOLD),
     );
 }
@@ -1362,7 +1362,7 @@ fn oracle_price_second_tolerance_xoxno_egld_averaging() {
         false,
     );
 
-    let get_usd_price_before = state.get_usd_price(XOXNO_TOKEN);
+    let get_usd_price_before = state.usd_price(XOXNO_TOKEN);
     // Change both prices to be within second tolerance bounds
     // XOXNO - Base price: $1
     // First tolerance: 0.5% = $0.005
@@ -1371,7 +1371,7 @@ fn oracle_price_second_tolerance_xoxno_egld_averaging() {
     let nominator = BigUint::from(10u64).pow(16u32);
     let new_price = BigUint::from(101u64) * nominator;
     state.change_price_denominated(XOXNO_TICKER, new_price.clone(), 0); // Using 101 cents = $1.01
-    let get_usd_price = state.get_usd_price(XOXNO_TOKEN);
+    let get_usd_price = state.usd_price(XOXNO_TOKEN);
     // Result second bound as average price
     assert!(get_usd_price > get_usd_price_before && get_usd_price.into_raw_units() < &new_price);
 
@@ -1385,7 +1385,7 @@ fn oracle_price_second_tolerance_xoxno_egld_averaging() {
     );
 
     // Verify borrow was successful
-    let borrowed = state.get_borrow_amount_for_token(2, XOXNO_TOKEN);
+    let borrowed = state.borrow_amount_for_token(2, XOXNO_TOKEN);
     assert_eq!(
         borrowed,
         ManagedDecimal::from_raw_units(

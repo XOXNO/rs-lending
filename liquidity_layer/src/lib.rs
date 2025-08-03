@@ -26,39 +26,13 @@ pub trait LiquidityPool:
     + common_math::SharedMathModule
     + view::ViewModule
 {
+    /// Handles contract upgrade with empty implementation.
+    /// Allows code updates without state migration requirements.
     #[upgrade]
     fn upgrade(&self) {}
-    /// Initializes the liquidity pool for a specific asset.
-    ///
-    /// **Purpose**: Sets up the initial state of the liquidity pool, including the asset, interest rate parameters,
-    /// supply and borrow indexes, and other key variables, preparing it for lending operations.
-    ///
-    /// **Process**:
-    /// 1. Stores the pool's asset identifier.
-    /// 2. Configures interest rate parameters (`max_borrow_rate`, `base_borrow_rate`, `slope1`, `slope2`, `slope3`, `mid_utilization`, `optimal_utilization`, `reserve_factor`)
-    ///    by converting `BigUint` inputs to `ManagedDecimal` with appropriate scaling (RAY for rates, BPS for reserve factor).
-    /// 3. Initializes the borrow and supply indexes to `RAY` (representing 1.0 in the system's precision).
-    /// 4. Sets initial values for supplied, reserves, borrowed, and revenue to zero, using the asset's decimal precision.
-    /// 5. Records the current blockchain timestamp converted to milliseconds as the last update time.
-    ///
-    /// ### Parameters
-    /// - `asset`: The asset identifier (`EgldOrEsdtTokenIdentifier`) for the pool.
-    /// - `max_borrow_rate`: Maximum borrow rate (`BigUint`), scaled to RAY precision.
-    /// - `base_borrow_rate`: Base borrow rate (`BigUint`), scaled to RAY precision.
-    /// - `slope1`: Slope before optimal utilization (`BigUint`), scaled to RAY precision.
-    /// - `slope2`: Slope after optimal utilization (`BigUint`), scaled to RAY precision.
-    /// - `slope3`: Slope for high utilization (`BigUint`), scaled to RAY precision.
-    /// - `mid_utilization`: Midpoint utilization ratio (`BigUint`), scaled to RAY precision.
-    /// - `optimal_utilization`: Optimal utilization ratio (`BigUint`), scaled to RAY precision.
-    /// - `reserve_factor`: Fraction of interest reserved as protocol fee (`BigUint`), scaled to BPS precision.
-    /// - `asset_decimals`: Number of asset_decimals for the asset (`usize`).
-    ///
-    /// ### Returns
-    /// - Nothing (void function).
-    ///
-    /// **Security Considerations**:
-    /// - Ensures all critical state variables (asset, parameters, indexes, etc.) are initialized to prevent uninitialized storage vulnerabilities.
-    /// - Uses precise decimal conversions (`to_decimal_ray` and `to_decimal_bps`) to maintain calculation accuracy.
+    /// Initializes a new liquidity pool with asset configuration and interest rate parameters.
+    /// Sets up initial indexes (RAY), validates rate parameters, and records pool asset details.
+    /// All supplied/borrowed/revenue amounts start at zero.
     #[init]
     fn init(
         &self,
@@ -73,37 +47,37 @@ pub trait LiquidityPool:
         reserve_factor: BigUint,
         asset_decimals: usize,
     ) {
-        let params = &MarketParams {
-            max_borrow_rate: self.to_decimal_ray(max_borrow_rate),
-            base_borrow_rate: self.to_decimal_ray(base_borrow_rate),
-            slope1: self.to_decimal_ray(slope1),
-            slope2: self.to_decimal_ray(slope2),
-            slope3: self.to_decimal_ray(slope3),
-            mid_utilization: self.to_decimal_ray(mid_utilization),
-            optimal_utilization: self.to_decimal_ray(optimal_utilization),
-            reserve_factor: self.to_decimal_bps(reserve_factor),
+        let parameters = &MarketParams {
+            max_borrow_rate_ray: self.to_decimal_ray(max_borrow_rate),
+            base_borrow_rate_ray: self.to_decimal_ray(base_borrow_rate),
+            slope1_ray: self.to_decimal_ray(slope1),
+            slope2_ray: self.to_decimal_ray(slope2),
+            slope3_ray: self.to_decimal_ray(slope3),
+            mid_utilization_ray: self.to_decimal_ray(mid_utilization),
+            optimal_utilization_ray: self.to_decimal_ray(optimal_utilization),
+            reserve_factor_bps: self.to_decimal_bps(reserve_factor),
             asset_id: asset,
             asset_decimals,
         };
 
         require!(
-            params.max_borrow_rate > params.base_borrow_rate,
+            parameters.max_borrow_rate_ray > parameters.base_borrow_rate_ray,
             ERROR_INVALID_BORROW_RATE_PARAMS
         );
         require!(
-            params.optimal_utilization > params.mid_utilization,
+            parameters.optimal_utilization_ray > parameters.mid_utilization_ray,
             ERROR_INVALID_UTILIZATION_RANGE
         );
         require!(
-            params.optimal_utilization < self.ray(),
+            parameters.optimal_utilization_ray < self.ray(),
             ERROR_OPTIMAL_UTILIZATION_TOO_HIGH
         );
         require!(
-            params.reserve_factor < self.bps(),
+            parameters.reserve_factor_bps < self.bps(),
             ERROR_INVALID_RESERVE_FACTOR
         );
 
-        self.params().set(params);
+        self.parameters().set(parameters);
         self.borrow_index().set(self.ray());
         self.supply_index().set(self.ray());
 
@@ -117,33 +91,9 @@ pub trait LiquidityPool:
         self.last_timestamp().set(timestamp_ms);
     }
 
-    /// Upgrades the liquidity pool parameters.
-    ///
-    /// **Purpose**: Updates the pool's interest rate parameters and reserve factor to adapt to changing market conditions
-    /// or protocol requirements, ensuring flexibility in pool management.
-    ///
-    /// **Process**:
-    /// 1. Emits an event (`market_params_event`) with the new parameters for transparency and auditability.
-    /// 2. Updates the existing pool parameters by converting `BigUint` inputs to `ManagedDecimal` with appropriate scaling.
-    ///
-    /// ### Parameters
-    /// - `max_borrow_rate`: New maximum borrow rate (`BigUint`), scaled to RAY precision.
-    /// - `base_borrow_rate`: New base borrow rate (`BigUint`), scaled to RAY precision.
-    /// - `slope1`: New slope before optimal utilization (`BigUint`), scaled to RAY precision.
-    /// - `slope2`: New slope after optimal utilization (`BigUint`), scaled to RAY precision.
-    /// - `slope3`: New slope for high utilization (`BigUint`), scaled to RAY precision.
-    /// - `mid_utilization`: New midpoint utilization ratio (`BigUint`), scaled to RAY precision.
-    /// - `optimal_utilization`: New optimal utilization ratio (`BigUint`), scaled to RAY precision.
-    /// - `reserve_factor`: New fraction of interest reserved as protocol fee (`BigUint`), scaled to BPS precision.
-    /// - `asset_price`: New asset price (`ManagedDecimal<Self::Api, NumDecimals>`).
-    ///
-    /// ### Returns
-    /// - Nothing (void function).
-    ///
-    /// **Security Considerations**:
-    /// - Restricted to the contract owner (via the `#[upgrade]` attribute) to prevent unauthorized modifications.
-    /// - Uses precise decimal conversions (`to_decimal_ray` and `to_decimal_bps`) to ensure consistency in calculations.
-    /// - Logs changes via an event, enabling tracking and verification of updates.
+    /// Updates pool interest rate parameters and reserve factor.
+    /// Validates new parameters and emits event for transparency.
+    /// Only callable by owner.
     #[only_owner]
     #[endpoint(updateParams)]
     fn update_params(
@@ -162,9 +112,9 @@ pub trait LiquidityPool:
         self.global_sync(&mut cache);
         self.emit_market_update(&cache, &asset_price);
 
-        self.params().update(|params| {
+        self.parameters().update(|parameters| {
             self.market_params_event(
-                &params.asset_id,
+                &parameters.asset_id,
                 &max_borrow_rate,
                 &base_borrow_rate,
                 &slope1,
@@ -174,28 +124,28 @@ pub trait LiquidityPool:
                 &optimal_utilization,
                 &reserve_factor,
             );
-            params.max_borrow_rate = self.to_decimal_ray(max_borrow_rate);
-            params.base_borrow_rate = self.to_decimal_ray(base_borrow_rate);
-            params.slope1 = self.to_decimal_ray(slope1);
-            params.slope2 = self.to_decimal_ray(slope2);
-            params.slope3 = self.to_decimal_ray(slope3);
-            params.mid_utilization = self.to_decimal_ray(mid_utilization);
-            params.optimal_utilization = self.to_decimal_ray(optimal_utilization);
-            params.reserve_factor = self.to_decimal_bps(reserve_factor);
+            parameters.max_borrow_rate_ray = self.to_decimal_ray(max_borrow_rate);
+            parameters.base_borrow_rate_ray = self.to_decimal_ray(base_borrow_rate);
+            parameters.slope1_ray = self.to_decimal_ray(slope1);
+            parameters.slope2_ray = self.to_decimal_ray(slope2);
+            parameters.slope3_ray = self.to_decimal_ray(slope3);
+            parameters.mid_utilization_ray = self.to_decimal_ray(mid_utilization);
+            parameters.optimal_utilization_ray = self.to_decimal_ray(optimal_utilization);
+            parameters.reserve_factor_bps = self.to_decimal_bps(reserve_factor);
             require!(
-                params.max_borrow_rate > params.base_borrow_rate,
+                parameters.max_borrow_rate_ray > parameters.base_borrow_rate_ray,
                 ERROR_INVALID_BORROW_RATE_PARAMS
             );
             require!(
-                params.optimal_utilization > params.mid_utilization,
+                parameters.optimal_utilization_ray > parameters.mid_utilization_ray,
                 ERROR_INVALID_UTILIZATION_RANGE
             );
             require!(
-                params.optimal_utilization < self.ray(),
+                parameters.optimal_utilization_ray < self.ray(),
                 ERROR_OPTIMAL_UTILIZATION_TOO_HIGH
             );
             require!(
-                params.reserve_factor < self.bps(),
+                parameters.reserve_factor_bps < self.bps(),
                 ERROR_INVALID_RESERVE_FACTOR
             );
         });

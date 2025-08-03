@@ -14,6 +14,9 @@ pub trait AdminModule:
     + crate::views::ViewsModule
     + crate::events::EventsModule
 {
+    /// Initializes price aggregator with oracle addresses and submission threshold.
+    /// Sets initial submission count and pauses contract for configuration.
+    /// Validates submission count is within acceptable bounds.
     #[init]
     fn init(&self, submission_count: usize, oracles: MultiValueEncoded<ManagedAddress>) {
         self.add_oracles(oracles);
@@ -24,11 +27,16 @@ pub trait AdminModule:
         self.set_paused(true);
     }
 
+    /// Handles contract upgrade by pausing operations.
+    /// Ensures safe state during code updates.
     #[upgrade]
     fn upgrade(&self) {
         self.set_paused(true);
     }
 
+    /// Adds new oracle addresses to the whitelist.
+    /// Initializes submission statistics for each new oracle.
+    /// Skips oracles that are already registered.
     #[only_owner]
     #[endpoint(addOracles)]
     fn add_oracles(&self, oracles: MultiValueEncoded<ManagedAddress>) {
@@ -46,8 +54,8 @@ pub trait AdminModule:
         }
     }
 
-    /// Also receives submission count,
-    /// so the owner does not have to update it manually with setSubmissionCount before this call
+    /// Removes oracle addresses and updates submission count atomically.
+    /// Prevents invalid state where submission count exceeds oracle count.
     #[only_owner]
     #[endpoint(removeOracles)]
     fn remove_oracles(&self, submission_count: usize, oracles: MultiValueEncoded<ManagedAddress>) {
@@ -59,6 +67,9 @@ pub trait AdminModule:
         self.set_submission_count(submission_count);
     }
 
+    /// Updates required submission count for consensus.
+    /// Validates count is within min/max bounds and doesn't exceed oracle count.
+    /// Controls how many oracle submissions trigger price aggregation.
     #[only_owner]
     #[endpoint(setSubmissionCount)]
     fn set_submission_count(&self, submission_count: usize) {

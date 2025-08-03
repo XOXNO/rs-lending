@@ -96,9 +96,9 @@ fn oracle_edit_tolerance_success() {
     );
 
     // Verify tolerance was updated
-    let oracle = state.get_token_oracle(EgldOrEsdtTokenIdentifier::egld());
+    let oracle = state.token_oracle(EgldOrEsdtTokenIdentifier::egld());
     assert!(
-        oracle.tolerance.first_upper_ratio
+        oracle.tolerance.first_upper_ratio_bps
             > ManagedDecimal::from_raw_units(BigUint::from(MIN_FIRST_TOLERANCE), 4)
     );
 }
@@ -191,7 +191,7 @@ fn address_set_aggregator_success() {
     state.set_aggregator(new_aggregator.clone());
 
     // Verify aggregator was updated
-    let aggregator = state.get_price_aggregator_address();
+    let aggregator = state.price_aggregator_address();
     assert_eq!(aggregator, new_aggregator);
 }
 
@@ -220,7 +220,7 @@ fn address_set_swap_router_success() {
     state.set_swap_router(new_router.clone());
 
     // Verify router was updated
-    let router = state.get_swap_router_address();
+    let router = state.swap_router_address();
     assert_eq!(router, new_router);
 }
 
@@ -249,7 +249,7 @@ fn address_set_accumulator_success() {
     state.set_accumulator(new_accumulator.clone());
 
     // Verify accumulator was updated
-    let accumulator = state.get_accumulator_address();
+    let accumulator = state.accumulator_address();
     assert_eq!(accumulator, new_accumulator);
 }
 
@@ -278,7 +278,7 @@ fn address_set_safe_price_view_success() {
     state.set_safe_price_view(new_safe_view.clone());
 
     // Verify safe price view was updated
-    let safe_view = state.get_safe_price_address();
+    let safe_view = state.safe_price_address();
     assert_eq!(safe_view, new_safe_view);
 }
 
@@ -307,7 +307,7 @@ fn address_set_liquidity_pool_template_success() {
     state.set_liquidity_pool_template(new_template.clone());
 
     // Verify template was updated
-    let template = state.get_liq_pool_template_address();
+    let template = state.liq_pool_template_address();
     assert_eq!(template, new_template);
 }
 
@@ -363,19 +363,19 @@ fn emode_edit_category_success() {
 
     let category = EModeCategory {
         category_id: 1,
-        loan_to_value: ManagedDecimal::from_raw_units(BigUint::from(8000u64), BPS_PRECISION),
-        liquidation_threshold: ManagedDecimal::from_raw_units(
+        loan_to_value_bps: ManagedDecimal::from_raw_units(BigUint::from(8000u64), BPS_PRECISION),
+        liquidation_threshold_bps: ManagedDecimal::from_raw_units(
             BigUint::from(8500u64),
             BPS_PRECISION,
         ),
-        liquidation_bonus: ManagedDecimal::from_raw_units(BigUint::from(300u64), BPS_PRECISION),
+        liquidation_bonus_bps: ManagedDecimal::from_raw_units(BigUint::from(300u64), BPS_PRECISION),
         is_deprecated: false,
     };
 
     state.edit_e_mode_category(category);
 
     // Verify category was updated
-    let e_modes = state.get_e_modes();
+    let e_modes = state.e_modes();
     let found = e_modes.into_iter().any(|item| {
         let (id, _) = item.into_tuple();
         id == 1
@@ -394,12 +394,12 @@ fn emode_edit_category_not_found_error() {
 
     let category = EModeCategory {
         category_id: 99, // Non-existent
-        loan_to_value: ManagedDecimal::from_raw_units(BigUint::from(8000u64), BPS_PRECISION),
-        liquidation_threshold: ManagedDecimal::from_raw_units(
+        loan_to_value_bps: ManagedDecimal::from_raw_units(BigUint::from(8000u64), BPS_PRECISION),
+        liquidation_threshold_bps: ManagedDecimal::from_raw_units(
             BigUint::from(8500u64),
             BPS_PRECISION,
         ),
-        liquidation_bonus: ManagedDecimal::from_raw_units(BigUint::from(300u64), BPS_PRECISION),
+        liquidation_bonus_bps: ManagedDecimal::from_raw_units(BigUint::from(300u64), BPS_PRECISION),
         is_deprecated: false,
     };
 
@@ -427,7 +427,7 @@ fn emode_remove_category_success() {
     state.remove_e_mode_category(2);
 
     // Verify category was deprecated
-    let e_modes = state.get_e_modes();
+    let e_modes = state.e_modes();
     let found = e_modes.into_iter().find(|item| {
         let (id, _) = item.clone().into_tuple();
         id == 2
@@ -467,7 +467,7 @@ fn emode_add_asset_to_category_success() {
     );
 
     // Verify asset was added
-    let asset_e_modes = state.get_asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
+    let asset_e_modes = state.asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
         USDC_TOKEN.to_token_identifier(),
     ));
     assert!(asset_e_modes.into_iter().any(|id| id == 1));
@@ -550,7 +550,7 @@ fn emode_edit_asset_in_category_success() {
     );
 
     // Verify config was updated
-    let e_mode_assets = state.get_e_modes_assets(1);
+    let e_mode_assets = state.e_modes_assets(1);
     let mut found_config = None;
     for item in e_mode_assets {
         let (asset, config) = item.into_tuple();
@@ -623,7 +623,7 @@ fn emode_remove_asset_from_category_success() {
     );
 
     // Verify asset was removed
-    let asset_e_modes = state.get_asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
+    let asset_e_modes = state.asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
         EGLD_TOKEN.to_token_identifier(),
     ));
     assert!(!asset_e_modes.into_iter().any(|id| id == 1));
@@ -713,10 +713,10 @@ fn asset_edit_config_success() {
     );
 
     // Verify config was updated
-    let config = state.get_asset_config(EgldOrEsdtTokenIdentifier::esdt(
+    let config = state.asset_config(EgldOrEsdtTokenIdentifier::esdt(
         EGLD_TOKEN.to_token_identifier(),
     ));
-    let ltv_value = config.loan_to_value.into_raw_units().clone();
+    let ltv_value = config.loan_to_value_bps.into_raw_units().clone();
     assert_eq!(ltv_value, BigUint::from(7000u64));
 }
 
@@ -829,7 +829,7 @@ fn emode_complete_lifecycle_scenario() {
     state.remove_e_mode_category(2);
 
     // Verify final state
-    let e_modes = state.get_e_modes();
+    let e_modes = state.e_modes();
     let found = e_modes.into_iter().find(|item| {
         let (id, _) = item.clone().into_tuple();
         id == 2
@@ -879,13 +879,13 @@ fn emode_remove_category_with_multiple_assets_scenario() {
     );
 
     // Verify all assets were added
-    let usdc_e_modes = state.get_asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
+    let usdc_e_modes = state.asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
         USDC_TOKEN.to_token_identifier(),
     ));
-    let isolated_e_modes = state.get_asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
+    let isolated_e_modes = state.asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
         ISOLATED_TOKEN.to_token_identifier(),
     ));
-    let siloed_e_modes = state.get_asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
+    let siloed_e_modes = state.asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
         SILOED_TOKEN.to_token_identifier(),
     ));
 
@@ -897,7 +897,7 @@ fn emode_remove_category_with_multiple_assets_scenario() {
     state.remove_e_mode_category(2);
 
     // Verify category deprecated
-    let e_modes = state.get_e_modes();
+    let e_modes = state.e_modes();
     let found = e_modes.into_iter().find(|item| {
         let (id, _) = item.clone().into_tuple();
         id == 2
@@ -907,13 +907,13 @@ fn emode_remove_category_with_multiple_assets_scenario() {
     assert!(category.is_deprecated);
 
     // Verify assets removed from category
-    let usdc_e_modes_after = state.get_asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
+    let usdc_e_modes_after = state.asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
         USDC_TOKEN.to_token_identifier(),
     ));
-    let isolated_e_modes_after = state.get_asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
+    let isolated_e_modes_after = state.asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
         ISOLATED_TOKEN.to_token_identifier(),
     ));
-    let siloed_e_modes_after = state.get_asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
+    let siloed_e_modes_after = state.asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
         SILOED_TOKEN.to_token_identifier(),
     ));
 
@@ -922,7 +922,7 @@ fn emode_remove_category_with_multiple_assets_scenario() {
     assert!(!siloed_e_modes_after.into_iter().any(|id| id == 2));
 
     // Verify category asset list is empty
-    let e_mode_assets = state.get_e_modes_assets(2);
+    let e_mode_assets = state.e_modes_assets(2);
     assert_eq!(e_mode_assets.len(), 0);
 }
 
@@ -957,13 +957,13 @@ fn asset_edit_config_zero_caps_scenario() {
     );
 
     // Verify caps were set
-    let config = state.get_asset_config(EgldOrEsdtTokenIdentifier::esdt(
+    let config = state.asset_config(EgldOrEsdtTokenIdentifier::esdt(
         EGLD_TOKEN.to_token_identifier(),
     ));
-    assert!(config.borrow_cap.is_some());
-    assert!(config.supply_cap.is_some());
-    assert_eq!(config.borrow_cap.unwrap(), BigUint::from(1000000u64));
-    assert_eq!(config.supply_cap.unwrap(), BigUint::from(2000000u64));
+    assert!(config.borrow_cap_wad.is_some());
+    assert!(config.supply_cap_wad.is_some());
+    assert_eq!(config.borrow_cap_wad.unwrap(), BigUint::from(1000000u64));
+    assert_eq!(config.supply_cap_wad.unwrap(), BigUint::from(2000000u64));
 
     // Set caps to zero (removes caps)
     state.edit_asset_config(
@@ -986,13 +986,13 @@ fn asset_edit_config_zero_caps_scenario() {
     );
 
     // Verify caps removed
-    let config_after = state.get_asset_config(EgldOrEsdtTokenIdentifier::esdt(
+    let config_after = state.asset_config(EgldOrEsdtTokenIdentifier::esdt(
         EGLD_TOKEN.to_token_identifier(),
     ));
-    assert!(config_after.borrow_cap.is_none());
-    assert!(config_after.supply_cap.is_none());
+    assert!(config_after.borrow_cap_wad.is_none());
+    assert!(config_after.supply_cap_wad.is_none());
 
     // Verify other values unchanged
-    let ltv_value = config_after.loan_to_value.into_raw_units().clone();
+    let ltv_value = config_after.loan_to_value_bps.into_raw_units().clone();
     assert_eq!(ltv_value, BigUint::from(7500u64));
 }

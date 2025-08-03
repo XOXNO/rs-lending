@@ -53,7 +53,7 @@ fn siloed_borrow_as_only_debt_success() {
     );
 
     // Verify siloed debt position exists
-    let borrow_amount = state.get_borrow_amount_for_token(1, SILOED_TOKEN);
+    let borrow_amount = state.borrow_amount_for_token(1, SILOED_TOKEN);
     assert!(borrow_amount > ManagedDecimal::from_raw_units(BigUint::zero(), SILOED_DECIMALS));
 }
 

@@ -362,8 +362,8 @@
     "last_tolerance": "150",
     "max_price_stale_seconds": "14400"
   },
-  "XOXNOWEGLD": {
-    "token_id": "XOXNOWEGLD-232308",
+  "XOXNOXEGLD": {
+    "token_id": "XOXNOXEGLD-98a155",
     "ltv": "7000",
     "liquidation_threshold": "7500",
     "liquidation_bonus": "550",
@@ -386,7 +386,7 @@
     "is_siloed": "0x00",
     "flashloan_enabled": "0x01",
     "can_borrow_in_isolation": "0x00",
-    "oracle_address": "erd1qqqqqqqqqqqqqpgqkesz5whk008525zhrq45rfym4areg5ef0n4s2yzd75",
+    "oracle_address": "erd1qqqqqqqqqqqqqpgqw8pt2jap6pwnpngf6jlk5rygwzkwe0w50n4s5uwy6w",
     "oracle_method": "0",
     "oracle_type": "3",
     "oracle_source": "1",

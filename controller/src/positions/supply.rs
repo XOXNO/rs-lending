@@ -27,37 +27,9 @@ pub trait PositionDepositModule:
     + update::PositionUpdateModule
     + common_rates::InterestRates
 {
-    /// Processes a deposit operation for a user's position.
-    ///
-    /// **Purpose**: Orchestrates the complete deposit flow by validating all deposit payments,
-    /// applying e-mode configurations, checking isolation constraints, and updating positions.
-    ///
-    /// **Methodology**:
-    /// 1. Validates e-mode category is not deprecated
-    /// 2. For each deposit payment:
-    ///    - Validates payment structure and amounts
-    ///    - Retrieves and applies e-mode asset configuration
-    ///    - Ensures asset can be used as collateral
-    ///    - Validates isolation mode constraints
-    ///    - Checks supply cap limits
-    ///    - Updates the deposit position through liquidity pool
-    ///
-    /// **Security Checks**:
-    /// - E-mode compatibility validation with asset types
-    /// - Isolation collateral mixing prevention
-    /// - Supply cap enforcement to prevent market manipulation
-    /// - Asset collateral eligibility verification
-    ///
-    /// **Mathematical Operations**:
-    /// - Supply index scaling for position amounts
-    /// - Price feed integration for USD value calculations
-    ///
-    /// # Arguments
-    /// - `caller`: Depositor's address for event emission
-    /// - `account_nonce`: Position NFT nonce for storage mapping
-    /// - `position_attributes`: NFT attributes containing e-mode and isolation settings
-    /// - `deposit_payments`: Vector of deposit payments to process
-    /// - `cache`: Mutable storage cache for asset configs and price feeds
+    /// Orchestrates deposit flow with e-mode validation, isolation constraints, and position updates.
+    /// Validates each payment, checks supply caps, and calls liquidity pool for position scaling.
+    /// Ensures compliance with risk parameters and market limits.
     fn process_deposit(
         &self,
         caller: &ManagedAddress,
@@ -66,7 +38,7 @@ pub trait PositionDepositModule:
         deposit_payments: &ManagedVec<EgldOrEsdtTokenPayment>,
         cache: &mut Cache<Self>,
     ) {
-        let e_mode = self.get_e_mode_category(position_attributes.get_emode_id());
+        let e_mode = self.e_mode_category(position_attributes.emode_id());
         self.ensure_e_mode_not_deprecated(&e_mode);
 
         // Validate position limits for all new positions in this transaction
@@ -79,16 +51,13 @@ pub trait PositionDepositModule:
         for deposit_payment in deposit_payments {
             self.validate_payment(&deposit_payment);
 
-            let mut asset_info = cache.get_cached_asset_info(&deposit_payment.token_identifier);
-            let asset_emode_config = self.get_token_e_mode_config(
-                position_attributes.get_emode_id(),
+            let mut asset_info = cache.cached_asset_info(&deposit_payment.token_identifier);
+            let asset_emode_config = self.token_e_mode_config(
+                position_attributes.emode_id(),
                 &deposit_payment.token_identifier,
             );
 
-            self.ensure_e_mode_compatible_with_asset(
-                &asset_info,
-                position_attributes.get_emode_id(),
-            );
+            self.ensure_e_mode_compatible_with_asset(&asset_info, position_attributes.emode_id());
             self.apply_e_mode_to_asset_config(&mut asset_info, &e_mode, asset_emode_config);
 
             require!(
@@ -101,8 +70,8 @@ pub trait PositionDepositModule:
                 &asset_info,
                 &position_attributes,
             );
-            let feed = self.get_token_price(&deposit_payment.token_identifier, cache);
-            self.validate_supply_cap(&asset_info, &deposit_payment, &feed, cache);
+            let price_feed = self.token_price(&deposit_payment.token_identifier, cache);
+            self.validate_supply_cap(&asset_info, &deposit_payment, &price_feed, cache);
 
             self.update_deposit_position(
                 account_nonce,
@@ -110,7 +79,7 @@ pub trait PositionDepositModule:
                 &asset_info,
                 caller,
                 &position_attributes,
-                &feed,
+                &price_feed,
                 cache,
             );
         }
@@ -151,10 +120,10 @@ pub trait PositionDepositModule:
                     token_id.clone(),
                     self.ray_zero(),
                     account_nonce,
-                    asset_info.liquidation_threshold.clone(),
-                    asset_info.liquidation_bonus.clone(),
-                    asset_info.liquidation_fees.clone(),
-                    asset_info.loan_to_value.clone(),
+                    asset_info.liquidation_threshold_bps.clone(),
+                    asset_info.liquidation_bonus_bps.clone(),
+                    asset_info.liquidation_fees_bps.clone(),
+                    asset_info.loan_to_value_bps.clone(),
                 )
             })
     }
@@ -208,16 +177,16 @@ pub trait PositionDepositModule:
         );
 
         // Auto upgrade safe values when changed on demand
-        if position.loan_to_value != asset_info.loan_to_value {
-            position.loan_to_value = asset_info.loan_to_value.clone();
+        if position.loan_to_value_bps != asset_info.loan_to_value_bps {
+            position.loan_to_value_bps = asset_info.loan_to_value_bps.clone();
         }
 
-        if position.liquidation_bonus != asset_info.liquidation_bonus {
-            position.liquidation_bonus = asset_info.liquidation_bonus.clone();
+        if position.liquidation_bonus_bps != asset_info.liquidation_bonus_bps {
+            position.liquidation_bonus_bps = asset_info.liquidation_bonus_bps.clone();
         }
 
-        if position.liquidation_fees != asset_info.liquidation_fees {
-            position.liquidation_fees = asset_info.liquidation_fees.clone();
+        if position.liquidation_fees_bps != asset_info.liquidation_fees_bps {
+            position.liquidation_fees_bps = asset_info.liquidation_fees_bps.clone();
         }
 
         let amount_decimal = position.make_amount_decimal(&collateral.amount, feed.asset_decimals);
@@ -234,7 +203,7 @@ pub trait PositionDepositModule:
             cache,
             &amount_decimal,
             &position,
-            feed.price.clone(),
+            feed.price_wad.clone(),
             caller,
             attributes,
         );
@@ -279,9 +248,9 @@ pub trait PositionDepositModule:
     ) {
         *position = self
             .tx()
-            .to(cache.get_cached_pool_address(token_id))
+            .to(cache.cached_pool_address(token_id))
             .typed(proxy_pool::LiquidityPoolProxy)
-            .supply(position.clone(), feed.price.clone())
+            .supply(position.clone(), feed.price_wad.clone())
             .egld_or_single_esdt(token_id, 0, amount)
             .returns(ReturnsResult)
             .sync_call();
@@ -310,7 +279,7 @@ pub trait PositionDepositModule:
     /// # Arguments
     /// - `require_account_payment`: Whether NFT is mandatory for operation
     /// - `return_nft`: Whether to return NFT to caller after validation
-    /// - `opt_account_nonce`: Optional account nonce for accountless operations
+    /// - `optional_account_nonce`: Optional account nonce for accountless operations
     ///
     /// # Returns
     /// - Tuple containing:
@@ -322,7 +291,7 @@ pub trait PositionDepositModule:
         &self,
         require_account_payment: bool,
         return_nft: bool,
-        opt_account_nonce: OptionalValue<u64>,
+        optional_account_nonce: OptionalValue<u64>,
     ) -> (
         ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
         Option<EsdtTokenPayment<Self::Api>>,
@@ -367,7 +336,7 @@ pub trait PositionDepositModule:
                 ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS
             );
 
-            match opt_account_nonce.into_option() {
+            match optional_account_nonce.into_option() {
                 Some(account_nonce) => {
                     if account_nonce == 0 {
                         return (payments.clone(), None, caller, None);
@@ -435,7 +404,7 @@ pub trait PositionDepositModule:
         if position_attributes.is_isolated() {
             // Position is isolated - ensure it's using the correct isolated token
             require!(
-                position_attributes.get_isolated_token() == *token_id,
+                position_attributes.isolated_token() == *token_id,
                 ERROR_MIX_ISOLATED_COLLATERAL
             );
         } else if asset_info.is_isolated() {
@@ -480,14 +449,14 @@ pub trait PositionDepositModule:
         feed: &PriceFeedShort<Self::Api>,
         cache: &mut Cache<Self>,
     ) {
-        match &asset_info.supply_cap {
+        match &asset_info.supply_cap_wad {
             Some(supply_cap) => {
-                let pool = cache.get_cached_pool_address(&deposit_payment.token_identifier);
-                let index = cache.get_cached_market_index(&deposit_payment.token_identifier);
+                let pool = cache.cached_pool_address(&deposit_payment.token_identifier);
+                let index = cache.cached_market_index(&deposit_payment.token_identifier);
                 let total_supply_scaled = self.supplied(pool.clone()).get();
                 let total_supplied = self.scaled_to_original(
                     &total_supply_scaled,
-                    &index.supply_index,
+                    &index.supply_index_ray,
                     feed.asset_decimals,
                 );
 
@@ -545,28 +514,27 @@ pub trait PositionDepositModule:
         require!(dp_option.is_some(), ERROR_POSITION_NOT_FOUND);
 
         let account_attributes = self.account_attributes(account_nonce).get();
-        let e_mode_category = self.get_e_mode_category(account_attributes.get_emode_id());
-        let asset_emode_config =
-            self.get_token_e_mode_config(account_attributes.get_emode_id(), asset_id);
+        let e_mode_category = self.e_mode_category(account_attributes.emode_id());
+        let asset_emode_config = self.token_e_mode_config(account_attributes.emode_id(), asset_id);
         self.apply_e_mode_to_asset_config(asset_config, &e_mode_category, asset_emode_config);
 
         let mut dp = unsafe { dp_option.unwrap_unchecked() };
 
         if has_risks {
-            if dp.liquidation_threshold != asset_config.liquidation_threshold {
-                dp.liquidation_threshold = asset_config.liquidation_threshold.clone();
+            if dp.liquidation_threshold_bps != asset_config.liquidation_threshold_bps {
+                dp.liquidation_threshold_bps = asset_config.liquidation_threshold_bps.clone();
             }
         } else {
-            if dp.loan_to_value != asset_config.loan_to_value {
-                dp.loan_to_value = asset_config.loan_to_value.clone();
+            if dp.loan_to_value_bps != asset_config.loan_to_value_bps {
+                dp.loan_to_value_bps = asset_config.loan_to_value_bps.clone();
             }
 
-            if dp.liquidation_bonus != asset_config.liquidation_bonus {
-                dp.liquidation_bonus = asset_config.liquidation_bonus.clone();
+            if dp.liquidation_bonus_bps != asset_config.liquidation_bonus_bps {
+                dp.liquidation_bonus_bps = asset_config.liquidation_bonus_bps.clone();
             }
 
-            if dp.liquidation_fees != asset_config.liquidation_fees {
-                dp.liquidation_fees = asset_config.liquidation_fees.clone();
+            if dp.liquidation_fees_bps != asset_config.liquidation_fees_bps {
+                dp.liquidation_fees_bps = asset_config.liquidation_fees_bps.clone();
             }
         }
 
@@ -580,12 +548,12 @@ pub trait PositionDepositModule:
             );
         }
 
-        let feed = self.get_token_price(asset_id, cache);
+        let price_feed = self.token_price(asset_id, cache);
         self.emit_position_update_event(
             cache,
             &dp.zero_decimal(),
             &dp,
-            feed.price,
+            price_feed.price_wad,
             &controller_sc,
             &account_attributes,
         );

@@ -90,19 +90,19 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
 
         map_last_nonce.set(account_nonce);
 
-        let nft_token_payment = EsdtTokenPayment::new(
+        let account_payment = EsdtTokenPayment::new(
             self.account().get_token_id(),
             account_nonce,
             BigUint::from(1u64),
         );
 
-        self.tx().to(caller).payment(&nft_token_payment).transfer();
+        self.tx().to(caller).payment(&account_payment).transfer();
 
         let _ = self.accounts().insert(account_nonce);
         self.account_attributes(account_nonce)
             .set(attributes.clone());
 
-        (nft_token_payment, attributes)
+        (account_payment, attributes)
     }
 
     /// Retrieves an existing position or creates a new one.
@@ -130,9 +130,9 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
     /// - `is_isolated`: Flag for isolation mode requirement
     /// - `mode`: Position mode configuration
     /// - `e_mode_category`: Optional e-mode category for new positions
-    /// - `opt_account`: Optional existing account NFT to reuse
-    /// - `opt_attributes`: Optional existing attributes for validation
-    /// - `opt_isolated_token`: Required token for isolated position creation
+    /// - `optional_account`: Optional existing account NFT to reuse
+    /// - `optional_attributes`: Optional existing attributes for validation
+    /// - `optional_isolated_token`: Required token for isolated position creation
     ///
     /// # Returns
     /// - Tuple containing (NFT nonce, validated position attributes)
@@ -142,13 +142,13 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
         is_isolated: bool,
         mode: PositionMode,
         e_mode_category: OptionalValue<u8>,
-        opt_account: Option<EsdtTokenPayment<Self::Api>>,
-        opt_attributes: Option<AccountAttributes<Self::Api>>,
-        opt_isolated_token: Option<EgldOrEsdtTokenIdentifier>,
+        optional_account: Option<EsdtTokenPayment<Self::Api>>,
+        optional_attributes: Option<AccountAttributes<Self::Api>>,
+        optional_isolated_token: Option<EgldOrEsdtTokenIdentifier>,
     ) -> (u64, AccountAttributes<Self::Api>) {
-        match opt_account {
+        match optional_account {
             Some(account) => (account.token_nonce, unsafe {
-                opt_attributes.unwrap_unchecked()
+                optional_attributes.unwrap_unchecked()
             }),
             None => {
                 let (payment, account_attributes) = self.create_account_nft(
@@ -156,7 +156,7 @@ pub trait PositionAccountModule: common_events::EventsModule + storage::Storage 
                     is_isolated,
                     mode,
                     e_mode_category,
-                    opt_isolated_token,
+                    optional_isolated_token,
                 );
                 (payment.token_nonce, account_attributes)
             },

@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           67
+// Endpoints:                           70
 // Async Callback:                       1
-// Total number of exported functions:  70
+// Total number of exported functions:  73
 
 #![no_std]
 
@@ -63,7 +63,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         getSwapRouterAddress => swap_router
         getAssetConfig => asset_config
         lastEModeCategoryId => last_e_mode_category_id
-        getEModes => e_mode_category
+        getEModes => e_mode_categories
         getAssetEModes => asset_e_modes
         getEModesAssets => e_mode_assets
         getIsolatedAssetDebtUsd => isolated_asset_debt_usd
@@ -71,22 +71,25 @@ multiversx_sc_wasm_adapter::endpoints! {
         isFlashLoanOngoing => flash_loan_ongoing
         getPositionLimits => position_limits
         liquidationEstimations => liquidation_estimations
-        getAllMarketIndexes => get_all_market_indexes
-        getAllMarkets => get_all_markets
+        getAllMarketIndexes => all_market_indexes
+        getAllMarkets => all_markets
         canBeLiquidated => can_be_liquidated
-        getHealthFactor => get_health_factor
-        getCollateralAmountForToken => get_collateral_amount_for_token
-        getBorrowAmountForToken => get_borrow_amount_for_token
-        getTotalBorrowInEgld => get_total_borrow_in_egld
-        getTotalCollateralInEgld => get_total_collateral_in_egld
-        getLiquidationCollateralAvailable => get_liquidation_collateral_available
-        getLtvCollateralInEgld => get_ltv_collateral_in_egld
-        getTokenPriceUSD => get_usd_price
-        getTokenPriceEGLD => get_egld_price
+        getHealthFactor => health_factor
+        getCollateralAmountForToken => collateral_amount_for_token
+        getBorrowAmountForToken => borrow_amount_for_token
+        getTotalBorrowInEgld => total_borrow_in_egld
+        getTotalCollateralInEgld => total_collateral_in_egld
+        getLiquidationCollateralAvailable => liquidation_collateral_available
+        getLtvCollateralInEgld => ltv_collateral_in_egld
+        getTokenPriceUSD => usd_price
+        getTokenPriceEGLD => egld_price
         multiply => multiply
         swapDebt => swap_debt
         swapCollateral => swap_collateral
         repayDebtWithCollateral => repay_debt_with_collateral
+        pause => pause_endpoint
+        unpause => unpause_endpoint
+        isPaused => paused_status
     )
 }
 

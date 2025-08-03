@@ -15,7 +15,8 @@ The oracle system operates on three fundamental pillars:
 ### Security Framework
 
 - **15-minute TWAP freshness requirements** for all price validations
-- **Dual-tolerance system**: First tolerance (±2%) and last tolerance (±5%) for granular control
+- **Dynamic dual-tolerance system**: Configurable first tolerance (0.5%-50%) and last tolerance (1.5%-100%) for granular control
+- **Position-based unsafe price logic**: Safety rules vary based on user's borrowing exposure
 - **Anchor price validation** ensuring consistency between all price sources
 - **Transaction-level caching strategy** for gas optimization without compromising security
 
@@ -44,106 +45,187 @@ The oracle implements a sophisticated **three-tier validation system** ensuring 
 - **Exchange rate multiplication** from underlying staking contracts
 - **Composite pricing models** for complex derivative tokens
 
-### Dual-Tolerance Security System
+### Dynamic Dual-Tolerance Security System
 
-The oracle employs a **granular tolerance checking mechanism** with two distinct thresholds:
+The oracle employs a **configurable tolerance checking mechanism** with two distinct thresholds that can be customized per token:
 
-#### First Tolerance (±2%)
+#### First Tolerance (Configurable: 0.5% - 50%)
+- **Range bounds**: MIN_FIRST_TOLERANCE (0.5%) to MAX_FIRST_TOLERANCE (50%)
+- **Typical settings**: 1-3% for stablecoins, 5-10% for volatile assets
 - **Immediate validation** of aggregator prices against safe prices
 - **High-sensitivity detection** of minor price anomalies
 - **Early warning system** for potential market manipulation
 
-#### Last Tolerance (±5%)
+#### Last Tolerance (Configurable: 1.5% - 100%)
+- **Range bounds**: MIN_LAST_TOLERANCE (1.5%) to MAX_LAST_TOLERANCE (100%)
+- **Typical settings**: 5-15% for most assets, higher for extremely volatile tokens
 - **Final boundary check** before price rejection
 - **Broader tolerance** for natural market volatility
 - **Operational continuity** during normal market fluctuations
 
-### Asymmetric Operation Control
+### Position-Based Safety Control
 
-Critical innovation in oracle security through **operational asymmetry**:
+Critical innovation in oracle security through **position-aware safety logic**:
 
-#### Dangerous Operations (Blocked During Anomalies)
-- **Liquidations** - prevented during price uncertainty
-- **Large borrowing operations** - restricted during volatility
-- **High-leverage transactions** - blocked for user protection
+#### Position-Based Unsafe Price Logic
+The protocol implements sophisticated position-dependent safety rules:
+
+```rust
+// Core safety determination:
+cache.allow_unsafe_price = borrow_positions.len() == 0;
+```
+
+| User Profile | Borrow Positions | Unsafe Price Allowed | Rationale |
+|--------------|------------------|---------------------|----------|
+| **Suppliers Only** | 0 | ✅ **Yes** | No liquidation risk - can operate during price deviations |
+| **Borrowers** | >0 | ❌ **No** | Liquidation protection - must use validated prices only |
+| **View Functions** | N/A | ✅ **Yes** | Read-only operations pose no financial risk |
+| **Strategy Operations** | >0 | ❌ **No** | High-leverage operations require maximum price accuracy |
+| **Liquidations** | N/A | ❌ **No** | Critical operations must use most secure pricing |
+
+#### Dangerous Operations (Blocked During Anomalies for Borrowers)
+- **New borrowing operations** - restricted when user has existing debt
+- **Withdrawal operations** - blocked for over-collateralized positions
+- **Strategy executions** - prevented during price uncertainty
+- **Liquidations** - always use most secure pricing
 
 #### Safe Operations (Always Allowed)
-- **Standard repayments** - always permitted
-- **Position monitoring** - continuous operation
-- **Emergency withdrawals** - unrestricted access
+- **Repayments** - always permitted regardless of price deviation
+- **Supply operations** - allowed for users without borrowing positions
+- **Position monitoring** - continuous operation with unsafe price allowance
+- **Emergency functions** - unrestricted access for safety
 
-### LP Token Pricing: Arda Formula Implementation
+### LP Token Pricing: Arda Mathematical Formula
 
-- **TWAP Protection:** Utilizes **Time-Weighted Average Price (TWAP)** from DEXs to prevent flash loan-based price manipulation.
-- **Safe Price Mechanism (XExchange):** Employs XExchange’s **Safe Price** feature, a TWAP-based pricing method, to provide secure and stable price data.
-- **Configurable Tolerances:** Allows setting **upper and lower bounds** for price fluctuations to ensure stability.
+The oracle implements the mathematically rigorous **Arda LP pricing model** with precision-optimized calculations:
 
-### 📊 Liquidity Pool (LP) and LSD Token Pricing
+#### Step-by-Step Mathematical Implementation
 
-- **LP Token Pricing:** Calculates prices for LP tokens based on **reserve ratios** and underlying asset prices.
-  - Supports **XExchange, LXOXNO, and other DEX pools**.
-  - Validates LP token prices against **TWAP data** for manipulation resistance.
-- **LSD Token Pricing:** Computes prices for Liquid Staking Derivative (LSD) tokens (e.g., xEGLD, LXOXNO) using their specific exchange rates or derived pricing mechanisms.
-  - **xEGLD and LXOXNO** are distinct from LP tokens, treated as derivatives of staked assets.
+```rust
+// STEP 1: Get current reserves and prices
+K = Reserve_A × Reserve_B  // Constant product invariant
+Price_A = EGLD_price_of_token_A  // From oracle feeds  
+Price_B = EGLD_price_of_token_B  // From oracle feeds
 
-### 🛡️ Security & Validation
+// STEP 2: Calculate price ratios for geometric mean
+Price_Ratio_X = Price_B / Price_A
+Price_Ratio_Y = Price_A / Price_B
 
-- **Price Fluctuation Tolerance:** Prevents manipulation by enforcing **pre-configured tolerance ranges** for price deviations.
-  - Short-term and long-term prices must remain within **upper and lower tolerance ratios**.
-  - If prices deviate excessively, the system reverts to **safe prices** or halts operations if unsafe pricing is disallowed.
-- **Failsafe Mechanisms:** Halts operations if multiple sources fail or prices deviate excessively, avoiding reliance on unreliable data.
-- **Anchor Checks:** Validates real-time prices (e.g., aggregator prices) against **safe price anchors** (e.g., TWAP data) for consistency.
+// STEP 3: Apply geometric mean formula (Arda core)
+X_Prime = sqrt(K × Price_Ratio_X)  // Modified reserve A
+Y_Prime = sqrt(K × Price_Ratio_Y)  // Modified reserve B
 
-## Operational Safety Matrix
+// STEP 4: Calculate total LP value
+Value_A = X_Prime × Price_A
+Value_B = Y_Prime × Price_B
+Total_LP_Value = Value_A + Value_B
 
-The oracle system implements a comprehensive **operational safety matrix** that categorizes all protocol operations based on risk level and price reliability requirements:
+// STEP 5: Final LP token price
+LP_Price = Total_LP_Value / Total_Supply
+```
 
-### Risk Classification System
+#### Precision Handling Innovation
+- **WAD_HALF_PRECISION**: Square root operations use 9-decimal intermediate precision
+- **Scaling factor recovery**: `sqrt_result × 10^9` restores full 18-decimal WAD precision
+- **Mathematical accuracy**: Prevents precision loss in geometric mean calculations
+- **Gas optimization**: Efficient sqrt computation with controlled precision
 
-| Operation Type | Risk Level | Price Accuracy Required | Action During Anomalies |
-|----------------|------------|------------------------|-------------------------|
-| **Liquidations** | Very High | ±0.5% | Block completely |
-| **Large Borrows (>$10k)** | High | ±1% | Block completely |
-| **Standard Borrows** | Medium | ±2% | Allow with safe prices |
-| **Repayments** | Low | ±5% | Always allow |
-| **Position Queries** | Very Low | ±5% | Always allow |
-| **Emergency Withdrawals** | None | N/A | Always allow |
 
-### Price Deviation Response Protocol
+### 🛡️ Multi-Layer Security Architecture
 
-#### Level 1: Minor Deviation (0-2%)
-- **Action**: Continue normal operations
-- **Price Source**: Primary aggregator with validation
-- **Monitoring**: Enhanced logging
+#### Tolerance-Based Price Validation
+The oracle implements **asymmetric security pricing** with sophisticated tolerance management:
 
-#### Level 2: Moderate Deviation (2-5%)
-- **Action**: Block high-risk operations
-- **Price Source**: Safe price (TWAP) mandatory
+```rust
+// Three-tier price validation logic:
+if within_first_tolerance {
+    return safe_price;  // Use TWAP price (most secure)
+} else if within_last_tolerance {
+    return (aggregator_price + safe_price) / 2;  // Averaged price
+} else {
+    require!(cache.allow_unsafe_price, ERROR_UN_SAFE_PRICE_NOT_ALLOWED);
+    return safe_price;  // Fallback to TWAP only
+}
+```
+
+#### Staleness Protection Framework
+- **Maximum staleness**: Configurable per token (typically 300-900 seconds)
+- **TWAP freshness**: 15-minute requirement for all safe price calculations
+- **Aggregator validation**: Real-time staleness checks before price acceptance
+- **Emergency fallback**: Automatic source switching on staleness detection
+
+#### Oracle Attack Prevention
+- **Flash loan immunity**: 15-minute TWAP prevents single-block manipulation
+- **Multi-source cross-validation**: Aggregator vs TWAP consistency checks
+- **Position-aware safety**: Different rules for suppliers vs borrowers
+- **LP manipulation resistance**: Arda formula prevents pool balance attacks
+
+## Dynamic Operational Safety Matrix
+
+The oracle system implements a **position-aware operational safety matrix** that adapts behavior based on user profiles and configurable tolerance thresholds:
+
+### Position-Aware Risk Classification
+
+| Operation Type | Suppliers Only (0 borrows) | Borrowers (>0 borrows) | Price Tolerance Required |
+|----------------|---------------------------|------------------------|-------------------------|
+| **Liquidations** | N/A | ❌ **Blocked** (secure prices only) | Within first tolerance |
+| **New Borrowing** | ✅ **Allowed** | ❌ **Blocked** during anomalies | Within first tolerance |
+| **Withdrawals** | ✅ **Allowed** | ❌ **Blocked** during anomalies | Within first tolerance |
+| **Strategy Operations** | ✅ **Allowed** | ❌ **Blocked** during anomalies | Within first tolerance |
+| **Repayments** | ✅ **Always allowed** | ✅ **Always allowed** | Within last tolerance |
+| **Supply Operations** | ✅ **Always allowed** | ✅ **Always allowed** | Within last tolerance |
+| **Position Queries** | ✅ **Always allowed** | ✅ **Always allowed** | Unsafe prices allowed |
+| **View Functions** | ✅ **Always allowed** | ✅ **Always allowed** | Unsafe prices allowed |
+
+### Dynamic Price Deviation Response Protocol
+
+#### Level 1: Within First Tolerance (Configurable 0.5%-50%)
+- **Action**: Continue all operations
+- **Price Source**: Primary aggregator with TWAP validation
+- **Position Logic**: All users can operate normally
+- **Monitoring**: Standard logging
+
+#### Level 2: Within Last Tolerance (Configurable 1.5%-100%)
+- **Action**: Position-dependent restrictions
+- **Price Source**: Safe price (TWAP) mandatory  
+- **Position Logic**: 
+  - Suppliers only: ✅ All operations allowed
+  - Borrowers: ❌ New borrows/withdrawals blocked
 - **Monitoring**: Alert administrators
 
-#### Level 3: Major Deviation (>5%)
-- **Action**: Block all dangerous operations
-- **Price Source**: Safe price only or halt
+#### Level 3: Outside Last Tolerance (>configured threshold)
+- **Action**: Strict position-based restrictions
+- **Price Source**: Safe price only or operation halt
+- **Position Logic**:
+  - Suppliers only: ✅ Limited operations with unsafe price allowance
+  - Borrowers: ❌ All dangerous operations blocked
 - **Monitoring**: Emergency protocols activated
 
 ### Anchor Price Validation
 
 The system performs continuous **anchor price validation** between different price sources:
 
-#### Validation Matrix
+#### Dynamic Validation Matrix
 ```
 Primary_Aggregator_Price ←→ Safe_Price_TWAP
        ↓                           ↓
    Deviation_Check_1         Deviation_Check_2
        ↓                           ↓
-   ±2% Tolerance             ±5% Tolerance
+ Configurable First      Configurable Last
+ Tolerance (0.5%-50%)    Tolerance (1.5%-100%)
+       ↓                           ↓
+ Position-Based Logic    Position-Based Logic
 ```
 
-#### Validation Logic
-1. **Primary Check**: Aggregator price vs TWAP within ±2%
-2. **Secondary Check**: If primary fails, check within ±5%
-3. **Fallback**: Use TWAP if all checks fail
-4. **Emergency**: Block operations if TWAP unavailable
+#### Advanced Validation Logic
+1. **Primary Check**: Aggregator price vs TWAP within configured first tolerance
+2. **Secondary Check**: If primary fails, check within configured last tolerance
+3. **Position Assessment**: Determine `allow_unsafe_price` based on borrow positions
+4. **Conditional Operations**: 
+   - Borrowers: Must pass tolerance checks
+   - Suppliers only: Can operate with unsafe prices if allowed
+5. **Fallback**: Use TWAP if all checks fail and unsafe prices not allowed
+6. **Emergency**: Block operations if TWAP unavailable and position has borrows
 
 ---
 
@@ -196,40 +278,7 @@ The Oracle Module supports multiple pricing methods, each with tailored validati
 - **Protection:**
   - Falls back to **safe prices** or halts if deviations exceed tolerances and unsafe pricing is disallowed.
 
----
-
-### **3️⃣ LP Token Pricing: Arda Formula Implementation**
-
-#### Mathematical Framework
-The oracle implements the sophisticated **Arda mathematical model** for LP token valuation:
-
-```
-Given:
-- K = Ra × Rb (constant product)
-- Pa, Pb = prices of tokens A and B
-- Ra, Rb = reserves of tokens A and B
-
-Calculations:
-1. X' = √(K × Pb / Pa)
-2. Y' = √(K × Pa / Pb)
-3. LP_Value = (X' × Pa + Y' × Pb) / total_supply
-```
-
-#### Security Validations
-- **Reserve ratio consistency** checks against historical patterns
-- **Price correlation validation** between underlying assets
-- **Total supply verification** against contract state
-- **Temporal consistency** with historical LP valuations
-- **Liquidity depth verification** to prevent manipulation
-
-#### Protection Mechanisms
-- **Multi-source validation**: Compare against TWAP data within tolerance ranges
-- **Historical bounds checking**: Validate against 24h price ranges
-- **Emergency fallback**: Use long-term TWAP LP prices if deviations excessive
-
----
-
-### **4️⃣ Derived Token Pricing: LSD Implementation**
+### **3️⃣ Derived Token Pricing: LSD Implementation**
 
 #### Exchange Rate Multiplication Model
 For liquid staking derivatives (xEGLD, LEGLD, LXOXNO):
@@ -355,31 +404,187 @@ trait StakingProvider {
 
 ---
 
-## Technical Benefits & Security Guarantees
+## Technical Benefits & Advanced Monitoring
 
 ### Performance Optimizations
 - **70% gas reduction** through intelligent caching strategies
 - **Sub-second response times** for cached price queries
-- **Batch operations support** for multi-token price fetching
+- **Transaction-level consistency**: Same prices used throughout single transaction
 - **Optimized recursive resolution** with path caching
 
 ### Security Guarantees
 - **Manipulation resistance** through multi-layered validation
 - **Flash loan protection** via TWAP and time-based checks
-- **Asymmetric operation control** protecting critical functions
+- **Position-aware safety**: Different rules for suppliers vs borrowers
 - **Emergency halt mechanisms** for extreme market conditions
 
 ### Operational Resilience
 - **15-minute freshness requirements** ensuring data reliability
-- **Dual-tolerance system** for granular anomaly detection
+- **Dynamic dual-tolerance system** for granular anomaly detection
 - **Multi-source fallback** preventing single points of failure
 - **Comprehensive monitoring** with real-time alerting
 
-### Ecosystem Integration
-- **Native MultiversX support** optimized for blockchain characteristics
-- **DEX agnostic design** supporting multiple exchange protocols
-- **Staking protocol compatibility** for all major LSD tokens
-- **Future-proof architecture** enabling easy integration of new sources
+
+
+### Implementation Constants & Configuration
+
+The oracle system uses the following configurable bounds defined in `common/constants`:
+
+```rust
+/// Minimum first tolerance for oracle price fluctuation (0.50%)
+pub const MIN_FIRST_TOLERANCE: usize = 50;
+
+/// Maximum first tolerance for oracle price fluctuation (50%)
+pub const MAX_FIRST_TOLERANCE: usize = 5_000;
+
+/// Minimum last tolerance for oracle price fluctuation (1.5%)
+pub const MIN_LAST_TOLERANCE: usize = 150;
+
+/// Maximum last tolerance for oracle price fluctuation (100%)
+pub const MAX_LAST_TOLERANCE: usize = 10_000;
+
+/// TWAP freshness requirement (15 minutes)
+pub const SECONDS_PER_MINUTE: u64 = 60;
+// Freshness check: current_timestamp - last_update <= 15 * SECONDS_PER_MINUTE
+
+/// Precision constants for mathematical calculations
+pub const WAD_PRECISION: usize = 18;        // Standard 18-decimal precision
+pub const WAD_HALF_PRECISION: usize = 9;     // For sqrt operations
+pub const RAY_PRECISION: usize = 27;         // Interest rate calculations
+pub const BPS_PRECISION: usize = 4;          // Basis points (0.01%)
+```
+
+#### Real-World Configuration Examples
+```rust
+// Conservative stablecoin settings
+first_tolerance: 100 BPS (1.0%)
+last_tolerance: 300 BPS (3.0%)
+max_staleness: 300 seconds (5 minutes)
+
+// Standard volatile token settings  
+first_tolerance: 500 BPS (5.0%)
+last_tolerance: 1000 BPS (10.0%)
+max_staleness: 600 seconds (10 minutes)
+
+// High-volatility experimental tokens
+first_tolerance: 1000 BPS (10.0%)
+last_tolerance: 2000 BPS (20.0%)
+max_staleness: 900 seconds (15 minutes)
+```
+
+## Error Handling & Recovery
+
+### Complete Error Code Reference
+
+#### Core Oracle Errors
+- `ERROR_UN_SAFE_PRICE_NOT_ALLOWED`: Unsafe price operation blocked for users with borrow positions
+- `ERROR_PRICE_FEED_STALE`: Price data exceeds configured staleness threshold
+- `ERROR_ORACLE_TOKEN_NOT_FOUND`: No oracle configuration exists for requested token
+- `ERROR_NO_LAST_PRICE_FOUND`: All price sources failed (aggregator and safe price unavailable)
+- `ERROR_PAIR_NOT_ACTIVE`: DEX pair not active or insufficient liquidity
+- `ERROR_PRICE_AGGREGATOR_NOT_SET`: Price aggregator contract not configured
+- `ERROR_INVALID_ORACLE_TOKEN_TYPE`: Unsupported oracle type for token
+- `ERROR_INVALID_EXCHANGE_SOURCE`: Exchange source not supported
+
+#### Price Aggregator Errors
+- `TOKEN_PAIR_NOT_FOUND_ERROR`: Token pair not configured in price aggregator
+- `PAUSED_ERROR`: Price aggregator contract temporarily paused
+
+#### Error Handling Strategy
+```rust
+// Graceful degradation hierarchy:
+1. Try aggregator price (with staleness check)
+2. Fallback to safe price (TWAP)
+3. Check allow_unsafe_price for position safety
+4. Panic only if all sources fail
+```
+
+### Recovery Mechanisms
+- **Automatic source switching**: Failover to backup oracles on primary failure
+- **Gradual re-enablement**: Phased restoration after price anomaly resolution
+- **Manual override capabilities**: Emergency controls for extreme market conditions
+- **Position protection**: Enhanced safety for users with existing borrowing positions
+
+---
+
+## Production Monitoring & Operations
+
+### Real-Time Price Monitoring Dashboard
+
+#### Key Metrics to Track
+```rust
+// Price deviation monitoring
+deviation_first_tolerance: percentage // Current vs first threshold
+deviation_last_tolerance: percentage  // Current vs last threshold
+within_tolerance_count: counter       // Successful validations
+tolerance_violation_count: counter    // Failed validations
+
+// Source reliability metrics
+aggregator_success_rate: percentage   // Aggregator uptime
+safe_price_success_rate: percentage   // TWAP availability
+average_response_time: milliseconds   // Oracle query latency
+stale_price_count: counter            // Staleness violations
+
+// Position safety metrics
+unsafe_price_blocked_count: counter   // Operations blocked for borrowers
+supplier_only_operations: counter     // Allowed unsafe price operations
+position_safety_bypasses: counter     // Emergency overrides (if any)
+```
+
+#### Alerting Thresholds
+- **Critical**: >5% price deviation lasting >5 minutes
+- **Warning**: Aggregator staleness >2x normal refresh rate
+- **Info**: Safe price source temporarily unavailable
+- **Emergency**: All price sources failing simultaneously
+
+### Advanced Cache Performance Metrics
+
+#### Cache Implementation Details
+```rust
+struct Cache {
+    pub allow_unsafe_price: bool,    // Position-based safety flag
+    pub price_cache: PriceCache,     // Transaction-level price storage
+    pub egld_ticker: ManagedBuffer,  // Cached EGLD identifier
+    // ... other cache fields
+}
+
+// Cache lifecycle management
+fn clean_prices_cache(&mut self) {
+    // Called after swap operations to ensure fresh prices
+    // Prevents price manipulation through cached stale data
+    self.price_cache.clear();
+}
+```
+
+#### Performance Optimizations
+- **Transaction-level consistency**: Same prices used throughout single transaction
+- **EGLD ticker caching**: Avoid repeated string comparisons for base currency
+- **Selective cache clearing**: Only clear prices after operations that could affect rates
+- **70% gas reduction**: Measured improvement from intelligent caching strategy
+
+### Enhanced Price Components Monitoring
+
+The oracle includes token-specific analysis through `price_components()`:
+
+```rust
+fn price_components(
+    &self,
+    token_id: &EgldOrEsdtTokenIdentifier,
+    cache: &mut Cache<Self::Api>,
+) -> (
+    Option<ManagedDecimal<Self::Api, NumDecimals>>, // safe_price_egld (None for EGLD)
+    Option<ManagedDecimal<Self::Api, NumDecimals>>, // safe_price_usd (None for EGLD)
+    ManagedDecimal<Self::Api, NumDecimals>,         // aggregator_price_egld (1.0 for EGLD)
+    bool,                                           // within_first_tolerance
+    bool,                                           // within_second_tolerance
+)
+```
+
+#### Token-Specific Analysis Capabilities
+- **Normal tokens**: Compare aggregator vs TWAP feeds with tolerance validation
+- **LP tokens**: Cross-validate on-chain Arda calculations vs off-chain pricing
+- **Derived tokens (LSD)**: Validate underlying asset tolerance (e.g., LXOXNO→XOXNO)
+- **EGLD special case**: Returns (None, None, 1.0, true, true) as base currency
 
 ---
 
@@ -387,5 +592,6 @@ trait StakingProvider {
 
 - **GitHub Issues:** Discuss on [GitHub Issues](https://github.com/).
 - **MultiversX DeFi Updates:** Stay informed about ecosystem developments.
+- **Oracle Monitoring:** Real-time price monitoring available through `price_components()` function.
 
 ---

@@ -24,7 +24,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         getSuppliedScaled => supplied
         getRevenueScaled => revenue
         getBorrowedScaled => borrowed
-        getParams => params
+        getParameters => parameters
         getBorrowIndex => borrow_index
         getSupplyIndex => supply_index
         getLastTimestamp => last_timestamp
@@ -37,14 +37,14 @@ multiversx_sc_wasm_adapter::endpoints! {
         createStrategy => create_strategy
         seizePosition => seize_position
         claimRevenue => claim_revenue
-        getCapitalUtilisation => get_capital_utilisation
-        getReserves => get_reserves
-        getDepositRate => get_deposit_rate
-        getBorrowRate => get_borrow_rate
-        getDeltaTime => get_delta_time
-        getProtocolRevenue => get_protocol_revenue
-        getSuppliedAmount => get_supplied_amount
-        getBorrowedAmount => get_borrowed_amount
+        capitalUtilisation => capital_utilisation
+        reserves => reserves
+        depositRate => deposit_rate
+        borrowRate => borrow_rate
+        deltaTime => delta_time
+        protocolRevenue => protocol_revenue
+        suppliedAmount => supplied_amount
+        borrowedAmount => borrowed_amount
     )
 }
 

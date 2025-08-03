@@ -86,6 +86,9 @@ where
     To: TxTo<Env>,
     Gas: TxGas<Env>,
 {
+    /// Handles contract upgrade by pausing all operations. 
+    /// Ensures safe state during code updates to prevent inconsistencies. 
+    /// Contract remains paused until manually unpaused after upgrade. 
     pub fn upgrade(
         self,
     ) -> TxTypedUpgrade<Env, From, To, NotPayable, Gas, ()> {
@@ -426,7 +429,7 @@ where
         optimal_utilization: Arg7,
         reserve_factor: Arg8,
         ltv: Arg9,
-        liquidation_threshold: Arg10,
+        liquidation_threshold_bps: Arg10,
         liquidation_base_bonus: Arg11,
         liquidation_max_fee: Arg12,
         can_be_collateral: Arg13,
@@ -438,8 +441,8 @@ where
         flashloan_enabled: Arg19,
         can_borrow_in_isolation: Arg20,
         asset_decimals: Arg21,
-        borrow_cap: Arg22,
-        supply_cap: Arg23,
+        borrow_cap_wad: Arg22,
+        supply_cap_wad: Arg23,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
@@ -454,7 +457,7 @@ where
             .argument(&optimal_utilization)
             .argument(&reserve_factor)
             .argument(&ltv)
-            .argument(&liquidation_threshold)
+            .argument(&liquidation_threshold_bps)
             .argument(&liquidation_base_bonus)
             .argument(&liquidation_max_fee)
             .argument(&can_be_collateral)
@@ -466,8 +469,8 @@ where
             .argument(&flashloan_enabled)
             .argument(&can_borrow_in_isolation)
             .argument(&asset_decimals)
-            .argument(&borrow_cap)
-            .argument(&supply_cap)
+            .argument(&borrow_cap_wad)
+            .argument(&supply_cap_wad)
             .original_result()
     }
 
@@ -1329,7 +1332,7 @@ where
 
     /// Get all e-mode categories 
     /// This storage mapper holds a map of e-mode categories, used to group assets into categories with different risk parameters. 
-    pub fn e_mode_category(
+    pub fn e_mode_categories(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValueEncoded<Env::Api, MultiValue2<u8, common_structs::EModeCategory<Env::Api>>>> {
         self.wrapped_tx
@@ -1435,7 +1438,7 @@ where
             .original_result()
     }
 
-    pub fn get_all_market_indexes<
+    pub fn all_market_indexes<
         Arg0: ProxyArg<MultiValueEncoded<Env::Api, EgldOrEsdtTokenIdentifier<Env::Api>>>,
     >(
         self,
@@ -1456,7 +1459,7 @@ where
     ///  
     /// # Returns 
     /// - Vector of `AssetExtendedConfigView` structs for each asset. 
-    pub fn get_all_markets<
+    pub fn all_markets<
         Arg0: ProxyArg<MultiValueEncoded<Env::Api, EgldOrEsdtTokenIdentifier<Env::Api>>>,
     >(
         self,
@@ -1498,7 +1501,7 @@ where
     ///  
     /// # Returns 
     /// - Health factor as a `ManagedDecimal` in WAD precision. 
-    pub fn get_health_factor<
+    pub fn health_factor<
         Arg0: ProxyArg<u64>,
     >(
         self,
@@ -1523,7 +1526,7 @@ where
     ///  
     /// # Panics 
     /// - If the token is not in the account’s collateral. 
-    pub fn get_collateral_amount_for_token<
+    pub fn collateral_amount_for_token<
         Arg0: ProxyArg<u64>,
         Arg1: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
     >(
@@ -1551,7 +1554,7 @@ where
     ///  
     /// # Panics 
     /// - If the token is not in the account’s borrows. 
-    pub fn get_borrow_amount_for_token<
+    pub fn borrow_amount_for_token<
         Arg0: ProxyArg<u64>,
         Arg1: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
     >(
@@ -1575,7 +1578,7 @@ where
     ///  
     /// # Returns 
     /// - Total borrow value in EGLD as a `ManagedDecimal`. 
-    pub fn get_total_borrow_in_egld<
+    pub fn total_borrow_in_egld<
         Arg0: ProxyArg<u64>,
     >(
         self,
@@ -1596,7 +1599,7 @@ where
     ///  
     /// # Returns 
     /// - Total collateral value in EGLD as a `ManagedDecimal`. 
-    pub fn get_total_collateral_in_egld<
+    pub fn total_collateral_in_egld<
         Arg0: ProxyArg<u64>,
     >(
         self,
@@ -1617,7 +1620,7 @@ where
     ///  
     /// # Returns 
     /// - Liquidation collateral in EGLD as a `ManagedDecimal`. 
-    pub fn get_liquidation_collateral_available<
+    pub fn liquidation_collateral_available<
         Arg0: ProxyArg<u64>,
     >(
         self,
@@ -1638,7 +1641,7 @@ where
     ///  
     /// # Returns 
     /// - LTV-weighted collateral in EGLD as a `ManagedDecimal`. 
-    pub fn get_ltv_collateral_in_egld<
+    pub fn ltv_collateral_in_egld<
         Arg0: ProxyArg<u64>,
     >(
         self,
@@ -1659,7 +1662,7 @@ where
     ///  
     /// # Returns 
     /// - USD price of the token as a `ManagedDecimal`. 
-    pub fn get_usd_price<
+    pub fn usd_price<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
     >(
         self,
@@ -1680,7 +1683,7 @@ where
     ///  
     /// # Returns 
     /// - EGLD price of the token as a `ManagedDecimal`. 
-    pub fn get_egld_price<
+    pub fn egld_price<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
     >(
         self,
@@ -1965,6 +1968,33 @@ where
             .argument(&to_token)
             .argument(&close_position)
             .argument(&steps)
+            .original_result()
+    }
+
+    pub fn pause_endpoint(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("pause")
+            .original_result()
+    }
+
+    pub fn unpause_endpoint(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("unpause")
+            .original_result()
+    }
+
+    pub fn paused_status(
+        self,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, bool> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("isPaused")
             .original_result()
     }
 }

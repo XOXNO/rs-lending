@@ -8,6 +8,9 @@ multiversx_sc::imports!();
 
 #[multiversx_sc::module]
 pub trait SharedMathModule {
+    /// Multiplies two decimals with half-up rounding at target precision.
+    /// Prevents precision loss in financial calculations using banker's rounding.
+    /// Returns product rounded to specified precision.
     fn mul_half_up(
         &self,
         a: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -31,6 +34,9 @@ pub trait SharedMathModule {
         self.to_decimal(rounded_product, precision)
     }
 
+    /// Divides two decimals with half-up rounding at target precision.
+    /// Prevents precision loss in financial calculations using banker's rounding.
+    /// Returns quotient rounded to specified precision.
     fn div_half_up(
         &self,
         a: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -53,6 +59,9 @@ pub trait SharedMathModule {
         self.to_decimal(rounded_quotient, precision)
     }
 
+    /// Multiplies two signed decimals with half-up rounding away from zero.
+    /// Handles negative values correctly for financial calculations.
+    /// Returns signed product rounded to specified precision.
     fn mul_half_up_signed(
         &self,
         a: &ManagedDecimalSigned<Self::Api, NumDecimals>,
@@ -82,6 +91,9 @@ pub trait SharedMathModule {
         ManagedDecimalSigned::from_raw_units(rounded_product, precision)
     }
 
+    /// Divides two signed decimals with half-up rounding away from zero.
+    /// Handles negative values correctly for financial calculations.
+    /// Returns signed quotient rounded to specified precision.
     fn div_half_up_signed(
         &self,
         a: &ManagedDecimalSigned<Self::Api, NumDecimals>,
@@ -111,46 +123,68 @@ pub trait SharedMathModule {
         ManagedDecimalSigned::from_raw_units(rounded, precision)
     }
 
+    /// Converts BigUint to ManagedDecimal with WAD precision (18 decimals).
+    /// Standard precision for asset amounts in the protocol.
     fn to_decimal_wad(self, value: BigUint) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal(value, WAD_PRECISION)
     }
 
+    /// Returns zero value with BPS precision (4 decimals).
+    /// Used for basis point calculations.
     fn bps_zero(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal_bps(BigUint::zero())
     }
 
+    /// Returns zero value with WAD precision (18 decimals).
+    /// Used for asset amount calculations.
     fn wad_zero(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal_wad(BigUint::zero())
     }
 
+    /// Returns zero value with RAY precision (27 decimals).
+    /// Used for high-precision interest rate calculations.
     fn ray_zero(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal_ray(BigUint::zero())
     }
 
+    /// Converts BigUint to ManagedDecimal with RAY precision (27 decimals).
+    /// High precision for interest rate and index calculations.
     fn to_decimal_ray(self, value: BigUint) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal(value, RAY_PRECISION)
     }
 
+    /// Converts BigUint to ManagedDecimal with BPS precision (4 decimals).
+    /// Used for percentage values in basis points.
     fn to_decimal_bps(self, value: BigUint) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal(value, BPS_PRECISION)
     }
 
+    /// Returns one unit in RAY precision (1e27).
+    /// Base unit for high-precision calculations.
     fn ray(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal(BigUint::from(RAY), RAY_PRECISION)
     }
 
+    /// Returns two units in RAY precision (2e27).
+    /// Used for specific mathematical operations.
     fn double_ray(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal(BigUint::from(DOUBLE_RAY), RAY_PRECISION)
     }
 
+    /// Returns one unit in WAD precision (1e18).
+    /// Base unit for asset amount calculations.
     fn wad(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal(BigUint::from(WAD), WAD_PRECISION)
     }
 
+    /// Returns 100% in BPS precision (10000).
+    /// Base unit for percentage calculations.
     fn bps(self) -> ManagedDecimal<<Self as ContractBase>::Api, usize> {
         self.to_decimal(BigUint::from(BPS), BPS_PRECISION)
     }
 
+    /// Converts BigUint to ManagedDecimal with specified precision.
+    /// Core conversion utility for the protocol.
     fn to_decimal(
         self,
         value: BigUint,
@@ -159,6 +193,9 @@ pub trait SharedMathModule {
         ManagedDecimal::from_raw_units(value, precision)
     }
 
+    /// Rescales decimal to new precision with half-up rounding.
+    /// Handles both upscaling and downscaling with proper rounding.
+    /// Critical for cross-precision calculations.
     fn rescale_half_up(
         &self,
         value: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -181,7 +218,9 @@ pub trait SharedMathModule {
         }
     }
 
-    fn get_min(
+    /// Returns the smaller of two decimal values.
+    /// Used for cap enforcement and safety checks.
+    fn min(
         self,
         a: ManagedDecimal<Self::Api, NumDecimals>,
         b: ManagedDecimal<Self::Api, NumDecimals>,
@@ -193,7 +232,9 @@ pub trait SharedMathModule {
         }
     }
 
-    fn get_max(
+    /// Returns the larger of two decimal values.
+    /// Used for floor enforcement and selection logic.
+    fn max(
         self,
         a: ManagedDecimal<Self::Api, NumDecimals>,
         b: ManagedDecimal<Self::Api, NumDecimals>,

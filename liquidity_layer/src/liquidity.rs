@@ -187,19 +187,9 @@ pub trait LiquidityModule:
     + common_rates::InterestRates
     + view::ViewModule
 {
-    /// Updates the market's borrow and supply indexes based on elapsed time since the last update.
-    ///
-    /// **Purpose**: Ensures the pool's interest calculations reflect the latest state by computing an interest factor based on time elapsed and applying it to the borrow and supply indexes.
-    ///
-    /// **Process**:
-    /// 1. Creates a `Cache` to snapshot the current pool state.
-    /// 2. Calls `global_sync` to update the borrow and supply indexes.
-    /// 3. Emits a market state event to log the updated state.
-    ///
-    /// # Arguments
-    /// - `price`: The current price of the pool asset (`ManagedDecimal<Self::Api, NumDecimals>`).
-    ///
-    /// **Security Considerations**: Restricted to the owner (via controller contract) to ensure controlled updates.
+    /// Updates borrow and supply indexes based on elapsed time since last update.
+    /// Synchronizes global pool state and emits market update event.
+    /// Returns current market indexes.
     #[only_owner]
     #[endpoint(updateIndexes)]
     fn update_indexes(
@@ -213,30 +203,14 @@ pub trait LiquidityModule:
         self.emit_market_update(&cache, price);
 
         MarketIndex {
-            borrow_index: cache.borrow_index.clone(),
-            supply_index: cache.supply_index.clone(),
+            borrow_index_ray: cache.borrow_index_ray.clone(),
+            supply_index_ray: cache.supply_index_ray.clone(),
         }
     }
 
-    /// Supplies assets to the lending pool, increasing reserves and the supplier's position.
-    ///
-    /// **Purpose**: Allows users to deposit assets into the pool to earn interest, increasing available liquidity.
-    ///
-    /// **Process**:
-    /// 1. Retrieves and validates the payment amount using `get_payment_amount`.
-    /// 2. Updates global indexes and the supplier's position with accrued interest.
-    /// 3. Adds the supplied amount to the position, reserves, and total supplied.
-    /// 4. Emits a market state event.
-    ///
-    /// # Arguments
-    /// - `position`: The supplier's current position (`AccountPosition<Self::Api>`).
-    /// - `price`: The asset price for market update (`ManagedDecimal<Self::Api, NumDecimals>`).
-    ///
-    /// # Returns
-    /// - `AccountPosition<Self::Api>`: The updated position with the new supply amount.
-    ///
-    /// **Security Considerations**: Validates the asset type via `get_payment_amount` to ensure only the pool's asset is supplied.
-    /// Can only be called by the owner (via controller contract).
+    /// Processes asset deposit, adding to reserves and updating supplier position.
+    /// Validates payment asset and converts amount to scaled tokens.
+    /// Returns updated position with accrued interest.
     #[payable]
     #[only_owner]
     #[endpoint(supply)]
@@ -247,42 +221,23 @@ pub trait LiquidityModule:
     ) -> AccountPosition<Self::Api> {
         let mut cache = Cache::new(self);
 
-        let amount = self.get_payment_amount(&cache);
+        let amount = self.payment_amount(&cache);
         require!(cache.is_same_asset(&position.asset_id), ERROR_INVALID_ASSET);
 
         self.global_sync(&mut cache);
 
-        let scaled_amount = cache.scaled_supply(&amount);
-        position.scaled_amount += &scaled_amount;
-        cache.supplied += scaled_amount;
+        let scaled_amount = cache.calculate_scaled_supply(&amount);
+        position.scaled_amount_ray += &scaled_amount;
+        cache.supplied_ray += scaled_amount;
 
         self.emit_market_update(&cache, price);
 
         position
     }
 
-    /// Borrows assets from the pool against a user's collateral.
-    ///
-    /// **Purpose**: Enables users to borrow assets, deducting from reserves and increasing their debt.
-    ///
-    /// **Process**:
-    /// 1. Updates global indexes and the borrower's position with accrued interest.
-    /// 2. Verifies sufficient reserves are available.
-    /// 3. Increases the borrower's debt and total borrowed, then deducts from reserves.
-    /// 4. Transfers the borrowed amount to the caller.
-    /// 5. Emits a market state event.
-    ///
-    /// # Arguments
-    /// - `initial_caller`: The borrower's address (`ManagedAddress`).
-    /// - `amount`: The amount to borrow (`ManagedDecimal<Self::Api, NumDecimals>`).
-    /// - `position`: The borrower's current position (`AccountPosition<Self::Api>`).
-    /// - `price`: The asset price for market update (`ManagedDecimal<Self::Api, NumDecimals>`).
-    ///
-    /// # Returns
-    /// - `AccountPosition<Self::Api>`: The updated borrow position.
-    ///
-    /// **Security Considerations**: Uses `require!` to ensure sufficient liquidity, preventing over-borrowing.
-    /// Can only be called by the owner (via controller contract).
+    /// Borrows assets against collateral, transferring funds to caller.
+    /// Validates sufficient liquidity and updates debt position.
+    /// Returns updated borrow position.
     #[only_owner]
     #[endpoint(borrow)]
     fn borrow(
@@ -299,10 +254,10 @@ pub trait LiquidityModule:
         require!(cache.is_same_asset(&position.asset_id), ERROR_INVALID_ASSET);
         require!(cache.has_reserves(amount), ERROR_INSUFFICIENT_LIQUIDITY);
 
-        let scaled_amount = cache.scaled_borrow(amount);
-        position.scaled_amount += &scaled_amount;
+        let scaled_amount = cache.calculate_scaled_borrow(amount);
+        position.scaled_amount_ray += &scaled_amount;
 
-        cache.borrowed += scaled_amount;
+        cache.borrowed_ray += scaled_amount;
 
         self.send_asset(&cache, amount, initial_caller);
 
@@ -311,56 +266,9 @@ pub trait LiquidityModule:
         position
     }
 
-    /// Withdraws assets from the pool, supporting both normal withdrawals and liquidations.
-    ///
-    /// **Purpose**: Enables suppliers to redeem their scaled tokens for underlying assets,
-    /// realizing accumulated interest, or facilitates liquidation of collateral.
-    ///
-    /// **Mathematical Process**:
-    /// 1. **Global Sync**: Update indexes to include latest interest
-    /// 2. **Current Value Calculation**: `current_value = scaled_position * supply_index`
-    /// 3. **Withdrawal Amount Determination**:
-    ///    - Full withdrawal: `amount = min(requested, current_value)`
-    ///    - Partial withdrawal: `amount = requested`
-    /// 4. **Scaling Conversion**: `scaled_to_burn = amount / supply_index`
-    /// 5. **Fee Processing** (if liquidation): `net_amount = gross_amount - liquidation_fee`
-    /// 6. **State Updates**:
-    ///    - `position.scaled_amount -= scaled_to_burn`
-    ///    - `total_supplied -= scaled_to_burn`
-    ///
-    /// **Interest Realization Formula**:
-    /// ```
-    /// // Interest earned since supply:
-    /// interest = scaled_tokens * (current_supply_index - supply_index_at_deposit)
-    /// total_withdrawal = principal + interest - fees
-    /// ```
-    ///
-    /// **Liquidation Fee Mechanism**:
-    /// During liquidations, a protocol fee may be deducted:
-    /// ```
-    /// net_transfer = gross_withdrawal - liquidation_fee
-    /// protocol_revenue += liquidation_fee (scaled)
-    /// ```
-    ///
-    /// **Reserve Validation**:
-    /// Ensures sufficient contract balance exists for the withdrawal.
-    ///
-    /// # Arguments
-    /// - `initial_caller`: Recipient of withdrawn assets
-    /// - `amount`: Requested withdrawal amount
-    /// - `position`: User's current supply position
-    /// - `is_liquidation`: Flag for liquidation-specific processing
-    /// - `protocol_fee_opt`: Optional liquidation fee to deduct
-    /// - `price`: Asset price for event logging
-    ///
-    /// # Returns
-    /// - Updated position with reduced scaled supply
-    ///
-    /// **Security Considerations**:
-    /// - Amount capping prevents over-withdrawal
-    /// - Reserve validation ensures liquidity availability
-    /// - Fee validation prevents insufficient withdrawal amounts
-    /// - Scaled burning maintains pool integrity
+    /// Withdraws assets from supply position, handling liquidation fees if applicable.
+    /// Supports full/partial withdrawals and burns corresponding scaled tokens.
+    /// Returns updated position with reduced supply.
     #[only_owner]
     #[endpoint(withdraw)]
     fn withdraw(
@@ -380,9 +288,9 @@ pub trait LiquidityModule:
 
         // 1. Determine gross withdrawal amounts (scaled and actual)
         let (scaled_withdrawal_amount_gross, mut amount_to_transfer_net) = self
-            .determine_gross_withdrawal_amounts(
+            .calculate_gross_withdrawal_amounts(
                 &cache,
-                &position.scaled_amount,
+                &position.scaled_amount_ray,
                 &amount, // `amount` is the requested_amount_actual
             );
 
@@ -400,8 +308,8 @@ pub trait LiquidityModule:
         );
 
         // 5. Update pool and position state by subtracting the determined scaled amount
-        cache.supplied -= &scaled_withdrawal_amount_gross;
-        position.scaled_amount -= &scaled_withdrawal_amount_gross;
+        cache.supplied_ray -= &scaled_withdrawal_amount_gross;
+        position.scaled_amount_ray -= &scaled_withdrawal_amount_gross;
 
         // 6. Send the net amount
         self.send_asset(&cache, &amount_to_transfer_net, initial_caller);
@@ -411,60 +319,9 @@ pub trait LiquidityModule:
         position
     }
 
-    /// Processes a repayment for a borrow position, handling full or partial repayments with overpayment refunds.
-    ///
-    /// **Purpose**: Reduces borrower debt by burning scaled debt tokens proportional to the
-    /// payment amount, automatically handling interest and refunding overpayments.
-    ///
-    /// **Mathematical Process**:
-    /// 1. **Global Sync**: Update borrow index to accrue latest interest
-    /// 2. **Current Debt Calculation**: `current_debt = scaled_debt * current_borrow_index`
-    /// 3. **Repayment Allocation**:
-    ///    - If `payment >= current_debt`: Full repayment + overpayment
-    ///    - If `payment < current_debt`: Partial repayment
-    /// 4. **Scaling Conversion**:
-    ///    - Full: `scaled_to_burn = entire_scaled_position`
-    ///    - Partial: `scaled_to_burn = payment / current_borrow_index`
-    /// 5. **State Updates**:
-    ///    - `position.scaled_amount -= scaled_to_burn`
-    ///    - `total_borrowed -= scaled_to_burn`
-    /// 6. **Overpayment Handling**: `refund = max(0, payment - current_debt)`
-    ///
-    /// **Debt Reduction Formula**:
-    /// ```
-    /// // Current total debt including interest:
-    /// total_debt = scaled_debt * current_borrow_index
-    ///
-    /// // Proportion of debt being repaid:
-    /// repayment_ratio = min(1, payment_amount / total_debt)
-    /// scaled_to_burn = scaled_debt * repayment_ratio
-    /// ```
-    ///
-    /// **Interest Payment Mechanism**:
-    /// Interest is automatically included in the debt calculation through
-    /// the borrow index, so borrowers pay accrued interest proportionally.
-    ///
-    /// **Overpayment Protection**:
-    /// Excess payments are automatically refunded to prevent loss of funds:
-    /// ```
-    /// if payment > total_debt:
-    ///     actual_payment = total_debt
-    ///     refund = payment - total_debt
-    /// ```
-    ///
-    /// # Arguments
-    /// - `initial_caller`: Address to receive any overpayment refund
-    /// - `position`: User's current borrow position
-    /// - `price`: Asset price for event logging
-    ///
-    /// # Returns
-    /// - Updated position with reduced scaled debt
-    ///
-    /// **Security Considerations**:
-    /// - Asset validation prevents wrong token repayments
-    /// - Overpayment refunds prevent accidental loss
-    /// - Scaled burning maintains precise debt tracking
-    /// - Global sync ensures fair interest calculation
+    /// Repays borrowed amount, reducing debt and refunding overpayments.
+    /// Handles both full and partial repayments with interest included.
+    /// Returns updated position with reduced debt.
     #[payable]
     #[only_owner]
     #[endpoint(repay)]
@@ -475,21 +332,21 @@ pub trait LiquidityModule:
         price: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> AccountPosition<Self::Api> {
         let mut cache = Cache::new(self);
-        let payment_amount = self.get_payment_amount(&cache);
+        let payment_amount = self.payment_amount(&cache);
         self.global_sync(&mut cache); // 2. Update indexes
 
         require!(cache.is_same_asset(&position.asset_id), ERROR_INVALID_ASSET);
 
         // 3. Determine scaled repayment amount and any overpayment
         let (amount_to_repay_scaled, over_paid_amount) =
-            self.determine_repayment_details(&cache, &position.scaled_amount, &payment_amount);
+            self.calculate_repayment_details(&cache, &position.scaled_amount_ray, &payment_amount);
 
         // 5. Subtract the determined scaled repayment amount from the position's scaled amount
 
-        position.scaled_amount -= &amount_to_repay_scaled;
+        position.scaled_amount_ray -= &amount_to_repay_scaled;
 
         // 6. Subtract the same scaled amount from the total pool borrowed
-        cache.borrowed -= &amount_to_repay_scaled;
+        cache.borrowed_ray -= &amount_to_repay_scaled;
         // 7. Send back any overpaid amount
         self.send_asset(&cache, &over_paid_amount, &initial_caller);
 
@@ -498,65 +355,9 @@ pub trait LiquidityModule:
         position
     }
 
-    /// Provides a flash loan from the pool, enabling temporary borrowing without collateral within a single transaction.
-    ///
-    /// **Purpose**: Facilitates atomic operations like arbitrage, liquidations, or complex DeFi strategies
-    /// by providing instant liquidity that must be repaid with fees in the same transaction.
-    ///
-    /// **Mathematical Process**:
-    /// 1. **Liquidity Validation**: Verify `amount <= available_reserves`
-    /// 2. **Fee Calculation**: `required_repayment = amount * (1 + fee_rate)`
-    /// 3. **Asset Transfer**: Send `amount` to target contract
-    /// 4. **External Execution**: Call target contract with provided parameters
-    /// 5. **Repayment Validation**: Ensure `back_transfer >= required_repayment`
-    /// 6. **Protocol Revenue**: `fee = repayment - amount`, add to treasury
-    ///
-    /// **Flash Loan Fee Formula**:
-    /// ```
-    /// fee_basis_points = fees_parameter  // e.g., 30 = 0.30%
-    /// fee_rate = fee_basis_points / 10000
-    /// required_repayment = loan_amount * (1 + fee_rate)
-    /// protocol_fee = repayment_amount - loan_amount
-    /// ```
-    ///
-    /// **Atomic Transaction Requirement**:
-    /// The entire flash loan operation must complete in a single transaction:
-    /// ```
-    /// 1. Borrow assets from pool
-    /// 2. Execute arbitrary logic (arbitrage, liquidation, etc.)
-    /// 3. Repay loan + fees to pool
-    /// 4. Transaction reverts if repayment insufficient
-    /// ```
-    ///
-    /// **Reentrancy Protection**:
-    /// Cache is dropped before external call to prevent state manipulation:
-    /// ```
-    /// // State snapshot before external call
-    /// drop(cache);
-    /// // External call execution
-    /// let result = contract.call();
-    /// // Fresh state validation after call
-    /// validate_repayment();
-    /// ```
-    ///
-    /// **Revenue Distribution**:
-    /// Flash loan fees are added directly to protocol treasury as scaled supply tokens.
-    ///
-    /// # Arguments
-    /// - `borrowed_token`: Asset to borrow (must match pool asset)
-    /// - `amount`: Loan amount in asset decimals
-    /// - `contract_address`: Target contract for strategy execution
-    /// - `endpoint`: Function to call on target contract
-    /// - `arguments`: Parameters for the external call
-    /// - `fees`: Fee rate in basis points (e.g., 30 = 0.30%)
-    /// - `price`: Asset price for event logging
-    ///
-    /// **Security Considerations**:
-    /// - Reentrancy protection via cache dropping
-    /// - Asset validation prevents wrong token loans
-    /// - Reserve validation ensures liquidity availability
-    /// - Repayment validation enforces fee collection
-    /// - Atomic execution prevents partial failures
+    /// Provides atomic flash loan with fee collection.
+    /// Transfers amount to target contract, validates repayment, adds protocol revenue.
+    /// Must be repaid with fees in same transaction.
     #[only_owner]
     #[endpoint(flashLoan)]
     fn flash_loan(
@@ -578,10 +379,10 @@ pub trait LiquidityModule:
         // Calculate flash loan min repayment amount
         let required_repayment = self.rescale_half_up(
             &self.mul_half_up(amount, &(self.bps() + fees.clone()), RAY_PRECISION),
-            cache.params.asset_decimals,
+            cache.parameters.asset_decimals,
         );
 
-        let asset = cache.params.asset_id.clone();
+        let asset = cache.parameters.asset_id.clone();
         // Prevent re entry attacks with loop flash loans
         drop(cache);
         let back_transfers = self
@@ -605,64 +406,9 @@ pub trait LiquidityModule:
         self.emit_market_update(&last_cache, price);
     }
 
-    /// Creates a leveraged strategy position by borrowing assets with upfront fee collection.
-    ///
-    /// **Purpose**: Enables creation of leveraged positions (e.g., leveraged staking, yield farming)
-    /// where users borrow assets to amplify their exposure, with strategy fees collected upfront.
-    ///
-    /// **Mathematical Process**:
-    /// 1. **Liquidity Validation**: Verify `strategy_amount <= available_reserves`
-    /// 2. **Fee Deduction**: `amount_to_send = strategy_amount - strategy_fee`
-    /// 3. **Scaling Conversion**: `scaled_debt = strategy_amount / current_borrow_index`
-    /// 4. **Position Update**: `new_scaled_debt = old_scaled_debt + scaled_debt`
-    /// 5. **Pool State Update**: `total_borrowed += scaled_debt`
-    /// 6. **Revenue Collection**: Add `strategy_fee` to protocol treasury
-    /// 7. **Asset Transfer**: Send `amount_to_send` to user for strategy execution
-    ///
-    /// **Strategy Debt Structure**:
-    /// ```
-    /// // User receives less than borrowed amount due to fee deduction:
-    /// assets_received = strategy_amount - strategy_fee
-    /// debt_created = strategy_amount (fee NOT included in debt)
-    /// protocol_fee = strategy_fee (one-time charge, no interest)
-    /// ```
-    ///
-    /// **Interest Accrual on Principal Only**:
-    /// Only the borrowed principal accrues interest over time:
-    /// ```
-    /// initial_scaled_debt = strategy_amount / borrow_index_at_creation
-    /// future_debt = initial_scaled_debt * current_borrow_index
-    /// total_repayment_needed = future_debt (fees already paid upfront)
-    /// ```
-    ///
-    /// **Leveraged Position Example**:
-    /// ```
-    /// User wants 2x leverage on 100 USDC:
-    /// 1. User supplies 100 USDC as collateral
-    /// 2. Strategy borrows 100 USDC (with 1% fee = 1 USDC)
-    /// 3. User receives 99 USDC to buy more assets (100 - 1 fee)
-    /// 4. User's debt: 100 USDC (accruing interest, fee not included)
-    /// 5. User's exposure: 199 USDC worth of assets
-    /// ```
-    ///
-    /// **Fee Collection Model**:
-    /// Strategy fees are collected upfront and added to protocol revenue,
-    /// providing immediate income while the borrowed amount generates ongoing interest.
-    ///
-    /// # Arguments
-    /// - `position`: User's existing borrow position for this asset
-    /// - `strategy_amount`: Amount to borrow for strategy execution
-    /// - `strategy_fee`: Upfront fee charged for strategy creation
-    /// - `price`: Asset price for event logging
-    ///
-    /// # Returns
-    /// - Updated position with increased scaled debt (amount + fee)
-    ///
-    /// **Security Considerations**:
-    /// - Liquidity validation prevents over-borrowing
-    /// - Asset validation ensures correct token
-    /// - Upfront fee collection reduces protocol risk
-    /// - Debt includes fee to prevent undercollateralization
+    /// Creates leveraged position by borrowing with upfront fee deduction.
+    /// User receives (amount - fee) but owes full amount plus interest.
+    /// Returns updated position with increased debt.
     #[only_owner]
     #[endpoint(createStrategy)]
     fn create_strategy(
@@ -693,11 +439,11 @@ pub trait LiquidityModule:
         let amount_to_send = strategy_amount.clone() - strategy_fee.clone();
 
         // Only add the borrowed amount to debt (not the fee)
-        let scaled_amount_to_add = cache.scaled_borrow(strategy_amount);
+        let scaled_amount_to_add = cache.calculate_scaled_borrow(strategy_amount);
 
-        position.scaled_amount += &scaled_amount_to_add;
+        position.scaled_amount_ray += &scaled_amount_to_add;
 
-        cache.borrowed += scaled_amount_to_add;
+        cache.borrowed_ray += scaled_amount_to_add;
 
         self.internal_add_protocol_revenue(&mut cache, strategy_fee.clone());
 
@@ -709,61 +455,9 @@ pub trait LiquidityModule:
         position
     }
 
-    /// Socializes bad debt by immediately reducing the supply index, distributing losses among all suppliers.
-    ///
-    /// **Purpose**: Prevents supplier flight during bad debt events by immediately socializing
-    /// losses rather than allowing infinite interest accrual on uncollectable debt.
-    ///
-    /// **Problem Being Solved**:
-    /// Traditional bad debt handling creates a race condition where rational suppliers
-    /// would withdraw immediately upon learning of bad debt, leaving remaining suppliers
-    /// to bear disproportionate losses. This mechanism prevents such dynamics.
-    ///
-    /// **Mathematical Process**:
-    /// 1. **Current Debt Calculation**: `bad_debt = scaled_debt * current_borrow_index`
-    /// 2. **Total Supply Value**: `total_value = total_scaled_supply * current_supply_index`
-    /// 3. **Loss Ratio Calculation**: `loss_ratio = bad_debt / total_value`
-    /// 4. **Supply Index Reduction**: `new_supply_index = old_supply_index * (1 - loss_ratio)`
-    /// 5. **Debt Removal**: Remove scaled debt from total borrowed
-    /// 6. **Position Clearing**: Set position scaled amount to zero
-    ///
-    /// **Socialization Formula**:
-    /// ```
-    /// // Immediate loss distribution:
-    /// total_supplier_value = total_scaled_supplied * supply_index
-    /// loss_per_unit = bad_debt_amount / total_supplier_value
-    /// new_supply_index = old_supply_index * (1 - loss_per_unit)
-    ///
-    /// // Each supplier's loss:
-    /// supplier_loss = supplier_scaled_tokens * old_supply_index * loss_per_unit
-    /// supplier_new_value = supplier_scaled_tokens * new_supply_index
-    /// ```
-    ///
-    /// **Prevention of Supplier Flight**:
-    /// By applying losses immediately and proportionally, no supplier can avoid
-    /// their share by withdrawing after bad debt is discovered.
-    ///
-    /// **Economic Rationale**:
-    /// - Spreads losses fairly among all participants
-    /// - Maintains pool stability during stress events
-    /// - Prevents bank-run scenarios
-    /// - Eliminates need for bad debt tracking/provisioning
-    ///
-    /// **Impact on Existing Positions**:
-    /// All existing supply positions instantly lose value proportional to the bad debt,
-    /// but their scaled token amounts remain unchanged.
-    ///
-    /// # Arguments
-    /// - `position`: The insolvent borrow position to clear
-    /// - `price`: Asset price for event logging
-    ///
-    /// # Returns
-    /// - Cleared position with zero scaled debt
-    ///
-    /// **Security Considerations**:
-    /// - Immediate application prevents gaming/arbitrage
-    /// - Proportional distribution ensures fairness
-    /// - Supply index has minimum floor to prevent total collapse
+    /// Socializes bad debt by reducing supply index or seizes dust collateral.
+    /// For borrow positions: applies loss to all suppliers immediately.
+    /// For supply positions: adds dust to protocol revenue.
     #[only_owner]
     #[endpoint(seizePosition)]
     fn seize_position(
@@ -779,23 +473,23 @@ pub trait LiquidityModule:
 
         match position.position_type {
             AccountPositionType::Borrow => {
-                let current_debt_actual = cache.original_borrow_ray(&position.scaled_amount);
+                let current_debt_actual = cache.calculate_original_borrow_ray(&position.scaled_amount_ray);
 
                 // Apply immediate supply index reduction for bad debt socialization
                 self.apply_bad_debt_to_supply_index(&mut cache, current_debt_actual);
 
                 // Remove debt from borrowed amounts
-                cache.borrowed -= &position.scaled_amount;
+                cache.borrowed_ray -= &position.scaled_amount_ray;
 
                 // Clear the position
-                position.scaled_amount = self.ray_zero();
+                position.scaled_amount_ray = self.ray_zero();
             },
             AccountPositionType::Deposit => {
                 // Add the dust collateral directly to protocol revenue
-                cache.revenue += &position.scaled_amount;
+                cache.revenue_ray += &position.scaled_amount_ray;
 
                 // Clear the user's position.
-                position.scaled_amount = self.ray_zero();
+                position.scaled_amount_ray = self.ray_zero();
             },
             _ => {},
         }
@@ -805,73 +499,9 @@ pub trait LiquidityModule:
         position
     }
 
-    /// Claims accumulated protocol revenue and transfers it to the owner.
-    ///
-    /// **Purpose**: Enables protocol owner to withdraw earned revenue from various sources
-    /// including interest spreads, flash loan fees, strategy fees, and liquidation fees.
-    ///
-    /// **Mathematical Process**:
-    /// 1. **Global Sync**: Update indexes to include latest revenue
-    /// 2. **Revenue Validation**: Return zero payment if no revenue accumulated
-    /// 3. **Revenue Calculation**: `revenue_actual = revenue_scaled * current_supply_index`
-    /// 4. **Available Balance Check**: `amount_to_transfer = min(current_reserves, treasury_actual)`
-    /// 5. **Symmetric Accounting Update**: Burn revenue from both `cache.revenue` and `cache.supplied`
-    /// 6. **Precision Safety**: Use minimum values when precision drift occurs
-    /// 7. **Transfer Execution**: Send claimed amount to controller
-    ///
-    /// **Revenue Sources**:
-    /// ```
-    /// Protocol Revenue += {
-    ///     interest_spread: (borrow_rate - supply_rate) * borrowed_amount * time
-    ///     flash_loan_fees: loan_amount * flash_fee_rate
-    ///     strategy_fees: strategy_amount * strategy_fee_rate
-    ///     liquidation_fees: liquidated_amount * liquidation_fee_rate
-    ///     dust_collateral: seized_dust_amounts
-    /// }
-    /// ```
-    ///
-    /// **Symmetric Accounting Logic**:
-    /// ```
-    /// // Standard case - sufficient supplied balance:
-    /// if supplied >= revenue_scaled:
-    ///     cache.revenue -= revenue_scaled
-    ///     cache.supplied -= revenue_scaled
-    ///
-    /// // Precision drift protection:
-    /// else:
-    ///     scaled_burn = min(calculated_burn, min(revenue, supplied))
-    ///     cache.revenue -= actual_revenue_burn
-    ///     cache.supplied -= actual_supplied_burn
-    /// ```
-    ///
-    /// **Precision Safety Mechanisms**:
-    /// Uses minimum values to handle potential precision drift between
-    /// `cache.revenue` and `cache.supplied` that can occur from rounding
-    /// operations throughout the protocol's lifetime.
-    ///
-    /// **Reserve Constraints**:
-    /// Revenue withdrawal is limited by available contract balance to ensure
-    /// user withdrawals remain possible: `transfer = min(reserves, revenue_value)`.
-    ///
-    /// **Accounting Precision**:
-    /// Uses scaled amounts to maintain precision in revenue tracking,
-    /// with symmetric burning of both revenue and supplied to prevent orphaned tokens.
-    ///
-    /// **Revenue Realization**:
-    /// Revenue is stored as scaled supply tokens that appreciate with the supply index,
-    /// ensuring protocol revenue grows alongside user deposits.
-    ///
-    /// # Arguments
-    /// - `price`: Asset price for event logging
-    ///
-    /// # Returns
-    /// - Payment object representing the claimed revenue amount
-    ///
-    /// # **Security Considerations**:
-    /// - Reserve validation ensures pool liquidity preservation
-    /// - Symmetric accounting prevents orphaned supply tokens
-    /// - Precision safety prevents underflow from rounding drift
-    /// - Only callable by owner (controller contract)
+    /// Claims accumulated protocol revenue and transfers to owner.
+    /// Revenue includes interest spreads, fees, and liquidation penalties.
+    /// Limited by available reserves to preserve user withdrawals.
     #[only_owner]
     #[endpoint(claimRevenue)]
     fn claim_revenue(
@@ -881,17 +511,17 @@ pub trait LiquidityModule:
         let mut cache = Cache::new(self);
         self.global_sync(&mut cache);
 
-        let revenue_scaled = cache.revenue.clone();
+        let revenue_scaled = cache.revenue_ray.clone();
 
         if revenue_scaled == self.ray_zero() {
             self.emit_market_update(&cache, price);
-            return EgldOrEsdtTokenPayment::new(cache.params.asset_id.clone(), 0, BigUint::zero());
+            return EgldOrEsdtTokenPayment::new(cache.parameters.asset_id.clone(), 0, BigUint::zero());
         }
 
-        let treasury_actual = cache.original_supply(&revenue_scaled);
-        let current_reserves = cache.get_reserves();
+        let treasury_actual = cache.calculate_original_supply(&revenue_scaled);
+        let current_reserves = cache.calculate_reserves();
 
-        let amount_to_transfer = self.get_min(current_reserves.clone(), treasury_actual.clone());
+        let amount_to_transfer = self.min(current_reserves.clone(), treasury_actual.clone());
 
         if amount_to_transfer > cache.zero {
             let controller = self.blockchain().get_caller();
@@ -904,23 +534,23 @@ pub trait LiquidityModule:
             } else {
                 // Partial claim: calculate proportional scaled amount
                 // scaled_to_burn = revenue_scaled * (amount_to_transfer / treasury_actual)
-                let ratio = self.div_half_up(&amount_to_transfer, &treasury_actual, RAY_PRECISION);
-                self.mul_half_up(&revenue_scaled, &ratio, RAY_PRECISION)
+                let ratio_ray = self.div_half_up(&amount_to_transfer, &treasury_actual, RAY_PRECISION);
+                self.mul_half_up(&revenue_scaled, &ratio_ray, RAY_PRECISION)
             };
 
             // Ensure we don't burn more than what exists (safety check)
-            let actual_revenue_burn = self.get_min(scaled_to_burn.clone(), cache.revenue.clone());
-            let actual_supplied_burn = self.get_min(scaled_to_burn, cache.supplied.clone());
+            let actual_revenue_burn_ray = self.min(scaled_to_burn.clone(), cache.revenue_ray.clone());
+            let actual_supplied_burn_ray = self.min(scaled_to_burn, cache.supplied_ray.clone());
 
             // Burn the calculated amount
-            cache.revenue -= &actual_revenue_burn;
-            cache.supplied -= &actual_supplied_burn;
+            cache.revenue_ray -= &actual_revenue_burn_ray;
+            cache.supplied_ray -= &actual_supplied_burn_ray;
 
             self.emit_market_update(&cache, price);
             return payment;
         }
 
         self.emit_market_update(&cache, price);
-        EgldOrEsdtTokenPayment::new(cache.params.asset_id.clone(), 0, BigUint::zero())
+        EgldOrEsdtTokenPayment::new(cache.parameters.asset_id.clone(), 0, BigUint::zero())
     }
 }

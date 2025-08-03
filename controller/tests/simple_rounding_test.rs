@@ -50,7 +50,7 @@ fn test_rounding_behavior_with_ray_precision() {
         borrower_nonce,
     );
 
-    let initial_borrow = state.get_borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
+    let initial_borrow = state.borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
     println!("Initial borrow: {} USDC", initial_borrow);
 
     // Advance time by 1 year
@@ -66,7 +66,7 @@ fn test_rounding_behavior_with_ray_precision() {
         false,
     );
 
-    let borrow_after_year = state.get_borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
+    let borrow_after_year = state.borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
     println!("Borrow after 1 year: {} USDC", borrow_after_year);
 
     // Calculate interest on minimal amount
@@ -102,9 +102,9 @@ fn test_rounding_behavior_with_ray_precision() {
     println!("\n=== Test 2: 100 Small Borrow-Repay Cycles ===");
     let mut total_interest_paid = BigUint::zero();
 
-    for i in 0..100 {
+    for cycle_number in 0..100 {
         // Advance time slightly
-        state.change_timestamp(SECONDS_PER_YEAR + (i + 1) * 3600); // +1 hour each iteration
+        state.change_timestamp(SECONDS_PER_YEAR + (cycle_number + 1) * 3600); // +1 hour each iteration
 
         // Borrow $1 USDC
         state.borrow_asset_den(
@@ -114,7 +114,7 @@ fn test_rounding_behavior_with_ray_precision() {
             borrower_nonce,
         );
 
-        let debt = state.get_borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
+        let debt = state.borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
 
         // Immediately repay
         state.repay_asset_deno(
@@ -151,15 +151,15 @@ fn test_rounding_behavior_with_ray_precision() {
 
     // Test 3: Check final state
     println!("\n=== Test 3: Final State Check ===");
-    let final_collateral = state.get_collateral_amount_for_token(borrower_nonce, USDC_TOKEN);
-    let supplier_balance = state.get_collateral_amount_for_token(1, USDC_TOKEN);
+    let final_collateral = state.collateral_amount_for_token(borrower_nonce, USDC_TOKEN);
+    let supplier_balance = state.collateral_amount_for_token(1, USDC_TOKEN);
 
     println!("Borrower final collateral: {} USDC", final_collateral);
     println!("Supplier balance: {} USDC", supplier_balance);
 
     // Calculate protocol's total value
-    let reserves = state.get_market_reserves(state.usdc_market.clone());
-    let revenue = state.get_market_revenue(state.usdc_market.clone());
+    let reserves = state.market_reserves(state.usdc_market.clone());
+    let revenue = state.market_revenue(state.usdc_market.clone());
 
     println!("Protocol reserves: {} USDC", reserves);
     println!("Protocol revenue: {} USDC", revenue);

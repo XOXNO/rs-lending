@@ -47,7 +47,7 @@ fn investigate_interest_rate_calculation() {
 
     // Check initial state
     println!("\n=== Before Borrow ===");
-    let total_supply = state.get_market_reserves(state.usdc_market.clone());
+    let total_supply = state.market_reserves(state.usdc_market.clone());
     println!("Total reserves in market: {:?}", total_supply);
 
     // Borrow
@@ -59,12 +59,12 @@ fn investigate_interest_rate_calculation() {
     );
 
     println!("\n=== After Borrow ===");
-    let initial_debt = state.get_borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
+    let initial_debt = state.borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
     println!("Initial debt: {:?}", initial_debt);
 
     // Get market state
-    let total_borrows = state.get_market_borrowed(state.usdc_market.clone());
-    let total_reserves = state.get_market_reserves(state.usdc_market.clone());
+    let total_borrows = state.market_borrowed(state.usdc_market.clone());
+    let total_reserves = state.market_reserves(state.usdc_market.clone());
     println!("Total borrows: {:?}", total_borrows);
     println!("Total reserves: {:?}", total_reserves);
 
@@ -72,7 +72,7 @@ fn investigate_interest_rate_calculation() {
     println!("\n=== Utilization Calculation ===");
     // The issue is that total_borrows has 27 decimals (RAY) while we're calculating percentage
     // We need to scale properly
-    let utilization_ray = state.get_market_utilization(state.usdc_market.clone());
+    let utilization_ray = state.market_utilization(state.usdc_market.clone());
     println!("Utilization (RAY): {:?}", utilization_ray);
 
     // Convert from RAY to percentage (RAY = 1e27, so divide by 1e25 to get percentage)
@@ -99,7 +99,7 @@ fn investigate_interest_rate_calculation() {
         false,
     );
 
-    let debt_after_1s = state.get_borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
+    let debt_after_1s = state.borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
     println!("\n=== After 1 Second ===");
     println!("Debt after 1 second: {:?}", debt_after_1s);
 
@@ -135,7 +135,7 @@ fn investigate_interest_rate_calculation() {
         false,
     );
 
-    let debt_after_month = state.get_borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
+    let debt_after_month = state.borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
     println!("\n=== After 1 Month ===");
     println!("Debt after 1 month: {:?}", debt_after_month);
 
@@ -160,7 +160,7 @@ fn investigate_interest_rate_calculation() {
 
     // Check if multiple positions are being counted
     println!("\n=== Position Analysis ===");
-    let collateral = state.get_collateral_amount_for_token(borrower_nonce, USDC_TOKEN);
+    let collateral = state.collateral_amount_for_token(borrower_nonce, USDC_TOKEN);
     println!("Total collateral position: {:?}", collateral);
 
     // Assert: Collateral should be slightly more than initial due to supply interest
@@ -182,8 +182,8 @@ fn investigate_interest_rate_calculation() {
     );
 
     // Verify market state consistency
-    let final_borrows = state.get_market_borrowed(state.usdc_market.clone());
-    let final_reserves = state.get_market_reserves(state.usdc_market.clone());
+    let final_borrows = state.market_borrowed(state.usdc_market.clone());
+    let final_reserves = state.market_reserves(state.usdc_market.clone());
 
     // Assert: Total borrows should match the debt
     assert!(

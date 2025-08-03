@@ -43,6 +43,9 @@ where
     From: TxFrom<Env>,
     Gas: TxGas<Env>,
 {
+    /// Initializes price aggregator with oracle addresses and submission threshold. 
+    /// Sets initial submission count and pauses contract for configuration. 
+    /// Validates submission count is within acceptable bounds. 
     pub fn init<
         Arg0: ProxyArg<usize>,
         Arg1: ProxyArg<MultiValueEncoded<Env::Api, ManagedAddress<Env::Api>>>,
@@ -69,6 +72,8 @@ where
     To: TxTo<Env>,
     Gas: TxGas<Env>,
 {
+    /// Handles contract upgrade by pausing operations. 
+    /// Ensures safe state during code updates. 
     pub fn upgrade(
         self,
     ) -> TxTypedUpgrade<Env, From, To, NotPayable, Gas, ()> {
@@ -88,6 +93,9 @@ where
     To: TxTo<Env>,
     Gas: TxGas<Env>,
 {
+    /// Submits a single price feed from oracle for token pair. 
+    /// Validates oracle status and timestamp before processing submission. 
+    /// Triggers new round creation when submission threshold is met. 
     pub fn submit<
         Arg0: ProxyArg<ManagedBuffer<Env::Api>>,
         Arg1: ProxyArg<ManagedBuffer<Env::Api>>,
@@ -110,6 +118,9 @@ where
             .original_result()
     }
 
+    /// Submits multiple price feeds in a single transaction for gas efficiency. 
+    /// Each submission is validated independently before processing. 
+    /// Enables oracles to update multiple token pairs atomically. 
     pub fn submit_batch<
         Arg0: ProxyArg<MultiValueEncoded<Env::Api, MultiValue4<ManagedBuffer<Env::Api>, ManagedBuffer<Env::Api>, u64, BigUint<Env::Api>>>>,
     >(
@@ -159,6 +170,9 @@ where
             .original_result()
     }
 
+    /// Returns latest aggregated prices for multiple token pairs. 
+    /// Skips pairs without available price data. 
+    /// Enables batch price queries for efficiency. 
     pub fn latest_round_data<
         Arg0: ProxyArg<MultiValueEncoded<Env::Api, TokenPair<Env::Api>>>,
     >(
@@ -172,6 +186,9 @@ where
             .original_result()
     }
 
+    /// Returns latest aggregated price for a single token pair. 
+    /// Fails if no price data exists for the requested pair. 
+    /// Primary interface for price consumers. 
     pub fn latest_price_feed<
         Arg0: ProxyArg<ManagedBuffer<Env::Api>>,
         Arg1: ProxyArg<ManagedBuffer<Env::Api>>,
@@ -188,6 +205,8 @@ where
             .original_result()
     }
 
+    /// Returns all registered oracle addresses. 
+    /// Used for transparency and monitoring oracle participation. 
     pub fn get_oracles(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, MultiValueEncoded<Env::Api, ManagedAddress<Env::Api>>> {
@@ -197,6 +216,9 @@ where
             .original_result()
     }
 
+    /// Adds new oracle addresses to the whitelist. 
+    /// Initializes submission statistics for each new oracle. 
+    /// Skips oracles that are already registered. 
     pub fn add_oracles<
         Arg0: ProxyArg<MultiValueEncoded<Env::Api, ManagedAddress<Env::Api>>>,
     >(
@@ -210,8 +232,8 @@ where
             .original_result()
     }
 
-    /// Also receives submission count, 
-    /// so the owner does not have to update it manually with setSubmissionCount before this call 
+    /// Removes oracle addresses and updates submission count atomically. 
+    /// Prevents invalid state where submission count exceeds oracle count. 
     pub fn remove_oracles<
         Arg0: ProxyArg<usize>,
         Arg1: ProxyArg<MultiValueEncoded<Env::Api, ManagedAddress<Env::Api>>>,
@@ -228,6 +250,9 @@ where
             .original_result()
     }
 
+    /// Updates required submission count for consensus. 
+    /// Validates count is within min/max bounds and doesn't exceed oracle count. 
+    /// Controls how many oracle submissions trigger price aggregation. 
     pub fn set_submission_count<
         Arg0: ProxyArg<usize>,
     >(

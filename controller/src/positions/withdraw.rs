@@ -69,7 +69,7 @@ pub trait PositionWithdrawModule:
         deposit_position: &mut AccountPosition<Self::Api>,
         feed: &PriceFeedShort<Self::Api>,
     ) -> EgldOrEsdtTokenPayment<Self::Api> {
-        let pool_address = cache.get_cached_pool_address(&deposit_position.asset_id);
+        let pool_address = cache.cached_pool_address(&deposit_position.asset_id);
 
         // The amount cap happens in the liquidity pool to account for the interest accrued after sync
         let payment = self.process_market_withdrawal(
@@ -86,7 +86,7 @@ pub trait PositionWithdrawModule:
             cache,
             &amount,
             deposit_position,
-            feed.price.clone(),
+            feed.price_wad.clone(),
             caller,
             position_attributes,
         );
@@ -156,7 +156,7 @@ pub trait PositionWithdrawModule:
                 deposit_position.clone(),
                 is_liquidation,
                 liquidation_fee,
-                feed.price.clone(),
+                feed.price_wad.clone(),
             )
             .returns(ReturnsBackTransfersReset)
             .returns(ReturnsResult)
@@ -248,7 +248,7 @@ pub trait PositionWithdrawModule:
     ///
     /// # Returns
     /// - `AccountPosition` containing the validated deposit position
-    fn get_deposit_position(
+    fn deposit_position(
         &self,
         account_nonce: u64,
         token_id: &EgldOrEsdtTokenIdentifier,

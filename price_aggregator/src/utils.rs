@@ -15,6 +15,8 @@ pub trait UtilsModule:
     + crate::views::ViewsModule
     + multiversx_sc_modules::pause::PauseModule
 {
+    /// Validates caller is a registered oracle.
+    /// Restricts price submission to whitelisted addresses only.
     fn require_is_oracle(&self) {
         let caller = self.blockchain().get_caller();
         require!(
@@ -23,6 +25,8 @@ pub trait UtilsModule:
         );
     }
 
+    /// Validates submission count is within acceptable bounds.
+    /// Ensures count doesn't exceed oracle count or system limits.
     fn require_valid_submission_count(&self, submission_count: usize) {
         require!(
             submission_count >= SUBMISSION_LIST_MIN_LEN
@@ -32,6 +36,9 @@ pub trait UtilsModule:
         )
     }
 
+    /// Processes oracle price submission without timestamp validation.
+    /// Handles round lifecycle: discards stale rounds, aggregates when threshold met.
+    /// Updates oracle statistics and emits appropriate events.
     fn submit_unchecked(&self, from: ManagedBuffer, to: ManagedBuffer, price: BigUint) {
         let token_pair = TokenPair { from, to };
         let mut submissions = self
@@ -105,6 +112,8 @@ pub trait UtilsModule:
             });
     }
 
+    /// Validates submission timestamp is not from future and within acceptable age.
+    /// Prevents replay attacks and ensures price freshness.
     fn require_valid_submission_timestamp(&self, submission_timestamp: u64) {
         let current_timestamp = self.blockchain().get_block_timestamp();
         require!(
@@ -117,6 +126,9 @@ pub trait UtilsModule:
         );
     }
 
+    /// Creates new price round when submission threshold is met.
+    /// Calculates median price, stores result, and clears submissions.
+    /// Emits round completion event for transparency.
     fn create_new_round(
         &self,
         token_pair: TokenPair<Self::Api>,
@@ -153,6 +165,8 @@ pub trait UtilsModule:
         }
     }
 
+    /// Clears all submissions and timestamps for a token pair.
+    /// Used for cleanup after round completion or when discarding stale data.
     fn clear_submissions(&self, token_pair: &TokenPair<Self::Api>) {
         match self.submissions().get(token_pair) {
             Some(mut pair_submission_mapper) => {

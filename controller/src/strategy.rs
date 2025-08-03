@@ -94,7 +94,7 @@ pub trait SnapModule:
         debt_token: &EgldOrEsdtTokenIdentifier,
         mode: PositionMode,
         steps: ManagedArgBuffer<Self::Api>,
-        steps_payment: OptionalValue<ManagedArgBuffer<Self::Api>>,
+        optional_steps_payment: OptionalValue<ManagedArgBuffer<Self::Api>>,
     ) {
         self.require_not_paused();
         // Initialize secure cache with price safety enabled
@@ -112,12 +112,12 @@ pub trait SnapModule:
             self.validate_supply_payment(false, true, OptionalValue::None);
 
         // Load asset configurations and validate they're enabled for lending operations
-        let collateral_config = cache.get_cached_asset_info(collateral_token);
-        let mut debt_config = cache.get_cached_asset_info(debt_token);
+        let collateral_config = cache.cached_asset_info(collateral_token);
+        let mut debt_config = cache.cached_asset_info(debt_token);
 
         // Fetch current market prices from oracle feeds with staleness protection
-        let collateral_oracle = cache.get_cached_oracle(collateral_token);
-        let debt_oracle = cache.get_cached_oracle(debt_token);
+        let collateral_oracle = cache.cached_oracle(collateral_token);
+        let debt_oracle = cache.cached_oracle(debt_token);
 
         let mut collateral_to_be_supplied =
             self.to_decimal(BigUint::zero(), collateral_oracle.asset_decimals);
@@ -179,8 +179,8 @@ pub trait SnapModule:
                 });
             } else {
                 // Payment in different token: requires conversion to collateral
-                require!(steps_payment.is_some(), ERROR_MULTIPLY_REQUIRE_EXTRA_STEPS);
-                let steps_payment = unsafe { steps_payment.into_option().unwrap_unchecked() };
+                require!(optional_steps_payment.is_some(), ERROR_MULTIPLY_REQUIRE_EXTRA_STEPS);
+                let steps_payment = unsafe { optional_steps_payment.into_option().unwrap_unchecked() };
 
                 // Convert payment token to collateral token via swap router
                 let received = self.convert_token_from_to(
@@ -339,8 +339,8 @@ pub trait SnapModule:
         let account_attributes = unsafe { opt_attributes.unwrap_unchecked() };
 
         // Load asset configurations for both debt tokens
-        let mut debt_config = cache.get_cached_asset_info(new_debt_token);
-        let existing_debt_config = cache.get_cached_asset_info(existing_debt_token);
+        let mut debt_config = cache.cached_asset_info(new_debt_token);
+        let existing_debt_config = cache.cached_asset_info(existing_debt_token);
 
         // SECURITY: Reject debt swaps involving siloed (restricted) borrowing tokens
         // Siloed tokens have special isolation requirements that prevent debt conversions
@@ -377,9 +377,9 @@ pub trait SnapModule:
         // Process all payments (swapped tokens + any additional payments) to repay existing debt
         for payment_ref in payments.iter() {
             self.validate_payment(&payment_ref); // Ensure valid amount and enabled token
-            let feed = self.get_token_price(&payment_ref.token_identifier, &mut cache);
-            let payment = self.to_decimal(payment_ref.amount.clone(), feed.asset_decimals);
-            let egld_amount = self.get_token_egld_value(&payment, &feed.price);
+            let price_feed = self.token_price(&payment_ref.token_identifier, &mut cache);
+            let payment = self.to_decimal(payment_ref.amount.clone(), price_feed.asset_decimals);
+            let egld_amount = self.token_egld_value(&payment, &price_feed.price_wad);
 
             // Apply payment to existing debt positions
             self.process_repayment(
@@ -388,7 +388,7 @@ pub trait SnapModule:
                 &payment,
                 &caller,
                 egld_amount,
-                &feed,
+                &price_feed,
                 &mut cache,
                 &account_attributes,
             );
@@ -481,7 +481,7 @@ pub trait SnapModule:
         );
 
         // Load target collateral asset configuration and validate
-        let asset_info = cache.get_cached_asset_info(new_collateral);
+        let asset_info = cache.cached_asset_info(new_collateral);
 
         // SECURITY: Prevent swapping to isolated assets in regular positions
         // Isolated assets require dedicated isolated positions
@@ -579,7 +579,7 @@ pub trait SnapModule:
         from_amount: BigUint,
         to_token: &EgldOrEsdtTokenIdentifier,
         close_position: bool,
-        steps: OptionalValue<ManagedArgBuffer<Self::Api>>,
+        optional_steps: OptionalValue<ManagedArgBuffer<Self::Api>>,
     ) {
         self.require_not_paused();
         // Initialize secure cache and enable reentrancy protection
@@ -600,7 +600,7 @@ pub trait SnapModule:
             from_token,
             from_amount,
             to_token,
-            steps.into_option().unwrap_or(ManagedArgBuffer::new()),
+            optional_steps.into_option().unwrap_or(ManagedArgBuffer::new()),
             account.token_nonce,
             &caller,
             &account_attributes,
@@ -613,9 +613,9 @@ pub trait SnapModule:
         // Process all payments (converted debt tokens + any additional payments) for debt repayment
         for payment in payments.iter() {
             self.validate_payment(&payment); // Ensure valid amount and enabled token
-            let feed = self.get_token_price(&payment.token_identifier, &mut cache);
-            let payment_dec = self.to_decimal(payment.amount.clone(), feed.asset_decimals);
-            let egld_amount = self.get_token_egld_value(&payment_dec, &feed.price);
+            let price_feed = self.token_price(&payment.token_identifier, &mut cache);
+            let payment_dec = self.to_decimal(payment.amount.clone(), price_feed.asset_decimals);
+            let egld_amount = self.token_egld_value(&payment_dec, &price_feed.price_wad);
 
             // Apply payment to outstanding debt positions
             self.process_repayment(
@@ -624,7 +624,7 @@ pub trait SnapModule:
                 &payment_dec,
                 &caller,
                 egld_amount,
-                &feed,
+                &price_feed,
                 &mut cache,
                 &account_attributes,
             );
@@ -654,9 +654,8 @@ pub trait SnapModule:
                 .positions(account.token_nonce, AccountPositionType::Deposit)
                 .values()
             {
-                let feed = self.get_token_price(&deposit_position.asset_id, &mut cache);
-                let amount = self.get_total_amount(&deposit_position, &feed, &mut cache);
-
+                let price_feed = self.token_price(&deposit_position.asset_id, &mut cache);
+                let amount = self.total_amount(&deposit_position, &price_feed, &mut cache);
                 // Withdraw full collateral balance
                 let _ = self.process_withdrawal(
                     account.token_nonce,
@@ -667,7 +666,7 @@ pub trait SnapModule:
                     &mut cache,
                     &account_attributes,
                     &mut deposit_position,
-                    &feed,
+                    &price_feed,
                 );
             }
         }
@@ -727,11 +726,11 @@ pub trait SnapModule:
         let controller = self.blockchain().get_sc_address();
 
         // Retrieve and validate the deposit position for the source token
-        let mut deposit_position = self.get_deposit_position(account_nonce, from_token);
-        let feed = self.get_token_price(&deposit_position.asset_id, cache);
+        let mut deposit_position = self.deposit_position(account_nonce, from_token);
+        let price_feed = self.token_price(&deposit_position.asset_id, cache);
 
         // Convert withdrawal amount to decimal format for position calculations
-        let amount = deposit_position.make_amount_decimal(&from_amount, feed.asset_decimals);
+        let amount = deposit_position.make_amount_decimal(&from_amount, price_feed.asset_decimals);
 
         // Execute withdrawal from user's position to controller for conversion
         let withdraw_payment = self.process_withdrawal(
@@ -743,7 +742,7 @@ pub trait SnapModule:
             cache,
             account_attributes,
             &mut deposit_position,
-            &feed,
+            &price_feed,
         );
 
         // Convert withdrawn tokens to target token type and return to caller
@@ -863,7 +862,7 @@ pub trait SnapModule:
             .sync_call();
 
         // Initialize result container for target token accumulation
-        let mut wanted_result =
+        let mut target_token_result =
             EgldOrEsdtTokenPayment::new(wanted_token.clone(), 0, BigUint::from(0u32));
 
         // Separate target tokens from refundable tokens
@@ -872,7 +871,7 @@ pub trait SnapModule:
         for payment in back_transfers.payments {
             // Accumulate all instances of the target token (fungible tokens only, nonce = 0)
             if payment.token_identifier == *wanted_token {
-                wanted_result.amount += &payment.amount;
+                target_token_result.amount += &payment.amount;
             } else {
                 // Collect non-target tokens for refund to caller
                 refunds.push(payment.clone());
@@ -888,9 +887,12 @@ pub trait SnapModule:
         }
 
         // Return the accumulated target token amount
-        wanted_result
+        target_token_result
     }
 
+    /// Emits event for initial multiply payment with token amount and USD value.
+    /// Calculates USD equivalent through EGLD conversion for transparency.
+    /// Records initial collateral contribution for leverage position tracking.
     fn emit_initial_multiply_payment(
         &self,
         token_identifier: &EgldOrEsdtTokenIdentifier,
@@ -898,9 +900,9 @@ pub trait SnapModule:
         nonce: u64,
         cache: &mut Cache<Self>,
     ) {
-        let price_feed = self.get_token_price(token_identifier, cache);
-        let egld_price = self.get_token_egld_value(amount, &price_feed.price);
-        let usd_price = self.get_egld_usd_value(&egld_price, &cache.egld_usd_price);
+        let price_feed = self.token_price(token_identifier, cache);
+        let egld_price = self.token_egld_value(amount, &price_feed.price_wad);
+        let usd_price = self.egld_usd_value(&egld_price, &cache.egld_usd_price_wad);
         self.initial_multiply_payment_event(token_identifier, amount, usd_price, nonce);
     }
 }

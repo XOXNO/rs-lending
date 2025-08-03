@@ -93,7 +93,7 @@ fn market_exit_dust_accumulation_minimal() {
     );
 
     // Record initial market state
-    let utilization_ratio = state.get_market_utilization(state.egld_market.clone());
+    let utilization_ratio = state.market_utilization(state.egld_market.clone());
 
     // Verify 25% utilization
     assert_eq!(
@@ -107,19 +107,19 @@ fn market_exit_dust_accumulation_minimal() {
     let update_frequency = 60; // seconds
     let total_updates = SECONDS_PER_DAY / update_frequency;
 
-    for i in 1..=total_updates {
-        state.change_timestamp(i * update_frequency);
+    for update_cycle in 1..=total_updates {
+        state.change_timestamp(update_cycle * update_frequency);
         state.update_markets(&OWNER_ADDRESS, markets.clone());
         state.claim_revenue(EGLD_TOKEN);
     }
 
     // Get final positions
-    let final_supply_supplier1 = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
-    let final_supply_borrower1 = state.get_collateral_amount_for_token(2, EGLD_TOKEN);
-    let final_borrow_borrower1 = state.get_borrow_amount_for_token(2, EGLD_TOKEN);
-    let final_supply_supplier2 = state.get_collateral_amount_for_token(3, EGLD_TOKEN);
-    let final_supply_borrower2 = state.get_collateral_amount_for_token(4, EGLD_TOKEN);
-    let final_borrow_borrower2 = state.get_borrow_amount_for_token(4, EGLD_TOKEN);
+    let final_supply_supplier1 = state.collateral_amount_for_token(1, EGLD_TOKEN);
+    let final_supply_borrower1 = state.collateral_amount_for_token(2, EGLD_TOKEN);
+    let final_borrow_borrower1 = state.borrow_amount_for_token(2, EGLD_TOKEN);
+    let final_supply_supplier2 = state.collateral_amount_for_token(3, EGLD_TOKEN);
+    let final_supply_borrower2 = state.collateral_amount_for_token(4, EGLD_TOKEN);
+    let final_borrow_borrower2 = state.borrow_amount_for_token(4, EGLD_TOKEN);
 
     // Full exit for all users
     state.repay_asset_deno(
@@ -165,8 +165,8 @@ fn market_exit_dust_accumulation_minimal() {
     );
 
     // Verify dust is minimal
-    let protocol_revenue = state.get_market_revenue(state.egld_market.clone());
-    let reserves = state.get_market_reserves(state.egld_market.clone());
+    let protocol_revenue = state.market_revenue(state.egld_market.clone());
+    let reserves = state.market_reserves(state.egld_market.clone());
 
     println!("reserves:         {}", reserves);
     println!("protocol_revenue: {}", protocol_revenue);
@@ -176,7 +176,7 @@ fn market_exit_dust_accumulation_minimal() {
         protocol_revenue - reserves
     };
 
-    let supplied = state.get_market_supplied(state.egld_market.clone());
+    let supplied = state.market_supplied(state.egld_market.clone());
     println!("supplied: {}", supplied);
     println!("dust: {}", dust);
     // Dust should be less than 5 wei (extremely small)
@@ -209,9 +209,9 @@ fn stress_test_random_user_actions_large_scale() {
     let mut borrower_names = Vec::with_capacity(NUM_USERS);
     let mut supplier_names = Vec::with_capacity(NUM_USERS);
 
-    for i in 0..NUM_USERS {
-        borrower_names.push(format!("borrower{}", i));
-        supplier_names.push(format!("supplier{}", i));
+    for user_index in 0..NUM_USERS {
+        borrower_names.push(format!("borrower{}", user_index));
+        supplier_names.push(format!("supplier{}", user_index));
     }
 
     let mut borrowers = Vec::with_capacity(NUM_USERS);
@@ -221,9 +221,9 @@ fn stress_test_random_user_actions_large_scale() {
     let mut nonce_counter: u64 = 0;
 
     // Initialize all user accounts
-    for i in 0..NUM_USERS {
-        let borrower = TestAddress::new(borrower_names[i].as_str());
-        let supplier = TestAddress::new(supplier_names[i].as_str());
+    for user_index in 0..NUM_USERS {
+        let borrower = TestAddress::new(borrower_names[user_index].as_str());
+        let supplier = TestAddress::new(supplier_names[user_index].as_str());
 
         borrowers.push(borrower);
         suppliers.push(supplier);
@@ -242,7 +242,7 @@ fn stress_test_random_user_actions_large_scale() {
     let mut current_timestamp = 0u64;
     state.change_timestamp(current_timestamp);
 
-    for action_index in 0..NUM_ACTIONS {
+    for action_step in 0..NUM_ACTIONS {
         // Advance time randomly
         let time_increase = rng.random_range(1..=MAX_TIME_JUMP_SECONDS);
         current_timestamp += time_increase;
@@ -250,7 +250,7 @@ fn stress_test_random_user_actions_large_scale() {
         state.update_markets(&OWNER_ADDRESS, markets.clone());
 
         // Update markets periodically
-        if action_index % 10 == 0 {
+        if action_step % 10 == 0 {
             let mut markets = MultiValueEncoded::new();
             markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
             state.update_markets(&OWNER_ADDRESS, markets);
@@ -301,8 +301,8 @@ fn stress_test_random_user_actions_large_scale() {
                 // Borrow action
                 if user_nonces.contains(&user_addr) {
                     let nonce = user_nonces.get(&user_addr);
-                    let total_borrow = state.get_total_borrow_in_egld(nonce);
-                    let ltv_collateral = state.get_ltv_collateral_in_egld(nonce);
+                    let total_borrow = state.total_borrow_in_egld(nonce);
+                    let ltv_collateral = state.ltv_collateral_in_egld(nonce);
 
                     if ltv_collateral > total_borrow {
                         let available_borrow = ltv_collateral - total_borrow;
@@ -320,7 +320,7 @@ fn stress_test_random_user_actions_large_scale() {
                 // Repay action
                 if user_nonces.contains(&user_addr) {
                     let nonce = user_nonces.get(&user_addr);
-                    let current_borrow = state.get_total_borrow_in_egld(nonce);
+                    let current_borrow = state.total_borrow_in_egld(nonce);
                     if current_borrow.into_raw_units() > &BigUint::zero() {
                         state.repay_asset_deno(
                             &user_addr,
@@ -329,7 +329,7 @@ fn stress_test_random_user_actions_large_scale() {
                             nonce,
                         );
                         assert!(
-                            state.get_total_borrow_in_egld(nonce).into_raw_units()
+                            state.total_borrow_in_egld(nonce).into_raw_units()
                                 == &BigUint::zero()
                         );
                     }
@@ -338,8 +338,8 @@ fn stress_test_random_user_actions_large_scale() {
                 // Withdraw action
                 if user_nonces.contains(&user_addr) {
                     let nonce = user_nonces.get(&user_addr);
-                    let current_supply = state.get_total_collateral_in_egld(nonce);
-                    let total_borrow = state.get_total_borrow_in_egld(nonce);
+                    let current_supply = state.total_collateral_in_egld(nonce);
+                    let total_borrow = state.total_borrow_in_egld(nonce);
 
                     if current_supply.into_raw_units() > &BigUint::zero()
                         && total_borrow.into_raw_units() == &BigUint::zero()
@@ -388,7 +388,7 @@ fn stress_test_random_user_actions_large_scale() {
                 // Withdraw action
                 if user_nonces.contains(&user_addr) {
                     let nonce = user_nonces.get(&user_addr);
-                    let current_supply = state.get_total_collateral_in_egld(nonce);
+                    let current_supply = state.total_collateral_in_egld(nonce);
                     if current_supply.into_raw_units() > &BigUint::zero() {
                         state.withdraw_asset_den(
                             &user_addr,
@@ -397,11 +397,11 @@ fn stress_test_random_user_actions_large_scale() {
                             nonce,
                         );
                         assert!(
-                            state.get_total_collateral_in_egld(nonce).into_raw_units()
+                            state.total_collateral_in_egld(nonce).into_raw_units()
                                 == &BigUint::zero()
                         );
                         assert!(
-                            state.get_total_borrow_in_egld(nonce).into_raw_units()
+                            state.total_borrow_in_egld(nonce).into_raw_units()
                                 == &BigUint::zero()
                         );
                         user_nonces.remove(&user_addr);
@@ -422,7 +422,7 @@ fn stress_test_random_user_actions_large_scale() {
 
             // Repay all debt if borrower
             if borrowers.contains(user_addr) {
-                let final_borrow = state.get_total_borrow_in_egld(nonce);
+                let final_borrow = state.total_borrow_in_egld(nonce);
                 if final_borrow.into_raw_units() > &BigUint::zero() {
                     state.repay_asset_deno(
                         user_addr,
@@ -434,7 +434,7 @@ fn stress_test_random_user_actions_large_scale() {
             }
 
             // Withdraw all supply
-            let final_supply = state.get_total_collateral_in_egld(nonce);
+            let final_supply = state.total_collateral_in_egld(nonce);
             if final_supply.into_raw_units() > &BigUint::zero() {
                 state.withdraw_asset_den(
                     user_addr,
@@ -445,21 +445,21 @@ fn stress_test_random_user_actions_large_scale() {
                 user_nonces.remove(user_addr);
             }
 
-            assert!(state.get_total_collateral_in_egld(nonce).into_raw_units() == &BigUint::zero());
-            assert!(state.get_total_borrow_in_egld(nonce).into_raw_units() == &BigUint::zero());
+            assert!(state.total_collateral_in_egld(nonce).into_raw_units() == &BigUint::zero());
+            assert!(state.total_borrow_in_egld(nonce).into_raw_units() == &BigUint::zero());
         }
     }
 
     // Verify market integrity after simulation
-    let protocol_revenue = state.get_market_revenue(state.egld_market.clone());
+    let protocol_revenue = state.market_revenue(state.egld_market.clone());
     println!("protocol_revenue: {}", protocol_revenue);
-    let reserves = state.get_market_reserves(state.egld_market.clone());
+    let reserves = state.market_reserves(state.egld_market.clone());
     println!("reserves: {}", reserves);
-    let final_utilization = state.get_market_utilization(state.egld_market.clone());
+    let final_utilization = state.market_utilization(state.egld_market.clone());
     println!("final_utilization: {}", final_utilization);
-    let supplied = state.get_market_supplied(state.egld_market.clone());
+    let supplied = state.market_supplied(state.egld_market.clone());
     println!("supplied: {}", supplied);
-    let borrowed = state.get_market_borrowed(state.egld_market.clone());
+    let borrowed = state.market_borrowed(state.egld_market.clone());
     println!("borrowed: {}", borrowed);
 
     // Basic sanity checks
@@ -479,13 +479,13 @@ fn stress_test_random_user_actions_large_scale() {
 
     state.claim_revenue(EGLD_TOKEN);
     // Verify market integrity after simulation
-    let protocol_revenue = state.get_market_revenue(state.egld_market.clone());
+    let protocol_revenue = state.market_revenue(state.egld_market.clone());
     println!("protocol_revenue: {}", protocol_revenue);
-    let reserves = state.get_market_reserves(state.egld_market.clone());
+    let reserves = state.market_reserves(state.egld_market.clone());
     println!("reserves: {}", reserves);
-    let supplied = state.get_market_supplied(state.egld_market.clone());
+    let supplied = state.market_supplied(state.egld_market.clone());
     println!("supplied: {}", supplied);
-    let borrowed = state.get_market_borrowed(state.egld_market.clone());
+    let borrowed = state.market_borrowed(state.egld_market.clone());
     println!("borrowed: {}", borrowed);
 
     assert!(protocol_revenue.into_raw_units() == &BigUint::zero());

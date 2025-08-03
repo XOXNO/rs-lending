@@ -19,19 +19,19 @@ where
 {
     sc_ref: &'a C,
     /// The amount of the asset supplied by lenders.
-    pub supplied: ManagedDecimal<C::Api, NumDecimals>,
+    pub supplied_ray: ManagedDecimal<C::Api, NumDecimals>,
     /// The amount of the asset currently borrowed.
-    pub borrowed: ManagedDecimal<C::Api, NumDecimals>,
+    pub borrowed_ray: ManagedDecimal<C::Api, NumDecimals>,
     /// The amount of the asset reserved for protocol revenue (subset of reserves).
-    pub revenue: ManagedDecimal<C::Api, NumDecimals>,
+    pub revenue_ray: ManagedDecimal<C::Api, NumDecimals>,
     /// The timestamp of the current block (milliseconds since Unix epoch).
     pub timestamp: u64,
     /// The configuration parameters of the pool (e.g., interest rate slopes).
-    pub params: MarketParams<C::Api>,
+    pub parameters: MarketParams<C::Api>,
     /// The borrow index tracking compounded interest for borrowers.
-    pub borrow_index: ManagedDecimal<C::Api, NumDecimals>,
+    pub borrow_index_ray: ManagedDecimal<C::Api, NumDecimals>,
     /// The supply index tracking accrued rewards for suppliers.
-    pub supply_index: ManagedDecimal<C::Api, NumDecimals>,
+    pub supply_index_ray: ManagedDecimal<C::Api, NumDecimals>,
     /// Zero value with pool-specific asset_decimals for comparisons.
     pub zero: ManagedDecimal<C::Api, NumDecimals>,
     /// The timestamp of the last state update (milliseconds since Unix epoch).
@@ -56,17 +56,17 @@ where
     ///
     /// **Security Tip**: Assumes storage getters (`supplied()`, etc.) return valid data; no additional validation here.
     pub fn new(sc_ref: &'a C) -> Self {
-        let params = sc_ref.params().get();
+        let parameters = sc_ref.parameters().get();
         let timestamp = sc_ref.blockchain().get_block_timestamp_ms();
         Cache {
-            zero: sc_ref.to_decimal(BigUint::zero(), params.asset_decimals),
-            supplied: sc_ref.supplied().get(),
-            borrowed: sc_ref.borrowed().get(),
-            revenue: sc_ref.revenue().get(),
+            zero: sc_ref.to_decimal(BigUint::zero(), parameters.asset_decimals),
+            supplied_ray: sc_ref.supplied().get(),
+            borrowed_ray: sc_ref.borrowed().get(),
+            revenue_ray: sc_ref.revenue().get(),
             timestamp,
-            params,
-            borrow_index: sc_ref.borrow_index().get(),
-            supply_index: sc_ref.supply_index().get(),
+            parameters,
+            borrow_index_ray: sc_ref.borrow_index().get(),
+            supply_index_ray: sc_ref.supply_index().get(),
             last_timestamp: sc_ref.last_timestamp().get(),
             sc_ref,
         }
@@ -88,11 +88,11 @@ where
     /// **Security Tip**: Assumes setters (`set()`) handle serialization correctly; no validation here.
     fn drop(&mut self) {
         // commit changes to storage for the mutable fields
-        self.sc_ref.supplied().set(&self.supplied);
-        self.sc_ref.borrowed().set(&self.borrowed);
-        self.sc_ref.revenue().set(&self.revenue);
-        self.sc_ref.borrow_index().set(&self.borrow_index);
-        self.sc_ref.supply_index().set(&self.supply_index);
+        self.sc_ref.supplied().set(&self.supplied_ray);
+        self.sc_ref.borrowed().set(&self.borrowed_ray);
+        self.sc_ref.revenue().set(&self.revenue_ray);
+        self.sc_ref.borrow_index().set(&self.borrow_index_ray);
+        self.sc_ref.supply_index().set(&self.supply_index_ray);
         self.sc_ref.last_timestamp().set(self.last_timestamp);
     }
 }
@@ -114,15 +114,15 @@ where
     /// - `ManagedDecimal<C::Api, NumDecimals>`: The value adjusted to pool asset_decimals.
     ///
     /// **Security Tip**: No overflow checks; assumes `value` fits within `BigUint` constraints.
-    pub fn get_decimal_value(
+    pub fn decimal_value(
         &self,
         value: &BigUint<C::Api>,
     ) -> ManagedDecimal<C::Api, NumDecimals> {
         self.sc_ref
-            .to_decimal(value.clone(), self.params.asset_decimals)
+            .to_decimal(value.clone(), self.parameters.asset_decimals)
     }
 
-    /// Computes the utilization ratio of the pool (borrowed / supplied).
+    /// Calculates the utilization ratio of the pool (borrowed / supplied).
     ///
     /// **Scope**: Measures how much of the supplied assets are currently borrowed.
     ///
@@ -136,18 +136,18 @@ where
     /// - `ManagedDecimal<C::Api, NumDecimals>`: Utilization ratio (RAY-based).
     ///
     /// **Security Tip**: Handles division-by-zero by returning 0 when `supplied` is zero.
-    pub fn get_utilization(&self) -> ManagedDecimal<C::Api, NumDecimals> {
-        if self.supplied == self.sc_ref.ray_zero() {
+    pub fn calculate_utilization(&self) -> ManagedDecimal<C::Api, NumDecimals> {
+        if self.supplied_ray == self.sc_ref.ray_zero() {
             self.sc_ref.ray_zero()
         } else {
-            let total_borrowed = self.original_borrow_ray(&self.borrowed);
-            let total_supplied = self.original_supply_ray(&self.supplied);
+            let total_borrowed = self.calculate_original_borrow_ray(&self.borrowed_ray);
+            let total_supplied = self.calculate_original_supply_ray(&self.supplied_ray);
             self.sc_ref
                 .div_half_up(&total_borrowed, &total_supplied, RAY_PRECISION)
         }
     }
 
-    /// Computes the effective reserves available (reserves minus protocol revenue).
+    /// Calculates the effective reserves available (reserves minus protocol revenue).
     ///
     /// **Scope**: Determines the usable reserve amount after accounting for protocol fees.
     ///
@@ -161,12 +161,12 @@ where
     /// - `ManagedDecimal<C::Api, NumDecimals>`: Available reserves in pool asset_decimals.
     ///
     /// **Security Tip**: Prevents underflow by returning 0 if `revenue` exceeds `reserves`.
-    pub fn get_reserves(&self) -> ManagedDecimal<C::Api, NumDecimals> {
+    pub fn calculate_reserves(&self) -> ManagedDecimal<C::Api, NumDecimals> {
         let current_pool_balance = self
             .sc_ref
             .blockchain()
-            .get_sc_balance(&self.params.asset_id, 0);
-        self.get_decimal_value(&current_pool_balance)
+            .get_sc_balance(&self.parameters.asset_id, 0);
+        self.decimal_value(&current_pool_balance)
     }
 
     /// Checks if the pool has sufficient effective reserves for a given amount.
@@ -181,7 +181,7 @@ where
     /// # Returns
     /// - `bool`: True if `get_reserves() >= amount`, false otherwise.
     pub fn has_reserves(&self, amount: &ManagedDecimal<C::Api, NumDecimals>) -> bool {
-        self.get_reserves() >= *amount
+        self.calculate_reserves() >= *amount
     }
 
     /// Checks if the given asset matches the pool's asset.
@@ -196,60 +196,60 @@ where
     /// # Returns
     /// - `bool`: True if `pool_asset == asset`, false otherwise.
     pub fn is_same_asset(&self, asset: &EgldOrEsdtTokenIdentifier<C::Api>) -> bool {
-        self.params.asset_id == *asset
+        self.parameters.asset_id == *asset
     }
 
-    pub fn scaled_supply(
+    pub fn calculate_scaled_supply(
         &self,
         amount: &ManagedDecimal<C::Api, NumDecimals>,
     ) -> ManagedDecimal<C::Api, NumDecimals> {
         self.sc_ref
-            .div_half_up(amount, &self.supply_index, RAY_PRECISION)
+            .div_half_up(amount, &self.supply_index_ray, RAY_PRECISION)
     }
 
-    pub fn scaled_borrow(
+    pub fn calculate_scaled_borrow(
         &self,
         amount: &ManagedDecimal<C::Api, NumDecimals>,
     ) -> ManagedDecimal<C::Api, NumDecimals> {
         self.sc_ref
-            .div_half_up(amount, &self.borrow_index, RAY_PRECISION)
+            .div_half_up(amount, &self.borrow_index_ray, RAY_PRECISION)
     }
 
-    pub fn original_supply(
+    pub fn calculate_original_supply(
         &self,
         scaled_amount: &ManagedDecimal<C::Api, NumDecimals>,
     ) -> ManagedDecimal<C::Api, NumDecimals> {
         self.sc_ref.scaled_to_original(
             scaled_amount,
-            &self.supply_index,
-            self.params.asset_decimals,
+            &self.supply_index_ray,
+            self.parameters.asset_decimals,
         )
     }
 
-    pub fn original_supply_ray(
+    pub fn calculate_original_supply_ray(
         &self,
         scaled_amount: &ManagedDecimal<C::Api, NumDecimals>,
     ) -> ManagedDecimal<C::Api, NumDecimals> {
         self.sc_ref
-            .scaled_to_original_ray(scaled_amount, &self.supply_index)
+            .scaled_to_original_ray(scaled_amount, &self.supply_index_ray)
     }
 
-    pub fn original_borrow(
+    pub fn calculate_original_borrow(
         &self,
         scaled_amount: &ManagedDecimal<C::Api, NumDecimals>,
     ) -> ManagedDecimal<C::Api, NumDecimals> {
         self.sc_ref.scaled_to_original(
             scaled_amount,
-            &self.borrow_index,
-            self.params.asset_decimals,
+            &self.borrow_index_ray,
+            self.parameters.asset_decimals,
         )
     }
 
-    pub fn original_borrow_ray(
+    pub fn calculate_original_borrow_ray(
         &self,
         scaled_amount: &ManagedDecimal<C::Api, NumDecimals>,
     ) -> ManagedDecimal<C::Api, NumDecimals> {
         self.sc_ref
-            .scaled_to_original_ray(scaled_amount, &self.borrow_index)
+            .scaled_to_original_ray(scaled_amount, &self.borrow_index_ray)
     }
 }

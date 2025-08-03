@@ -12,62 +12,44 @@ multiversx_sc::imports!();
 /// **Goal**: Ensure accurate, fair, and auditable interest mechanics for borrowers and suppliers.
 #[multiversx_sc::module]
 pub trait InterestRates: common_math::SharedMathModule {
-    /// Calculates the borrow rate based on current utilization and pool parameters.
-    ///
-    /// **Scope**: Determines the interest rate borrowers pay based on pool utilization.
-    ///
-    /// **Goal**: Provide a dynamic rate that adjusts with demand, using a piecewise linear model.
-    ///
-    /// **Formula**:
-    /// - If `utilization <= mid_utilization`: `base_borrow_rate + (utilization * slope1 / mid_utilization)`.
-    /// - If `mid_utilization < utilization < optimal_utilization`: `base_borrow_rate + slope1 + ((utilization - mid_utilization) * slope2 / (optimal_utilization - mid_utilization))`.
-    /// - If `utilization >= optimal_utilization`: `base_borrow_rate + slope1 + slope2 + ((utilization - optimal_utilization) * slope3 / (RAY - optimal_utilization))`.
-    /// - The annual rate is then capped at `max_borrow_rate`.
-    /// - The capped annual rate is converted to a per-millisecond rate by dividing by `MILLISECONDS_PER_YEAR`.
-    ///
-    /// # Arguments
-    /// - `utilization`: Current pool utilization ratio (`ManagedDecimal<Self::Api, NumDecimals>`), RAY-based.
-    /// - `params`: Market parameters (`MarketParams<Self::Api>`) containing rate model configuration.
-    ///
-    /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: Per-millisecond borrow rate (RAY-based).
-    ///
-    /// **Security Tip**: Relies on the caller to provide valid `utilization` and `params` inputs.
-    fn calc_borrow_rate(
+    /// Calculates per-millisecond borrow rate using piecewise linear model.
+    /// Rate increases with utilization: gradual before kink, steep after kink.
+    /// Caps at max_borrow_rate and converts from annual to millisecond rate.
+    fn calculate_borrow_rate(
         &self,
         utilization: ManagedDecimal<Self::Api, NumDecimals>,
-        params: MarketParams<Self::Api>,
+        parameters: MarketParams<Self::Api>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let annual_rate = if utilization < params.mid_utilization {
+        let annual_rate = if utilization < parameters.mid_utilization_ray {
             // Region 1: utilization < mid_utilization
-            let utilization_ratio = utilization.mul(params.slope1).div(params.mid_utilization);
-            params.base_borrow_rate.add(utilization_ratio)
-        } else if utilization < params.optimal_utilization {
+            let utilization_ratio = utilization.mul(parameters.slope1_ray).div(parameters.mid_utilization_ray);
+            parameters.base_borrow_rate_ray.add(utilization_ratio)
+        } else if utilization < parameters.optimal_utilization_ray {
             // Region 2: mid_utilization <= utilization < optimal_utilization
-            let excess_utilization = utilization.sub(params.mid_utilization.clone());
+            let excess_utilization = utilization.sub(parameters.mid_utilization_ray.clone());
             let slope_contribution = excess_utilization
-                .mul(params.slope2)
-                .div(params.optimal_utilization.sub(params.mid_utilization));
-            params
-                .base_borrow_rate
-                .add(params.slope1)
+                .mul(parameters.slope2_ray)
+                .div(parameters.optimal_utilization_ray.sub(parameters.mid_utilization_ray));
+            parameters
+                .base_borrow_rate_ray
+                .add(parameters.slope1_ray)
                 .add(slope_contribution)
         } else {
             // Region 3: utilization >= optimal_utilization, linear growth
-            let base_rate = params
-                .base_borrow_rate
-                .add(params.slope1)
-                .add(params.slope2);
-            let excess_utilization = utilization.sub(params.optimal_utilization.clone());
+            let base_rate = parameters
+                .base_borrow_rate_ray
+                .add(parameters.slope1_ray)
+                .add(parameters.slope2_ray);
+            let excess_utilization = utilization.sub(parameters.optimal_utilization_ray.clone());
             let slope_contribution = excess_utilization
-                .mul(params.slope3)
-                .div(self.ray().sub(params.optimal_utilization));
+                .mul(parameters.slope3_ray)
+                .div(self.ray().sub(parameters.optimal_utilization_ray));
             base_rate.add(slope_contribution)
         };
 
         // Cap the rate at max_borrow_rate
-        let capped_rate = if annual_rate > params.max_borrow_rate {
-            params.max_borrow_rate
+        let capped_rate = if annual_rate > parameters.max_borrow_rate_ray {
+            parameters.max_borrow_rate_ray
         } else {
             annual_rate
         };
@@ -100,7 +82,7 @@ pub trait InterestRates: common_math::SharedMathModule {
     /// - `ManagedDecimal<Self::Api, NumDecimals>`: Per-millisecond deposit rate (RAY-based).
     ///
     /// **Security Tip**: Assumes inputs are valid; no overflow or underflow checks within this specific function beyond standard `ManagedDecimal` operations.
-    fn calc_deposit_rate(
+    fn calculate_deposit_rate(
         &self,
         utilization: ManagedDecimal<Self::Api, NumDecimals>,
         borrow_rate: ManagedDecimal<Self::Api, NumDecimals>,
@@ -117,44 +99,27 @@ pub trait InterestRates: common_math::SharedMathModule {
         )
     }
 
-    /// Computes the interest growth factor using a Taylor series approximation for `e^(rate * exp)`.
-    ///
-    /// **Scope**: Approximates compounded interest over time for index updates.
-    ///
-    /// **Goal**: Provide a precise interest factor for small time intervals.
-    ///
-    /// **Formula**:
-    /// - Approximates `e^x` where `x = rate * exp` using the Taylor expansion:
-    ///   `factor = 1 + x + x^2/2! + x^3/3! + x^4/4! + x^5/5!`.
-    /// - If `exp == 0`, returns `1` (RAY-scaled).
-    /// - Suitable for small `x`; precision decreases for large intervals.
-    ///
-    /// # Arguments
-    /// - `rate`: Current per-millisecond borrow rate (`ManagedDecimal<Self::Api, NumDecimals>`), RAY-based.
-    /// - `exp`: Time elapsed in milliseconds (`u64`).
-    ///
-    /// # Returns
-    /// - `ManagedDecimal<Self::Api, NumDecimals>`: Interest growth factor (RAY-based).
-    ///
-    /// **Security Tip**: Handles `exp == 0` to avoid unnecessary computation and potential division by zero if terms were structured differently.
+    /// Approximates compound interest factor using Taylor series expansion.
+    /// Calculates e^(rate * time) for small time intervals with 5-term precision.
+    /// Returns growth factor for index updates.
     fn calculate_compounded_interest(
         &self,
         rate: ManagedDecimal<Self::Api, NumDecimals>,
-        exp: u64,
+        expiration: u64,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         // Use Taylor expansion e^x = 1 + x + x^2/2! + x^3/3! + x^4/4! + x^5/5! + ...
-        // where x = borrow_rate * exp
+        // where x = borrow_rate * expiration
 
         let ray = self.ray();
 
-        if exp == 0 {
+        if expiration == 0 {
             return ray;
         }
 
-        let exp_dec = self.to_decimal(BigUint::from(exp), 0);
+        let expiration_decimal = self.to_decimal(BigUint::from(expiration), 0);
 
         // x = rate * time_delta
-        let x = self.mul_half_up(&rate, &exp_dec, RAY_PRECISION);
+        let x = self.mul_half_up(&rate, &expiration_decimal, RAY_PRECISION);
 
         // Higher powers of x
         let x_sq = self.mul_half_up(&x, &x, RAY_PRECISION);
@@ -251,16 +216,16 @@ pub trait InterestRates: common_math::SharedMathModule {
     /// This simplified version directly distributes accrued interest between suppliers and protocol.
     ///
     /// # Arguments
-    /// - `params`: The market parameters including reserve factor
+    /// - `parameters`: The market parameters including reserve factor
     /// - `borrowed`: The total scaled borrowed amount
     /// - `new_borrow_index`: The updated borrow index after interest accrual
     /// - `old_borrow_index`: The previous borrow index
     ///
     /// # Returns
     /// - `(supplier_rewards_ray, protocol_fee_ray)`: Interest distribution in RAY precision
-    fn calc_supplier_rewards(
+    fn calculate_supplier_rewards(
         &self,
-        params: MarketParams<Self::Api>,
+        parameters: MarketParams<Self::Api>,
         borrowed: &ManagedDecimal<Self::Api, NumDecimals>,
         new_borrow_index: &ManagedDecimal<Self::Api, NumDecimals>,
         old_borrow_index: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -276,13 +241,13 @@ pub trait InterestRates: common_math::SharedMathModule {
 
         // Direct distribution: protocol fee first, then supplier rewards
         let protocol_fee =
-            self.mul_half_up(&accrued_interest_ray, &params.reserve_factor, RAY_PRECISION);
+            self.mul_half_up(&accrued_interest_ray, &parameters.reserve_factor_bps, RAY_PRECISION);
         let supplier_rewards_ray = accrued_interest_ray - protocol_fee.clone();
 
         (supplier_rewards_ray, protocol_fee)
     }
 
-    fn get_utilization(
+    fn utilization(
         &self,
         borrowed_ray: &ManagedDecimal<Self::Api, NumDecimals>,
         supplied_ray: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -319,22 +284,22 @@ pub trait InterestRates: common_math::SharedMathModule {
         current_borrowed_index: ManagedDecimal<Self::Api, NumDecimals>,
         supplied: ManagedDecimal<Self::Api, NumDecimals>,
         current_supply_index: ManagedDecimal<Self::Api, NumDecimals>,
-        params: MarketParams<Self::Api>,
+        parameters: MarketParams<Self::Api>,
     ) -> MarketIndex<Self::Api> {
         let delta = current_timestamp - last_timestamp;
 
         if delta > 0 {
             let borrowed_original = self.scaled_to_original_ray(&borrowed, &current_borrowed_index);
             let supplied_original = self.scaled_to_original_ray(&supplied, &current_supply_index);
-            let utilization = self.get_utilization(&borrowed_original, &supplied_original);
-            let borrow_rate = self.calc_borrow_rate(utilization, params.clone());
+            let utilization = self.utilization(&borrowed_original, &supplied_original);
+            let borrow_rate = self.calculate_borrow_rate(utilization, parameters.clone());
             let borrow_factor = self.calculate_compounded_interest(borrow_rate.clone(), delta);
             let (new_borrow_index, old_borrow_index) =
                 self.update_borrow_index(current_borrowed_index.clone(), borrow_factor.clone());
 
             // 3 raw split
-            let (supplier_rewards_ray, _) = self.calc_supplier_rewards(
-                params.clone(),
+            let (supplier_rewards_ray, _) = self.calculate_supplier_rewards(
+                parameters.clone(),
                 &borrowed,
                 &new_borrow_index,
                 &old_borrow_index,
@@ -344,13 +309,13 @@ pub trait InterestRates: common_math::SharedMathModule {
                 self.update_supply_index(supplied, current_supply_index, supplier_rewards_ray);
 
             MarketIndex {
-                supply_index: new_supply_index,
-                borrow_index: new_borrow_index,
+                supply_index_ray: new_supply_index,
+                borrow_index_ray: new_borrow_index,
             }
         } else {
             MarketIndex {
-                supply_index: current_supply_index,
-                borrow_index: current_borrowed_index,
+                supply_index_ray: current_supply_index,
+                borrow_index_ray: current_borrowed_index,
             }
         }
     }

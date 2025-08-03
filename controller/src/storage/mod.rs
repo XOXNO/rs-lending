@@ -103,7 +103,7 @@ pub trait Storage {
     /// This storage mapper holds a map of e-mode categories, used to group assets into categories with different risk parameters.
     #[view(getEModes)]
     #[storage_mapper("e_mode_category")]
-    fn e_mode_category(&self) -> MapMapper<u8, EModeCategory<Self::Api>>;
+    fn e_mode_categories(&self) -> MapMapper<u8, EModeCategory<Self::Api>>;
 
     /// Get the e-mode categories for a given asset
     /// This storage mapper holds a set of e-mode categories for a given asset. One asset can have multiple e-mode categories.
@@ -204,7 +204,7 @@ pub trait Storage {
     /// # Returns
     /// - `MarketParams<Self::Api>`: The market configuration.
     #[storage_mapper_from_address("params")]
-    fn params(
+    fn parameters(
         &self,
         liquidity_pool_address: ManagedAddress,
     ) -> SingleValueMapper<MarketParams<Self::Api>, ManagedAddress>;

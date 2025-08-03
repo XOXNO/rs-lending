@@ -45,7 +45,7 @@ fn withdraw_excess_amount_capped_to_available_success() {
 
     // Verify token was fully withdrawn
     let custom_error_message = format!("Token not existing in the account {}", USDC_TOKEN.as_str());
-    state.get_collateral_amount_for_token_non_existing(
+    state.collateral_amount_for_token_non_existing(
         1,
         USDC_TOKEN,
         custom_error_message.as_bytes(),
@@ -158,7 +158,7 @@ fn withdraw_with_accumulated_interest_success() {
     state.change_timestamp(SECONDS_PER_DAY * 10);
 
     // Record initial collateral with interest
-    let initial_collateral = state.get_collateral_amount_for_token(1, USDC_TOKEN);
+    let initial_collateral = state.collateral_amount_for_token(1, USDC_TOKEN);
 
     // Advance more time
     state.change_timestamp(SECONDS_PER_DAY * 20);
@@ -173,7 +173,7 @@ fn withdraw_with_accumulated_interest_success() {
     );
 
     // Verify collateral was reduced by withdrawal amount
-    let final_collateral = state.get_collateral_amount_for_token(1, USDC_TOKEN);
+    let final_collateral = state.collateral_amount_for_token(1, USDC_TOKEN);
     assert!(final_collateral < initial_collateral);
 }
 
@@ -234,7 +234,7 @@ fn withdraw_single_user_supply_borrow_full_cycle() {
     state.update_markets(&supplier, markets.clone());
 
     // Get final collateral amount
-    let final_collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    let final_collateral = state.collateral_amount_for_token(1, EGLD_TOKEN);
 
     // Withdraw entire collateral balance
     state.withdraw_asset_den(
@@ -292,7 +292,7 @@ fn withdraw_with_prior_index_update_success() {
     state.update_markets(&supplier, markets.clone());
 
     // Get current positions
-    let initial_borrow = state.get_borrow_amount_for_token(1, EGLD_TOKEN);
+    let initial_borrow = state.borrow_amount_for_token(1, EGLD_TOKEN);
 
     // Repay full borrow amount
     state.repay_asset_deno(
@@ -312,7 +312,7 @@ fn withdraw_with_prior_index_update_success() {
     state.update_markets(&supplier, markets.clone());
 
     // Get final collateral after all updates
-    let final_collateral = state.get_collateral_amount_for_token(1, EGLD_TOKEN);
+    let final_collateral = state.collateral_amount_for_token(1, EGLD_TOKEN);
 
     // Withdraw full collateral
     state.withdraw_asset_den(

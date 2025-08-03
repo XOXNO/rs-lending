@@ -58,8 +58,8 @@ fn emode_supply_and_borrow_same_category_success() {
     );
 
     // Verify positions exist
-    let borrowed = state.get_borrow_amount_for_token(2, XEGLD_TOKEN);
-    let collateral = state.get_collateral_amount_for_token(2, EGLD_TOKEN);
+    let borrowed = state.borrow_amount_for_token(2, XEGLD_TOKEN);
+    let collateral = state.collateral_amount_for_token(2, EGLD_TOKEN);
 
     assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::zero(), XEGLD_DECIMALS));
     assert!(collateral > ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS));
