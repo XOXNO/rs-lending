@@ -9,7 +9,7 @@ multiversx_sc::imports!();
 #[multiversx_sc::module]
 pub trait SharedMathModule {
     /// Multiplies two decimals with half-up rounding at target precision.
-    /// Prevents precision loss in financial calculations using banker's rounding.
+    /// Prevents precision loss in financial calculations using half-up rounding.
     /// Returns product rounded to specified precision.
     fn mul_half_up(
         &self,
@@ -35,7 +35,7 @@ pub trait SharedMathModule {
     }
 
     /// Divides two decimals with half-up rounding at target precision.
-    /// Prevents precision loss in financial calculations using banker's rounding.
+    /// Prevents precision loss in financial calculations using half-up rounding.
     /// Returns quotient rounded to specified precision.
     fn div_half_up(
         &self,

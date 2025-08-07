@@ -1152,20 +1152,40 @@ fn e_mode_liquidate_leave_bad_debt_success() {
     let estimated_liquidation_amount = state.liquidation_estimations(2, ManagedVec::new());
     println!("estimated_bonus_rate: {:?}", estimated_liquidation_amount.bonus_rate_bps * ManagedDecimal::from_raw_units(BigUint::from(100u64), 0));
     println!("estimated_bonus_amount: {:?}", estimated_liquidation_amount.max_egld_payment_wad);
-    for token in estimated_liquidation_amount.seized_collaterals {
-        println!("Seized collateral: {:?}", token.token_identifier);
-        println!("Seized amount: {:?}", token.amount);
+    // Assert invariants for each seized item: fee <= seized, and seized <= current deposit
+    for i in 0..estimated_liquidation_amount.seized_collaterals.len() {
+        let seized = estimated_liquidation_amount
+            .seized_collaterals
+            .get(i);
+        let fee = estimated_liquidation_amount
+            .protocol_fees
+            .get(i);
+        println!("Seized collateral: {:?}", seized.token_identifier);
+        println!("Seized amount: {:?}", seized.amount);
+        println!("Protocol fee: {:?}", fee.token_identifier);
+        println!("Protocol fee amount: {:?}", fee.amount);
+
+        // Fee-on-capped-bonus must be <= seized amount (both in token units)
+        assert!(fee.amount <= seized.amount, "Protocol fee must not exceed seized amount");
+
+        // Seized amount must not exceed the current deposited amount for that asset
+        // state helper expects a TestTokenIdentifier (alias in tests) not the SDK identifier
+        // In our tests, constants like EGLD_TOKEN are of the expected type, and we only seize EGLD here.
+        // So we use the EGLD_TOKEN test identifier to validate the invariant for this scenario.
+        let current_collateral = state.collateral_amount_for_token(2, EGLD_TOKEN);
+        assert!(
+            seized.amount <= current_collateral.into_raw_units().clone(),
+            "Seized amount must not exceed deposited collateral"
+        );
     }
 
     for token in estimated_liquidation_amount.refunds {
         println!("Refund: {:?}", token.token_identifier);
         println!("Refund amount: {:?}", token.amount);
     }
-
-    for token in estimated_liquidation_amount.protocol_fees {
-        println!("Protocol fee: {:?}", token.token_identifier);
-        println!("Protocol fee amount: {:?}", token.amount);
-    }
+    // 49122855026117687
+    // 48818102058331751315
+    // Protocol fees already printed and checked in the loop above
 
     // Setup liquidator
     let liquidator = TestAddress::new("liquidator");

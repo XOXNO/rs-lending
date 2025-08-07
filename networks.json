@@ -28,30 +28,27 @@
     "proxy": "https://gateway.xoxno.com",
     "chain_id": "1",
     "addresses": {
-      "controller": "",
-      "lp_template": "",
-      "price_aggregator": "",
+      "controller": "erd1qqqqqqqqqqqqqpgqyq9mwxkq7zelkupafta5ah95pw6362j745qsk5mdzw",
+      "lp_template": "erd1qqqqqqqqqqqqqpgqmwgsf0gcjvrfas8pmmzzp7rx2xps2caw45qs2gr4jw",
+      "price_aggregator": "erd1qqqqqqqqqqqqqpgq4luh53qlc8ehlzmvxm06v0rs8r5q5p6h45qs9dx4vm",
       "swap_router_address": "erd1qqqqqqqqqqqqqpgqfnarkmhu6tgjgtpenya0dek54jcwkak23g6su00nwn",
       "safe_price_view": "erd1qqqqqqqqqqqqqpgqtce4z8zzz76xjht3hak0hseshcmj3ush2jps2exxjn",
       "accumulator": "erd1qqqqqqqqqqqqqpgq8538ku69p97lq4eug75y8d6g6yfwhd7c45qs4zvejt"
     },
-    "submission_counts": 3,
+    "submission_counts": 2,
     "oracles": [
       "erd1e2r4m874a7whe5n2sftrxqy758kl3s6gvs8ekmac2yuhxlg70shs5lhc7t",
       "erd13r5dhrpx8wk6l4lvwr52y5thx7q56g4w9l7sznef3vlp8yqvqmfs5l2vq0",
-      "erd1l2u03tmtpphrwwq0xn3gfu23ufzjexu0p54zya8ufhlyrrx64vzsvyfgvg",
-      "erd12yxd5phejzw83gn8qh6jfz6q9a0ekyyhkfd3c49r03mxw25l3a5swq3nf7",
-      "erd1nz0w0cnlpxsdqa2vm6mfmzc9qhptjae9x44kn3fkzsgns8dcz5pscja98t",
-      "erd16yaq7n30gdka6hvnly365kecckqqsl48m2g8vrrmcr5w6h79pussyc4wu2"
+      "erd1l2u03tmtpphrwwq0xn3gfu23ufzjexu0p54zya8ufhlyrrx64vzsvyfgvg"
     ],
     "account_token": {
-      "name": "XOXNOLendingAccount",
-      "ticker": "XOXNOLEND",
+      "name": "xLendAccount",
+      "ticker": "XLEND",
       "issue_cost": 50000000000000000
     },
     "ledger": {
       "account_index": 0,
-      "address_index": 0
+      "address_index": 7
     }
   }
 }

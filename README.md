@@ -182,7 +182,7 @@ fn reentrancy_guard(&self, flash_loan_ongoing: bool) {
 
 **Triple-Precision System**:
 - RAY (27 decimals) for internal calculations prevents rounding errors
-- Half-up rounding (banker's rounding) ensures consistent behavior
+- Half-up rounding ensures consistent behavior
 - Overflow protection through BigUint arithmetic
 
 **Interest Rate Security**:
@@ -418,7 +418,7 @@ cargo test strategy                   # Strategy operation validation
 ### ✅ **Verified Security Features**
 - **Oracle Manipulation Resistance**: Multi-source validation with ±2%/±5% tolerance bounds
 - **Reentrancy Protection**: Flash loan state guards across all user functions
-- **Mathematical Precision**: 27-decimal RAY precision with banker's rounding
+- **Mathematical Precision**: 27-decimal RAY precision with half-up rounding
 - **Liquidation Security**: Dynamic bonuses targeting 1.01-1.02 health factors
 - **Bad Debt Mitigation**: Immediate socialization preventing bank run scenarios
 - **Position Isolation**: NFT-based risk separation with configurable limits

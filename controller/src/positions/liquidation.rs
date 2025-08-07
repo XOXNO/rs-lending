@@ -422,31 +422,37 @@ pub trait PositionLiquidationModule:
             let seized_egld_with_bonus_ray =
                 self.mul_half_up(&seized_egld_ray, &bonus_multiplier_ray, RAY_PRECISION);
 
-            // Convert back to token units
+            // Convert back to token units (RAY precision)
             let seized_units_with_bonus_ray =
                 self.convert_egld_to_tokens_ray(&seized_egld_with_bonus_ray, &asset_price_feed);
 
-            // Calculate protocol fee on the bonus portion
+            // Cap seized units to available collateral BEFORE computing bonus split and fees
+            let capped_units_with_bonus_ray =
+                self.min(seized_units_with_bonus_ray, total_amount_ray.clone());
+
+            // Compute base (no-bonus) units from capped seized amount
             let seized_base_units_ray = self.div_half_up(
-                &seized_units_with_bonus_ray,
+                &capped_units_with_bonus_ray,
                 &bonus_multiplier_ray,
                 RAY_PRECISION,
             );
-            let liquidation_bonus_units_ray = seized_units_with_bonus_ray.clone() - seized_base_units_ray;
+            let liquidation_bonus_units_ray =
+                capped_units_with_bonus_ray.clone() - seized_base_units_ray;
 
-            // Protocol fee calculation
+            // Protocol fee on the capped bonus portion
             let protocol_fee_ray = self.mul_half_up(
                 &liquidation_bonus_units_ray,
                 &position.liquidation_fees_bps,
                 RAY_PRECISION,
             );
-            let protocol_fee_scaled = self.rescale_half_up(&protocol_fee_ray, asset_price_feed.asset_decimals);
+            let protocol_fee_scaled =
+                self.rescale_half_up(&protocol_fee_ray, asset_price_feed.asset_decimals);
 
-            let final_amount_ray = self.min(seized_units_with_bonus_ray, total_amount_ray);
-
-            // Final rescale to token decimals - this is where unavoidable precision loss occurs
-            // due to finite decimal precision of individual tokens (6 decimals for USDC, etc.)
-            let final_seizure_amount = self.rescale_half_up(&final_amount_ray, asset_price_feed.asset_decimals);
+            // Final seized transfer amount is the capped units
+            let final_seizure_amount = self.rescale_half_up(
+                &capped_units_with_bonus_ray,
+                asset_price_feed.asset_decimals,
+            );
             let seized_asset = EgldOrEsdtTokenPayment::new(
                 position.asset_id.clone(),
                 0,

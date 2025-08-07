@@ -30,7 +30,7 @@ PRICE_AGGREGATOR_PATH="./${OUTPUT_DOCKER}/${PRICE_AGGREGATOR_NAME}/${PRICE_AGGRE
 # Source JSON paths for contract verification
 CONTROLLER_SOURCE="./${OUTPUT_DOCKER}/${CONTROLLER_NAME}/${CONTROLLER_NAME}-0.0.0.source.json"
 MARKET_SOURCE="./${OUTPUT_DOCKER}/${MARKET_NAME}/${MARKET_NAME}-0.0.1.source.json"
-PRICE_AGGREGATOR_SOURCE="./${OUTPUT_DOCKER}/${PRICE_AGGREGATOR_NAME}/${PRICE_AGGREGATOR_NAME}-0.57.0.source.json"
+PRICE_AGGREGATOR_SOURCE="./${OUTPUT_DOCKER}/${PRICE_AGGREGATOR_NAME}/${PRICE_AGGREGATOR_NAME}-0.59.0.source.json"
 
 # Verification configuration
 if [ "$NETWORK" = "devnet" ]; then
@@ -128,7 +128,6 @@ LEDGER_ADDRESS_INDEX=$(get_network_value "ledger.address_index")
 ADDRESS=$(get_network_value "addresses.controller")
 LP_TEMPLATE_ADDRESS=$(get_network_value "addresses.lp_template") 
 ASH_ADDRESS=$(get_network_value "addresses.swap_router_address")
-WEGLD_ADDRESS=$(get_network_value "addresses.wegld")
 SAFE_PRICE_VIEW_ADDRESS=$(get_network_value "addresses.safe_price_view")
 ACCUMULATOR_ADDRESS=$(get_network_value "addresses.accumulator")
 PRICE_AGGREGATOR_ADDRESS=$(get_network_value "addresses.price_aggregator")
@@ -436,7 +435,7 @@ add_oracles_price_aggregator() {
 deploy_controller() {
     mxpy --verbose contract deploy --bytecode=${PROJECT_CONTROLLER} --recall-nonce \
     --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
-    --gas-limit=450000000 --outfile="deploy-${NETWORK}.json" --arguments ${LP_TEMPLATE_ADDRESS} ${PRICE_AGGREGATOR_ADDRESS} ${SAFE_PRICE_VIEW_ADDRESS} ${ACCUMULATOR_ADDRESS} ${WEGLD_ADDRESS} ${ASH_ADDRESS} \
+    --gas-limit=450000000 --outfile="deploy-${NETWORK}.json" --arguments ${LP_TEMPLATE_ADDRESS} ${PRICE_AGGREGATOR_ADDRESS} ${SAFE_PRICE_VIEW_ADDRESS} ${ACCUMULATOR_ADDRESS} ${ASH_ADDRESS} \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 }
 
