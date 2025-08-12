@@ -22,14 +22,18 @@ pub trait InterestRates: common_math::SharedMathModule {
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let annual_rate = if utilization < parameters.mid_utilization_ray {
             // Region 1: utilization < mid_utilization
-            let utilization_ratio = utilization.mul(parameters.slope1_ray).div(parameters.mid_utilization_ray);
+            let utilization_ratio = utilization
+                .mul(parameters.slope1_ray)
+                .div(parameters.mid_utilization_ray);
             parameters.base_borrow_rate_ray.add(utilization_ratio)
         } else if utilization < parameters.optimal_utilization_ray {
             // Region 2: mid_utilization <= utilization < optimal_utilization
             let excess_utilization = utilization.sub(parameters.mid_utilization_ray.clone());
-            let slope_contribution = excess_utilization
-                .mul(parameters.slope2_ray)
-                .div(parameters.optimal_utilization_ray.sub(parameters.mid_utilization_ray));
+            let slope_contribution = excess_utilization.mul(parameters.slope2_ray).div(
+                parameters
+                    .optimal_utilization_ray
+                    .sub(parameters.mid_utilization_ray),
+            );
             parameters
                 .base_borrow_rate_ray
                 .add(parameters.slope1_ray)
@@ -240,8 +244,11 @@ pub trait InterestRates: common_math::SharedMathModule {
         let accrued_interest_ray = new_total_debt.sub(old_total_debt);
 
         // Direct distribution: protocol fee first, then supplier rewards
-        let protocol_fee =
-            self.mul_half_up(&accrued_interest_ray, &parameters.reserve_factor_bps, RAY_PRECISION);
+        let protocol_fee = self.mul_half_up(
+            &accrued_interest_ray,
+            &parameters.reserve_factor_bps,
+            RAY_PRECISION,
+        );
         let supplier_rewards_ray = accrued_interest_ray - protocol_fee.clone();
 
         (supplier_rewards_ray, protocol_fee)

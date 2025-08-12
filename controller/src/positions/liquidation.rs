@@ -548,16 +548,20 @@ pub trait PositionLiquidationModule:
             let token_price_feed = self.token_price(&payment_ref.token_identifier, cache);
             let original_borrow_position =
                 self.position_by_index(&payment_ref.token_identifier, borrows, &borrows_index_map);
-            let payment_amount_decimal = self.to_decimal(payment_ref.amount.clone(), token_price_feed.asset_decimals);
+            let payment_amount_decimal =
+                self.to_decimal(payment_ref.amount.clone(), token_price_feed.asset_decimals);
 
-            let payment_egld_value_ray = self.token_egld_value_ray(&payment_amount_decimal, &token_price_feed.price_wad);
+            let payment_egld_value_ray =
+                self.token_egld_value_ray(&payment_amount_decimal, &token_price_feed.price_wad);
 
             let outstanding_debt_ray = self.total_amount_ray(&original_borrow_position, cache);
-            let outstanding_debt_egld_ray = self.token_egld_value_ray(&outstanding_debt_ray, &token_price_feed.price_wad);
+            let outstanding_debt_egld_ray =
+                self.token_egld_value_ray(&outstanding_debt_ray, &token_price_feed.price_wad);
             let mut adjusted_payment = payment_ref.clone();
             if payment_egld_value_ray > outstanding_debt_egld_ray {
                 let excess_egld_ray = payment_egld_value_ray - outstanding_debt_egld_ray.clone();
-                let excess_token_amount_decimal = self.convert_egld_to_tokens(&excess_egld_ray, &token_price_feed);
+                let excess_token_amount_decimal =
+                    self.convert_egld_to_tokens(&excess_egld_ray, &token_price_feed);
                 let excess_token_units = excess_token_amount_decimal.into_raw_units().clone();
 
                 // Only create refund if amount is greater than zero
@@ -572,10 +576,18 @@ pub trait PositionLiquidationModule:
                 }
 
                 total_repaid += &outstanding_debt_egld_ray;
-                repaid_tokens.push((adjusted_payment, outstanding_debt_egld_ray, token_price_feed).into());
+                repaid_tokens.push(
+                    (
+                        adjusted_payment,
+                        outstanding_debt_egld_ray,
+                        token_price_feed,
+                    )
+                        .into(),
+                );
             } else {
                 total_repaid += &payment_egld_value_ray;
-                repaid_tokens.push((adjusted_payment, payment_egld_value_ray, token_price_feed).into());
+                repaid_tokens
+                    .push((adjusted_payment, payment_egld_value_ray, token_price_feed).into());
             }
         }
 
@@ -657,12 +669,24 @@ pub trait PositionLiquidationModule:
         for deposit_position in positions {
             let price_feed = self.token_price(&deposit_position.asset_id, cache);
             let position_amount_ray = self.total_amount_ray(&deposit_position, cache);
-            let position_egld_value_ray = self.token_egld_value_ray(&position_amount_ray, &price_feed.price_wad);
-            let portfolio_weight_ray = self.div_half_up(&position_egld_value_ray, total_collateral_in_egld, RAY_PRECISION);
+            let position_egld_value_ray =
+                self.token_egld_value_ray(&position_amount_ray, &price_feed.price_wad);
+            let portfolio_weight_ray = self.div_half_up(
+                &position_egld_value_ray,
+                total_collateral_in_egld,
+                RAY_PRECISION,
+            );
 
-            proportion_seized +=
-                self.mul_half_up(&portfolio_weight_ray, &deposit_position.liquidation_threshold_bps, RAY_PRECISION);
-            weighted_bonus += self.mul_half_up(&portfolio_weight_ray, &deposit_position.liquidation_bonus_bps, RAY_PRECISION);
+            proportion_seized += self.mul_half_up(
+                &portfolio_weight_ray,
+                &deposit_position.liquidation_threshold_bps,
+                RAY_PRECISION,
+            );
+            weighted_bonus += self.mul_half_up(
+                &portfolio_weight_ray,
+                &deposit_position.liquidation_bonus_bps,
+                RAY_PRECISION,
+            );
         }
 
         (proportion_seized, weighted_bonus)
@@ -856,8 +880,10 @@ pub trait PositionLiquidationModule:
                     0,
                     excess_in_original.into_raw_units().clone(),
                 ));
-                let _ =
-                    repaid_tokens.set(current_index, (debt_payment, egld_asset_amount_ray, feed).into());
+                let _ = repaid_tokens.set(
+                    current_index,
+                    (debt_payment, egld_asset_amount_ray, feed).into(),
+                );
 
                 remaining_excess = self.ray_zero();
             } else {

@@ -156,8 +156,7 @@ pub trait PositionRepayModule:
         cache: &mut Cache<Self>,
         position_attributes: &AccountAttributes<Self::Api>,
     ) {
-        let mut borrow_position =
-            self.validate_borrow_position_existence(account_nonce, token_id);
+        let mut borrow_position = self.validate_borrow_position_existence(account_nonce, token_id);
 
         self.update_isolated_debt_after_repayment(
             &repay_amount_in_egld,

@@ -173,7 +173,7 @@ pub trait PositionUpdateModule:
             AccountPositionType::Deposit => market_index.supply_index_ray,
             _ => {
                 sc_panic!("Invalid position type");
-            }
+            },
         };
 
         self.update_position_event(

@@ -98,7 +98,11 @@ pub trait Controller:
     #[payable]
     #[allow_multiple_var_args]
     #[endpoint(supply)]
-    fn supply(&self, optional_account_nonce: OptionalValue<u64>, e_mode_category: OptionalValue<u8>) {
+    fn supply(
+        &self,
+        optional_account_nonce: OptionalValue<u64>,
+        e_mode_category: OptionalValue<u8>,
+    ) {
         self.require_not_paused();
         let mut cache = Cache::new(self);
         self.reentrancy_guard(cache.flash_loan_ongoing);
@@ -166,13 +170,13 @@ pub trait Controller:
         let borrow_positions =
             self.positions(account_payment.token_nonce, AccountPositionType::Borrow);
 
-        cache.allow_unsafe_price = borrow_positions.len() == 0;
+        cache.allow_unsafe_price = borrow_positions.is_empty();
 
         // Process each withdrawal
         for collateral in collaterals {
             self.validate_payment(&collateral);
-            let mut deposit_position = self
-                .deposit_position(account_payment.token_nonce, &collateral.token_identifier);
+            let mut deposit_position =
+                self.deposit_position(account_payment.token_nonce, &collateral.token_identifier);
             let feed = self.token_price(&deposit_position.asset_id, &mut cache);
             let amount_wad =
                 deposit_position.make_amount_decimal(&collateral.amount, feed.asset_decimals);
@@ -369,11 +373,11 @@ pub trait Controller:
         self.require_asset_supported(&asset_id);
 
         let mut cache = Cache::new(self);
+        cache.allow_unsafe_price = false;
         self.reentrancy_guard(cache.flash_loan_ongoing);
         let mut asset_config = cache.cached_asset_info(&asset_id);
 
         for account_nonce in account_nonces {
-            self.require_active_account(account_nonce);
             self.update_position_threshold(
                 account_nonce,
                 &asset_id,
@@ -409,6 +413,7 @@ pub trait Controller:
     fn clean_bad_debt(&self, account_nonce: u64) {
         self.require_not_paused();
         let mut cache = Cache::new(self);
+        cache.allow_unsafe_price = false;
         self.reentrancy_guard(cache.flash_loan_ongoing);
         self.require_active_account(account_nonce);
 

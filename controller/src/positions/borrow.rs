@@ -41,7 +41,8 @@ pub trait PositionBorrowModule:
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         self.require_asset_supported(debt_token_id);
 
-        let e_mode = emode::EModeModule::e_mode_category(self, account_attributes.e_mode_category_id);
+        let e_mode =
+            emode::EModeModule::e_mode_category(self, account_attributes.e_mode_category_id);
         self.ensure_e_mode_not_deprecated(&e_mode);
         let e_mode_id = account_attributes.emode_id();
         // Validate e-mode constraints first

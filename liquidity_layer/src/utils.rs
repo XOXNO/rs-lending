@@ -29,7 +29,8 @@ pub trait UtilsModule:
         let delta_ms = cache.timestamp - cache.last_timestamp;
 
         if delta_ms > 0 {
-            let borrow_rate = self.calculate_borrow_rate(cache.calculate_utilization(), cache.parameters.clone());
+            let borrow_rate =
+                self.calculate_borrow_rate(cache.calculate_utilization(), cache.parameters.clone());
             let borrow_factor = self.calculate_compounded_interest(borrow_rate.clone(), delta_ms);
             let (new_borrow_index, old_borrow_index) =
                 self.update_borrow_index(cache.borrow_index_ray.clone(), borrow_factor.clone());
@@ -69,8 +70,7 @@ pub trait UtilsModule:
         let total_supplied_value_ray = cache.calculate_original_supply_ray(&cache.supplied_ray);
         // Convert bad debt to RAY precision
         // Cap bad debt to available value (prevent negative results)
-        let capped_bad_debt_ray =
-            self.min(bad_debt_amount_ray, total_supplied_value_ray.clone());
+        let capped_bad_debt_ray = self.min(bad_debt_amount_ray, total_supplied_value_ray.clone());
 
         // Calculate remaining value after bad debt
         let remaining_value_ray = total_supplied_value_ray.clone() - capped_bad_debt_ray;
@@ -83,8 +83,11 @@ pub trait UtilsModule:
         );
 
         // Apply reduction to supply index
-        let new_supply_index_ray =
-            self.mul_half_up(&cache.supply_index_ray, &reduction_factor_ray, RAY_PRECISION);
+        let new_supply_index_ray = self.mul_half_up(
+            &cache.supply_index_ray,
+            &reduction_factor_ray,
+            RAY_PRECISION,
+        );
 
         // Ensure minimum supply index (prevent total collapse but allow significant reduction)
         let min_supply_index_ray = self.to_decimal(BigUint::from(1u64), RAY_PRECISION); // 1e-27, very small but > 0

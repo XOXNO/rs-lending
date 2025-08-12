@@ -283,13 +283,19 @@ fn views_all_markets_data_retrieval() {
     // Verify all indexes initialized properly
     for index in &market_indexes {
         assert!(
-            index.supply_index_ray >= ManagedDecimal::from_raw_units(BigUint::from(RAY), RAY_PRECISION)
+            index.supply_index_ray
+                >= ManagedDecimal::from_raw_units(BigUint::from(RAY), RAY_PRECISION)
         );
         assert!(
-            index.borrow_index_ray >= ManagedDecimal::from_raw_units(BigUint::from(RAY), RAY_PRECISION)
+            index.borrow_index_ray
+                >= ManagedDecimal::from_raw_units(BigUint::from(RAY), RAY_PRECISION)
         );
-        assert!(index.egld_price_wad > ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION));
-        assert!(index.usd_price_wad > ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION));
+        assert!(
+            index.egld_price_wad > ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION)
+        );
+        assert!(
+            index.usd_price_wad > ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION)
+        );
     }
 
     // Test all markets view
@@ -300,10 +306,12 @@ fn views_all_markets_data_retrieval() {
     for market in &markets {
         assert!(!market.market_contract_address.is_zero());
         assert!(
-            market.price_in_egld_wad > ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION)
+            market.price_in_egld_wad
+                > ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION)
         );
         assert!(
-            market.price_in_usd_wad > ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION)
+            market.price_in_usd_wad
+                > ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION)
         );
     }
 }
@@ -494,11 +502,7 @@ fn views_error_handling_non_existent_data() {
 
     // Test error for non-existent collateral token
     let custom_error_message = format!("Token not existing in the account {}", USDC_TOKEN.as_str());
-    state.collateral_amount_for_token_non_existing(
-        1,
-        USDC_TOKEN,
-        custom_error_message.as_bytes(),
-    );
+    state.collateral_amount_for_token_non_existing(1, USDC_TOKEN, custom_error_message.as_bytes());
 }
 
 /// Tests complex liquidation estimation with bad debt scenario.

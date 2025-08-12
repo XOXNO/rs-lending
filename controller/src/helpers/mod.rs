@@ -451,7 +451,11 @@ pub trait MathsModule: common_math::SharedMathModule {
             RAY_PRECISION,
         );
         // Calculate the scaled term: k * gap
-        let scaled_term_ray = self.mul_half_up(&k_scaling_factor_bps, &health_factor_gap_ratio_ray, RAY_PRECISION);
+        let scaled_term_ray = self.mul_half_up(
+            &k_scaling_factor_bps,
+            &health_factor_gap_ratio_ray,
+            RAY_PRECISION,
+        );
         // Clamp the scaled term between 0 and 1
         let clamped_term_ray = self.min(scaled_term_ray, self.ray());
         // Calculate the bonus range: max_bonus - min_bonus
@@ -459,7 +463,8 @@ pub trait MathsModule: common_math::SharedMathModule {
         let bonus_range_ray = max_bonus.rescale(RAY_PRECISION) - min_bonus.clone();
 
         // Calculate the bonus increment: bonus_range * clamped_term
-        let bonus_increment_ray = self.mul_half_up(&bonus_range_ray, &clamped_term_ray, RAY_PRECISION);
+        let bonus_increment_ray =
+            self.mul_half_up(&bonus_range_ray, &clamped_term_ray, RAY_PRECISION);
         // Final bonus: min_bonus + bonus_increment
         min_bonus.clone() + bonus_increment_ray
     }
@@ -572,7 +577,8 @@ pub trait MathsModule: common_math::SharedMathModule {
                 self.mul_half_up_signed(&target_health, &total_debt_ray_signed, RAY_PRECISION);
             let numerator_signed = numerator_term_signed - weighted_collateral_ray;
             let denominator_signed = target_health - denominator_term_signed;
-            let d_ideal_signed = self.div_half_up_signed(&numerator_signed, &denominator_signed, RAY_PRECISION);
+            let d_ideal_signed =
+                self.div_half_up_signed(&numerator_signed, &denominator_signed, RAY_PRECISION);
 
             // Determine debt_to_repay, will fall back to d_max if d_ideal is negative since it's not possible to be healthy anymore
             if d_ideal_signed.sign() == Sign::Minus {
@@ -673,23 +679,26 @@ pub trait MathsModule: common_math::SharedMathModule {
     ) {
         let ray = self.ray();
 
-        let target_health_factor_primary_ray = ray.clone().into_raw_units() / 50u32 + ray.into_raw_units(); // 1.02 RAY
+        let target_health_factor_primary_ray =
+            ray.clone().into_raw_units() / 50u32 + ray.into_raw_units(); // 1.02 RAY
 
-        let (safest_debt_ray, safest_bonus_ray, safe_new_health_factor_ray) = self.simulate_liquidation(
-            weighted_collateral_in_egld,
-            proportion_seized,
-            total_collateral,
-            total_debt,
-            min_bonus,
-            current_health_factor,
-            self.to_decimal_ray(target_health_factor_primary_ray),
-        );
+        let (safest_debt_ray, safest_bonus_ray, safe_new_health_factor_ray) = self
+            .simulate_liquidation(
+                weighted_collateral_in_egld,
+                proportion_seized,
+                total_collateral,
+                total_debt,
+                min_bonus,
+                current_health_factor,
+                self.to_decimal_ray(target_health_factor_primary_ray),
+            );
 
         if safe_new_health_factor_ray >= self.ray() {
             return (safest_debt_ray, safest_bonus_ray);
         }
 
-        let target_health_factor_secondary_ray = ray.clone().into_raw_units() / 100u32 + ray.into_raw_units(); // 1.01 RAY
+        let target_health_factor_secondary_ray =
+            ray.clone().into_raw_units() / 100u32 + ray.into_raw_units(); // 1.01 RAY
         let (limit_debt_ray, limit_bonus_ray, _) = self.simulate_liquidation(
             weighted_collateral_in_egld,
             proportion_seized,
@@ -769,9 +778,12 @@ pub trait MathsModule: common_math::SharedMathModule {
         let one_plus_bonus_bps = self.bps() + liquidation_bonus.clone();
 
         // Compute seized_weighted
-        let seized_proportion_ray = self.mul_half_up(proportion_seized, debt_to_repay_ray, RAY_PRECISION);
-        let seized_weighted_raw_ray = self.mul_half_up(&seized_proportion_ray, &one_plus_bonus_bps, RAY_PRECISION);
-        let seized_weighted_ray = self.min(seized_weighted_raw_ray, weighted_collateral_ray.clone());
+        let seized_proportion_ray =
+            self.mul_half_up(proportion_seized, debt_to_repay_ray, RAY_PRECISION);
+        let seized_weighted_raw_ray =
+            self.mul_half_up(&seized_proportion_ray, &one_plus_bonus_bps, RAY_PRECISION);
+        let seized_weighted_ray =
+            self.min(seized_weighted_raw_ray, weighted_collateral_ray.clone());
         // Compute new weighted collateral and total debt
         let new_weighted_collateral_ray = weighted_collateral_ray.clone() - seized_weighted_ray;
         let new_total_debt_ray = if debt_to_repay_ray >= total_debt_ray {
@@ -842,7 +854,8 @@ pub trait MathsModule: common_math::SharedMathModule {
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
-        let calculated_bonus_ray = self.calculate_linear_bonus(current_health_factor, &target_health_factor, min_bonus);
+        let calculated_bonus_ray =
+            self.calculate_linear_bonus(current_health_factor, &target_health_factor, min_bonus);
 
         self.compute_liquidation_details(
             total_collateral,

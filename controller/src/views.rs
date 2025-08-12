@@ -70,7 +70,6 @@ pub trait ViewsModule:
         assets: MultiValueEncoded<EgldOrEsdtTokenIdentifier>,
     ) -> ManagedVec<MarketIndexView<Self::Api>> {
         let mut cache = Cache::new(self);
-        cache.allow_unsafe_price = true;
         // Views allow unsafe prices to show monitoring data even when protocol would block operations
         // This matches the behavior of operational functions - cache defaults to allow_unsafe_price = true
         let mut markets = ManagedVec::new();
@@ -231,7 +230,6 @@ pub trait ViewsModule:
         token_id: &EgldOrEsdtTokenIdentifier,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let mut cache = Cache::new(self);
-        cache.allow_unsafe_price = false;
         let feed = self.token_price(token_id, &mut cache);
         match self
             .positions(account_nonce, AccountPositionType::Borrow)
@@ -251,10 +249,7 @@ pub trait ViewsModule:
     /// # Returns
     /// - Total borrow value in EGLD as a `ManagedDecimal`.
     #[view(getTotalBorrowInEgld)]
-    fn total_borrow_in_egld(
-        &self,
-        account_nonce: u64,
-    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+    fn total_borrow_in_egld(&self, account_nonce: u64) -> ManagedDecimal<Self::Api, NumDecimals> {
         let mut cache = Cache::new(self);
         let borrow_positions = self
             .positions(account_nonce, AccountPositionType::Borrow)
@@ -281,13 +276,14 @@ pub trait ViewsModule:
         let deposit_positions = self.positions(account_nonce, AccountPositionType::Deposit);
 
         let mut cache = Cache::new(self);
-        cache.allow_unsafe_price = false;
 
-        deposit_positions.values().fold(self.wad_zero(), |accumulator, dp| {
-            let feed = self.token_price(&dp.asset_id, &mut cache);
-            let amount = self.total_amount_ray(&dp, &mut cache);
-            accumulator + self.token_egld_value(&amount, &feed.price_wad)
-        })
+        deposit_positions
+            .values()
+            .fold(self.wad_zero(), |accumulator, dp| {
+                let feed = self.token_price(&dp.asset_id, &mut cache);
+                let amount = self.total_amount_ray(&dp, &mut cache);
+                accumulator + self.token_egld_value(&amount, &feed.price_wad)
+            })
     }
 
     /// Computes the liquidation collateral available in EGLD.
@@ -322,10 +318,7 @@ pub trait ViewsModule:
     /// # Returns
     /// - LTV-weighted collateral in EGLD as a `ManagedDecimal`.
     #[view(getLtvCollateralInEgld)]
-    fn ltv_collateral_in_egld(
-        &self,
-        account_nonce: u64,
-    ) -> ManagedDecimal<Self::Api, NumDecimals> {
+    fn ltv_collateral_in_egld(&self, account_nonce: u64) -> ManagedDecimal<Self::Api, NumDecimals> {
         let deposit_positions = self.positions(account_nonce, AccountPositionType::Deposit);
 
         let mut cache = Cache::new(self);

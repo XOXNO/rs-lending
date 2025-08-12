@@ -352,11 +352,7 @@ fn market_complete_exit_multi_user() {
 
     // Verify collateral removed
     let custom_error_message = format!("Token not existing in the account {}", USDC_TOKEN.as_str());
-    state.collateral_amount_for_token_non_existing(
-        2,
-        USDC_TOKEN,
-        custom_error_message.as_bytes(),
-    );
+    state.collateral_amount_for_token_non_existing(2, USDC_TOKEN, custom_error_message.as_bytes());
 
     // Verify account token burned after full exit
     state
@@ -384,11 +380,7 @@ fn market_complete_exit_multi_user() {
     );
 
     let custom_error_message = format!("Token not existing in the account {}", EGLD_TOKEN.as_str());
-    state.collateral_amount_for_token_non_existing(
-        1,
-        EGLD_TOKEN,
-        custom_error_message.as_bytes(),
-    );
+    state.collateral_amount_for_token_non_existing(1, EGLD_TOKEN, custom_error_message.as_bytes());
 
     // Owner withdraws remaining funds
     let supplied_collateral = state.collateral_amount_for_token(3, EGLD_TOKEN);
@@ -399,11 +391,7 @@ fn market_complete_exit_multi_user() {
         3,
     );
 
-    state.collateral_amount_for_token_non_existing(
-        3,
-        EGLD_TOKEN,
-        custom_error_message.as_bytes(),
-    );
+    state.collateral_amount_for_token_non_existing(3, EGLD_TOKEN, custom_error_message.as_bytes());
 
     // Verify final reserve state
     let reserves = state.market_reserves(state.egld_market.clone());
@@ -974,7 +962,10 @@ fn configuration_update_with_existing_supply() {
         &BigUint::from(555u64),  // liquidation_bonus
         &BigUint::from(1800u64), // 18% reserve_factor
         config.config.is_isolated_asset,
-        config.config.isolation_debt_ceiling_usd_wad.into_raw_units(),
+        config
+            .config
+            .isolation_debt_ceiling_usd_wad
+            .into_raw_units(),
         config.config.is_siloed_borrowing,
         config.config.is_flashloanable,
         config.config.flashloan_fee_bps.into_raw_units(),
@@ -1056,7 +1047,10 @@ fn configuration_update_endpoint_safe_values() {
         &BigUint::from(500u64),  // 5% liquidation_bonus
         &BigUint::from(1800u64), // 18% reserve_factor
         config.config.is_isolated_asset,
-        config.config.isolation_debt_ceiling_usd_wad.into_raw_units(),
+        config
+            .config
+            .isolation_debt_ceiling_usd_wad
+            .into_raw_units(),
         config.config.is_siloed_borrowing,
         config.config.is_flashloanable,
         config.config.flashloan_fee_bps.into_raw_units(),
@@ -1103,7 +1097,10 @@ fn configuration_update_risky_values_no_borrows() {
         &BigUint::from(555u64),
         &BigUint::from(600u64),
         config.config.is_isolated_asset,
-        config.config.isolation_debt_ceiling_usd_wad.into_raw_units(),
+        config
+            .config
+            .isolation_debt_ceiling_usd_wad
+            .into_raw_units(),
         config.config.is_siloed_borrowing,
         config.config.is_flashloanable,
         config.config.flashloan_fee_bps.into_raw_units(),
@@ -1182,7 +1179,10 @@ fn configuration_update_risky_values_with_borrows_allowed() {
         &BigUint::from(640u64),
         &BigUint::from(640u64),
         config.config.is_isolated_asset,
-        config.config.isolation_debt_ceiling_usd_wad.into_raw_units(),
+        config
+            .config
+            .isolation_debt_ceiling_usd_wad
+            .into_raw_units(),
         config.config.is_siloed_borrowing,
         config.config.is_flashloanable,
         config.config.flashloan_fee_bps.into_raw_units(),
@@ -1271,7 +1271,10 @@ fn configuration_update_risky_values_health_factor_violation() {
         &BigUint::from(600u64),
         &BigUint::from(600u64),
         config.config.is_isolated_asset,
-        config.config.isolation_debt_ceiling_usd_wad.into_raw_units(),
+        config
+            .config
+            .isolation_debt_ceiling_usd_wad
+            .into_raw_units(),
         config.config.is_siloed_borrowing,
         config.config.is_flashloanable,
         config.config.flashloan_fee_bps.into_raw_units(),
@@ -1313,7 +1316,10 @@ fn configuration_update_invalid_ltv_threshold_relationship() {
         &BigUint::from(555u64),
         &BigUint::from(600u64),
         config.config.is_isolated_asset,
-        config.config.isolation_debt_ceiling_usd_wad.into_raw_units(),
+        config
+            .config
+            .isolation_debt_ceiling_usd_wad
+            .into_raw_units(),
         config.config.is_siloed_borrowing,
         config.config.is_flashloanable,
         config.config.flashloan_fee_bps.into_raw_units(),

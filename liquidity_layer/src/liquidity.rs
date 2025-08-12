@@ -473,7 +473,8 @@ pub trait LiquidityModule:
 
         match position.position_type {
             AccountPositionType::Borrow => {
-                let current_debt_actual = cache.calculate_original_borrow_ray(&position.scaled_amount_ray);
+                let current_debt_actual =
+                    cache.calculate_original_borrow_ray(&position.scaled_amount_ray);
 
                 // Apply immediate supply index reduction for bad debt socialization
                 self.apply_bad_debt_to_supply_index(&mut cache, current_debt_actual);
@@ -515,7 +516,11 @@ pub trait LiquidityModule:
 
         if revenue_scaled == self.ray_zero() {
             self.emit_market_update(&cache, price);
-            return EgldOrEsdtTokenPayment::new(cache.parameters.asset_id.clone(), 0, BigUint::zero());
+            return EgldOrEsdtTokenPayment::new(
+                cache.parameters.asset_id.clone(),
+                0,
+                BigUint::zero(),
+            );
         }
 
         let treasury_actual = cache.calculate_original_supply(&revenue_scaled);
@@ -534,12 +539,14 @@ pub trait LiquidityModule:
             } else {
                 // Partial claim: calculate proportional scaled amount
                 // scaled_to_burn = revenue_scaled * (amount_to_transfer / treasury_actual)
-                let ratio_ray = self.div_half_up(&amount_to_transfer, &treasury_actual, RAY_PRECISION);
+                let ratio_ray =
+                    self.div_half_up(&amount_to_transfer, &treasury_actual, RAY_PRECISION);
                 self.mul_half_up(&revenue_scaled, &ratio_ray, RAY_PRECISION)
             };
 
             // Ensure we don't burn more than what exists (safety check)
-            let actual_revenue_burn_ray = self.min(scaled_to_burn.clone(), cache.revenue_ray.clone());
+            let actual_revenue_burn_ray =
+                self.min(scaled_to_burn.clone(), cache.revenue_ray.clone());
             let actual_supplied_burn_ray = self.min(scaled_to_burn, cache.supplied_ray.clone());
 
             // Burn the calculated amount

@@ -416,7 +416,6 @@ pub struct MarketIndexView<M: ManagedTypeApi> {
     pub within_second_tolerance: bool,
 }
 
-
 #[type_abi]
 #[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode, Clone)]
 pub struct LiquidationEstimate<M: ManagedTypeApi> {

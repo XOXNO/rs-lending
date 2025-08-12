@@ -45,11 +45,7 @@ fn withdraw_excess_amount_capped_to_available_success() {
 
     // Verify token was fully withdrawn
     let custom_error_message = format!("Token not existing in the account {}", USDC_TOKEN.as_str());
-    state.collateral_amount_for_token_non_existing(
-        1,
-        USDC_TOKEN,
-        custom_error_message.as_bytes(),
-    );
+    state.collateral_amount_for_token_non_existing(1, USDC_TOKEN, custom_error_message.as_bytes());
 }
 
 /// Tests that withdrawing fails when pool has insufficient liquidity due to borrows.

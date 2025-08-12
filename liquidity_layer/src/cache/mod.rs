@@ -114,10 +114,7 @@ where
     /// - `ManagedDecimal<C::Api, NumDecimals>`: The value adjusted to pool asset_decimals.
     ///
     /// **Security Tip**: No overflow checks; assumes `value` fits within `BigUint` constraints.
-    pub fn decimal_value(
-        &self,
-        value: &BigUint<C::Api>,
-    ) -> ManagedDecimal<C::Api, NumDecimals> {
+    pub fn decimal_value(&self, value: &BigUint<C::Api>) -> ManagedDecimal<C::Api, NumDecimals> {
         self.sc_ref
             .to_decimal(value.clone(), self.parameters.asset_decimals)
     }

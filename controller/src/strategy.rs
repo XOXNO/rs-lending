@@ -179,8 +179,12 @@ pub trait SnapModule:
                 });
             } else {
                 // Payment in different token: requires conversion to collateral
-                require!(optional_steps_payment.is_some(), ERROR_MULTIPLY_REQUIRE_EXTRA_STEPS);
-                let steps_payment = unsafe { optional_steps_payment.into_option().unwrap_unchecked() };
+                require!(
+                    optional_steps_payment.is_some(),
+                    ERROR_MULTIPLY_REQUIRE_EXTRA_STEPS
+                );
+                let steps_payment =
+                    unsafe { optional_steps_payment.into_option().unwrap_unchecked() };
 
                 // Convert payment token to collateral token via swap router
                 let received = self.convert_token_from_to(
@@ -366,7 +370,7 @@ pub trait SnapModule:
         let received = self.swap_tokens(
             existing_debt_token,
             new_debt_token,
-            &received_debt.into_raw_units(),
+            received_debt.into_raw_units(),
             &caller,
             steps,
         );
@@ -600,7 +604,9 @@ pub trait SnapModule:
             from_token,
             from_amount,
             to_token,
-            optional_steps.into_option().unwrap_or(ManagedArgBuffer::new()),
+            optional_steps
+                .into_option()
+                .unwrap_or(ManagedArgBuffer::new()),
             account.token_nonce,
             &caller,
             &account_attributes,

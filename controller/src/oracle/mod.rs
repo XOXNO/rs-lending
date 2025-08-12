@@ -248,9 +248,7 @@ pub trait OracleModule:
         match configs.oracle_type {
             OracleType::Derived => self.derived_price(configs, cache, true),
             OracleType::Lp => self.safe_lp_price(configs, cache),
-            OracleType::Normal => {
-                self.normal_price_in_egld(configs, original_market_token, cache)
-            },
+            OracleType::Normal => self.normal_price_in_egld(configs, original_market_token, cache),
             _ => sc_panic!(ERROR_INVALID_ORACLE_TOKEN_TYPE),
         }
     }
@@ -281,16 +279,14 @@ pub trait OracleModule:
             cache,
         );
 
-        let off_chain_lp_price = self.lp_price(
+        self.lp_price(
             configs,
-            &reserve_first,
-            &reserve_second,
-            &total_supply,
+            reserve_first,
+            reserve_second,
+            total_supply,
             &off_chain_first_egld_price,
             &off_chain_second_egld_price,
-        );
-
-        off_chain_lp_price
+        )
     }
 
     /// Fetches current LP reserves and converts them to consistent decimal format.
@@ -305,8 +301,7 @@ pub trait OracleModule:
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
-        let (reserve_0, reserve_1, total_supply) =
-            self.reserves(&configs.oracle_contract_address);
+        let (reserve_0, reserve_1, total_supply) = self.reserves(&configs.oracle_contract_address);
         let safe_first_token_feed = self.token_price(&configs.base_token_id, cache);
         let safe_second_token_feed = self.token_price(&configs.quote_token_id, cache);
 
@@ -446,9 +441,7 @@ pub trait OracleModule:
         match configs.exchange_source {
             ExchangeSource::XEGLD => self.xegld_derived_price(configs),
             ExchangeSource::LEGLD => self.legld_derived_price(configs),
-            ExchangeSource::LXOXNO => {
-                self.lxoxno_derived_price(configs, cache, safe_price_check)
-            },
+            ExchangeSource::LXOXNO => self.lxoxno_derived_price(configs, cache, safe_price_check),
             _ => sc_panic!(ERROR_INVALID_EXCHANGE_SOURCE),
         }
     }
@@ -864,7 +857,11 @@ pub trait OracleModule:
             self.aggregator_price_feed(ticker, &cache.price_aggregator_sc, max_seconds_stale);
         let token_usd_price_wad = self.to_decimal_wad(feed.price);
         self.rescale_half_up(
-            &self.div_half_up(&token_usd_price_wad, &cache.egld_usd_price_wad, RAY_PRECISION),
+            &self.div_half_up(
+                &token_usd_price_wad,
+                &cache.egld_usd_price_wad,
+                RAY_PRECISION,
+            ),
             WAD_PRECISION,
         )
     }
@@ -913,20 +910,10 @@ pub trait OracleModule:
         last_upper: &ManagedDecimal<Self::Api, NumDecimals>,
         last_lower: &ManagedDecimal<Self::Api, NumDecimals>,
     ) -> (bool, bool) {
-        let within_first = self.is_within_anchor(
-            price1,
-            price2,
-            first_upper,
-            first_lower,
-        );
-        
-        let within_second = self.is_within_anchor(
-            price1,
-            price2,
-            last_upper,
-            last_lower,
-        );
-        
+        let within_first = self.is_within_anchor(price1, price2, first_upper, first_lower);
+
+        let within_second = self.is_within_anchor(price1, price2, last_upper, last_lower);
+
         (within_first, within_second)
     }
 
@@ -1068,8 +1055,10 @@ pub trait OracleModule:
         // STEP 3: Prepare values for square root operations in Arda formula
         // These represent K × price_ratio terms used in the geometric mean calculation
         // Mathematical basis: sqrt(Reserve_A × Reserve_B × Price_ratio)
-        let inner_x_wad = self.mul_half_up(&constant_product_wad, &price_ratio_x_wad, WAD_PRECISION);
-        let inner_y_wad = self.mul_half_up(&constant_product_wad, &price_ratio_y_wad, WAD_PRECISION);
+        let inner_x_wad =
+            self.mul_half_up(&constant_product_wad, &price_ratio_x_wad, WAD_PRECISION);
+        let inner_y_wad =
+            self.mul_half_up(&constant_product_wad, &price_ratio_y_wad, WAD_PRECISION);
 
         // STEP 4a: Calculate modified reserve X' using geometric mean approach
         // X' = sqrt(K × Price_B/Price_A) where K is the constant product
@@ -1266,13 +1255,7 @@ pub trait OracleModule:
     ) {
         let ticker = self.token_ticker(token_id, cache);
         if ticker == cache.egld_ticker {
-            return (
-                None,
-                None,
-                self.wad(),
-                true,
-                true,
-            );
+            return (None, None, self.wad(), true, true);
         }
 
         let oracle_data = self.token_oracle(token_id);
@@ -1282,8 +1265,9 @@ pub trait OracleModule:
         match configs.oracle_type {
             OracleType::Lp => {
                 // Reuse existing LP price functions
-                let (reserve_first, reserve_second, total_supply) = self.lp_reserves(&configs, cache);
-                
+                let (reserve_first, reserve_second, total_supply) =
+                    self.lp_reserves(&configs, cache);
+
                 let safe_lp_price = self.lp_on_chain_price(
                     &configs,
                     &reserve_first,
@@ -1291,7 +1275,7 @@ pub trait OracleModule:
                     &total_supply,
                     cache,
                 );
-                
+
                 let off_chain_lp_price = self.off_chain_lp_price(
                     &configs,
                     &reserve_first,
@@ -1299,7 +1283,7 @@ pub trait OracleModule:
                     &total_supply,
                     cache,
                 );
-                
+
                 let (within_first, within_second) = self.check_price_tolerance(
                     &safe_lp_price,
                     &off_chain_lp_price,
@@ -1308,9 +1292,9 @@ pub trait OracleModule:
                     &configs.tolerance.last_upper_ratio_bps,
                     &configs.tolerance.last_lower_ratio_bps,
                 );
-                
+
                 let final_price = self.safe_lp_price(&configs, cache);
-                
+
                 (
                     Some(safe_lp_price),
                     Some(off_chain_lp_price),
@@ -1318,26 +1302,31 @@ pub trait OracleModule:
                     within_first,
                     within_second,
                 )
-            }
+            },
             OracleType::Normal => {
-                let aggregator_price = self.aggregator_price_if_applicable(&configs, token_id, cache);
+                let aggregator_price =
+                    self.aggregator_price_if_applicable(&configs, token_id, cache);
                 let safe_price = self.safe_price_if_applicable(&configs, token_id, cache);
-                let final_price = self.calculate_final_price(aggregator_price.clone(), safe_price.clone(), &configs, cache);
-                
+                let final_price = self.calculate_final_price(
+                    aggregator_price.clone(),
+                    safe_price.clone(),
+                    &configs,
+                    cache,
+                );
+
                 let (within_first, within_second) = match (&aggregator_price, &safe_price) {
-                    (OptionalValue::Some(agg), OptionalValue::Some(safe)) => {
-                        self.check_price_tolerance(
+                    (OptionalValue::Some(agg), OptionalValue::Some(safe)) => self
+                        .check_price_tolerance(
                             agg,
                             safe,
                             &configs.tolerance.first_upper_ratio_bps,
                             &configs.tolerance.first_lower_ratio_bps,
                             &configs.tolerance.last_upper_ratio_bps,
                             &configs.tolerance.last_lower_ratio_bps,
-                        )
-                    }
+                        ),
                     _ => (true, true), // Single source, no deviation
                 };
-                
+
                 // Convert OptionalValue to Option for consistent return type
                 let safe_price_opt = match safe_price {
                     OptionalValue::Some(price) => Some(price),
@@ -1347,30 +1336,31 @@ pub trait OracleModule:
                     OptionalValue::Some(price) => Some(price),
                     OptionalValue::None => None,
                 };
-                
-                (safe_price_opt, optional_aggregator_price, final_price, within_first, within_second)
-            }
+
+                (
+                    safe_price_opt,
+                    optional_aggregator_price,
+                    final_price,
+                    within_first,
+                    within_second,
+                )
+            },
             OracleType::Derived => {
                 let price = self.derived_price(&configs, cache, true);
-                
+
                 // SECURITY FIX: Check underlying asset tolerance for LXOXNO
                 let (within_first, within_second) = match configs.exchange_source {
                     ExchangeSource::LXOXNO => {
                         // Recursively check XOXNO tolerance status
-                        let (_, _, _, first, second) = self.price_components(&configs.base_token_id, cache);
+                        let (_, _, _, first, second) =
+                            self.price_components(&configs.base_token_id, cache);
                         (first, second)
                     },
                     _ => (true, true), // XEGLD and LEGLD only depend on exchange rate contracts
                 };
-                
-                (
-                    None,
-                    None,
-                    price,
-                    within_first,
-                    within_second,
-                )
-            }
+
+                (None, None, price, within_first, within_second)
+            },
             _ => sc_panic!(ERROR_INVALID_ORACLE_TOKEN_TYPE),
         }
     }

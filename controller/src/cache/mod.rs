@@ -47,7 +47,6 @@ where
             egld_provider.max_price_stale_seconds,
         );
         let egld_usd_price_wad = sc_ref.to_decimal_wad(egld_price_feed.price);
-        let safe_price_view = sc_ref.safe_price_view().get();
 
         Cache {
             sc_ref,
@@ -61,7 +60,7 @@ where
             egld_ticker: egld_token_id.into_name(),
             allow_unsafe_price: true,
             flash_loan_ongoing: sc_ref.flash_loan_ongoing().get(),
-            safe_price_view,
+            safe_price_view: sc_ref.safe_price_view().get(),
             current_timestamp: sc_ref.blockchain().get_block_timestamp_ms(),
         }
     }
@@ -121,8 +120,7 @@ where
         &mut self,
         token_id: &EgldOrEsdtTokenIdentifier<C::Api>,
     ) -> OracleProvider<C::Api> {
-        let canonical_token_id = if self.sc_ref.token_ticker(token_id, self) == self.egld_ticker
-        {
+        let canonical_token_id = if self.sc_ref.token_ticker(token_id, self) == self.egld_ticker {
             EgldOrEsdtTokenIdentifier::egld()
         } else {
             token_id.clone()

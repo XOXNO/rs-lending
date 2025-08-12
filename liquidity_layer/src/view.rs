@@ -29,8 +29,10 @@ pub trait ViewModule:
         let zero_wad = self.to_decimal(BigUint::zero(), parameters.asset_decimals);
         let supplied = self.supplied().get();
         let borrowed = self.borrowed().get();
-        let total_borrowed_ray = self.mul_half_up(&borrowed, &self.borrow_index().get(), RAY_PRECISION);
-        let total_supplied_ray = self.mul_half_up(&supplied, &self.supply_index().get(), RAY_PRECISION);
+        let total_borrowed_ray =
+            self.mul_half_up(&borrowed, &self.borrow_index().get(), RAY_PRECISION);
+        let total_supplied_ray =
+            self.mul_half_up(&supplied, &self.supply_index().get(), RAY_PRECISION);
         if total_supplied_ray == zero_wad {
             self.ray_zero()
         } else {
@@ -56,7 +58,11 @@ pub trait ViewModule:
         let parameters = self.parameters().get();
         let utilization = self.capital_utilisation();
         let borrow_rate = self.calculate_borrow_rate(utilization.clone(), parameters.clone());
-        self.calculate_deposit_rate(utilization, borrow_rate, parameters.reserve_factor_bps.clone())
+        self.calculate_deposit_rate(
+            utilization,
+            borrow_rate,
+            parameters.reserve_factor_bps.clone(),
+        )
     }
 
     /// Returns current annual percentage rate for borrowers.

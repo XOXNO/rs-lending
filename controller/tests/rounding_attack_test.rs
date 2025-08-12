@@ -50,8 +50,7 @@ fn test_rounding_attack_with_minimum_amounts() {
     let attacker_account_nonce = 2;
 
     // Get initial collateral balance
-    let initial_collateral =
-        state.collateral_amount_for_token(attacker_account_nonce, USDC_TOKEN);
+    let initial_collateral = state.collateral_amount_for_token(attacker_account_nonce, USDC_TOKEN);
     println!("Initial collateral: {:?}", initial_collateral);
 
     // Try to borrow the smallest possible amount (1 unit = 0.000001 USDC)
@@ -84,8 +83,7 @@ fn test_rounding_attack_with_minimum_amounts() {
     );
 
     // Check borrow amount after interest
-    let borrow_after_interest =
-        state.borrow_amount_for_token(attacker_account_nonce, USDC_TOKEN);
+    let borrow_after_interest = state.borrow_amount_for_token(attacker_account_nonce, USDC_TOKEN);
     println!("Borrow amount after 1 year: {:?}", borrow_after_interest);
 
     // Calculate interest accrued
@@ -93,8 +91,7 @@ fn test_rounding_attack_with_minimum_amounts() {
     println!("Interest accrued (raw units): {:?}", interest_raw);
 
     // Try to withdraw all collateral (should fail due to outstanding debt)
-    let total_collateral =
-        state.collateral_amount_for_token(attacker_account_nonce, USDC_TOKEN);
+    let total_collateral = state.collateral_amount_for_token(attacker_account_nonce, USDC_TOKEN);
     state.withdraw_asset_error(
         &attacker,
         USDC_TOKEN,
@@ -113,8 +110,7 @@ fn test_rounding_attack_with_minimum_amounts() {
     );
 
     // Now withdraw all collateral
-    let final_collateral =
-        state.collateral_amount_for_token(attacker_account_nonce, USDC_TOKEN);
+    let final_collateral = state.collateral_amount_for_token(attacker_account_nonce, USDC_TOKEN);
     state.withdraw_asset_den(
         &attacker,
         USDC_TOKEN,
@@ -291,8 +287,7 @@ fn test_rounding_at_precision_boundaries() {
     println!("Initial debt after borrow: {:?}", initial_debt);
 
     // Also check total deposits before interest accrual
-    let initial_collateral =
-        state.collateral_amount_for_token(borrower_account_nonce, USDC_TOKEN);
+    let initial_collateral = state.collateral_amount_for_token(borrower_account_nonce, USDC_TOKEN);
     println!("Initial collateral: {:?}", initial_collateral);
 
     // Debug: Check what happens after the tiny supply

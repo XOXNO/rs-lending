@@ -3,7 +3,9 @@ pub use common_constants::{BPS_PRECISION, RAY_PRECISION, WAD_PRECISION};
 
 use controller::ERROR_INSUFFICIENT_COLLATERAL;
 
-use multiversx_sc::types::{EgldOrEsdtTokenIdentifier, ManagedDecimal, ManagedVec, MultiValueEncoded};
+use multiversx_sc::types::{
+    EgldOrEsdtTokenIdentifier, ManagedDecimal, ManagedVec, MultiValueEncoded,
+};
 use multiversx_sc_scenario::imports::{BigUint, OptionalValue, TestAddress};
 pub mod constants;
 pub mod proxys;
@@ -878,10 +880,9 @@ fn seize_dust_collateral_after_bad_debt_success() {
 
     assert!(state.total_borrow_in_egld(2) > state.total_collateral_in_egld(2));
     let initial_egld_revenue = state.market_revenue(egld_pool_address.clone());
-    let before_clean_market_indexes =
-        state.all_market_indexes(MultiValueEncoded::from_iter(vec![
-            EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN),
-        ]));
+    let before_clean_market_indexes = state.all_market_indexes(MultiValueEncoded::from_iter(vec![
+        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN),
+    ]));
     println!(
         "usdc_index: {:?}",
         before_clean_market_indexes.get(0).supply_index_ray
@@ -913,10 +914,9 @@ fn seize_dust_collateral_after_bad_debt_success() {
     // Revenue should be the initial revenue + the collateral left before bad debt socialization
     assert!(final_egld_revenue == initial_egld_revenue + left_collateral_egld);
 
-    let after_clean_market_indexes =
-        state.all_market_indexes(MultiValueEncoded::from_iter(vec![
-            EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN),
-        ]));
+    let after_clean_market_indexes = state.all_market_indexes(MultiValueEncoded::from_iter(vec![
+        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN),
+    ]));
     let re_paid_usdc_debt = initial_debt_usdc - left_bad_debt_usdc;
     println!("re_paid_usdc_debt: {:?}", re_paid_usdc_debt);
     println!(
@@ -1150,23 +1150,29 @@ fn e_mode_liquidate_leave_bad_debt_success() {
     let borrowed = state.total_borrow_in_egld(2);
     println!("borrowed: {:?}", borrowed);
     let estimated_liquidation_amount = state.liquidation_estimations(2, ManagedVec::new());
-    println!("estimated_bonus_rate: {:?}", estimated_liquidation_amount.bonus_rate_bps * ManagedDecimal::from_raw_units(BigUint::from(100u64), 0));
-    println!("estimated_bonus_amount: {:?}", estimated_liquidation_amount.max_egld_payment_wad);
+    println!(
+        "estimated_bonus_rate: {:?}",
+        estimated_liquidation_amount.bonus_rate_bps
+            * ManagedDecimal::from_raw_units(BigUint::from(100u64), 0)
+    );
+    println!(
+        "estimated_bonus_amount: {:?}",
+        estimated_liquidation_amount.max_egld_payment_wad
+    );
     // Assert invariants for each seized item: fee <= seized, and seized <= current deposit
     for i in 0..estimated_liquidation_amount.seized_collaterals.len() {
-        let seized = estimated_liquidation_amount
-            .seized_collaterals
-            .get(i);
-        let fee = estimated_liquidation_amount
-            .protocol_fees
-            .get(i);
+        let seized = estimated_liquidation_amount.seized_collaterals.get(i);
+        let fee = estimated_liquidation_amount.protocol_fees.get(i);
         println!("Seized collateral: {:?}", seized.token_identifier);
         println!("Seized amount: {:?}", seized.amount);
         println!("Protocol fee: {:?}", fee.token_identifier);
         println!("Protocol fee amount: {:?}", fee.amount);
 
         // Fee-on-capped-bonus must be <= seized amount (both in token units)
-        assert!(fee.amount <= seized.amount, "Protocol fee must not exceed seized amount");
+        assert!(
+            fee.amount <= seized.amount,
+            "Protocol fee must not exceed seized amount"
+        );
 
         // Seized amount must not exceed the current deposited amount for that asset
         // state helper expects a TestTokenIdentifier (alias in tests) not the SDK identifier

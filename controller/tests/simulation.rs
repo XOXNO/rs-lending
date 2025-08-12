@@ -329,8 +329,7 @@ fn stress_test_random_user_actions_large_scale() {
                             nonce,
                         );
                         assert!(
-                            state.total_borrow_in_egld(nonce).into_raw_units()
-                                == &BigUint::zero()
+                            state.total_borrow_in_egld(nonce).into_raw_units() == &BigUint::zero()
                         );
                     }
                 }
@@ -401,8 +400,7 @@ fn stress_test_random_user_actions_large_scale() {
                                 == &BigUint::zero()
                         );
                         assert!(
-                            state.total_borrow_in_egld(nonce).into_raw_units()
-                                == &BigUint::zero()
+                            state.total_borrow_in_egld(nonce).into_raw_units() == &BigUint::zero()
                         );
                         user_nonces.remove(&user_addr);
                     }

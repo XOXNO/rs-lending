@@ -210,8 +210,11 @@ pub trait LendingUtilsModule:
             let amount_egld = self.token_egld_value_ray(&amount, &price_feed.price_wad);
 
             total_collateral += &amount_egld;
-            weighted_collateral +=
-                self.mul_half_up(&amount_egld, &position.liquidation_threshold_bps, RAY_PRECISION);
+            weighted_collateral += self.mul_half_up(
+                &amount_egld,
+                &position.liquidation_threshold_bps,
+                RAY_PRECISION,
+            );
             ltv_collateral +=
                 self.mul_half_up(&amount_egld, &position.loan_to_value_bps, RAY_PRECISION);
         }
@@ -233,11 +236,13 @@ pub trait LendingUtilsModule:
         positions: &ManagedVec<AccountPosition<Self::Api>>,
         cache: &mut Cache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        positions.iter().fold(self.ray_zero(), |accumulator, position| {
-            let price_feed = self.token_price(&position.asset_id, cache);
-            let amount = self.total_amount_ray(&position, cache);
-            accumulator + self.token_egld_value_ray(&amount, &price_feed.price_wad)
-        })
+        positions
+            .iter()
+            .fold(self.ray_zero(), |accumulator, position| {
+                let price_feed = self.token_price(&position.asset_id, cache);
+                let amount = self.total_amount_ray(&position, cache);
+                accumulator + self.token_egld_value_ray(&amount, &price_feed.price_wad)
+            })
     }
 
     /// Updates the global debt tracker for isolated assets in USD terms.
