@@ -149,3 +149,5 @@ pub static ERROR_WITHDRAW_AMOUNT_LESS_THAN_FEE: &[u8] =
 
 pub static ERROR_POSITION_LIMIT_EXCEEDED: &[u8] =
     b"Position limit exceeded. Maximum positions per NFT reached.";
+
+pub static ERROR_NO_DEBT_PAYMENTS_TO_PROCESS: &[u8] = b"No debt payments to process.";

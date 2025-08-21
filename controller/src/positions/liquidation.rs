@@ -2,7 +2,9 @@ use common_constants::{RAY_PRECISION, WAD_PRECISION};
 use common_structs::{AccountPosition, AccountPositionType, PriceFeedShort};
 
 use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validation};
-use common_errors::ERROR_HEALTH_FACTOR;
+use common_errors::{
+    ERROR_HEALTH_FACTOR, ERROR_INVALID_PAYMENTS, ERROR_NO_DEBT_PAYMENTS_TO_PROCESS,
+};
 
 use super::{account, borrow, emode, repay, update, withdraw};
 
@@ -222,6 +224,8 @@ pub trait PositionLiquidationModule:
                 .transfer_if_not_empty();
         }
 
+        require!(!repaid_tokens.is_empty(), ERROR_NO_DEBT_PAYMENTS_TO_PROCESS);
+
         for debt_payment_data in repaid_tokens {
             let (debt_payment, debt_egld_value, debt_price_feed) = debt_payment_data.into_tuple();
             self.process_repayment(
@@ -329,6 +333,7 @@ pub trait PositionLiquidationModule:
         debt_repayments: &ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
         initial_caller: &ManagedAddress,
     ) {
+        require!(!debt_repayments.is_empty(), ERROR_INVALID_PAYMENTS);
         for debt_payment in debt_repayments {
             self.validate_payment(&debt_payment);
         }
