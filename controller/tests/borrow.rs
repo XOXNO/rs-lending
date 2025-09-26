@@ -1,7 +1,6 @@
+use common_constants::RAY;
 use controller::{ERROR_BORROW_CAP, ERROR_POSITION_LIMIT_EXCEEDED};
-use multiversx_sc::types::{
-    EgldOrEsdtTokenIdentifier, EgldOrEsdtTokenPayment, ManagedDecimal, MultiValueEncoded,
-};
+use multiversx_sc::types::{EgldOrEsdtTokenIdentifier, EgldOrEsdtTokenPayment, MultiValueEncoded};
 use multiversx_sc_scenario::{
     api::StaticApi,
     imports::{BigUint, OptionalValue, TestAddress},
@@ -59,12 +58,19 @@ fn borrow_single_asset_against_collateral_success() {
         EGLD_DECIMALS,
     );
 
-    // Verify the borrow and collateral positions are recorded
-    let borrowed_amount = state.borrow_amount_for_token(2, EGLD_TOKEN);
-    let collateral_amount = state.collateral_amount_for_token(2, USDC_TOKEN);
-
-    assert!(borrowed_amount > ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS));
-    assert!(collateral_amount > ManagedDecimal::from_raw_units(BigUint::zero(), USDC_DECIMALS));
+    state.assert_borrow_raw_eq(
+        2,
+        &EGLD_TOKEN,
+        scaled_amount(50, EGLD_DECIMALS),
+        "borrowed EGLD amount should match request",
+    );
+    state.assert_collateral_raw_eq(
+        2,
+        &USDC_TOKEN,
+        scaled_amount(5000, USDC_DECIMALS),
+        "USDC collateral should equal supplied amount",
+    );
+    state.assert_health_factor_at_least(2, RAY);
 }
 
 /// Tests that borrowing fails when the borrow cap for an asset is exceeded.
@@ -102,6 +108,14 @@ fn borrow_exceeds_cap_error() {
         CAPPED_DECIMALS,
     );
 
+    let expected_capped_debt = scaled_amount(1, CAPPED_DECIMALS);
+    state.assert_borrow_raw_eq(
+        1,
+        &CAPPED_TOKEN,
+        expected_capped_debt.clone(),
+        "initial capped borrow should be tracked exactly",
+    );
+
     // Second borrow fails (exceeds cap)
     state.borrow_asset_error(
         &supplier,
@@ -110,6 +124,13 @@ fn borrow_exceeds_cap_error() {
         1, // account_nonce
         CAPPED_DECIMALS,
         ERROR_BORROW_CAP,
+    );
+
+    state.assert_borrow_raw_eq(
+        1,
+        &CAPPED_TOKEN,
+        expected_capped_debt,
+        "failed borrow must not mutate capped debt",
     );
 }
 
@@ -180,11 +201,19 @@ fn borrow_bulk_new_positions_success() {
     // Execute bulk borrow
     state.borrow_assets(2, &borrower, assets);
 
-    // Verify both positions were created with exact amounts
-    let usdc_borrowed = state.borrow_amount_for_token(2, USDC_TOKEN);
-    let egld_borrowed = state.borrow_amount_for_token(2, EGLD_TOKEN);
-    assert_eq!(usdc_borrowed.into_raw_units().clone(), usdc_borrow.amount);
-    assert_eq!(egld_borrowed.into_raw_units().clone(), egld_borrow.amount);
+    state.assert_borrow_raw_eq(
+        2,
+        &USDC_TOKEN,
+        usdc_borrow.amount.clone(),
+        "USDC borrow recorded precisely",
+    );
+    state.assert_borrow_raw_eq(
+        2,
+        &EGLD_TOKEN,
+        egld_borrow.amount.clone(),
+        "EGLD borrow recorded precisely",
+    );
+    state.assert_health_factor_at_least(2, RAY);
 }
 
 /// Tests bulk borrowing when the account already has existing borrow positions.
@@ -237,6 +266,15 @@ fn borrow_bulk_existing_positions_success() {
     state.borrow_asset(&borrower, USDC_TOKEN, BigUint::from(1u64), 2, USDC_DECIMALS);
     state.borrow_asset(&borrower, EGLD_TOKEN, BigUint::from(1u64), 2, EGLD_DECIMALS);
 
+    let existing_usdc_debt = state
+        .borrow_amount_for_token(2, USDC_TOKEN)
+        .into_raw_units()
+        .clone();
+    let existing_egld_debt = state
+        .borrow_amount_for_token(2, EGLD_TOKEN)
+        .into_raw_units()
+        .clone();
+
     // Prepare additional bulk borrow
     let mut assets: MultiValueEncoded<StaticApi, EgldOrEsdtTokenPayment<StaticApi>> =
         MultiValueEncoded::new();
@@ -258,11 +296,22 @@ fn borrow_bulk_existing_positions_success() {
     // Execute bulk borrow on existing positions
     state.borrow_assets(2, &borrower, assets);
 
-    // Verify positions were updated (amounts should be greater than new borrow due to existing debt)
-    let usdc_total_borrowed = state.borrow_amount_for_token(2, USDC_TOKEN);
-    let egld_total_borrowed = state.borrow_amount_for_token(2, EGLD_TOKEN);
-    assert!(usdc_total_borrowed.into_raw_units().clone() > usdc_borrow.amount);
-    assert!(egld_total_borrowed.into_raw_units().clone() > egld_borrow.amount);
+    let expected_usdc_total = existing_usdc_debt.clone() + usdc_borrow.amount.clone();
+    let expected_egld_total = existing_egld_debt.clone() + egld_borrow.amount.clone();
+
+    state.assert_borrow_raw_eq(
+        2,
+        &USDC_TOKEN,
+        expected_usdc_total,
+        "existing USDC debt should accumulate bulk borrow",
+    );
+    state.assert_borrow_raw_eq(
+        2,
+        &EGLD_TOKEN,
+        expected_egld_total,
+        "existing EGLD debt should accumulate bulk borrow",
+    );
+    state.assert_health_factor_at_least(2, RAY);
 }
 
 /// Tests that borrowing beyond the position limit for an NFT fails.
@@ -424,7 +473,15 @@ fn borrow_bulk_exceeds_position_limit_error() {
     );
     assets.push(usdc_borrow);
 
+    let total_borrow_before = state.total_borrow_in_egld(2).into_raw_units().clone();
+
     // This bulk borrow should fail because it would create 2 new positions
     // when the limit is 1
     state.borrow_assets_error(2, &borrower, assets, ERROR_POSITION_LIMIT_EXCEEDED);
+
+    let total_borrow_after = state.total_borrow_in_egld(2).into_raw_units().clone();
+    assert_eq!(
+        total_borrow_after, total_borrow_before,
+        "bulk borrow failure must leave account debt unchanged",
+    );
 }

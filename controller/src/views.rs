@@ -25,6 +25,18 @@ pub trait ViewsModule:
     + positions::emode::EModeModule
     + validation::ValidationModule
 {
+    /// Estimates liquidation outcomes for a proposed set of debt payments.
+    ///
+    /// Purpose: Simulate liquidation to preview seized collateral, protocol fees,
+    /// refunds, and applied bonus, without mutating state.
+    ///
+    /// Arguments
+    /// - `account_nonce`: Account NFT nonce to simulate
+    /// - `debt_payments`: Candidate payments to apply in liquidation
+    ///
+    /// Returns
+    /// - `LiquidationEstimate` with seized collaterals, protocol fees, refunds,
+    ///   max repay amount (WAD), and bonus rate (BPS)
     #[view(liquidationEstimations)]
     fn liquidation_estimations(
         &self,
@@ -64,6 +76,16 @@ pub trait ViewsModule:
         }
     }
 
+    /// Retrieves updated market indexes and price information for multiple assets.
+    ///
+    /// Purpose: Provide monitoring data (supply/borrow indices and prices) for UIs.
+    /// Uses simulated index updates and price components with tolerances.
+    ///
+    /// Arguments
+    /// - `assets`: Asset identifiers to fetch
+    ///
+    /// Returns
+    /// - `ManagedVec<MarketIndexView>` entries with indices and price data
     #[view(getAllMarketIndexes)]
     fn all_market_indexes(
         &self,

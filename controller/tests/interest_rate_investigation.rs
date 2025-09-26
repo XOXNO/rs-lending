@@ -17,12 +17,6 @@ fn investigate_interest_rate_calculation() {
     state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
 
-    println!("\n=== Test Setup ===");
-    println!("Base borrow rate: {} (1%)", R_BASE);
-    println!("Max borrow rate: {} (69%)", R_MAX);
-    println!("Slope1: {} (5%)", R_SLOPE1);
-    println!("Slope2: {} (15%)", R_SLOPE2);
-
     // Setup liquidity exactly as in the problematic test
     state.supply_asset_den(
         &supplier,
@@ -46,9 +40,13 @@ fn investigate_interest_rate_calculation() {
     let borrower_nonce = 2;
 
     // Check initial state
-    println!("\n=== Before Borrow ===");
     let total_supply = state.market_reserves(state.usdc_market.clone());
-    println!("Total reserves in market: {:?}", total_supply);
+    let expected_initial_reserves = BigUint::from(1_000_000_000u64) + BigUint::from(1_000_001u64);
+    assert_eq!(
+        total_supply.into_raw_units(),
+        &expected_initial_reserves,
+        "Market reserves should include supplier and borrower liquidity before borrow",
+    );
 
     // Borrow
     state.borrow_asset_den(
@@ -58,26 +56,27 @@ fn investigate_interest_rate_calculation() {
         borrower_nonce,
     );
 
-    println!("\n=== After Borrow ===");
     let initial_debt = state.borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
-    println!("Initial debt: {:?}", initial_debt);
 
     // Get market state
     let total_borrows = state.market_borrowed(state.usdc_market.clone());
     let total_reserves = state.market_reserves(state.usdc_market.clone());
-    println!("Total borrows: {:?}", total_borrows);
-    println!("Total reserves: {:?}", total_reserves);
+    assert!(
+        total_borrows.into_raw_units() >= initial_debt.into_raw_units(),
+        "Market borrow index should be at least borrower debt",
+    );
+    assert!(
+        total_reserves.into_raw_units() < total_supply.into_raw_units(),
+        "Reserves should shrink after borrowing",
+    );
 
     // Calculate utilization
-    println!("\n=== Utilization Calculation ===");
     // The issue is that total_borrows has 27 decimals (RAY) while we're calculating percentage
     // We need to scale properly
     let utilization_ray = state.market_utilization(state.usdc_market.clone());
-    println!("Utilization (RAY): {:?}", utilization_ray);
 
     // Convert from RAY to percentage (RAY = 1e27, so divide by 1e25 to get percentage)
     let utilization_pct = utilization_ray.into_raw_units() / &BigUint::from(10u64).pow(25);
-    println!("Utilization: ~{:?}%", utilization_pct);
 
     // Assert: Verify utilization is correct (0.333333 / 1000.666668 ≈ 0.0333%)
     assert!(
@@ -100,11 +99,7 @@ fn investigate_interest_rate_calculation() {
     );
 
     let debt_after_1s = state.borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
-    println!("\n=== After 1 Second ===");
-    println!("Debt after 1 second: {:?}", debt_after_1s);
-
     let interest_1s = debt_after_1s.into_raw_units() - initial_debt.into_raw_units();
-    println!("Interest accrued in 1 second: {:?} units", interest_1s);
 
     // Assert: No interest should accrue in just 1 second
     assert_eq!(
@@ -121,7 +116,11 @@ fn investigate_interest_rate_calculation() {
     } else {
         BigUint::zero()
     };
-    println!("Implied annual rate: ~{:?}%", annual_rate_pct);
+    assert_eq!(
+        annual_rate_pct,
+        BigUint::zero(),
+        "Instantaneous rate should remain zero when no interest accrues",
+    );
 
     // Now test 1 month as in original
     state.change_timestamp(SECONDS_PER_YEAR / 12);
@@ -136,11 +135,7 @@ fn investigate_interest_rate_calculation() {
     );
 
     let debt_after_month = state.borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
-    println!("\n=== After 1 Month ===");
-    println!("Debt after 1 month: {:?}", debt_after_month);
-
     let interest_month = debt_after_month.into_raw_units() - &BigUint::from(333_333u64);
-    println!("Interest accrued in 1 month: {:?} units", interest_month);
 
     // Assert: Interest should be approximately 279 units for 1% APR
     // 333,333 * 0.01 / 12 ≈ 277.78 units
@@ -159,9 +154,7 @@ fn investigate_interest_rate_calculation() {
     );
 
     // Check if multiple positions are being counted
-    println!("\n=== Position Analysis ===");
     let collateral = state.collateral_amount_for_token(borrower_nonce, USDC_TOKEN);
-    println!("Total collateral position: {:?}", collateral);
 
     // Assert: Collateral should be slightly more than initial due to supply interest
     assert!(
@@ -197,7 +190,6 @@ fn investigate_interest_rate_calculation() {
         "Reserves should be less than initial deposits"
     );
 
-    println!("\n=== Test Results ===");
     println!("✓ Utilization calculation correct: ~0.0333%");
     println!("✓ No interest accrual in 1 second");
     println!("✓ Monthly interest correct: ~279 units");

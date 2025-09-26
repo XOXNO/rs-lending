@@ -80,6 +80,11 @@ pub trait Storage {
     #[storage_mapper("safe_price_view")]
     fn safe_price_view(&self) -> SingleValueMapper<ManagedAddress>;
 
+    /// Get the swap router address
+    /// Configures the external router used for token conversions in strategies.
+    ///
+    /// Returns
+    /// - `ManagedAddress`: Router smart contract address
     #[view(getSwapRouterAddress)]
     #[storage_mapper("swap_router_address")]
     fn swap_router(&self) -> SingleValueMapper<ManagedAddress>;
@@ -135,7 +140,11 @@ pub trait Storage {
         asset: &EgldOrEsdtTokenIdentifier,
     ) -> SingleValueMapper<OracleProvider<Self::Api>>;
 
-    // Reentrancy guard
+    /// Reentrancy guard flag for flash loans
+    /// Indicates if a flash loan is currently in progress to block nested calls.
+    ///
+    /// Returns
+    /// - `bool`: True if flash loan ongoing
     #[view(isFlashLoanOngoing)]
     #[storage_mapper("flash_loan_ongoing")]
     fn flash_loan_ongoing(&self) -> SingleValueMapper<bool>;
@@ -219,6 +228,15 @@ pub trait Storage {
         liquidity_pool_address: ManagedAddress,
     ) -> SingleValueMapper<u64, ManagedAddress>;
 
+    /// Retrieves a timestamped price from the aggregator by token pair names.
+    ///
+    /// Arguments
+    /// - `price_aggregator_address`: Aggregator address
+    /// - `from`: Base token ticker
+    /// - `to`: Quote token ticker
+    ///
+    /// Returns
+    /// - `TimestampedPrice`: Price and timestamp
     #[storage_mapper_from_address("rounds")]
     fn rounds(
         &self,
@@ -227,12 +245,16 @@ pub trait Storage {
         to: ManagedBuffer,
     ) -> SingleValueMapper<TimestampedPrice<Self::Api>, ManagedAddress>;
 
+    /// Retrieves on-chain state for an XExchange pair.
+    /// Returns token reserves and fees for pricing routines.
     #[storage_mapper_from_address("state")]
     fn xexchange_pair_state(
         &self,
         dex_address: ManagedAddress,
     ) -> SingleValueMapper<StateXExchange, ManagedAddress>;
 
+    /// Retrieves on-chain state for an OneDex pair by index.
+    /// Returns reserves and fees per specified pair id.
     #[storage_mapper_from_address("pair_state")]
     fn onedex_pair_state(
         &self,
@@ -240,6 +262,13 @@ pub trait Storage {
         pair_id: usize,
     ) -> SingleValueMapper<StateOnedex, ManagedAddress>;
 
+    /// Returns whether the external price aggregator contract is paused.
+    ///
+    /// Arguments
+    /// - `price_aggregator_address`: Aggregator contract address
+    ///
+    /// Returns
+    /// - `bool`: True if the aggregator is paused
     #[storage_mapper_from_address("pause_module:paused")]
     fn price_aggregator_paused_state(
         &self,

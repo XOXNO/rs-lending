@@ -770,6 +770,8 @@ pub trait PositionLiquidationModule:
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
     ) {
+        let initial_health_factor = health_factor.clone();
+
         let (estimated_max_repayable_debt_ray, bonus) = self.estimate_liquidation_amount(
             weighted_collateral_in_egld,
             proportion_seized,
@@ -779,12 +781,51 @@ pub trait PositionLiquidationModule:
             health_factor,
         );
         let final_repayment_amount_ray = if egld_payment_ray > &self.ray_zero() {
-            self.min(egld_payment_ray.clone(), estimated_max_repayable_debt_ray)
+            self.min(
+                egld_payment_ray.clone(),
+                estimated_max_repayable_debt_ray.clone(),
+            )
         } else {
             estimated_max_repayable_debt_ray.clone()
         };
 
-        let liquidation_premium_ray = bonus.clone() + self.ray();
+        let effective_bonus = {
+            let projected_health_factor = self.calculate_post_liquidation_health_factor(
+                weighted_collateral_in_egld,
+                total_debt_in_egld,
+                &final_repayment_amount_ray,
+                proportion_seized,
+                &bonus,
+            );
+
+            let repayment_is_capped = final_repayment_amount_ray < estimated_max_repayable_debt_ray;
+
+            let significant_shortfall = if repayment_is_capped {
+                let tolerance_ratio_bps = self.to_decimal_bps(BigUint::from(100u64));
+                let tolerance_ratio_ray = self.rescale_half_up(&tolerance_ratio_bps, RAY_PRECISION);
+                let tolerance_amount = self.mul_half_up(
+                    &estimated_max_repayable_debt_ray,
+                    &tolerance_ratio_ray,
+                    RAY_PRECISION,
+                );
+                let repayment_gap =
+                    estimated_max_repayable_debt_ray.clone() - final_repayment_amount_ray.clone();
+                repayment_gap > tolerance_amount
+            } else {
+                false
+            };
+
+            if repayment_is_capped
+                && significant_shortfall
+                && projected_health_factor <= initial_health_factor
+            {
+                base_liquidation_bonus.clone()
+            } else {
+                bonus
+            }
+        };
+
+        let liquidation_premium_ray = effective_bonus.clone() + self.ray();
 
         let collateral_to_seize = self.mul_half_up(
             &final_repayment_amount_ray,
@@ -792,7 +833,11 @@ pub trait PositionLiquidationModule:
             RAY_PRECISION,
         );
 
-        (final_repayment_amount_ray, collateral_to_seize, bonus)
+        (
+            final_repayment_amount_ray,
+            collateral_to_seize,
+            effective_bonus,
+        )
     }
 
     /// Processes excess liquidation payments using a reverse-chronological adjustment algorithm.

@@ -89,7 +89,6 @@ impl LendingPoolTestState {
         let price_aggregator_sc = setup_price_aggregator(&mut world);
 
         let accumulator_sc = setup_accumulator(&mut world);
-        println!("accumulator_sc: {:?}", accumulator_sc);
         let swap_mock = setup_swap_mock(&mut world);
         let (
             lending_sc,
@@ -1734,6 +1733,39 @@ impl LendingPoolTestState {
             .run();
     }
 
+    /// Multiply with error expectation
+    pub fn multiply_error(
+        &mut self,
+        from: &TestAddress,
+        e_mode_category: u8,
+        collateral_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
+        debt_to_flash_loan: BigUint<StaticApi>,
+        debt_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
+        mode: PositionMode,
+        steps: ManagedArgBuffer<StaticApi>,
+        steps_payment: OptionalValue<ManagedArgBuffer<StaticApi>>,
+        payments: ManagedVec<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
+        error_message: &[u8],
+    ) {
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(&self.lending_sc)
+            .typed(proxy_lending_pool::ControllerProxy)
+            .multiply(
+                e_mode_category,
+                collateral_token,
+                debt_to_flash_loan,
+                debt_token,
+                mode,
+                steps,
+                steps_payment,
+            )
+            .payment(payments)
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
     /// Swap debt
     pub fn swap_debt(
         &mut self,
@@ -1759,6 +1791,33 @@ impl LendingPoolTestState {
             .run();
     }
 
+    /// Swap debt with error expectation
+    pub fn swap_debt_error(
+        &mut self,
+        from: &TestAddress,
+        existing_debt_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
+        new_debt_amount_raw: &BigUint<StaticApi>,
+        new_debt_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
+        steps: ManagedArgBuffer<StaticApi>,
+        account_payment: ManagedVec<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
+        error_message: &[u8],
+    ) {
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(&self.lending_sc)
+            .typed(proxy_lending_pool::ControllerProxy)
+            .swap_debt(
+                existing_debt_token,
+                new_debt_amount_raw,
+                new_debt_token,
+                steps,
+            )
+            .payment(account_payment)
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
     /// Swap collateral
     pub fn swap_collateral(
         &mut self,
@@ -1776,6 +1835,28 @@ impl LendingPoolTestState {
             .typed(proxy_lending_pool::ControllerProxy)
             .swap_collateral(current_collateral, from_amount, new_collateral, steps)
             .payment(account_payment)
+            .run();
+    }
+
+    /// Swap collateral with error expectation
+    pub fn swap_collateral_error(
+        &mut self,
+        from: &TestAddress,
+        current_collateral: &EgldOrEsdtTokenIdentifier<StaticApi>,
+        from_amount: BigUint<StaticApi>,
+        new_collateral: &EgldOrEsdtTokenIdentifier<StaticApi>,
+        steps: ManagedArgBuffer<StaticApi>,
+        account_payment: ManagedVec<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
+        error_message: &[u8],
+    ) {
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(&self.lending_sc)
+            .typed(proxy_lending_pool::ControllerProxy)
+            .swap_collateral(current_collateral, from_amount, new_collateral, steps)
+            .payment(account_payment)
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
     }
 
@@ -3357,6 +3438,16 @@ pub fn setup_xoxno_liquid_staking(
                 .set_token_id(UXOXNO_TOKEN.to_token_identifier())
         });
 
+    // Mirror xEGLD pattern: set the LS token id (LXOXNO) issued by the liquid staking contract
+    world
+        .tx()
+        .from(OWNER_ADDRESS)
+        .to(xoxno_liquid_staking_sc.clone())
+        .whitebox(rs_liquid_xoxno::contract_obj, |sc| {
+            sc.ls_token()
+                .set_token_id(LXOXNO_TOKEN.to_token_identifier())
+        });
+
     world.set_esdt_local_roles(
         xoxno_liquid_staking_sc.clone(),
         LXOXNO_TOKEN.as_bytes(),
@@ -3673,6 +3764,10 @@ pub fn setup_accounts(
             BigUint::from(10000u64) * BigUint::from(10u64).pow(XOXNO_DECIMALS as u32),
         )
         .esdt_balance(
+            LXOXNO_TOKEN,
+            BigUint::from(10000u64) * BigUint::from(10u64).pow(LXOXNO_DECIMALS as u32),
+        )
+        .esdt_balance(
             ISOLATED_TOKEN,
             BigUint::from(1000u64) * BigUint::from(10u64).pow(ISOLATED_DECIMALS as u32),
         )
@@ -3716,6 +3811,10 @@ pub fn setup_accounts(
         .esdt_balance(
             XOXNO_TOKEN,
             BigUint::from(10000u64) * BigUint::from(10u64).pow(XOXNO_DECIMALS as u32),
+        )
+        .esdt_balance(
+            LXOXNO_TOKEN,
+            BigUint::from(10000u64) * BigUint::from(10u64).pow(LXOXNO_DECIMALS as u32),
         )
         .esdt_balance(
             CAPPED_TOKEN,
@@ -4090,5 +4189,226 @@ impl LendingPoolTestState {
             .protocol_revenue()
             .returns(ReturnsResult)
             .run()
+    }
+}
+
+// ============================================
+// TEST ASSERTION HELPERS
+// ============================================
+
+/// Returns the on-chain base units for a human-readable amount.
+pub fn scaled_amount(amount: u128, decimals: usize) -> BigUint<StaticApi> {
+    BigUint::from(amount) * BigUint::from(10u64).pow(decimals as u32)
+}
+
+/// Returns `true` when the supplied and borrowed values differ by at most `tolerance`.
+fn raw_diff_within(
+    first: &BigUint<StaticApi>,
+    second: &BigUint<StaticApi>,
+    tolerance: &BigUint<StaticApi>,
+) -> bool {
+    if first >= second {
+        (first.clone() - second).le(tolerance)
+    } else {
+        (second.clone() - first).le(tolerance)
+    }
+}
+
+impl LendingPoolTestState {
+    /// Assert helper to verify the exact borrow balance stored on-chain.
+    pub fn assert_borrow_raw_eq(
+        &mut self,
+        account_position: u64,
+        token_id: &TestTokenIdentifier,
+        expected_raw: BigUint<StaticApi>,
+        context: &str,
+    ) {
+        let actual_raw = self
+            .borrow_amount_for_token(account_position, token_id.clone())
+            .into_raw_units()
+            .clone();
+
+        assert_eq!(actual_raw, expected_raw, "{}", context,);
+    }
+
+    /// Assert helper to verify the collateral balance stored on-chain.
+    pub fn assert_collateral_raw_eq(
+        &mut self,
+        account_position: u64,
+        token_id: &TestTokenIdentifier,
+        expected_raw: BigUint<StaticApi>,
+        context: &str,
+    ) {
+        let actual_raw = self
+            .collateral_amount_for_token(account_position, token_id.clone())
+            .into_raw_units()
+            .clone();
+
+        assert_eq!(actual_raw, expected_raw, "{}", context,);
+    }
+
+    /// Assert helper to ensure the health factor stays above the supplied threshold (in RAY units).
+    pub fn assert_health_factor_at_least(&mut self, account_position: u64, minimum_ray: u128) {
+        let actual_raw = self
+            .account_health_factor(account_position)
+            .into_raw_units()
+            .clone();
+
+        assert!(
+            actual_raw >= BigUint::from(minimum_ray),
+            "health factor below safety threshold: expected >= {minimum_ray}, got {actual_raw:?}",
+        );
+    }
+
+    /// Assert helper for total borrow across all tokens (denominated in EGLD value, RAY precision).
+    pub fn assert_total_borrow_raw_eq(
+        &mut self,
+        account_position: u64,
+        expected_raw: BigUint<StaticApi>,
+        context: &str,
+    ) {
+        let actual_raw = self
+            .total_borrow_in_egld(account_position)
+            .into_raw_units()
+            .clone();
+
+        assert_eq!(actual_raw, expected_raw, "{}", context);
+    }
+
+    /// Assert helper allowing tolerance when comparing total borrow in EGLD with RAY precision.
+    pub fn assert_total_borrow_raw_within(
+        &mut self,
+        account_position: u64,
+        expected_raw: BigUint<StaticApi>,
+        tolerance_raw: BigUint<StaticApi>,
+        context: &str,
+    ) {
+        let actual_raw = self
+            .total_borrow_in_egld(account_position)
+            .into_raw_units()
+            .clone();
+
+        assert!(
+            raw_diff_within(&actual_raw, &expected_raw, &tolerance_raw),
+            "{} | expected {:?} (±{:?}) got {:?}",
+            context,
+            expected_raw,
+            tolerance_raw,
+            actual_raw,
+        );
+    }
+
+    /// Assert helper for total collateral across all markets (denominated in EGLD value, RAY precision).
+    pub fn assert_total_collateral_raw_eq(
+        &mut self,
+        account_position: u64,
+        expected_raw: BigUint<StaticApi>,
+        context: &str,
+    ) {
+        let actual_raw = self
+            .total_collateral_in_egld(account_position)
+            .into_raw_units()
+            .clone();
+
+        assert_eq!(actual_raw, expected_raw, "{}", context);
+    }
+
+    /// Assert helper allowing tolerance when comparing total collateral in EGLD with RAY precision.
+    pub fn assert_total_collateral_raw_within(
+        &mut self,
+        account_position: u64,
+        expected_raw: BigUint<StaticApi>,
+        tolerance_raw: BigUint<StaticApi>,
+        context: &str,
+    ) {
+        let actual_raw = self
+            .total_collateral_in_egld(account_position)
+            .into_raw_units()
+            .clone();
+
+        assert!(
+            raw_diff_within(&actual_raw, &expected_raw, &tolerance_raw),
+            "{} | expected {:?} (±{:?}) got {:?}",
+            context,
+            expected_raw,
+            tolerance_raw,
+            actual_raw,
+        );
+    }
+
+    /// Assert helper that allows a tolerance (in raw units) for rounding-sensitive flows.
+    pub fn assert_borrow_raw_within(
+        &mut self,
+        account_position: u64,
+        token_id: &TestTokenIdentifier,
+        expected_raw: BigUint<StaticApi>,
+        tolerance_raw: BigUint<StaticApi>,
+        context: &str,
+    ) {
+        let actual_raw = self
+            .borrow_amount_for_token(account_position, token_id.clone())
+            .into_raw_units()
+            .clone();
+
+        assert!(
+            raw_diff_within(&actual_raw, &expected_raw, &tolerance_raw),
+            "{} | expected {:?} (±{:?}) got {:?}",
+            context,
+            expected_raw,
+            tolerance_raw,
+            actual_raw,
+        );
+    }
+
+    /// Assert helper that expects the account to have no collateral entry for the token.
+    pub fn assert_no_collateral_entry(
+        &mut self,
+        account_position: u64,
+        token_id: &TestTokenIdentifier,
+    ) {
+        let expected_message = format!("Token not existing in the account {}", token_id.as_str());
+        self.collateral_amount_for_token_non_existing(
+            account_position,
+            token_id.clone(),
+            expected_message.as_bytes(),
+        );
+    }
+
+    /// Assert helper that expects the account to have no borrow entry for the token.
+    pub fn assert_no_borrow_entry(
+        &mut self,
+        account_position: u64,
+        token_id: &TestTokenIdentifier,
+    ) {
+        let expected_message = format!("Token not existing in the account {}", token_id.as_str());
+        self.borrow_amount_for_token_non_existing(
+            account_position,
+            token_id.clone(),
+            expected_message.as_bytes(),
+        );
+    }
+
+    /// Assert helper that allows a tolerance (in raw units) for collateral balances.
+    pub fn assert_collateral_raw_within(
+        &mut self,
+        account_position: u64,
+        token_id: &TestTokenIdentifier,
+        expected_raw: BigUint<StaticApi>,
+        tolerance_raw: BigUint<StaticApi>,
+        context: &str,
+    ) {
+        let actual_raw = self
+            .collateral_amount_for_token(account_position, token_id.clone())
+            .into_raw_units()
+            .clone();
+
+        assert!(
+            raw_diff_within(&actual_raw, &expected_raw, &tolerance_raw),
+            "{} | expected {:?} (±{:?}) got {:?}",
+            context,
+            expected_raw,
+            tolerance_raw,
+            actual_raw,
+        );
     }
 }

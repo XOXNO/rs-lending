@@ -41,6 +41,16 @@ fn supply_with_inactive_account_nonce_error() {
         false, // is_vault = false
         ERROR_ACCOUNT_NOT_IN_THE_MARKET,
     );
+
+    assert_eq!(
+        state.last_account_nonce(),
+        0,
+        "failed supply must not create new accounts",
+    );
+    assert!(
+        state.accounts().into_iter().next().is_none(),
+        "no account entries expected after rejected supply",
+    );
 }
 
 /// Tests that supplying beyond the supply cap for an asset fails.
@@ -68,6 +78,21 @@ fn supply_exceeds_cap_error() {
         OptionalValue::None,
         false, // is_vault = false
     );
+    let expected_collateral = scaled_amount(1, CAPPED_DECIMALS);
+    state.assert_collateral_raw_eq(
+        1,
+        &CAPPED_TOKEN,
+        expected_collateral.clone(),
+        "initial supply should mint collateral",
+    );
+
+    let expected_capped_supply = scaled_amount(1, CAPPED_DECIMALS);
+    state.assert_collateral_raw_eq(
+        1,
+        &CAPPED_TOKEN,
+        expected_capped_supply.clone(),
+        "initial capped supply should be tracked",
+    );
 
     // Second supply exceeds cap and fails
     state.supply_asset_error(
@@ -79,6 +104,18 @@ fn supply_exceeds_cap_error() {
         OptionalValue::None,
         false, // is_vault = false
         ERROR_SUPPLY_CAP,
+    );
+
+    state.assert_collateral_raw_eq(
+        1,
+        &CAPPED_TOKEN,
+        expected_capped_supply,
+        "failed capped supply must not mutate balance",
+    );
+    assert_eq!(
+        state.last_account_nonce(),
+        1,
+        "no new accounts should be minted after cap violation",
     );
 }
 
@@ -103,6 +140,16 @@ fn supply_without_payments_error() {
         OptionalValue::None,
         false, // is_vault = false
         ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS,
+    );
+
+    assert_eq!(
+        state.last_account_nonce(),
+        0,
+        "empty supply call should not mint accounts",
+    );
+    assert!(
+        state.accounts().into_iter().next().is_none(),
+        "no account entries expected when deposit fails",
     );
 }
 
@@ -132,6 +179,14 @@ fn supply_account_nft_only_no_assets_error() {
         false, // is_vault = false
     );
 
+    let expected_collateral = scaled_amount(1, CAPPED_DECIMALS);
+    state.assert_collateral_raw_eq(
+        1,
+        &CAPPED_TOKEN,
+        expected_collateral.clone(),
+        "initial supply should mint collateral",
+    );
+
     // Try to supply with only account NFT, no collateral
     state.supply_empty_asset_error(
         &supplier,
@@ -139,6 +194,18 @@ fn supply_account_nft_only_no_assets_error() {
         OptionalValue::None,
         false, // is_vault = false
         ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS,
+    );
+
+    state.assert_collateral_raw_eq(
+        1,
+        &CAPPED_TOKEN,
+        expected_collateral,
+        "attempt supplying only NFT must not change collateral",
+    );
+    assert_eq!(
+        state.last_account_nonce(),
+        1,
+        "no additional accounts expected after invalid NFT-only deposit",
     );
 }
 
@@ -178,6 +245,16 @@ fn supply_bulk_isolated_asset_first_error() {
         assets,
         ERROR_BULK_SUPPLY_NOT_SUPPORTED,
     );
+
+    assert_eq!(
+        state.last_account_nonce(),
+        0,
+        "isolated asset bulk failure must not mint accounts",
+    );
+    assert!(
+        state.accounts().into_iter().next().is_none(),
+        "controller should not record accounts for rejected isolated bulk supply",
+    );
 }
 
 /// Tests that mixing isolated assets with regular assets in supply fails.
@@ -215,6 +292,16 @@ fn supply_mix_isolated_with_regular_assets_error() {
         false, // is_vault = false
         assets,
         ERROR_MIX_ISOLATED_COLLATERAL,
+    );
+
+    assert_eq!(
+        state.last_account_nonce(),
+        0,
+        "mixed isolated collateral should not mint accounts",
+    );
+    assert!(
+        state.accounts().into_iter().next().is_none(),
+        "mixed isolated collateral should leave accounts empty",
     );
 }
 
@@ -254,6 +341,16 @@ fn supply_bulk_same_asset_exceeds_cap_error() {
         assets,
         ERROR_SUPPLY_CAP,
     );
+
+    assert_eq!(
+        state.last_account_nonce(),
+        0,
+        "capped bulk failure must not mint accounts",
+    );
+    assert!(
+        state.accounts().into_iter().next().is_none(),
+        "capped bulk failure must not register accounts",
+    );
 }
 
 /// Tests that supplying beyond the position limit for an NFT fails.
@@ -285,6 +382,14 @@ fn supply_exceeds_position_limit_error() {
         false, // is_vault = false
     );
 
+    let expected_egld_collateral = scaled_amount(10, EGLD_DECIMALS);
+    state.assert_collateral_raw_eq(
+        1,
+        &EGLD_TOKEN,
+        expected_egld_collateral.clone(),
+        "first supply should mint EGLD collateral",
+    );
+
     let account_nonce = 1;
 
     // Supply second asset - should succeed (at limit)
@@ -298,6 +403,14 @@ fn supply_exceeds_position_limit_error() {
         false, // is_vault = false
     );
 
+    let expected_usdc_collateral = scaled_amount(100, USDC_DECIMALS);
+    state.assert_collateral_raw_eq(
+        account_nonce,
+        &USDC_TOKEN,
+        expected_usdc_collateral.clone(),
+        "second supply should mint USDC collateral",
+    );
+
     // Try to supply third asset - should fail due to position limit
     state.supply_asset_error(
         &supplier,
@@ -308,6 +421,24 @@ fn supply_exceeds_position_limit_error() {
         OptionalValue::None,
         false, // is_vault = false
         ERROR_POSITION_LIMIT_EXCEEDED,
+    );
+
+    state.assert_collateral_raw_eq(
+        account_nonce,
+        &EGLD_TOKEN,
+        expected_egld_collateral,
+        "failed third supply must not change EGLD collateral",
+    );
+    state.assert_collateral_raw_eq(
+        account_nonce,
+        &USDC_TOKEN,
+        expected_usdc_collateral,
+        "failed third supply must not change USDC collateral",
+    );
+    assert_eq!(
+        state.last_account_nonce(),
+        account_nonce,
+        "position limit breach should not mint new accounts",
     );
 }
 
@@ -352,5 +483,15 @@ fn supply_bulk_exceeds_position_limit_error() {
         false, // is_vault = false
         assets,
         ERROR_POSITION_LIMIT_EXCEEDED,
+    );
+
+    assert_eq!(
+        state.last_account_nonce(),
+        0,
+        "bulk position limit breach must not mint accounts",
+    );
+    assert!(
+        state.accounts().into_iter().next().is_none(),
+        "bulk position limit breach must not register accounts",
     );
 }

@@ -94,8 +94,6 @@ fn market_exit_dust_accumulation_minimal() {
 
     // Record initial market state
     let utilization_ratio = state.market_utilization(state.egld_market.clone());
-
-    // Verify 25% utilization
     assert_eq!(
         utilization_ratio,
         ManagedDecimal::from_raw_units(BigUint::from(250000000000000000000000000u128), 27)
@@ -168,8 +166,6 @@ fn market_exit_dust_accumulation_minimal() {
     let protocol_revenue = state.market_revenue(state.egld_market.clone());
     let reserves = state.market_reserves(state.egld_market.clone());
 
-    println!("reserves:         {}", reserves);
-    println!("protocol_revenue: {}", protocol_revenue);
     let dust = if reserves >= protocol_revenue {
         reserves - protocol_revenue
     } else {
@@ -177,10 +173,12 @@ fn market_exit_dust_accumulation_minimal() {
     };
 
     let supplied = state.market_supplied(state.egld_market.clone());
-    println!("supplied: {}", supplied);
-    println!("dust: {}", dust);
     // Dust should be less than 5 wei (extremely small)
     assert!(dust <= ManagedDecimal::from_raw_units(BigUint::from(1u64), WAD_PRECISION));
+    assert!(
+        supplied >= ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION),
+        "Supplied total should remain non-negative",
+    );
 }
 
 const SEED: u64 = 69696; // Fixed seed for reproducible tests
@@ -450,15 +448,10 @@ fn stress_test_random_user_actions_large_scale() {
 
     // Verify market integrity after simulation
     let protocol_revenue = state.market_revenue(state.egld_market.clone());
-    println!("protocol_revenue: {}", protocol_revenue);
     let reserves = state.market_reserves(state.egld_market.clone());
-    println!("reserves: {}", reserves);
     let final_utilization = state.market_utilization(state.egld_market.clone());
-    println!("final_utilization: {}", final_utilization);
     let supplied = state.market_supplied(state.egld_market.clone());
-    println!("supplied: {}", supplied);
     let borrowed = state.market_borrowed(state.egld_market.clone());
-    println!("borrowed: {}", borrowed);
 
     // Basic sanity checks
     assert!(reserves.into_raw_units() >= &BigUint::zero());
@@ -478,15 +471,16 @@ fn stress_test_random_user_actions_large_scale() {
     state.claim_revenue(EGLD_TOKEN);
     // Verify market integrity after simulation
     let protocol_revenue = state.market_revenue(state.egld_market.clone());
-    println!("protocol_revenue: {}", protocol_revenue);
     let reserves = state.market_reserves(state.egld_market.clone());
-    println!("reserves: {}", reserves);
     let supplied = state.market_supplied(state.egld_market.clone());
-    println!("supplied: {}", supplied);
     let borrowed = state.market_borrowed(state.egld_market.clone());
-    println!("borrowed: {}", borrowed);
 
     assert!(protocol_revenue.into_raw_units() == &BigUint::zero());
+    let residual_reserve = reserves.into_raw_units().clone();
+    assert!(
+        residual_reserve <= BigUint::from(1000u64),
+        "Reserve dust after revenue claim should stay under tolerance",
+    );
 
     assert!(supplied.into_raw_units() == &BigUint::zero());
     assert!(borrowed.into_raw_units() == &BigUint::zero());

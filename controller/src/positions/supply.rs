@@ -515,6 +515,7 @@ pub trait PositionDepositModule:
 
         let account_attributes = self.account_attributes(account_nonce).get();
         let e_mode_category = self.e_mode_category(account_attributes.emode_id());
+        self.ensure_e_mode_not_deprecated(&e_mode_category);
         let asset_emode_config = self.token_e_mode_config(account_attributes.emode_id(), asset_id);
         self.apply_e_mode_to_asset_config(asset_config, &e_mode_category, asset_emode_config);
 

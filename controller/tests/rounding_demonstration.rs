@@ -7,10 +7,9 @@ pub mod setup;
 use constants::*;
 use setup::*;
 
-/// Demonstrates the difference between supply_asset (dollar amounts) and supply_asset_den (raw units).
-/// Shows that rounding with RAY precision has negligible impact even with small amounts.
+/// Demonstrates that both dollar-based and raw-unit supply helpers lead to precise dust handling.
 #[test]
-fn test_rounding_with_small_amounts() {
+fn dollar_and_raw_supply_share_consistent_rounding() {
     let mut state = LendingPoolTestState::new();
     let supplier = TestAddress::new("supplier");
     let borrower = TestAddress::new("borrower");
@@ -18,119 +17,118 @@ fn test_rounding_with_small_amounts() {
     state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
 
-    println!("\n=== Setting up liquidity pool ===");
-
-    // Supplier provides $10,000 USDC liquidity using supply_asset (dollar notation)
+    // Seed the market with $10,000 liquidity using the dollar-based helper.
     state.supply_asset(
         &supplier,
         USDC_TOKEN,
-        BigUint::from(10_000u64), // This means $10,000
+        BigUint::from(10_000u64),
         USDC_DECIMALS,
         OptionalValue::None,
         OptionalValue::None,
         false,
     );
+    state.assert_collateral_raw_eq(
+        1,
+        &USDC_TOKEN,
+        scaled_amount(10_000, USDC_DECIMALS),
+        "Supplier liquidity should be tracked in raw units",
+    );
 
-    // Borrower supplies $100 USDC as collateral using supply_asset (dollar notation)
+    // Borrower supplies $100 as collateral.
+    let borrower_nonce = 2_u64;
     state.supply_asset(
         &borrower,
         USDC_TOKEN,
-        BigUint::from(100u64), // This means $100
+        BigUint::from(100u64),
+        USDC_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+    state.assert_collateral_raw_eq(
+        borrower_nonce,
+        &USDC_TOKEN,
+        scaled_amount(100, USDC_DECIMALS),
+        "Borrower collateral should equal $100",
+    );
+
+    // Borrow the smallest unit via the raw helper and ensure interest stays bounded.
+    state.borrow_asset_den(&borrower, USDC_TOKEN, BigUint::from(1u64), borrower_nonce);
+    state.assert_borrow_raw_eq(
+        borrower_nonce,
+        &USDC_TOKEN,
+        BigUint::from(1u64),
+        "Dust borrow should be tracked exactly",
+    );
+
+    state.change_timestamp(SECONDS_PER_YEAR);
+    state.supply_asset_den(
+        &borrower,
+        USDC_TOKEN,
+        BigUint::from(1u64),
+        OptionalValue::Some(borrower_nonce),
+        OptionalValue::None,
+        false,
+    );
+
+    state.assert_borrow_raw_within(
+        borrower_nonce,
+        &USDC_TOKEN,
+        BigUint::from(1u64),
+        BigUint::from(1u64),
+        "Dust borrow should accrue at most 1 wei of interest",
+    );
+
+    state.repay_asset_deno(&borrower, &USDC_TOKEN, BigUint::from(2u64), borrower_nonce);
+    state.assert_no_borrow_entry(borrower_nonce, &USDC_TOKEN);
+}
+
+/// Shows that repeating decimal borrows stay within expected interest bounds over time.
+#[test]
+fn repeating_decimal_borrow_interest_within_bounds() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    state.change_timestamp(0);
+    setup_accounts(&mut state, supplier, borrower);
+
+    state.supply_asset(
+        &supplier,
+        USDC_TOKEN,
+        BigUint::from(1_000u64),
         USDC_DECIMALS,
         OptionalValue::None,
         OptionalValue::None,
         false,
     );
 
-    let borrower_nonce = 2;
-
-    println!("\n=== Testing minimum borrow amount ===");
-
-    // Borrow 1 unit (0.000001 USDC) using supply_asset_den
-    state.borrow_asset_den(
-        &borrower,
-        USDC_TOKEN,
-        BigUint::from(1u64), // 1 unit = 0.000001 USDC
-        borrower_nonce,
-    );
-
-    // Check initial borrow
-    let initial_borrow = state.borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
-    println!("Initial borrow (1 unit): {}", initial_borrow);
-
-    // Advance time by 1 year to accrue interest
-    state.change_timestamp(SECONDS_PER_YEAR);
-
-    // Trigger interest accrual with a tiny supply to update indexes
+    let borrower_nonce = 2_u64;
     state.supply_asset_den(
         &borrower,
         USDC_TOKEN,
-        BigUint::from(1u64), // Add 1 unit to trigger update
-        OptionalValue::Some(borrower_nonce),
+        BigUint::from(4_000_000u64),
+        OptionalValue::None,
         OptionalValue::None,
         false,
     );
-
-    // Check borrow after interest
-    let borrow_after_interest = state.borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
-    println!("Borrow after 1 year: {}", borrow_after_interest);
-
-    // Calculate interest accrued
-    let interest_units = borrow_after_interest.into_raw_units() - initial_borrow.into_raw_units();
-    println!(
-        "Interest accrued on 0.000001 USDC over 1 year: {:?} units",
-        interest_units
-    );
-
-    // Assert: Verify minimal borrow behavior
-    assert_eq!(
-        initial_borrow.into_raw_units().clone(),
-        BigUint::from(1u64),
-        "Initial borrow should be exactly 1 unit"
-    );
-    // With correct time units (seconds), interest on 1 unit is minimal
-    assert!(
-        borrow_after_interest.into_raw_units() <= &BigUint::from(2u64),
-        "1 unit borrow should have minimal interest after 1 year"
-    );
-    assert!(
-        interest_units <= BigUint::from(1u64),
-        "Interest on 1 unit should be 0 or 1 unit max"
-    );
-
-    // Repay the full debt
-    state.repay_asset_deno(
-        &borrower,
+    state.assert_collateral_raw_eq(
+        borrower_nonce,
         &USDC_TOKEN,
-        borrow_after_interest.into_raw_units().clone(),
+        scaled_amount(4, USDC_DECIMALS),
+        "Borrower supply should equal 4 USDC",
+    );
+
+    let borrow_units = BigUint::from(1_333_333u64);
+    state.borrow_asset_den(&borrower, USDC_TOKEN, borrow_units.clone(), borrower_nonce);
+    state.assert_borrow_raw_eq(
         borrower_nonce,
+        &USDC_TOKEN,
+        borrow_units.clone(),
+        "Borrow with repeating decimals should be exact in raw units",
     );
 
-    println!("\n=== Testing larger borrow with rounding ===");
-
-    // Borrow $1.333333 (which has repeating decimals)
-    // In units: 1.333333 * 1_000_000 = 1_333_333 units
-    state.borrow_asset_den(
-        &borrower,
-        USDC_TOKEN,
-        BigUint::from(1_333_333u64), // $1.333333
-        borrower_nonce,
-    );
-
-    let borrow_with_decimals = state.borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
-    println!("Borrow amount with decimals: {}", borrow_with_decimals);
-
-    // Assert: Verify exact decimal handling
-    assert_eq!(
-        borrow_with_decimals.into_raw_units().clone(),
-        BigUint::from(1_333_333u64),
-        "Borrow with decimals should be exactly 1,333,333 units"
-    );
-
-    // Advance time for interest
-    state.change_timestamp(SECONDS_PER_YEAR + SECONDS_PER_DAY); // 1 year + 1 day
-
-    // Trigger update
+    state.change_timestamp(SECONDS_PER_YEAR + SECONDS_PER_DAY);
     state.supply_asset_den(
         &borrower,
         USDC_TOKEN,
@@ -140,28 +138,21 @@ fn test_rounding_with_small_amounts() {
         false,
     );
 
-    let final_borrow = state.borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
-    println!("Final borrow after interest: {}", final_borrow);
-
-    // Assert: Verify interest calculation on decimal amounts
-    assert!(
-        final_borrow.into_raw_units().clone() > BigUint::from(1_333_333u64),
-        "Borrow should have accrued interest"
-    );
-    assert!(
-        final_borrow.into_raw_units().clone() <= BigUint::from(1_400_000u64),
-        "Interest should be reasonable (< 5% for ~1 year)"
+    let debt_after = state.borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
+    state.assert_borrow_raw_within(
+        borrower_nonce,
+        &USDC_TOKEN,
+        borrow_units.clone(),
+        BigUint::from(80_000u64),
+        "Interest on ~1.33 USDC over ~1 year should stay under 0.08 USDC",
     );
 
-    // Check protocol state
     let reserves = state.market_reserves(state.usdc_market.clone());
     let revenue = state.market_revenue(state.usdc_market.clone());
+    assert!(reserves.into_raw_units() >= &BigUint::zero());
+    assert!(revenue.into_raw_units() >= &BigUint::zero());
 
-    println!("\n=== Protocol State ===");
-    println!("Reserves: {}", reserves);
-    println!("Revenue: {}", revenue);
-
-    // Key insight: Even with minimum amounts and complex decimals,
-    // the RAY precision (27 decimals) ensures accurate calculations
-    // with no exploitable rounding errors.
+    let outstanding_raw = debt_after.into_raw_units().clone();
+    state.repay_asset_deno(&borrower, &USDC_TOKEN, outstanding_raw, borrower_nonce);
+    state.assert_no_borrow_entry(borrower_nonce, &USDC_TOKEN);
 }

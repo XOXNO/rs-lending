@@ -1,4 +1,4 @@
-use multiversx_sc::types::{EgldOrEsdtTokenIdentifier, ManagedDecimal, MultiValueEncoded};
+use multiversx_sc::types::{EgldOrEsdtTokenIdentifier, MultiValueEncoded};
 use multiversx_sc_scenario::imports::{BigUint, OptionalValue, TestAddress};
 pub mod constants;
 pub mod proxys;
@@ -34,6 +34,12 @@ fn repay_full_debt_with_interest_and_overpayment_success() {
         OptionalValue::None,
         false,
     );
+    state.assert_collateral_raw_eq(
+        1,
+        &EGLD_TOKEN,
+        scaled_amount(100, EGLD_DECIMALS),
+        "supplier EGLD deposit should be tracked",
+    );
 
     // Borrower supplies collateral
     state.supply_asset(
@@ -45,6 +51,13 @@ fn repay_full_debt_with_interest_and_overpayment_success() {
         OptionalValue::None,
         false,
     );
+    let initial_collateral_raw = scaled_amount(5000, USDC_DECIMALS);
+    state.assert_collateral_raw_eq(
+        2,
+        &USDC_TOKEN,
+        initial_collateral_raw.clone(),
+        "borrower USDC collateral should be recorded",
+    );
 
     // Borrower takes 50 EGLD loan
     state.borrow_asset(
@@ -54,13 +67,13 @@ fn repay_full_debt_with_interest_and_overpayment_success() {
         2,
         EGLD_DECIMALS,
     );
-
-    // Verify initial debt and collateral positions
-    let initial_debt = state.borrow_amount_for_token(2, EGLD_TOKEN);
-    let collateral = state.collateral_amount_for_token(2, USDC_TOKEN);
-
-    assert!(initial_debt > ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS));
-    assert!(collateral > ManagedDecimal::from_raw_units(BigUint::zero(), USDC_DECIMALS));
+    let initial_debt_raw = scaled_amount(50, EGLD_DECIMALS);
+    state.assert_borrow_raw_eq(
+        2,
+        &EGLD_TOKEN,
+        initial_debt_raw.clone(),
+        "initial EGLD borrow should match requested amount",
+    );
 
     // Advance 10 days to accumulate interest
     state.change_timestamp(SECONDS_PER_DAY * 10);
@@ -71,9 +84,20 @@ fn repay_full_debt_with_interest_and_overpayment_success() {
     markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
     state.update_markets(&borrower, markets.clone());
 
+    let reserves_before = state
+        .market_reserves(state.egld_market.clone())
+        .into_raw_units()
+        .clone();
+
     // Verify debt increased due to interest
-    let debt_with_interest = state.borrow_amount_for_token(2, EGLD_TOKEN);
-    assert!(debt_with_interest > initial_debt);
+    let debt_with_interest_raw = state
+        .borrow_amount_for_token(2, EGLD_TOKEN)
+        .into_raw_units()
+        .clone();
+    assert!(
+        debt_with_interest_raw > initial_debt_raw,
+        "interest accrual should increase outstanding debt",
+    );
 
     // Repay 51 EGLD (initial 50 + extra to cover interest and overpay)
     state.repay_asset(
@@ -84,7 +108,19 @@ fn repay_full_debt_with_interest_and_overpayment_success() {
         EGLD_DECIMALS,
     );
 
-    // Verify debt position was fully cleared
-    let custom_error_message = format!("Token not existing in the account {}", EGLD_TOKEN.as_str());
-    state.borrow_amount_for_token_non_existing(2, EGLD_TOKEN, custom_error_message.as_bytes());
+    // Verify debt position was fully cleared and reserves captured the overpayment
+    state.assert_no_borrow_entry(2, &EGLD_TOKEN);
+    state.assert_total_borrow_raw_eq(2, BigUint::zero(), "Repayment should clear borrower debt");
+    state.assert_collateral_raw_eq(
+        2,
+        &USDC_TOKEN,
+        initial_collateral_raw,
+        "repayment should not alter posted collateral",
+    );
+
+    let reserves_raw = state
+        .market_reserves(state.egld_market.clone())
+        .into_raw_units()
+        .clone();
+    assert!(reserves_raw >= reserves_before);
 }

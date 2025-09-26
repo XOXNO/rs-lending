@@ -5,12 +5,16 @@ use controller::{
 };
 
 use multiversx_sc::types::{EgldOrEsdtTokenIdentifier, ManagedDecimal, MultiValueEncoded};
-use multiversx_sc_scenario::imports::{BigUint, OptionalValue, TestAddress};
+use multiversx_sc_scenario::imports::{BigUint, OptionalValue, StaticApi, TestAddress};
 pub mod constants;
 pub mod proxys;
 pub mod setup;
 use constants::*;
 use setup::*;
+
+fn ray_dust_tolerance() -> BigUint<StaticApi> {
+    BigUint::from(10u64).pow(22)
+}
 
 /// Tests that isolated assets cannot be used with E-Mode.
 ///
@@ -35,6 +39,12 @@ fn isolated_supply_with_emode_incompatible_error() {
         OptionalValue::None,
         OptionalValue::Some(1),
         false,
+    );
+    state.assert_collateral_raw_eq(
+        1,
+        &XEGLD_TOKEN,
+        scaled_amount(100, EGLD_DECIMALS),
+        "Supplier XEGLD collateral should be tracked",
     );
 
     // Attempt to supply isolated asset with E-Mode (should fail)
@@ -74,6 +84,12 @@ fn isolated_mix_with_regular_collateral_error() {
         OptionalValue::None,
         false,
     );
+    state.assert_collateral_raw_eq(
+        1,
+        &ISOLATED_TOKEN,
+        scaled_amount(100, ISOLATED_DECIMALS),
+        "Isolated collateral should be recorded",
+    );
 
     // Attempt to supply non-isolated asset (should fail)
     state.supply_asset_error(
@@ -85,6 +101,12 @@ fn isolated_mix_with_regular_collateral_error() {
         OptionalValue::None,
         false,
         ERROR_MIX_ISOLATED_COLLATERAL,
+    );
+    state.assert_collateral_raw_eq(
+        1,
+        &ISOLATED_TOKEN,
+        scaled_amount(100, ISOLATED_DECIMALS),
+        "Failed mix should keep isolated collateral unchanged",
     );
 }
 
@@ -113,6 +135,12 @@ fn isolated_borrow_within_debt_ceiling_success() {
         OptionalValue::None,
         false,
     );
+    state.assert_collateral_raw_eq(
+        1,
+        &USDC_TOKEN,
+        scaled_amount(1000, USDC_DECIMALS),
+        "USDC liquidity for isolated borrow should be recorded",
+    );
 
     // Borrower supplies isolated asset as collateral
     state.supply_asset(
@@ -124,6 +152,12 @@ fn isolated_borrow_within_debt_ceiling_success() {
         OptionalValue::None,
         false,
     );
+    state.assert_collateral_raw_eq(
+        2,
+        &ISOLATED_TOKEN,
+        scaled_amount(100, ISOLATED_DECIMALS),
+        "Borrower isolated collateral should be tracked",
+    );
 
     // Borrow against isolated collateral
     state.borrow_asset(
@@ -132,6 +166,12 @@ fn isolated_borrow_within_debt_ceiling_success() {
         BigUint::from(100u64), // $100 borrow
         2,
         USDC_DECIMALS,
+    );
+    state.assert_borrow_raw_eq(
+        2,
+        &USDC_TOKEN,
+        scaled_amount(100, USDC_DECIMALS),
+        "Borrowed USDC should match request",
     );
 
     // Verify debt ceiling usage is tracked
@@ -150,6 +190,12 @@ fn isolated_borrow_within_debt_ceiling_success() {
     // Verify debt ceiling usage is cleared
     let final_debt_usage = state.used_isolated_asset_debt_usd(&ISOLATED_TOKEN);
     assert!(final_debt_usage == ManagedDecimal::from_raw_units(BigUint::zero(), ISOLATED_DECIMALS));
+    state.assert_total_borrow_raw_within(
+        2,
+        BigUint::zero(),
+        ray_dust_tolerance(),
+        "Borrower should have no residual debt after isolated repayment",
+    );
 }
 
 /// Tests borrowing against isolated collateral hitting debt ceiling limit.
@@ -197,6 +243,7 @@ fn isolated_borrow_exceeds_debt_ceiling_error() {
         USDC_DECIMALS,
         ERROR_DEBT_CEILING_REACHED,
     );
+    state.assert_no_borrow_entry(2, &USDC_TOKEN);
 }
 
 /// Tests debt ceiling tracking with interest accrual on isolated collateral.

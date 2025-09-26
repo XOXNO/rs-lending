@@ -29,6 +29,39 @@ pub trait PositionBorrowModule:
     + emode::EModeModule
     + common_rates::InterestRates
 {
+    /// Creates or scales a borrow position for strategy flows (flash-loan style).
+    ///
+    /// Purpose: Prepares and executes a borrow for strategies (e.g., multiply/swapDebt)
+    /// by validating asset support, applying e-mode, enforcing borrowability rules,
+    /// checking caps and isolated-debt constraints, then invoking the pool to create
+    /// the strategy borrow and returning the borrowed amount (decimal-scaled).
+    ///
+    /// Methodology:
+    /// 1. Validate asset support and apply e-mode adjustments if active
+    /// 2. Ensure asset is borrowable and compatible with account constraints
+    /// 3. Convert raw amount to decimal using token decimals
+    /// 4. Validate borrow cap and isolated-debt ceiling
+    /// 5. Compute flash fee: fee = amount * fee_bps / BPS
+    /// 6. Call pool.create_strategy to mint/update borrow position
+    /// 7. Emit update event, persist position, validate back-transfers, and return amount
+    ///
+    /// Security:
+    /// - Asset and amount validation prevents unsupported/zero operations
+    /// - E-mode compatibility and borrowability checks enforce risk limits
+    /// - Borrow cap and isolated-debt validations prevent concentration risk
+    /// - Back-transfer validation ensures the token returned matches the debt token
+    ///
+    /// Arguments:
+    /// - `account_nonce`: Position NFT nonce
+    /// - `debt_token_id`: Token to borrow
+    /// - `amount_raw`: Borrow amount in raw units
+    /// - `debt_config`: Mutable asset config (may be updated by e-mode)
+    /// - `caller`: Borrower address for events
+    /// - `account_attributes`: NFT attributes with mode/e-mode/isolated
+    /// - `cache`: Protocol cache (prices, pools, indexes)
+    ///
+    /// Returns:
+    /// - Borrowed amount as ManagedDecimal using token decimals
     fn handle_create_borrow_strategy(
         &self,
         account_nonce: u64,
@@ -193,12 +226,13 @@ pub trait PositionBorrowModule:
     }
 
     /// Manages debt tracking for isolated positions.
-    /// Validates and updates debt ceiling for isolated collateral.
+    /// Validates and updates isolated debt ceiling for the account's isolated token.
     ///
-    /// # Arguments
-    /// - `collaterals`: User's collateral positions.
-    /// - `cache`: Mutable storage cache.
-    /// - `amount_in_usd`: USD value of the borrow.
+    /// Arguments
+    /// - `cache`: Mutable storage cache
+    /// - `amount`: Borrow amount in token decimals
+    /// - `account_attributes`: NFT attributes (provides isolated token and flag)
+    /// - `feed`: Price feed for borrowed token (for EGLD valuation)
     fn handle_isolated_debt(
         &self,
         cache: &mut Cache<Self>,
@@ -307,16 +341,15 @@ pub trait PositionBorrowModule:
         );
     }
 
-    /// Validates borrow constraints and computes amounts in USD and EGLD.
-    /// Ensures borrowing adheres to protocol rules.
+    /// Validates LTV collateral against the new borrow amount.
+    /// Converts the borrow amount to EGLD using the feed and checks LTV.
     ///
-    /// # Arguments
-    /// - `ltv_base_amount`: LTV-weighted collateral in EGLD.
-    /// - `token_id`: Token to borrow.
-    /// - `amount_raw`: Raw borrow amount.
-    /// - `borrow_positions`: Current borrow positions.
-    /// - `cache`: Mutable storage cache.
-    ///
+    /// Arguments
+    /// - `ltv_base_amount`: LTV-weighted collateral in EGLD
+    /// - `amount`: Borrow amount in token decimals
+    /// - `borrow_positions`: Current borrow positions
+    /// - `feed`: Price feed for borrowed token
+    /// - `cache`: Mutable storage cache
     fn validate_ltv_collateral(
         &self,
         ltv_base_amount: &ManagedDecimal<Self::Api, NumDecimals>,

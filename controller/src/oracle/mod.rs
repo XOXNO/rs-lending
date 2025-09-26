@@ -1366,6 +1366,14 @@ pub trait OracleModule:
     }
 
     #[proxy]
+    /// Returns a proxy to the external Safe Price View contract.
+    /// Used to query time-aware safe prices for LP and derived assets.
+    ///
+    /// Arguments
+    /// - `sc_address`: Address of the Safe Price View contract
+    ///
+    /// Returns
+    /// - Typed proxy to the Safe Price View contract APIs
     fn safe_price_proxy(&self, sc_address: ManagedAddress) -> safe_price_proxy::ProxyTo<Self::Api>;
 }
 
@@ -1375,6 +1383,18 @@ mod safe_price_proxy {
     #[multiversx_sc::proxy]
     pub trait SafePriceContract {
         #[view(getSafePriceByTimestampOffset)]
+        /// Queries a safe price at a historical timestamp offset.
+        ///
+        /// Purpose: Retrieves a price sample at `timestamp - offset_ms` with
+        /// check on staleness to support safe price calculations.
+        ///
+        /// Arguments
+        /// - `asset_id`: Asset identifier for which to fetch the price
+        /// - `offset_ms`: Milliseconds to subtract from current timestamp
+        /// - `max_stale_ms`: Maximum allowed staleness for the price sample
+        ///
+        /// Returns
+        /// - Timestamped price response from the Safe Price View contract
         fn get_safe_price_by_timestamp_offset(
             &self,
             pair_address: ManagedAddress,

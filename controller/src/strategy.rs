@@ -107,7 +107,7 @@ pub trait SnapModule:
         // Validate tokens are different to prevent circular operations
         require!(collateral_token != debt_token, ERROR_ASSETS_ARE_THE_SAME);
         // Extract and validate initial payments, account info, and caller details
-        // Parameters: allow_empty_payments=false, require_account_exists=true
+        // Parameters: require_account_payment=false, return_nft=true
         let (payments, opt_account, caller, opt_attributes) =
             self.validate_supply_payment(false, true, OptionalValue::None);
 
@@ -259,6 +259,13 @@ pub trait SnapModule:
         // Ensures the position is not immediately liquidatable due to slippage or market conditions
         self.validate_is_healthy(account_nonce, &mut cache, None);
 
+        // Enforce final-state borrow position limits after multiply completes.
+        self.validate_bulk_position_limits(
+            account_nonce,
+            AccountPositionType::Borrow,
+            &ManagedVec::new(),
+        );
+
         if let Some(initial_multiply_payment) = initial_multiply_payment {
             self.emit_initial_multiply_payment(
                 &initial_multiply_payment.token_identifier,
@@ -334,7 +341,7 @@ pub trait SnapModule:
         cache.allow_unsafe_price = false; // Enforce secure price feeds only
         self.reentrancy_guard(cache.flash_loan_ongoing);
         // Extract payments and validate account ownership
-        // Parameters: allow_empty_payments=true, require_account_exists=true
+        // Parameters: require_account_payment=true, return_nft=true
         let (mut payments, opt_account, caller, opt_attributes) =
             self.validate_supply_payment(true, true, OptionalValue::None);
 
@@ -403,6 +410,13 @@ pub trait SnapModule:
         // CRITICAL: Validate position health after debt swap completion
         // Ensures the position is not liquidatable due to swap slippage or price movements
         self.validate_is_healthy(account.token_nonce, &mut cache, None);
+
+        // Enforce final-state borrow position limits.
+        self.validate_bulk_position_limits(
+            account.token_nonce,
+            AccountPositionType::Borrow,
+            &ManagedVec::new(),
+        );
     }
 
     /// **SWAP COLLATERAL STRATEGY: Convert Collateral Between Different Token Types**
@@ -459,13 +473,18 @@ pub trait SnapModule:
         steps: ManagedArgBuffer<Self::Api>,
     ) {
         self.require_not_paused();
+        // Prevent no-op swaps when the assets are the same
+        require!(
+            current_collateral != new_collateral,
+            ERROR_ASSETS_ARE_THE_SAME
+        );
 
         // Initialize secure cache and enable reentrancy protection
         let mut cache = Cache::new(self);
         self.reentrancy_guard(cache.flash_loan_ongoing);
 
         // Extract payments and validate account ownership
-        // Parameters: allow_empty_payments=true, require_account_exists=true
+        // Parameters: require_account_payment=true, return_nft=true
         let (mut payments, opt_account, caller, opt_attributes) =
             self.validate_supply_payment(true, true, OptionalValue::None);
 
@@ -473,7 +492,8 @@ pub trait SnapModule:
         let account = unsafe { opt_account.unwrap_unchecked() };
         let borrow_positions = self.positions(account.token_nonce, AccountPositionType::Borrow);
         let allow_unsafe_price = borrow_positions.is_empty();
-        cache.allow_unsafe_price = allow_unsafe_price; // Enforce secure price feeds only
+        // Allow unsafe price only if there is no borrow position
+        cache.allow_unsafe_price = allow_unsafe_price;
 
         let account_attributes = unsafe { opt_attributes.unwrap_unchecked() };
 
@@ -591,7 +611,7 @@ pub trait SnapModule:
         cache.allow_unsafe_price = false; // Enforce secure price feeds only
         self.reentrancy_guard(cache.flash_loan_ongoing);
         // Extract payments and validate account ownership
-        // Parameters: allow_empty_payments=true, require_account_exists=false (but will exist)
+        // Parameters: require_account_payment=true, return_nft=false
         let (mut payments, opt_account, caller, opt_attributes) =
             self.validate_supply_payment(true, false, OptionalValue::None);
 

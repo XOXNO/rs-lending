@@ -254,6 +254,15 @@ pub trait InterestRates: common_math::SharedMathModule {
         (supplier_rewards_ray, protocol_fee)
     }
 
+    /// Computes market utilization as borrowed / supplied in RAY precision.
+    /// Returns zero when total supplied is zero to avoid division-by-zero.
+    ///
+    /// Arguments
+    /// - `borrowed_ray`: Total borrowed amount in original units (RAY)
+    /// - `supplied_ray`: Total supplied amount in original units (RAY)
+    ///
+    /// Returns
+    /// - Utilization ratio in RAY precision
     fn utilization(
         &self,
         borrowed_ray: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -265,6 +274,17 @@ pub trait InterestRates: common_math::SharedMathModule {
         self.div_half_up(borrowed_ray, supplied_ray, RAY_PRECISION)
     }
 
+    /// Applies an interest index to a scaled amount, returning original units (RAY).
+    ///
+    /// Math
+    /// - original = scaled_amount * index / RAY
+    ///
+    /// Arguments
+    /// - `scaled_amount`: RAY-scaled principal amount
+    /// - `index`: Interest index in RAY precision
+    ///
+    /// Returns
+    /// - Original amount in RAY precision including accrued interest
     fn scaled_to_original_ray(
         &self,
         scaled_amount: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -273,6 +293,19 @@ pub trait InterestRates: common_math::SharedMathModule {
         self.mul_half_up(scaled_amount, index, RAY_PRECISION)
     }
 
+    /// Applies an interest index to a scaled amount and rescales to asset decimals.
+    ///
+    /// Math
+    /// - original_ray = scaled_amount * index / RAY
+    /// - original = rescale(original_ray, asset_decimals)
+    ///
+    /// Arguments
+    /// - `scaled_amount`: RAY-scaled principal amount
+    /// - `index`: Interest index in RAY precision
+    /// - `asset_decimals`: Target decimals for result
+    ///
+    /// Returns
+    /// - Original amount in asset decimal precision
     fn scaled_to_original(
         &self,
         scaled_amount: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -283,6 +316,29 @@ pub trait InterestRates: common_math::SharedMathModule {
         self.rescale_half_up(&original_amount, asset_decimals)
     }
 
+    /// Simulates index update without state mutation, returning updated indices.
+    ///
+    /// Purpose
+    /// - Compute new borrow/supply indices for a given timestamp delta using
+    ///   current parameters and totals, for read-only contexts and views.
+    ///
+    /// Methodology
+    /// 1. If `delta == 0`, return current indexes
+    /// 2. Compute utilization from original totals
+    /// 3. Calculate borrow rate and compounded factor for delta
+    /// 4. Update borrow index, split accrued interest, update supply index
+    ///
+    /// Arguments
+    /// - `current_timestamp`: Current timestamp (ms)
+    /// - `last_timestamp`: Last index update timestamp (ms)
+    /// - `borrowed`: Total scaled borrowed amount (RAY-scaled)
+    /// - `current_borrowed_index`: Current borrow index (RAY)
+    /// - `supplied`: Total scaled supplied amount (RAY-scaled)
+    /// - `current_supply_index`: Current supply index (RAY)
+    /// - `parameters`: Market parameters including reserve factor and slopes
+    ///
+    /// Returns
+    /// - `MarketIndex` with updated supply and borrow indexes
     fn simulate_update_indexes(
         &self,
         current_timestamp: u64,

@@ -37,8 +37,9 @@ pub const FLASH_LOAN_FEE: u128 = 50; // 0.05%
 
 pub const ACCOUNT_TOKEN: TestTokenIdentifier = TestTokenIdentifier::new("ACC-abcdef");
 
-pub const UXOXNO_TOKEN: TestTokenIdentifier = TestTokenIdentifier::new("UXOXNO-abcdef");
-pub const LXOXNO_TOKEN: TestTokenIdentifier = TestTokenIdentifier::new("LXOXNO-abcdef");
+// Use scenario-friendly, real-pattern IDs to avoid simulator validation issues
+pub const UXOXNO_TOKEN: TestTokenIdentifier = TestTokenIdentifier::new("UXOXNO-a00540");
+pub const LXOXNO_TOKEN: TestTokenIdentifier = TestTokenIdentifier::new("LXOXNO-a00540");
 pub const LXOXNO_TICKER: &[u8] = b"LXOXNO";
 pub const LXOXNO_PRICE_IN_DOLLARS: u64 = 1; // $1
 pub const LXOXNO_DECIMALS: usize = 18;
@@ -418,6 +419,53 @@ pub fn get_xoxno_config() -> SetupConfig {
         optimal_utilization: U_OPTIMAL,
         reserve_factor: RESERVE_FACTOR,
         asset_decimals: XOXNO_DECIMALS,
+    }
+}
+
+pub fn get_lxoxno_config() -> SetupConfig {
+    // For testing purposes, LXOXNO uses the same baseline risk configuration
+    // as XOXNO with 18 decimals. Specific protocol risk params can be tuned
+    // differently in production, but identical values are sufficient here.
+    SetupConfig {
+        config: AssetConfig {
+            loan_to_value_bps: ManagedDecimal::from_raw_units(BigUint::from(LTV), BPS_PRECISION),
+            liquidation_threshold_bps: ManagedDecimal::from_raw_units(
+                BigUint::from(LIQ_THRESHOLD),
+                BPS_PRECISION,
+            ),
+            liquidation_bonus_bps: ManagedDecimal::from_raw_units(
+                BigUint::from(LIQ_BONUS),
+                BPS_PRECISION,
+            ),
+            liquidation_fees_bps: ManagedDecimal::from_raw_units(
+                BigUint::from(LIQ_BASE_FEE),
+                BPS_PRECISION,
+            ),
+            borrow_cap_wad: None,
+            supply_cap_wad: None,
+            is_collateralizable: true,
+            is_borrowable: true,
+            e_mode_enabled: false,
+            is_isolated_asset: false,
+            isolation_debt_ceiling_usd_wad: ManagedDecimal::from_raw_units(
+                BigUint::zero(),
+                WAD_PRECISION,
+            ),
+            is_siloed_borrowing: false,
+            is_flashloanable: true,
+            flashloan_fee_bps: ManagedDecimal::from_raw_units(
+                BigUint::from(FLASH_LOAN_FEE),
+                BPS_PRECISION,
+            ),
+            isolation_borrow_enabled: false,
+        },
+        max_borrow_rate: R_MAX,
+        base_borrow_rate: R_BASE,
+        slope1: R_SLOPE1,
+        slope2: R_SLOPE2,
+        optimal_utilization: U_OPTIMAL,
+        reserve_factor: RESERVE_FACTOR,
+        asset_decimals: LXOXNO_DECIMALS,
     }
 }
 

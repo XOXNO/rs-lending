@@ -569,7 +569,7 @@ pub trait MathsModule: common_math::SharedMathModule {
             .into_signed();
 
         // Avoid edge case where target_health == denominator_term which would result in division by zero
-        let debt_to_repay_ray = if target_health == denominator_term_signed {
+        let proposed_debt_to_repay_ray = if target_health == denominator_term_signed {
             d_max_ray
         } else {
             // Compute d_ideal
@@ -587,6 +587,8 @@ pub trait MathsModule: common_math::SharedMathModule {
                 self.min(d_ideal_signed.into_unsigned_or_fail(), d_max_ray)
             }
         };
+        // Defensive cap: never propose repaying more than total outstanding debt
+        let debt_to_repay_ray = self.min(proposed_debt_to_repay_ray, total_debt.clone());
 
         // Calculate new health factor
         let new_health_factor = self.calculate_post_liquidation_health_factor(

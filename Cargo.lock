@@ -235,6 +235,7 @@ dependencies = [
  "common-constants",
  "common-errors",
  "multiversx-sc",
+ "multiversx-sc-scenario",
 ]
 
 [[package]]

@@ -273,6 +273,18 @@ pub trait RouterModule:
         self.upgrade_pool(pool_address);
     }
 
+    /// Upgrades an existing liquidity pool's interest rate parameters without redeployment.
+    ///
+    /// Purpose: Adjust the interest rate model on a live market using the latest
+    /// price to synchronize state prior to applying new parameters.
+    ///
+    /// Arguments
+    /// - `base_asset`: Market asset identifier
+    /// - `max_borrow_rate`: New max borrow rate
+    /// - `base_borrow_rate`: New base rate
+    /// - `slope1`, `slope2`, `slope3`: New utilization curve slopes
+    /// - `mid_utilization`, `optimal_utilization`: New utilization anchors
+    /// - `reserve_factor`: New protocol reserve factor
     #[only_owner]
     #[endpoint(upgradeLiquidityPoolParams)]
     fn upgrade_liquidity_pool_params(

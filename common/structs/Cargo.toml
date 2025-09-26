@@ -15,3 +15,10 @@ path = "../errors"
 
 [dependencies.multiversx-sc]
 version = "0.59.0"
+
+[dev-dependencies]
+multiversx-sc-scenario = { version = "0.59.0" }
+
+[[test]]
+name = "model_flags"
+path = "tests/model_flags.rs"

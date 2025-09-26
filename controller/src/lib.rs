@@ -89,12 +89,12 @@ pub trait Controller:
     /// Supplies collateral to the lending pool.
     ///
     /// # Arguments
-    /// - `is_vault`: Indicates if the supply is for a vault position.
+    /// - `optional_account_nonce`: Optional existing account NFT nonce (use `Some(0)` to auto-create).
     /// - `e_mode_category`: Optional e-mode category for specialized parameters.
     ///
     /// # Payment
-    /// - Accepts payments: optional account NFT (first payment if present) and one or more collateral tokens.
-    /// - Requires at least one collateral token payment after NFT extraction.
+    /// - Accepts payments: optional account NFT (if present, it must be the first payment) and one or more collateral tokens.
+    /// - Requires at least one collateral token payment after extracting the optional NFT.
     #[payable]
     #[allow_multiple_var_args]
     #[endpoint(supply)]
@@ -154,11 +154,20 @@ pub trait Controller:
 
     /// Withdraws collateral from the lending pool.
     ///
-    /// # Arguments
-    /// - `collaterals`: List of tokens and amounts to withdraw.
+    /// Purpose: Transfers requested collateral amounts from the user's deposit
+    /// positions back to the caller while keeping the account healthy.
     ///
-    /// # Payment
-    /// - Requires account NFT payment.
+    /// Methodology:
+    /// 1. Validates account NFT and returns it after checks
+    /// 2. For each asset: validates payment, syncs price/index, computes amount
+    /// 3. Executes pool withdrawal and updates/removes deposit position
+    /// 4. Validates health factor remains above minimum after all withdrawals
+    ///
+    /// Payment
+    /// - Requires the account NFT as payment (first and only NFT).
+    ///
+    /// Arguments
+    /// - `collaterals`: List of token identifiers and amounts to withdraw
     #[payable]
     #[endpoint(withdraw)]
     fn withdraw(&self, collaterals: MultiValueEncoded<EgldOrEsdtTokenPayment<Self::Api>>) {
@@ -202,11 +211,20 @@ pub trait Controller:
 
     /// Borrows assets from the lending pool.
     ///
-    /// # Arguments
-    /// - `borrowed_tokens`: List of tokens and amounts to borrow.
+    /// Purpose: Creates or scales borrow positions for the account, with
+    /// validations on LTV, e-mode, borrowability and position limits.
     ///
-    /// # Payment
-    /// - Requires account NFT payment.
+    /// Methodology:
+    /// 1. Validates account NFT and syncs indexes/prices
+    /// 2. Computes LTV collateral value from current deposits
+    /// 3. Validates bulk position limits for all requested borrows
+    /// 4. For each token: validates borrowability, caps, LTV, updates position
+    ///
+    /// Payment
+    /// - Requires the account NFT as payment.
+    ///
+    /// Arguments
+    /// - `borrowed_tokens`: List of tokens and amounts to borrow
     #[payable]
     #[endpoint(borrow)]
     fn borrow(&self, borrowed_tokens: MultiValueEncoded<EgldOrEsdtTokenPayment<Self::Api>>) {
@@ -260,8 +278,15 @@ pub trait Controller:
 
     /// Repays borrowed assets for an account.
     ///
-    /// # Arguments
-    /// - `account_nonce`: NFT nonce of the account position.
+    /// Purpose: Decreases or clears debt positions for one or more assets.
+    ///
+    /// Methodology:
+    /// 1. Validates account and caller
+    /// 2. For each payment: validates asset/amount, converts to decimals and EGLD value
+    /// 3. Calls process_repayment to update pool and position, tracking isolated debt
+    ///
+    /// Arguments
+    /// - `account_nonce`: NFT nonce of the account
     #[payable]
     #[endpoint(repay)]
     fn repay(&self, account_nonce: u64) {
@@ -295,8 +320,16 @@ pub trait Controller:
 
     /// Liquidates an unhealthy position.
     ///
-    /// # Arguments
-    /// - `account_nonce`: NFT nonce of the account to liquidate.
+    /// Purpose: Repays eligible debt using liquidator payments and seizes
+    /// collateral with protocol fee, following the liquidation algorithm.
+    ///
+    /// Methodology:
+    /// 1. Validates payments and account state
+    /// 2. Executes liquidation core to compute repayments and seized collateral
+    /// 3. Refunds excess payments, processes repayments and transfers collateral
+    ///
+    /// Arguments
+    /// - `account_nonce`: NFT nonce identifying the liquidated account
     #[payable]
     #[endpoint(liquidate)]
     fn liquidate(&self, account_nonce: u64) {
@@ -308,12 +341,20 @@ pub trait Controller:
 
     /// Executes a flash loan.
     ///
-    /// # Arguments
-    /// - `borrowed_asset_id`: Token identifier to borrow.
-    /// - `amount`: Amount to borrow in raw token units (will be converted to decimal precision).
-    /// - `contract_address`: Address of the contract to receive the loan.
-    /// - `endpoint`: Endpoint to call on the receiving contract.
-    /// - `arguments`: Arguments for the endpoint call.
+    /// Purpose: Borrows funds for a single transaction to a target contract,
+    /// which must repay plus fee within the same call.
+    ///
+    /// Methodology:
+    /// 1. Validates shard, endpoint, amount and that asset supports flashloans
+    /// 2. Pushes caller as final argument and forwards funds to pool flash_loan
+    /// 3. Enforces flash_loan_ongoing guard around the call
+    ///
+    /// Arguments
+    /// - `borrowed_asset_id`: Token to borrow
+    /// - `amount_raw`: Borrow amount in raw units
+    /// - `contract_address`: Receiver contract of the loan
+    /// - `endpoint`: Callback endpoint to invoke on receiver
+    /// - `arguments`: Extra arguments passed to receiver endpoint
     #[endpoint(flashLoan)]
     fn flash_loan(
         &self,
@@ -356,12 +397,16 @@ pub trait Controller:
         self.flash_loan_ongoing().set(false);
     }
 
-    /// Updates LTV or liquidation threshold for account positions of a specific asset.
+    /// Updates account thresholds for a specific asset.
     ///
-    /// # Arguments
-    /// - `asset_id`: Token identifier to update.
-    /// - `is_ltv`: True to update LTV, false for liquidation threshold.
-    /// - `account_nonces`: List of account nonces to update.
+    /// Purpose: Applies updated asset risk parameters (LTV/liquidation)
+    /// to each account’s deposit position of the given asset, validating
+    /// health if changes are risky.
+    ///
+    /// Arguments
+    /// - `asset_id`: Asset to update within accounts
+    /// - `has_risks`: Whether the change affects liquidation threshold (requires HF check)
+    /// - `account_nonces`: Accounts to update
     #[endpoint(updateAccountThreshold)]
     fn update_account_threshold(
         &self,
@@ -390,8 +435,10 @@ pub trait Controller:
 
     /// Updates interest rate indexes for specified assets.
     ///
-    /// # Arguments
-    /// - `assets`: List of token identifiers to update.
+    /// Purpose: Synchronizes supply/borrow indexes using current prices.
+    ///
+    /// Arguments
+    /// - `assets`: Asset identifiers to update
     #[endpoint(updateIndexes)]
     fn update_indexes(&self, assets: MultiValueEncoded<EgldOrEsdtTokenIdentifier>) {
         self.require_not_paused();
@@ -404,11 +451,15 @@ pub trait Controller:
 
     /// Cleans bad debt from an account.
     ///
-    /// It seizes all remaining collateral + interest and adds all remaining debt as bad debt,
-    /// then cleans isolated debt if any.
-    /// In case of a vault, it toggles the account to non-vault to move funds to the shared liquidity pool.
-    /// # Arguments
-    /// - `account_nonce`: NFT nonce of the account to clean.
+    /// Purpose: Seizes all remaining collateral and marks remaining debt
+    /// as bad debt when account qualifies for bad debt cleanup.
+    ///
+    /// Methodology:
+    /// 1. Validates account is eligible (insufficient collateral vs debt)
+    /// 2. Performs cleanup and removes positions appropriately
+    ///
+    /// Arguments
+    /// - `account_nonce`: NFT nonce of the account
     #[endpoint(cleanBadDebt)]
     fn clean_bad_debt(&self, account_nonce: u64) {
         self.require_not_paused();

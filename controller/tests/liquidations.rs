@@ -4,14 +4,19 @@ pub use common_constants::{BPS_PRECISION, RAY_PRECISION, WAD_PRECISION};
 use controller::ERROR_INSUFFICIENT_COLLATERAL;
 
 use multiversx_sc::types::{
-    EgldOrEsdtTokenIdentifier, ManagedDecimal, ManagedVec, MultiValueEncoded,
+    EgldOrEsdtTokenIdentifier, EgldOrEsdtTokenPayment, ManagedDecimal, ManagedVec,
+    MultiValueEncoded,
 };
-use multiversx_sc_scenario::imports::{BigUint, OptionalValue, TestAddress};
+use multiversx_sc_scenario::imports::{BigUint, OptionalValue, StaticApi, TestAddress};
 pub mod constants;
 pub mod proxys;
 pub mod setup;
 use constants::*;
 use setup::*;
+
+fn small_ray_tolerance() -> BigUint<StaticApi> {
+    BigUint::from(10u64).pow(22)
+}
 
 /// Tests basic liquidation flow with multiple debt positions.
 ///
@@ -40,6 +45,12 @@ fn liquidate_multiple_debt_positions_sequential_success() {
         OptionalValue::None,
         false,
     );
+    state.assert_collateral_raw_eq(
+        1,
+        &EGLD_TOKEN,
+        scaled_amount(100, EGLD_DECIMALS),
+        "Supplier EGLD liquidity should be recorded",
+    );
     state.supply_asset(
         &supplier,
         CAPPED_TOKEN,
@@ -48,6 +59,12 @@ fn liquidate_multiple_debt_positions_sequential_success() {
         OptionalValue::Some(1),
         OptionalValue::None,
         false,
+    );
+    state.assert_collateral_raw_eq(
+        1,
+        &CAPPED_TOKEN,
+        scaled_amount(10, CAPPED_DECIMALS),
+        "Supplier capped liquidity should be recorded",
     );
     state.supply_asset(
         &supplier,
@@ -58,25 +75,43 @@ fn liquidate_multiple_debt_positions_sequential_success() {
         OptionalValue::None,
         false,
     );
+    state.assert_collateral_raw_eq(
+        1,
+        &USDC_TOKEN,
+        scaled_amount(1000, USDC_DECIMALS),
+        "Supplier USDC liquidity should be recorded",
+    );
 
     // Borrower provides collateral ($5000 total)
     state.supply_asset(
         &borrower,
         XEGLD_TOKEN,
-        BigUint::from(20u64), // $2500
+        BigUint::from(20u64),
         XEGLD_DECIMALS,
         OptionalValue::None,
         OptionalValue::None,
         false,
     );
+    state.assert_collateral_raw_eq(
+        2,
+        &XEGLD_TOKEN,
+        scaled_amount(20, XEGLD_DECIMALS),
+        "Borrower XEGLD collateral should be recorded",
+    );
     state.supply_asset(
         &borrower,
         SEGLD_TOKEN,
-        BigUint::from(80u64), // $2500
+        BigUint::from(80u64),
         SEGLD_DECIMALS,
         OptionalValue::Some(2),
         OptionalValue::None,
         false,
+    );
+    state.assert_collateral_raw_eq(
+        2,
+        &SEGLD_TOKEN,
+        scaled_amount(80, SEGLD_DECIMALS),
+        "Borrower SEGLD collateral should be recorded",
     );
 
     // Borrower takes loans
@@ -87,6 +122,12 @@ fn liquidate_multiple_debt_positions_sequential_success() {
         2,
         EGLD_DECIMALS,
     );
+    state.assert_borrow_raw_eq(
+        2,
+        &EGLD_TOKEN,
+        scaled_amount(39, EGLD_DECIMALS),
+        "Borrowed EGLD debt should be tracked",
+    );
     state.borrow_asset(
         &borrower,
         USDC_TOKEN,
@@ -94,12 +135,16 @@ fn liquidate_multiple_debt_positions_sequential_success() {
         2,
         USDC_DECIMALS,
     );
+    state.assert_borrow_raw_eq(
+        2,
+        &USDC_TOKEN,
+        scaled_amount(1000, USDC_DECIMALS),
+        "Borrowed USDC debt should be tracked",
+    );
 
     // Verify initial position health
-    let borrowed = state.total_borrow_in_egld(2);
-    let collateral = state.total_collateral_in_egld(2);
-    assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
-    assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
+    let _initial_health = state.account_health_factor(2);
+    state.assert_health_factor_at_least(2, RAY);
 
     // Advance time to accumulate interest and make position unhealthy
     state.change_timestamp(SECONDS_PER_DAY * 440);
@@ -128,7 +173,6 @@ fn liquidate_multiple_debt_positions_sequential_success() {
     let borrowed_egld = state.borrow_amount_for_token(2, EGLD_TOKEN);
 
     let before_health = state.account_health_factor(2);
-    println!("before_health: {:?}", before_health);
     // Liquidate EGLD debt first
     state.liquidate_account_dem(
         &liquidator,
@@ -137,8 +181,8 @@ fn liquidate_multiple_debt_positions_sequential_success() {
         2,
     );
     let after_health = state.account_health_factor(2);
-    println!("after_health: {:?}", after_health);
     assert!(after_health > before_health);
+    state.assert_no_borrow_entry(2, &EGLD_TOKEN);
 
     // // Liquidate USDC debt second
     state.liquidate_account_dem(
@@ -147,12 +191,22 @@ fn liquidate_multiple_debt_positions_sequential_success() {
         borrowed_usdc.into_raw_units().clone(),
         2,
     );
-    let after_health = state.account_health_factor(2);
-    println!("after_health: {:?}", after_health);
-    assert!(after_health > before_health);
-    // Verify position health improved
-    let final_borrowed = state.total_borrow_in_egld(2);
-    assert!(final_borrowed < borrowed);
+    let post_liquidation_health = state.account_health_factor(2);
+    assert!(post_liquidation_health > after_health);
+    state.assert_borrow_raw_within(
+        2,
+        &USDC_TOKEN,
+        BigUint::zero(),
+        small_ray_tolerance(),
+        "Secondary liquidation should leave only dust USDC debt",
+    );
+    state.assert_total_borrow_raw_within(
+        2,
+        BigUint::zero(),
+        small_ray_tolerance(),
+        "Sequential liquidation should reduce total borrow to dust",
+    );
+    state.assert_health_factor_at_least(2, RAY);
 }
 
 /// Tests bulk liquidation with multiple assets in single transaction.
@@ -171,7 +225,6 @@ fn liquidate_bulk_multiple_assets_with_overpayment_success() {
     state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
 
-    // Supplier provides liquidity
     state.supply_asset(
         &supplier,
         EGLD_TOKEN,
@@ -181,6 +234,12 @@ fn liquidate_bulk_multiple_assets_with_overpayment_success() {
         OptionalValue::None,
         false,
     );
+    state.assert_collateral_raw_eq(
+        1,
+        &EGLD_TOKEN,
+        scaled_amount(100, EGLD_DECIMALS),
+        "Supplier EGLD liquidity should be recorded",
+    );
     state.supply_asset(
         &supplier,
         USDC_TOKEN,
@@ -189,6 +248,12 @@ fn liquidate_bulk_multiple_assets_with_overpayment_success() {
         OptionalValue::Some(1),
         OptionalValue::None,
         false,
+    );
+    state.assert_collateral_raw_eq(
+        1,
+        &USDC_TOKEN,
+        scaled_amount(1000, USDC_DECIMALS),
+        "Supplier USDC liquidity should be recorded",
     );
     state.supply_asset(
         &supplier,
@@ -199,34 +264,56 @@ fn liquidate_bulk_multiple_assets_with_overpayment_success() {
         OptionalValue::None,
         false,
     );
+    state.assert_collateral_raw_eq(
+        1,
+        &CAPPED_TOKEN,
+        scaled_amount(10, CAPPED_DECIMALS),
+        "Supplier capped liquidity should be recorded",
+    );
 
-    // Borrower provides collateral
     state.supply_asset(
         &borrower,
         XEGLD_TOKEN,
-        BigUint::from(20u64), // $2500
+        BigUint::from(20u64),
         XEGLD_DECIMALS,
         OptionalValue::None,
         OptionalValue::None,
         false,
     );
+    state.assert_collateral_raw_eq(
+        2,
+        &XEGLD_TOKEN,
+        scaled_amount(20, XEGLD_DECIMALS),
+        "Borrower XEGLD collateral should be recorded",
+    );
     state.supply_asset(
         &borrower,
         SEGLD_TOKEN,
-        BigUint::from(80u64), // $2500
+        BigUint::from(80u64),
         SEGLD_DECIMALS,
         OptionalValue::Some(2),
         OptionalValue::None,
         false,
     );
+    state.assert_collateral_raw_eq(
+        2,
+        &SEGLD_TOKEN,
+        scaled_amount(80, SEGLD_DECIMALS),
+        "Borrower SEGLD collateral should be recorded",
+    );
 
-    // Borrower takes loans
     state.borrow_asset(
         &borrower,
         EGLD_TOKEN,
         BigUint::from(39u64),
         2,
         EGLD_DECIMALS,
+    );
+    state.assert_borrow_raw_eq(
+        2,
+        &EGLD_TOKEN,
+        scaled_amount(39, EGLD_DECIMALS),
+        "Borrower EGLD debt should be tracked",
     );
     state.borrow_asset(
         &borrower,
@@ -235,21 +322,20 @@ fn liquidate_bulk_multiple_assets_with_overpayment_success() {
         2,
         USDC_DECIMALS,
     );
+    state.assert_borrow_raw_eq(
+        2,
+        &USDC_TOKEN,
+        scaled_amount(1000, USDC_DECIMALS),
+        "Borrower USDC debt should be tracked",
+    );
 
-    // Verify initial health
-    let borrowed = state.total_borrow_in_egld(2);
-    let collateral = state.total_collateral_in_egld(2);
-    assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
-    assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
-
-    // Advance time to make position unhealthy
-    state.change_timestamp(SECONDS_PER_DAY * 440);
+    state.change_timestamp(SECONDS_PER_DAY * 400);
     let mut markets = MultiValueEncoded::new();
     markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
     markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
     state.update_markets(&borrower, markets.clone());
+    let before_health = state.account_health_factor(2);
 
-    // Setup liquidator with sufficient funds
     let liquidator = TestAddress::new("liquidator");
     state
         .world
@@ -257,31 +343,39 @@ fn liquidate_bulk_multiple_assets_with_overpayment_success() {
         .nonce(1)
         .esdt_balance(
             USDC_TOKEN,
-            BigUint::from(10000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
+            BigUint::from(10_000u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32),
         )
         .esdt_balance(
             EGLD_TOKEN,
-            BigUint::from(10000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+            BigUint::from(10_000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
         );
 
-    // Get current debt amounts
     let borrowed_usdc = state.borrow_amount_for_token(2, USDC_TOKEN);
     let borrowed_egld = state.borrow_amount_for_token(2, EGLD_TOKEN);
-
-    // Prepare bulk liquidation with 3x USDC (overpayment)
     let usdc_payment = borrowed_usdc.into_raw_units().clone() * 3u64;
     let payments = vec![
         (&EGLD_TOKEN, borrowed_egld.into_raw_units()),
         (&USDC_TOKEN, &usdc_payment),
     ];
 
-    // Execute bulk liquidation
     state.liquidate_account_dem_bulk(&liquidator, payments, 2);
     let after_health = state.account_health_factor(2);
-    println!("after_health: {:?}", after_health);
-    // Verify final position state
-    let final_borrowed = state.total_borrow_in_egld(2);
-    assert!(final_borrowed < borrowed);
+    assert!(after_health > before_health);
+    state.assert_no_borrow_entry(2, &EGLD_TOKEN);
+    state.assert_borrow_raw_within(
+        2,
+        &USDC_TOKEN,
+        BigUint::zero(),
+        small_ray_tolerance(),
+        "Bulk liquidation should leave only dust USDC debt",
+    );
+    state.assert_total_borrow_raw_within(
+        2,
+        BigUint::zero(),
+        small_ray_tolerance(),
+        "Bulk liquidation should reduce total borrow to dust",
+    );
+    state.assert_health_factor_at_least(2, RAY);
 }
 
 /// Tests bulk liquidation with refund case for smaller positions.
@@ -299,7 +393,6 @@ fn liquidate_bulk_with_refund_handling_success() {
     state.change_timestamp(0);
     setup_accounts(&mut state, supplier, borrower);
 
-    // Setup liquidity pools
     state.supply_asset(
         &supplier,
         EGLD_TOKEN,
@@ -309,6 +402,12 @@ fn liquidate_bulk_with_refund_handling_success() {
         OptionalValue::None,
         false,
     );
+    state.assert_collateral_raw_eq(
+        1,
+        &EGLD_TOKEN,
+        scaled_amount(100, EGLD_DECIMALS),
+        "Supplier EGLD liquidity should be recorded",
+    );
     state.supply_asset(
         &supplier,
         USDC_TOKEN,
@@ -317,6 +416,12 @@ fn liquidate_bulk_with_refund_handling_success() {
         OptionalValue::Some(1),
         OptionalValue::None,
         false,
+    );
+    state.assert_collateral_raw_eq(
+        1,
+        &USDC_TOKEN,
+        scaled_amount(1000, USDC_DECIMALS),
+        "Supplier USDC liquidity should be recorded",
     );
     state.supply_asset(
         &supplier,
@@ -327,8 +432,13 @@ fn liquidate_bulk_with_refund_handling_success() {
         OptionalValue::None,
         false,
     );
+    state.assert_collateral_raw_eq(
+        1,
+        &CAPPED_TOKEN,
+        scaled_amount(10, CAPPED_DECIMALS),
+        "Supplier capped liquidity should be recorded",
+    );
 
-    // Borrower provides collateral
     state.supply_asset(
         &borrower,
         XEGLD_TOKEN,
@@ -337,6 +447,12 @@ fn liquidate_bulk_with_refund_handling_success() {
         OptionalValue::None,
         OptionalValue::None,
         false,
+    );
+    state.assert_collateral_raw_eq(
+        2,
+        &XEGLD_TOKEN,
+        scaled_amount(20, XEGLD_DECIMALS),
+        "Borrower XEGLD collateral should be recorded",
     );
     state.supply_asset(
         &borrower,
@@ -347,14 +463,25 @@ fn liquidate_bulk_with_refund_handling_success() {
         OptionalValue::None,
         false,
     );
+    state.assert_collateral_raw_eq(
+        2,
+        &SEGLD_TOKEN,
+        scaled_amount(80, SEGLD_DECIMALS),
+        "Borrower SEGLD collateral should be recorded",
+    );
 
-    // Create debt positions
     state.borrow_asset(
         &borrower,
         EGLD_TOKEN,
         BigUint::from(39u64),
         2,
         EGLD_DECIMALS,
+    );
+    state.assert_borrow_raw_eq(
+        2,
+        &EGLD_TOKEN,
+        scaled_amount(39, EGLD_DECIMALS),
+        "Borrower EGLD debt should be tracked",
     );
     state.borrow_asset(
         &borrower,
@@ -363,12 +490,12 @@ fn liquidate_bulk_with_refund_handling_success() {
         2,
         USDC_DECIMALS,
     );
-
-    // Verify initial state
-    let borrowed = state.total_borrow_in_egld(2);
-    let collateral = state.total_collateral_in_egld(2);
-    assert!(borrowed > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
-    assert!(collateral > ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
+    state.assert_borrow_raw_eq(
+        2,
+        &USDC_TOKEN,
+        scaled_amount(1000, USDC_DECIMALS),
+        "Borrower USDC debt should be tracked",
+    );
 
     // Advance time for moderate interest (less than previous test)
     state.change_timestamp(SECONDS_PER_DAY * 255);
@@ -414,6 +541,27 @@ fn liquidate_bulk_with_refund_handling_success() {
 
     assert!(final_borrowed < final_borrowed_before);
     assert!(final_health > final_health_before);
+    state.assert_borrow_raw_within(
+        2,
+        &EGLD_TOKEN,
+        BigUint::zero(),
+        small_ray_tolerance(),
+        "Refund handling should leave only negligible EGLD debt",
+    );
+    state.assert_borrow_raw_within(
+        2,
+        &USDC_TOKEN,
+        BigUint::zero(),
+        small_ray_tolerance(),
+        "Refund handling should leave only negligible USDC debt",
+    );
+    state.assert_total_borrow_raw_within(
+        2,
+        BigUint::zero(),
+        small_ray_tolerance(),
+        "Refund scenario should reduce total borrow to dust",
+    );
+    state.assert_health_factor_at_least(2, RAY);
 }
 
 /// Tests liquidation resulting in bad debt and cleanup.
@@ -442,6 +590,12 @@ fn liquidate_insufficient_collateral_creates_bad_debt_success() {
         OptionalValue::None,
         false,
     );
+    state.assert_collateral_raw_eq(
+        1,
+        &EGLD_TOKEN,
+        scaled_amount(100, EGLD_DECIMALS),
+        "Supplier EGLD liquidity should be recorded",
+    );
     state.supply_asset(
         &supplier,
         USDC_TOKEN,
@@ -450,6 +604,12 @@ fn liquidate_insufficient_collateral_creates_bad_debt_success() {
         OptionalValue::Some(1),
         OptionalValue::None,
         false,
+    );
+    state.assert_collateral_raw_eq(
+        1,
+        &USDC_TOKEN,
+        scaled_amount(1000, USDC_DECIMALS),
+        "Supplier USDC liquidity should be recorded",
     );
 
     // Borrower provides limited collateral
@@ -462,6 +622,12 @@ fn liquidate_insufficient_collateral_creates_bad_debt_success() {
         OptionalValue::None,
         false,
     );
+    state.assert_collateral_raw_eq(
+        2,
+        &XEGLD_TOKEN,
+        scaled_amount(20, XEGLD_DECIMALS),
+        "Borrower XEGLD collateral should be recorded",
+    );
     state.supply_asset(
         &borrower,
         SEGLD_TOKEN,
@@ -470,6 +636,12 @@ fn liquidate_insufficient_collateral_creates_bad_debt_success() {
         OptionalValue::Some(2),
         OptionalValue::None,
         false,
+    );
+    state.assert_collateral_raw_eq(
+        2,
+        &SEGLD_TOKEN,
+        scaled_amount(80, SEGLD_DECIMALS),
+        "Borrower SEGLD collateral should be recorded",
     );
 
     // Create significant debt positions
@@ -480,12 +652,24 @@ fn liquidate_insufficient_collateral_creates_bad_debt_success() {
         2,
         EGLD_DECIMALS,
     );
+    state.assert_borrow_raw_eq(
+        2,
+        &EGLD_TOKEN,
+        scaled_amount(39, EGLD_DECIMALS),
+        "Borrower EGLD debt should be tracked",
+    );
     state.borrow_asset(
         &borrower,
         USDC_TOKEN,
         BigUint::from(1000u64),
         2,
         USDC_DECIMALS,
+    );
+    state.assert_borrow_raw_eq(
+        2,
+        &USDC_TOKEN,
+        scaled_amount(1000, USDC_DECIMALS),
+        "Borrower USDC debt should be tracked",
     );
 
     // Verify initial positions
@@ -548,6 +732,20 @@ fn liquidate_insufficient_collateral_creates_bad_debt_success() {
     assert!(final_debt == ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
     assert!(final_collateral == ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
     assert!(final_weighted == ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
+    state.assert_total_borrow_raw_eq(
+        2,
+        BigUint::zero(),
+        "Bad debt cleanup should clear residual borrow",
+    );
+    state.assert_total_collateral_raw_eq(
+        2,
+        BigUint::zero(),
+        "Bad debt cleanup should clear collateral tracking",
+    );
+    state.assert_no_borrow_entry(2, &EGLD_TOKEN);
+    state.assert_no_borrow_entry(2, &USDC_TOKEN);
+    state.assert_no_collateral_entry(2, &XEGLD_TOKEN);
+    state.assert_no_collateral_entry(2, &SEGLD_TOKEN);
 }
 
 /// Tests liquidation of single-asset position with extreme interest.
@@ -582,6 +780,12 @@ fn liquidate_single_asset_position_high_interest_success() {
         OptionalValue::None,
         false,
     );
+    state.assert_collateral_raw_eq(
+        1,
+        &EGLD_TOKEN,
+        scaled_amount(100, EGLD_DECIMALS),
+        "Supplier EGLD liquidity should be recorded",
+    );
 
     // Borrower supplies EGLD as collateral
     state.supply_asset(
@@ -593,14 +797,27 @@ fn liquidate_single_asset_position_high_interest_success() {
         OptionalValue::None,
         false,
     );
+    state.assert_collateral_raw_eq(
+        2,
+        &EGLD_TOKEN,
+        scaled_amount(100, EGLD_DECIMALS),
+        "Borrower EGLD collateral should be recorded",
+    );
 
     // Borrower takes EGLD loan (same asset)
+    // Supplier supplied first, so borrower NFT nonce = 2 here
     state.borrow_asset(
         &borrower,
         EGLD_TOKEN,
         BigUint::from(75u64),
         2,
         EGLD_DECIMALS,
+    );
+    state.assert_borrow_raw_eq(
+        2,
+        &EGLD_TOKEN,
+        scaled_amount(75, EGLD_DECIMALS),
+        "Borrower EGLD debt should be tracked",
     );
 
     // Verify initial state
@@ -626,15 +843,19 @@ fn liquidate_single_asset_position_high_interest_success() {
     );
 
     // Verify healthy position after liquidation
-    let final_borrowed = state.total_borrow_in_egld_big(2);
-    let final_collateral = state.total_collateral_in_egld_big(2);
-    let final_health = state.account_health_factor(2);
-    println!("final_borrowed: {:?}", final_borrowed);
-    println!("final_collateral: {:?}", final_collateral);
-    println!("final_health: {:?}", final_health);
-    assert!(final_borrowed >= ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
-    assert!(final_collateral >= ManagedDecimal::from_raw_units(BigUint::from(0u64), RAY_PRECISION));
-    assert!(final_health > ManagedDecimal::from_raw_units(BigUint::from(1u64), RAY_PRECISION));
+    state.assert_total_borrow_raw_within(
+        2,
+        BigUint::zero(),
+        small_ray_tolerance(),
+        "Liquidation should leave at most dust-level EGLD debt",
+    );
+    state.assert_total_collateral_raw_within(
+        2,
+        BigUint::zero(),
+        small_ray_tolerance(),
+        "Liquidation should release virtually all collateral",
+    );
+    state.assert_health_factor_at_least(2, RAY);
 }
 
 /// Tests liquidation creating bad debt that cannot be fully recovered.
@@ -733,6 +954,345 @@ fn liquidate_severe_undercollateralization_bad_debt_success() {
     // Verify debt cleared
     let final_debt = state.total_borrow_in_egld(2);
     assert!(final_debt == ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION));
+}
+
+/// Verifies liquidation bonus selection logic: base bonus is used when repayment is capped,
+/// significantly short, and projected health does not improve; otherwise scaled bonus applies.
+#[test]
+fn liquidation_bonus_selection_behavior() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    state.change_timestamp(0);
+    setup_accounts(&mut state, supplier, borrower);
+
+    // Supplier provides EGLD liquidity
+    state.supply_asset(
+        &supplier,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    // Borrower supplies and borrows single asset (EGLD) to make base bonus easy to compute
+    state.supply_asset(
+        &borrower,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+    state.borrow_asset(
+        &borrower,
+        EGLD_TOKEN,
+        BigUint::from(75u64),
+        2,
+        EGLD_DECIMALS,
+    );
+
+    // Advance time significantly to ensure the position becomes unhealthy
+    state.change_timestamp(SECONDS_PER_YEAR + SECONDS_PER_DAY * 1500);
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
+    state.update_markets(&borrower, markets.clone());
+
+    // Sanity: position is liquidatable
+    let hf_before = state.account_health_factor(2);
+    assert!(hf_before < ManagedDecimal::from_raw_units(BigUint::from(RAY), RAY_PRECISION));
+
+    // CASE A: Capped and significantly short repayment → expect base (weighted) bonus to be applied
+    let borrowed_egld = state.borrow_amount_for_token(2, EGLD_TOKEN);
+    let tiny_payment = borrowed_egld.into_raw_units().clone() / 1000u64; // << 1% of debt
+    let mut debt_payments = ManagedVec::new();
+    debt_payments.push(EgldOrEsdtTokenPayment::new(
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
+        0,
+        tiny_payment.clone(),
+    ));
+
+    let estimate_capped = state.liquidation_estimations(2, debt_payments);
+    let base_bps = ManagedDecimal::from_raw_units(BigUint::from(LIQ_BONUS), BPS_PRECISION);
+    // For capped, tiny repayments we expect the applied bonus to never be below the base bonus.
+    // Depending on rounding and projected HF, the algorithm may still use a scaled bonus if it improves HF.
+    assert!(estimate_capped.bonus_rate_bps >= base_bps);
+
+    // Also verify no death-spiral: executing a tiny partial liquidation must not reduce health factor
+    let liq = TestAddress::new("liquidator");
+    state.world.account(liq).nonce(1).esdt_balance(
+        EGLD_TOKEN,
+        BigUint::from(10000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+    );
+    let hf_before_exec = state.account_health_factor(2);
+    state.liquidate_account_dem(
+        &liq,
+        &EGLD_TOKEN,
+        // Use raw units directly for denominated liquidation helper
+        tiny_payment,
+        2,
+    );
+    let hf_after_exec = state.account_health_factor(2);
+    assert!(hf_after_exec > hf_before_exec);
+    println!("hf_after_exec:  {:?}", hf_after_exec);
+    println!("hf_before_exec: {:?}", hf_before_exec);
+
+    // CASE B: Uncapped (use algorithm-estimated repayment) → expect scaled bonus (>= base)
+    let empty_payments = ManagedVec::new();
+    let estimate_uncapped = state.liquidation_estimations(2, empty_payments);
+    // Scaled bonus should be at least the base, and with poor health typically strictly greater
+    assert!(estimate_uncapped.bonus_rate_bps > base_bps);
+}
+
+/// Verifies the liquidation bonus clamps at the configured maximum (15%) when the
+/// position is severely unhealthy, using the simulation view.
+#[test]
+fn liquidation_bonus_caps_at_max() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    state.change_timestamp(0);
+    setup_accounts(&mut state, supplier, borrower);
+
+    // Liquidity provider supplies USDC and EGLD
+    state.supply_asset(
+        &supplier,
+        USDC_TOKEN,
+        BigUint::from(5000u64),
+        USDC_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    // Borrower supplies little EGLD and borrows a lot of USDC
+    state.supply_asset(
+        &borrower,
+        EGLD_TOKEN,
+        BigUint::from(10u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+    state.borrow_asset(
+        &borrower,
+        USDC_TOKEN,
+        BigUint::from(300u64), // near LTV limit
+        2,
+        USDC_DECIMALS,
+    );
+
+    // Advance a large amount of time to make the position extremely unhealthy
+    state.change_timestamp(880000000u64);
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
+    state.update_markets(&borrower, markets.clone());
+
+    // Simulate liquidation with no specified payments (algorithm chooses repayment)
+    let estimate = state.liquidation_estimations(2, ManagedVec::new());
+
+    // Expect the bonus to approach the cap and never exceed it.
+    let max_bps = ManagedDecimal::from_raw_units(BigUint::from(1_500u64), BPS_PRECISION);
+    let min_expected = ManagedDecimal::from_raw_units(BigUint::from(1_000u64), BPS_PRECISION); // >= 10%
+    assert!(estimate.bonus_rate_bps <= max_bps);
+    assert!(estimate.bonus_rate_bps >= min_expected);
+}
+
+/// Verifies the Dutch auction path selection by comparing a slightly unhealthy position
+/// (primary target 1.02 succeeds) versus a more unhealthy position (falls back to 1.01),
+/// asserting the latter yields a higher bonus and larger estimated repayment.
+#[test]
+fn liquidation_estimate_primary_vs_secondary() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    state.change_timestamp(0);
+    setup_accounts(&mut state, supplier, borrower);
+
+    // Provide some EGLD liquidity and mint supplier NFT first so borrower gets nonce = 2
+    state.supply_asset(
+        &supplier,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    // Borrower supplies and borrows the same asset (EGLD) to simplify setup
+    state.supply_asset(
+        &borrower,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+    state.borrow_asset(
+        &borrower,
+        EGLD_TOKEN,
+        BigUint::from(75u64),
+        2,
+        EGLD_DECIMALS,
+    );
+
+    // Scenario A: slightly unhealthy
+    state.change_timestamp(SECONDS_PER_YEAR + SECONDS_PER_DAY * 1000);
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
+    state.update_markets(&borrower, markets.clone());
+    let a = state.liquidation_estimations(2, ManagedVec::new());
+
+    // Scenario B: more unhealthy (advance much more time)
+    state.change_timestamp(SECONDS_PER_YEAR + SECONDS_PER_DAY * 1500);
+    let b = state.liquidation_estimations(2, ManagedVec::new());
+
+    // Expect more unhealthy case to have higher bonus and larger repayment estimate
+    assert!(b.bonus_rate_bps >= a.bonus_rate_bps);
+    assert!(b.max_egld_payment_wad >= a.max_egld_payment_wad);
+}
+
+/// Verifies repeated tiny partial liquidations cannot enter a death spiral: health factor
+/// does not decrease across iterations even when repayments are capped far below estimate.
+#[test]
+fn liquidation_no_death_spiral_under_tiny_payments() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    state.change_timestamp(0);
+    setup_accounts(&mut state, supplier, borrower);
+
+    // Liquidity
+    state.supply_asset(
+        &supplier,
+        EGLD_TOKEN,
+        BigUint::from(200u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+
+    // Borrower supplies and borrows same-asset to keep math simple
+    state.supply_asset(
+        &borrower,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+    state.borrow_asset(
+        &borrower,
+        EGLD_TOKEN,
+        BigUint::from(75u64),
+        2,
+        EGLD_DECIMALS,
+    );
+
+    // Make unhealthy (extreme interest period similar to other tests)
+    state.change_timestamp(SECONDS_PER_YEAR + SECONDS_PER_DAY * 1500);
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
+    state.update_markets(&borrower, markets.clone());
+
+    // Iteratively liquidate with tiny payments and verify HF never decreases
+    let liq = TestAddress::new("liquidator");
+    state.world.account(liq).nonce(1).esdt_balance(
+        EGLD_TOKEN,
+        BigUint::from(100000u64) * BigUint::from(10u64).pow(EGLD_DECIMALS as u32),
+    );
+    let mut last_hf = state.account_health_factor(2);
+    for _ in 0..3 {
+        let borrowed = state.borrow_amount_for_token(2, EGLD_TOKEN);
+        let tiny = borrowed.into_raw_units().clone() / 2000u64; // 0.05%
+        state.liquidate_account_dem(&liq, &EGLD_TOKEN, tiny, 2);
+        let hf = state.account_health_factor(2);
+        assert!(hf >= last_hf);
+        last_hf = hf;
+    }
+}
+
+/// Verifies refund handling in the simulation when overpaying with multiple tokens.
+/// Ensures the view reports non-empty refunds for excess payments.
+#[test]
+fn liquidation_excess_distribution_partial_and_full() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+    let borrower = TestAddress::new("borrower");
+
+    state.change_timestamp(0);
+    setup_accounts(&mut state, supplier, borrower);
+
+    // Setup basic liquidity by supplying some assets
+    state.supply_asset(
+        &supplier,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+    state.supply_asset(
+        &supplier,
+        USDC_TOKEN,
+        BigUint::from(2000u64),
+        USDC_DECIMALS,
+        OptionalValue::Some(1),
+        OptionalValue::None,
+        false,
+    );
+
+    // Borrower deposits and borrows USDC only (sufficient for refund testing)
+    state.supply_asset(
+        &borrower,
+        EGLD_TOKEN,
+        BigUint::from(25u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+    state.borrow_asset(
+        &borrower,
+        USDC_TOKEN,
+        BigUint::from(700u64),
+        2,
+        USDC_DECIMALS,
+    );
+
+    // Make position unhealthy
+    state.change_timestamp(SECONDS_PER_DAY * 4040);
+    let mut markets = MultiValueEncoded::new();
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
+    markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
+    state.update_markets(&borrower, markets.clone());
+
+    // Build intentional overpayment set for USDC
+    let borrowed_usdc = state.borrow_amount_for_token(2, USDC_TOKEN);
+
+    let mut debt_payments = ManagedVec::new();
+    debt_payments.push(EgldOrEsdtTokenPayment::new(
+        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_token_identifier()),
+        0,
+        borrowed_usdc.into_raw_units() * 3u64, // overpay USDC by 3x
+    ));
+
+    // Simulate liquidation and verify refunds are reported
+    let estimate = state.liquidation_estimations(2, debt_payments);
+    assert!(estimate.refunds.len() > 0);
 }
 
 /// Tests borrow attempt with insufficient collateral.
