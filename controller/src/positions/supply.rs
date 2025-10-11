@@ -556,7 +556,7 @@ pub trait PositionDepositModule:
             &dp.zero_decimal(),
             &dp,
             feed.price_wad.clone(),
-            &controller_sc,
+            controller_sc,
             &account_attributes,
         );
     }

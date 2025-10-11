@@ -211,9 +211,9 @@ fn views_liquidation_estimation_unhealthy_position() {
     let liquidation_estimate = state.liquidation_estimations(2, debt_payments);
 
     // Verify estimations
-    assert!(liquidation_estimate.seized_collaterals.len() > 0);
-    assert!(liquidation_estimate.protocol_fees.len() > 0);
-    assert!(liquidation_estimate.refunds.len() > 0);
+    assert!(!liquidation_estimate.seized_collaterals.is_empty());
+    assert!(!liquidation_estimate.protocol_fees.is_empty());
+    assert!(!liquidation_estimate.refunds.is_empty());
     assert!(
         liquidation_estimate.max_egld_payment_wad
             > ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION)
@@ -456,11 +456,7 @@ fn views_token_prices_accuracy() {
         };
 
         let tolerance = expected_usd_decimal.clone() / 100usize;
-        assert!(
-            diff < tolerance,
-            "Price deviation too large for {:?}",
-            token
-        );
+        assert!(diff < tolerance, "Price deviation too large for {token:?}");
 
         // Verify EGLD price is positive
         assert!(egld_price > ManagedDecimal::from_raw_units(BigUint::zero(), WAD_PRECISION));

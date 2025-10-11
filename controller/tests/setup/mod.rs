@@ -12,7 +12,7 @@ use multiversx_sc::{
     types::{
         BigUint, EgldOrEsdtTokenPayment, ManagedAddress, ManagedArgBuffer, ManagedBuffer,
         ManagedDecimal, MultiValueEncoded, NumDecimals, ReturnsNewManagedAddress, ReturnsResult,
-        TestTokenIdentifier, TokenIdentifier,
+        TestTokenIdentifier,
     },
 };
 use multiversx_sc_scenario::{
@@ -3558,8 +3558,8 @@ pub fn setup_accumulator(world: &mut ScenarioWorld) -> ManagedAddress<StaticApi>
             ManagedAddress::zero(),
             BigUint::from(1_000u64),
             BigUint::from(3_000u64),
-            TokenIdentifier::<StaticApi>::from(XEGLD_TOKEN.to_token_identifier()),
-            TokenIdentifier::<StaticApi>::from(USDC_TOKEN.to_token_identifier()),
+            XEGLD_TOKEN.to_token_identifier(),
+            USDC_TOKEN.to_token_identifier(),
             ManagedAddress::zero(),
         )
         .code(ACCUMULATOR_PATH)
@@ -4248,11 +4248,11 @@ impl LendingPoolTestState {
         context: &str,
     ) {
         let actual_raw = self
-            .borrow_amount_for_token(account_position, token_id.clone())
+            .borrow_amount_for_token(account_position, *token_id)
             .into_raw_units()
             .clone();
 
-        assert_eq!(actual_raw, expected_raw, "{}", context,);
+        assert_eq!(actual_raw, expected_raw, "{context}",);
     }
 
     /// Assert helper to verify the collateral balance stored on-chain.
@@ -4264,11 +4264,11 @@ impl LendingPoolTestState {
         context: &str,
     ) {
         let actual_raw = self
-            .collateral_amount_for_token(account_position, token_id.clone())
+            .collateral_amount_for_token(account_position, *token_id)
             .into_raw_units()
             .clone();
 
-        assert_eq!(actual_raw, expected_raw, "{}", context,);
+        assert_eq!(actual_raw, expected_raw, "{context}",);
     }
 
     /// Assert helper to ensure the health factor stays above the supplied threshold (in RAY units).
@@ -4296,7 +4296,7 @@ impl LendingPoolTestState {
             .into_raw_units()
             .clone();
 
-        assert_eq!(actual_raw, expected_raw, "{}", context);
+        assert_eq!(actual_raw, expected_raw, "{context}");
     }
 
     /// Assert helper allowing tolerance when comparing total borrow in EGLD with RAY precision.
@@ -4314,11 +4314,7 @@ impl LendingPoolTestState {
 
         assert!(
             raw_diff_within(&actual_raw, &expected_raw, &tolerance_raw),
-            "{} | expected {:?} (±{:?}) got {:?}",
-            context,
-            expected_raw,
-            tolerance_raw,
-            actual_raw,
+            "{context} | expected {expected_raw:?} (±{tolerance_raw:?}) got {actual_raw:?}",
         );
     }
 
@@ -4334,7 +4330,7 @@ impl LendingPoolTestState {
             .into_raw_units()
             .clone();
 
-        assert_eq!(actual_raw, expected_raw, "{}", context);
+        assert_eq!(actual_raw, expected_raw, "{context}");
     }
 
     /// Assert helper allowing tolerance when comparing total collateral in EGLD with RAY precision.
@@ -4352,11 +4348,7 @@ impl LendingPoolTestState {
 
         assert!(
             raw_diff_within(&actual_raw, &expected_raw, &tolerance_raw),
-            "{} | expected {:?} (±{:?}) got {:?}",
-            context,
-            expected_raw,
-            tolerance_raw,
-            actual_raw,
+            "{context} | expected {expected_raw:?} (±{tolerance_raw:?}) got {actual_raw:?}",
         );
     }
 
@@ -4370,17 +4362,13 @@ impl LendingPoolTestState {
         context: &str,
     ) {
         let actual_raw = self
-            .borrow_amount_for_token(account_position, token_id.clone())
+            .borrow_amount_for_token(account_position, *token_id)
             .into_raw_units()
             .clone();
 
         assert!(
             raw_diff_within(&actual_raw, &expected_raw, &tolerance_raw),
-            "{} | expected {:?} (±{:?}) got {:?}",
-            context,
-            expected_raw,
-            tolerance_raw,
-            actual_raw,
+            "{context} | expected {expected_raw:?} (±{tolerance_raw:?}) got {actual_raw:?}",
         );
     }
 
@@ -4393,7 +4381,7 @@ impl LendingPoolTestState {
         let expected_message = format!("Token not existing in the account {}", token_id.as_str());
         self.collateral_amount_for_token_non_existing(
             account_position,
-            token_id.clone(),
+            *token_id,
             expected_message.as_bytes(),
         );
     }
@@ -4407,7 +4395,7 @@ impl LendingPoolTestState {
         let expected_message = format!("Token not existing in the account {}", token_id.as_str());
         self.borrow_amount_for_token_non_existing(
             account_position,
-            token_id.clone(),
+            *token_id,
             expected_message.as_bytes(),
         );
     }
@@ -4422,17 +4410,13 @@ impl LendingPoolTestState {
         context: &str,
     ) {
         let actual_raw = self
-            .collateral_amount_for_token(account_position, token_id.clone())
+            .collateral_amount_for_token(account_position, *token_id)
             .into_raw_units()
             .clone();
 
         assert!(
             raw_diff_within(&actual_raw, &expected_raw, &tolerance_raw),
-            "{} | expected {:?} (±{:?}) got {:?}",
-            context,
-            expected_raw,
-            tolerance_raw,
-            actual_raw,
+            "{context} | expected {expected_raw:?} (±{tolerance_raw:?}) got {actual_raw:?}",
         );
     }
 }

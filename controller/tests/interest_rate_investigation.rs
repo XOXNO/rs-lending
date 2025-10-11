@@ -80,9 +80,8 @@ fn investigate_interest_rate_calculation() {
 
     // Assert: Verify utilization is correct (0.333333 / 1000.666668 ≈ 0.0333%)
     assert!(
-        utilization_pct < BigUint::from(1u64),
-        "Utilization should be less than 1%, got {:?}%",
-        utilization_pct
+        utilization_pct < 1u64,
+        "Utilization should be less than 1%, got {utilization_pct:?}%"
     );
 
     // Advance time by exactly 1 second to see instantaneous rate
@@ -140,17 +139,15 @@ fn investigate_interest_rate_calculation() {
     // Assert: Interest should be approximately 279 units for 1% APR
     // 333,333 * 0.01 / 12 ≈ 277.78 units
     assert!(
-        interest_month >= BigUint::from(275u64) && interest_month <= BigUint::from(285u64),
-        "Monthly interest should be approximately 279 units, got {:?}",
-        interest_month
+        interest_month >= 275u64 && interest_month <= 285u64,
+        "Monthly interest should be approximately 279 units, got {interest_month:?}"
     );
 
     // Assert: Verify the interest rate is ~1% APR
     let monthly_rate_bps = (&interest_month * 10000u64 * 12u64) / 333_333u64;
     assert!(
-        monthly_rate_bps >= BigUint::from(95u64) && monthly_rate_bps <= BigUint::from(105u64),
-        "Interest rate should be approximately 100 bps (1%), got {:?} bps",
-        monthly_rate_bps
+        monthly_rate_bps >= 95u64 && monthly_rate_bps <= 105u64,
+        "Interest rate should be approximately 100 bps (1%), got {monthly_rate_bps:?} bps"
     );
 
     // Check if multiple positions are being counted

@@ -61,10 +61,10 @@ fn add_rewards_increases_supply_index_proportionally() {
 
     // Read post state
     let post_index = state.market_supply_index(usdc_pool.clone());
-    println!("post index: {:?}", post_index);
+    println!("post index: {post_index:?}");
     let post_index_raw = post_index.into_raw_units().clone();
     let post_supplied_actual = state.market_supplied_amount(usdc_pool);
-    println!("post supplied actual: {:?}", post_supplied_actual);
+    println!("post supplied actual: {post_supplied_actual:?}");
     let post_supplied_raw = post_supplied_actual.into_raw_units().clone();
 
     // Supply index increased as expected (within tiny rounding tolerance)

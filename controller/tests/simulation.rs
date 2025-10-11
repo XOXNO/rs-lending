@@ -208,8 +208,8 @@ fn stress_test_random_user_actions_large_scale() {
     let mut supplier_names = Vec::with_capacity(NUM_USERS);
 
     for user_index in 0..NUM_USERS {
-        borrower_names.push(format!("borrower{}", user_index));
-        supplier_names.push(format!("supplier{}", user_index));
+        borrower_names.push(format!("borrower{user_index}"));
+        supplier_names.push(format!("supplier{user_index}"));
     }
 
     let mut borrowers = Vec::with_capacity(NUM_USERS);
@@ -478,7 +478,7 @@ fn stress_test_random_user_actions_large_scale() {
     assert!(protocol_revenue.into_raw_units() == &BigUint::zero());
     let residual_reserve = reserves.into_raw_units().clone();
     assert!(
-        residual_reserve <= BigUint::from(1000u64),
+        residual_reserve <= 1000u64,
         "Reserve dust after revenue claim should stay under tolerance",
     );
 

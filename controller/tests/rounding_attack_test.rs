@@ -181,11 +181,11 @@ fn rapid_same_block_cycles_accumulate_no_interest() {
         "Borrowed principal should equal 100 * 0.01 USDC",
     );
     assert!(
-        total_repaid <= BigUint::from(1_000_010u64),
+        total_repaid <= 1_000_010u64,
         "Repayments should differ from principal by at most 10 wei of interest",
     );
     assert!(
-        total_repaid >= BigUint::from(1_000_000u64),
+        total_repaid >= 1_000_000u64,
         "Repayments should never be lower than the borrowed principal",
     );
 }

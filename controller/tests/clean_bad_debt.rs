@@ -298,7 +298,7 @@ fn clean_bad_debt_supply_index_clamped_min() {
         .market_supply_index(usdc_pool)
         .into_raw_units()
         .clone();
-    assert!(supply_index_after_raw >= BigUint::from(1u64));
+    assert!(supply_index_after_raw >= 1u64);
 }
 
 #[test]

@@ -163,15 +163,12 @@ fn delta_for_n_micro(
 
     // delta = over-seizure thanks to micro-payments
     let delta = seized_micro.clone() - seized_single.clone();
-    println!(
-        "n = {} -> delta(seized_micro - seized_single) = {:?}",
-        n, delta
-    );
+    println!("n = {n} -> delta(seized_micro - seized_single) = {delta:?}");
     let seized_micro_raw = seized_micro.into_raw_units();
     let seized_single_raw = seized_single.into_raw_units();
     if seized_micro_raw.clone() > seized_single_raw.clone() {
         let diff = seized_micro_raw - seized_single_raw;
-        println!("   over-seized raw units = {:?}", diff);
+        println!("   over-seized raw units = {diff:?}");
         diff
     } else {
         BigUint::zero()

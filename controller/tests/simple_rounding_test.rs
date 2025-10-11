@@ -79,7 +79,7 @@ fn rounding_precision_stays_stable_for_dust_flows() {
         BigUint::from(1u64),
         "Dust borrow should accrue at most 1 wei of interest over a year",
     );
-    assert!(interest_wei <= BigUint::from(1u64));
+    assert!(interest_wei <= 1u64);
 
     state.repay_asset(
         &borrower,
@@ -109,7 +109,7 @@ fn rounding_precision_stays_stable_for_dust_flows() {
         total_interest_paid += interest;
     }
     assert!(
-        total_interest_paid <= BigUint::from(10u64),
+        total_interest_paid <= 10u64,
         "Same-block borrow/repay cycles should accrue at most 10 wei of interest",
     );
 

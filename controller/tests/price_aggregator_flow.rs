@@ -30,7 +30,7 @@ fn aggregator_happy_path_and_pause() {
             ManagedBuffer::from(EGLD_TICKER),
             ManagedBuffer::from(DOLLAR_TICKER),
             0u64,
-            BigUint::from(EGLD_PRICE_IN_DOLLARS as u64) * BigUint::from(WAD),
+            BigUint::from(EGLD_PRICE_IN_DOLLARS) * BigUint::from(WAD),
         )
         .run();
 

@@ -554,7 +554,7 @@ fn repay_debt_with_collateral_full_close_position() {
         nft_payment.clone(),
     );
     let total_debt = state.borrow_amount_for_token(2, EGLD_TOKEN);
-    println!("total_debt: {:?}", total_debt);
+    println!("total_debt: {total_debt:?}");
     let mut steps_swap = ManagedArgBuffer::<StaticApi>::new();
     steps_swap.push_arg(EgldOrEsdtTokenIdentifier::<StaticApi>::from(
         EGLD_TOKEN.as_bytes(),
@@ -569,9 +569,9 @@ fn repay_debt_with_collateral_full_close_position() {
         nft_payment.clone(),
     );
     let total_collateral = state.collateral_amount_for_token(2, XEGLD_TOKEN);
-    println!("total_collateral: {:?}", total_collateral);
+    println!("total_collateral: {total_collateral:?}");
     let total_debt = state.borrow_amount_for_token(2, XEGLD_TOKEN);
-    println!("total_debt: {:?}", total_debt);
+    println!("total_debt: {total_debt:?}");
     let mut repay_steps = ManagedArgBuffer::<StaticApi>::new();
     repay_steps.push_arg(EgldOrEsdtTokenIdentifier::<StaticApi>::from(
         XEGLD_TOKEN.as_bytes(),
@@ -669,7 +669,7 @@ fn repay_debt_with_collateral_partial() {
         nft_payment.clone(),
     );
     let total_debt = state.borrow_amount_for_token(2, EGLD_TOKEN);
-    println!("total_debt: {:?}", total_debt);
+    println!("total_debt: {total_debt:?}");
     let mut steps_swap = ManagedArgBuffer::<StaticApi>::new();
     steps_swap.push_arg(EgldOrEsdtTokenIdentifier::<StaticApi>::from(
         EGLD_TOKEN.as_bytes(),
@@ -684,9 +684,9 @@ fn repay_debt_with_collateral_partial() {
         nft_payment.clone(),
     );
     let total_collateral = state.collateral_amount_for_token(2, XEGLD_TOKEN);
-    println!("total_collateral: {:?}", total_collateral);
+    println!("total_collateral: {total_collateral:?}");
     let total_debt = state.borrow_amount_for_token(2, XEGLD_TOKEN);
-    println!("total_debt: {:?}", total_debt);
+    println!("total_debt: {total_debt:?}");
     let mut repay_steps = ManagedArgBuffer::<StaticApi>::new();
     repay_steps.push_arg(EgldOrEsdtTokenIdentifier::<StaticApi>::from(
         XEGLD_TOKEN.as_bytes(),

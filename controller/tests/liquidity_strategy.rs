@@ -44,7 +44,7 @@ fn pool_create_strategy_invalid_asset_error() {
     let fee = ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS);
     let price = ManagedDecimal::from_raw_units(BigUint::from(WAD), WAD_PRECISION);
 
-    let _ = state
+    state
         .world
         .tx()
         // Only-owner of pool is the controller; call from controller address
@@ -75,7 +75,7 @@ fn pool_create_strategy_insufficient_liquidity_error() {
     let fee = ManagedDecimal::from_raw_units(BigUint::zero(), EGLD_DECIMALS);
     let price = ManagedDecimal::from_raw_units(BigUint::from(WAD), WAD_PRECISION);
 
-    let _ = state
+    state
         .world
         .tx()
         .from(state.lending_sc.clone())
@@ -120,7 +120,7 @@ fn pool_create_strategy_fee_exceeds_amount_error() {
     let fee = ManagedDecimal::from_raw_units(BigUint::from(2u64), EGLD_DECIMALS);
     let price = ManagedDecimal::from_raw_units(BigUint::from(WAD), WAD_PRECISION);
 
-    let _ = state
+    state
         .world
         .tx()
         .from(state.lending_sc.clone())

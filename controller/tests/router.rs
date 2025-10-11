@@ -107,7 +107,7 @@ fn router_upgrade_liquidity_pool_params_no_pool_error() {
         .returns(multiversx_sc::proxy_imports::ReturnsResult)
         .run();
 
-    let _ = state
+    state
         .world
         .tx()
         .from(OWNER_ADDRESS)
@@ -254,7 +254,7 @@ fn router_claim_revenue_no_accumulator_error() {
         EGLD_TOKEN.to_token_identifier(),
     ));
 
-    let _ = state
+    state
         .world
         .tx()
         .from(OWNER_ADDRESS)
@@ -376,7 +376,7 @@ fn router_upgrade_liquidity_pool_mid_usage_keeps_state_and_rates() {
         .run();
 
     // Perform controller-driven code upgrade of the liquidity pool
-    let _ = state
+    state
         .world
         .tx()
         .from(OWNER_ADDRESS)

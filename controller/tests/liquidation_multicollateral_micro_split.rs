@@ -151,9 +151,9 @@ fn liquidation_multicollateral_split_consistency_view() {
         let amt_a = a.amount.clone();
         let amt_b = b.amount.clone();
         if amt_a >= amt_b {
-            assert!((amt_a - amt_b) <= BigUint::from(10u64));
+            assert!((amt_a - amt_b) <= 10u64);
         } else {
-            assert!((amt_b - amt_a) <= BigUint::from(10u64));
+            assert!((amt_b - amt_a) <= 10u64);
         }
     }
 }
