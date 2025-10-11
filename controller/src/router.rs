@@ -506,4 +506,29 @@ pub trait RouterModule:
             }
         }
     }
+
+    #[payable]
+    #[only_owner]
+    #[endpoint(addRewards)]
+    fn add_reward(&self) {
+        let mut cache = Cache::new(self);
+        let payment = self.call_value().egld_or_single_esdt();
+
+        let accumulator_address_mapper = self.accumulator_address();
+
+        require!(
+            !accumulator_address_mapper.is_empty(),
+            ERROR_NO_ACCUMULATOR_FOUND
+        );
+
+        let pool_address = cache.cached_pool_address(&payment.token_identifier);
+        let data = self.token_price(&payment.token_identifier, &mut cache);
+        self.tx()
+            .to(pool_address)
+            .typed(proxy_pool::LiquidityPoolProxy)
+            .add_reward(data.price_wad.clone())
+            .payment(payment)
+            .returns(ReturnsResult)
+            .sync_call();
+    }
 }

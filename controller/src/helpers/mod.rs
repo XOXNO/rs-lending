@@ -711,6 +711,29 @@ pub trait MathsModule: common_math::SharedMathModule {
             self.to_decimal_ray(target_health_factor_secondary_ray),
         );
 
+        // Carve-out: if even using the base bonus (min_bonus) and targeting HF=1.0
+        // the position cannot be restored (projected HF < 1.0),
+        // return the repayment computed under base bonus. This aligns estimation
+        // with execution for unrecoverable positions and enables single-shot cleanup.
+        let (_, _base_bonus, base_new_hf) = self.compute_liquidation_details(
+            total_collateral,
+            weighted_collateral_in_egld,
+            proportion_seized,
+            min_bonus,
+            total_debt,
+            self.ray(),
+        );
+
+        if base_new_hf < self.ray() && base_new_hf < current_health_factor.clone() {
+            // For unrecoverable positions, prefer seizing (nearly) all collateral in one shot.
+            // Compute repayment that maps to full-collateral seizure under base bonus:
+            // repay_full = total_collateral / (1 + base_bonus)
+            let one_plus_base = self.ray() + min_bonus.clone();
+            let repay_full = self.div_half_up(total_collateral, &one_plus_base, RAY_PRECISION);
+            let repay_capped = self.min(repay_full, total_debt.clone());
+            return (repay_capped, min_bonus.clone());
+        }
+
         (limit_debt_ray, limit_bonus_ray)
     }
 

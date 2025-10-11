@@ -1,3 +1,4 @@
+use common_constants::WAD_PRECISION;
 use common_structs::{AccountAttributes, AccountPosition, AccountPositionType, PriceFeedShort};
 
 use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validation};
@@ -49,12 +50,24 @@ pub trait PositionRepayModule:
     /// - `position_attributes`: Position attributes containing isolation token
     fn update_isolated_debt_after_repayment(
         &self,
-        repay_amount: &ManagedDecimal<Self::Api, NumDecimals>,
+        position: &AccountPosition<Self::Api>,
+        repay_amount_egld: &ManagedDecimal<Self::Api, NumDecimals>,
+        feed: &PriceFeedShort<Self::Api>,
         cache: &mut Cache<Self>,
         position_attributes: &AccountAttributes<Self::Api>,
     ) {
         if position_attributes.is_isolated() {
-            let debt_usd_amount = self.egld_usd_value(repay_amount, &cache.egld_usd_price_wad);
+            // Compute current outstanding debt for this borrow position in EGLD (WAD)
+            let current_debt_ray = self.total_amount_ray(position, cache);
+            let current_debt_egld_ray =
+                self.token_egld_value_ray(&current_debt_ray, &feed.price_wad);
+            let current_debt_egld_wad = self.rescale_half_up(&current_debt_egld_ray, WAD_PRECISION);
+
+            // Apply only the portion that actually reduces this borrow
+            let applied_egld_wad = self.min(current_debt_egld_wad, repay_amount_egld.clone());
+
+            // Convert applied repayment to USD and decrease the tracker
+            let debt_usd_amount = self.egld_usd_value(&applied_egld_wad, &cache.egld_usd_price_wad);
             self.adjust_isolated_debt_usd(
                 &position_attributes.isolated_token(),
                 debt_usd_amount,
@@ -158,8 +171,12 @@ pub trait PositionRepayModule:
     ) {
         let mut borrow_position = self.validate_borrow_position_existence(account_nonce, token_id);
 
+        // Update isolated debt tracker using the applied portion of this repayment,
+        // computed internally only when the position is isolated.
         self.update_isolated_debt_after_repayment(
+            &borrow_position,
             &repay_amount_in_egld,
+            feed,
             cache,
             position_attributes,
         );

@@ -370,6 +370,19 @@ where
             .original_result()
     }
 
+    /// Adds rewards to the pool. 
+    pub fn add_reward<
+        Arg0: ProxyArg<ManagedDecimal<Env::Api, usize>>,
+    >(
+        self,
+        price: Arg0,
+    ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
+        self.wrapped_tx
+            .raw_call("addRewards")
+            .argument(&price)
+            .original_result()
+    }
+
     /// Provides atomic flash loan with fee collection. 
     /// Transfers amount to target contract, validates repayment, adds protocol revenue. 
     /// Must be repaid with fees in same transaction. 

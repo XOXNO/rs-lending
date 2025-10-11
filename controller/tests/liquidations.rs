@@ -1048,62 +1048,6 @@ fn liquidation_bonus_selection_behavior() {
     assert!(estimate_uncapped.bonus_rate_bps > base_bps);
 }
 
-/// Verifies the liquidation bonus clamps at the configured maximum (15%) when the
-/// position is severely unhealthy, using the simulation view.
-#[test]
-fn liquidation_bonus_caps_at_max() {
-    let mut state = LendingPoolTestState::new();
-    let supplier = TestAddress::new("supplier");
-    let borrower = TestAddress::new("borrower");
-
-    state.change_timestamp(0);
-    setup_accounts(&mut state, supplier, borrower);
-
-    // Liquidity provider supplies USDC and EGLD
-    state.supply_asset(
-        &supplier,
-        USDC_TOKEN,
-        BigUint::from(5000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
-    );
-
-    // Borrower supplies little EGLD and borrows a lot of USDC
-    state.supply_asset(
-        &borrower,
-        EGLD_TOKEN,
-        BigUint::from(10u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
-    );
-    state.borrow_asset(
-        &borrower,
-        USDC_TOKEN,
-        BigUint::from(300u64), // near LTV limit
-        2,
-        USDC_DECIMALS,
-    );
-
-    // Advance a large amount of time to make the position extremely unhealthy
-    state.change_timestamp(880000000u64);
-    let mut markets = MultiValueEncoded::new();
-    markets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
-    state.update_markets(&borrower, markets.clone());
-
-    // Simulate liquidation with no specified payments (algorithm chooses repayment)
-    let estimate = state.liquidation_estimations(2, ManagedVec::new());
-
-    // Expect the bonus to approach the cap and never exceed it.
-    let max_bps = ManagedDecimal::from_raw_units(BigUint::from(1_500u64), BPS_PRECISION);
-    let min_expected = ManagedDecimal::from_raw_units(BigUint::from(1_000u64), BPS_PRECISION); // >= 10%
-    assert!(estimate.bonus_rate_bps <= max_bps);
-    assert!(estimate.bonus_rate_bps >= min_expected);
-}
-
 /// Verifies the Dutch auction path selection by comparing a slightly unhealthy position
 /// (primary target 1.02 succeeds) versus a more unhealthy position (falls back to 1.01),
 /// asserting the latter yields a higher bonus and larger estimated repayment.
@@ -1424,7 +1368,7 @@ fn seize_dust_collateral_after_bad_debt_success() {
     state.liquidate_account(
         &liquidator,
         &USDC_TOKEN,
-        BigUint::from(730u64), // Liquidate with large amount to consume most collateral
+        BigUint::from(760u64), // Liquidate with large amount to consume most collateral
         2,
         USDC_DECIMALS,
     );

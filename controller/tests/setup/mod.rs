@@ -2359,6 +2359,30 @@ impl LendingPoolTestState {
             .run()
     }
 
+    /// Add rewards to a market via the controller's `addRewards` endpoint.
+    /// Owner-only; attaches a single ESDT payment matching the market asset.
+    pub fn add_rewards(
+        &mut self,
+        from: &TestAddress,
+        token: TestTokenIdentifier,
+        raw_amount: BigUint<StaticApi>,
+    ) {
+        use multiversx_sc::types::EsdtTokenPayment;
+
+        self.world
+            .tx()
+            .from(from.to_managed_address())
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .add_reward()
+            .payment(EsdtTokenPayment::new(
+                token.to_token_identifier(),
+                0,
+                raw_amount,
+            ))
+            .run();
+    }
+
     /// Get positions
     pub fn positions(
         &mut self,

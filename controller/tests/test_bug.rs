@@ -12,8 +12,7 @@ fn ray_dust_tolerance() -> BigUint<StaticApi> {
     BigUint::from(10u64).pow(22)
 }
 
-fn build_liquidation_case(
-) -> (
+fn build_liquidation_case() -> (
     LendingPoolTestState,
     TestAddress<'static>,
     u64,

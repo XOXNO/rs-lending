@@ -355,6 +355,26 @@ pub trait LiquidityModule:
         position
     }
 
+    /// Adds rewards to the pool.
+    #[payable]
+    #[only_owner]
+    #[endpoint(addRewards)]
+    fn add_reward(&self, price: &ManagedDecimal<Self::Api, NumDecimals>) {
+        let mut cache = Cache::new(self);
+        let payment_amount = self.payment_amount(&cache);
+        self.global_sync(&mut cache); // 2. Update indexes
+
+        let new_supply_index = self.update_supply_index(
+            cache.supplied_ray.clone(),
+            cache.supply_index_ray.clone(),
+            self.rescale_half_up(&payment_amount, RAY_PRECISION),
+        );
+
+        cache.supply_index_ray = new_supply_index;
+
+        self.emit_market_update(&cache, price);
+    }
+
     /// Provides atomic flash loan with fee collection.
     /// Transfers amount to target contract, validates repayment, adds protocol revenue.
     /// Must be repaid with fees in same transaction.

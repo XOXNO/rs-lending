@@ -111,34 +111,43 @@ where
     /// Supplies collateral to the lending pool. 
     ///  
     /// # Arguments 
-    /// - `is_vault`: Indicates if the supply is for a vault position. 
+    /// - `optional_account_nonce`: Optional existing account NFT nonce (use `Some(0)` to auto-create). 
     /// - `e_mode_category`: Optional e-mode category for specialized parameters. 
     ///  
     /// # Payment 
-    /// - Accepts payments: optional account NFT (first payment if present) and one or more collateral tokens. 
-    /// - Requires at least one collateral token payment after NFT extraction. 
+    /// - Accepts payments: optional account NFT (if present, it must be the first payment) and one or more collateral tokens. 
+    /// - Requires at least one collateral token payment after extracting the optional NFT. 
     pub fn supply<
         Arg0: ProxyArg<OptionalValue<u64>>,
         Arg1: ProxyArg<OptionalValue<u8>>,
     >(
         self,
-        opt_account_nonce: Arg0,
+        optional_account_nonce: Arg0,
         e_mode_category: Arg1,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("supply")
-            .argument(&opt_account_nonce)
+            .argument(&optional_account_nonce)
             .argument(&e_mode_category)
             .original_result()
     }
 
     /// Withdraws collateral from the lending pool. 
     ///  
-    /// # Arguments 
-    /// - `collaterals`: List of tokens and amounts to withdraw. 
+    /// Purpose: Transfers requested collateral amounts from the user's deposit 
+    /// positions back to the caller while keeping the account healthy. 
     ///  
-    /// # Payment 
-    /// - Requires account NFT payment. 
+    /// Methodology: 
+    /// 1. Validates account NFT and returns it after checks 
+    /// 2. For each asset: validates payment, syncs price/index, computes amount 
+    /// 3. Executes pool withdrawal and updates/removes deposit position 
+    /// 4. Validates health factor remains above minimum after all withdrawals 
+    ///  
+    /// Payment 
+    /// - Requires the account NFT as payment (first and only NFT). 
+    ///  
+    /// Arguments 
+    /// - `collaterals`: List of token identifiers and amounts to withdraw 
     pub fn withdraw<
         Arg0: ProxyArg<MultiValueEncoded<Env::Api, EgldOrEsdtTokenPayment<Env::Api>>>,
     >(
@@ -153,11 +162,20 @@ where
 
     /// Borrows assets from the lending pool. 
     ///  
-    /// # Arguments 
-    /// - `borrowed_tokens`: List of tokens and amounts to borrow. 
+    /// Purpose: Creates or scales borrow positions for the account, with 
+    /// validations on LTV, e-mode, borrowability and position limits. 
     ///  
-    /// # Payment 
-    /// - Requires account NFT payment. 
+    /// Methodology: 
+    /// 1. Validates account NFT and syncs indexes/prices 
+    /// 2. Computes LTV collateral value from current deposits 
+    /// 3. Validates bulk position limits for all requested borrows 
+    /// 4. For each token: validates borrowability, caps, LTV, updates position 
+    ///  
+    /// Payment 
+    /// - Requires the account NFT as payment. 
+    ///  
+    /// Arguments 
+    /// - `borrowed_tokens`: List of tokens and amounts to borrow 
     pub fn borrow<
         Arg0: ProxyArg<MultiValueEncoded<Env::Api, EgldOrEsdtTokenPayment<Env::Api>>>,
     >(
@@ -172,8 +190,15 @@ where
 
     /// Repays borrowed assets for an account. 
     ///  
-    /// # Arguments 
-    /// - `account_nonce`: NFT nonce of the account position. 
+    /// Purpose: Decreases or clears debt positions for one or more assets. 
+    ///  
+    /// Methodology: 
+    /// 1. Validates account and caller 
+    /// 2. For each payment: validates asset/amount, converts to decimals and EGLD value 
+    /// 3. Calls process_repayment to update pool and position, tracking isolated debt 
+    ///  
+    /// Arguments 
+    /// - `account_nonce`: NFT nonce of the account 
     pub fn repay<
         Arg0: ProxyArg<u64>,
     >(
@@ -188,8 +213,16 @@ where
 
     /// Liquidates an unhealthy position. 
     ///  
-    /// # Arguments 
-    /// - `account_nonce`: NFT nonce of the account to liquidate. 
+    /// Purpose: Repays eligible debt using liquidator payments and seizes 
+    /// collateral with protocol fee, following the liquidation algorithm. 
+    ///  
+    /// Methodology: 
+    /// 1. Validates payments and account state 
+    /// 2. Executes liquidation core to compute repayments and seized collateral 
+    /// 3. Refunds excess payments, processes repayments and transfers collateral 
+    ///  
+    /// Arguments 
+    /// - `account_nonce`: NFT nonce identifying the liquidated account 
     pub fn liquidate<
         Arg0: ProxyArg<u64>,
     >(
@@ -204,12 +237,20 @@ where
 
     /// Executes a flash loan. 
     ///  
-    /// # Arguments 
-    /// - `borrowed_asset_id`: Token identifier to borrow. 
-    /// - `amount`: Amount to borrow in raw token units (will be converted to decimal precision). 
-    /// - `contract_address`: Address of the contract to receive the loan. 
-    /// - `endpoint`: Endpoint to call on the receiving contract. 
-    /// - `arguments`: Arguments for the endpoint call. 
+    /// Purpose: Borrows funds for a single transaction to a target contract, 
+    /// which must repay plus fee within the same call. 
+    ///  
+    /// Methodology: 
+    /// 1. Validates shard, endpoint, amount and that asset supports flashloans 
+    /// 2. Pushes caller as final argument and forwards funds to pool flash_loan 
+    /// 3. Enforces flash_loan_ongoing guard around the call 
+    ///  
+    /// Arguments 
+    /// - `borrowed_asset_id`: Token to borrow 
+    /// - `amount_raw`: Borrow amount in raw units 
+    /// - `contract_address`: Receiver contract of the loan 
+    /// - `endpoint`: Callback endpoint to invoke on receiver 
+    /// - `arguments`: Extra arguments passed to receiver endpoint 
     pub fn flash_loan<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
@@ -219,7 +260,7 @@ where
     >(
         self,
         borrowed_asset_id: Arg0,
-        amount: Arg1,
+        amount_raw: Arg1,
         contract_address: Arg2,
         endpoint: Arg3,
         arguments: Arg4,
@@ -228,19 +269,23 @@ where
             .payment(NotPayable)
             .raw_call("flashLoan")
             .argument(&borrowed_asset_id)
-            .argument(&amount)
+            .argument(&amount_raw)
             .argument(&contract_address)
             .argument(&endpoint)
             .argument(&arguments)
             .original_result()
     }
 
-    /// Updates LTV or liquidation threshold for account positions of a specific asset. 
+    /// Updates account thresholds for a specific asset. 
     ///  
-    /// # Arguments 
-    /// - `asset_id`: Token identifier to update. 
-    /// - `is_ltv`: True to update LTV, false for liquidation threshold. 
-    /// - `account_nonces`: List of account nonces to update. 
+    /// Purpose: Applies updated asset risk parameters (LTV/liquidation) 
+    /// to each account’s deposit position of the given asset, validating 
+    /// health if changes are risky. 
+    ///  
+    /// Arguments 
+    /// - `asset_id`: Asset to update within accounts 
+    /// - `has_risks`: Whether the change affects liquidation threshold (requires HF check) 
+    /// - `account_nonces`: Accounts to update 
     pub fn update_account_threshold<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg1: ProxyArg<bool>,
@@ -262,8 +307,10 @@ where
 
     /// Updates interest rate indexes for specified assets. 
     ///  
-    /// # Arguments 
-    /// - `assets`: List of token identifiers to update. 
+    /// Purpose: Synchronizes supply/borrow indexes using current prices. 
+    ///  
+    /// Arguments 
+    /// - `assets`: Asset identifiers to update 
     pub fn update_indexes<
         Arg0: ProxyArg<MultiValueEncoded<Env::Api, EgldOrEsdtTokenIdentifier<Env::Api>>>,
     >(
@@ -279,11 +326,15 @@ where
 
     /// Cleans bad debt from an account. 
     ///  
-    /// It seizes all remaining collateral + interest and adds all remaining debt as bad debt, 
-    /// then cleans isolated debt if any. 
-    /// In case of a vault, it toggles the account to non-vault to move funds to the shared liquidity pool. 
-    /// # Arguments 
-    /// - `account_nonce`: NFT nonce of the account to clean. 
+    /// Purpose: Seizes all remaining collateral and marks remaining debt 
+    /// as bad debt when account qualifies for bad debt cleanup. 
+    ///  
+    /// Methodology: 
+    /// 1. Validates account is eligible (insufficient collateral vs debt) 
+    /// 2. Performs cleanup and removes positions appropriately 
+    ///  
+    /// Arguments 
+    /// - `account_nonce`: NFT nonce of the account 
     pub fn clean_bad_debt<
         Arg0: ProxyArg<u64>,
     >(
@@ -500,6 +551,18 @@ where
             .original_result()
     }
 
+    /// Upgrades an existing liquidity pool's interest rate parameters without redeployment. 
+    ///  
+    /// Purpose: Adjust the interest rate model on a live market using the latest 
+    /// price to synchronize state prior to applying new parameters. 
+    ///  
+    /// Arguments 
+    /// - `base_asset`: Market asset identifier 
+    /// - `max_borrow_rate`: New max borrow rate 
+    /// - `base_borrow_rate`: New base rate 
+    /// - `slope1`, `slope2`, `slope3`: New utilization curve slopes 
+    /// - `mid_utilization`, `optimal_utilization`: New utilization anchors 
+    /// - `reserve_factor`: New protocol reserve factor 
     pub fn upgrade_liquidity_pool_params<
         Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
         Arg1: ProxyArg<BigUint<Env::Api>>,
@@ -613,6 +676,14 @@ where
             .original_result()
     }
 
+    pub fn add_reward(
+        self,
+    ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
+        self.wrapped_tx
+            .raw_call("addRewards")
+            .original_result()
+    }
+
     /// Registers a new NFT token for tracking account positions in the lending protocol. 
     ///  
     /// **Purpose**: Creates a dynamic NFT collection used to represent user positions 
@@ -694,7 +765,7 @@ where
         first_tolerance: Arg6,
         last_tolerance: Arg7,
         max_price_stale_seconds: Arg8,
-        one_dex_pair_id: Arg9,
+        optional_one_dex_pair_id: Arg9,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
         self.wrapped_tx
             .payment(NotPayable)
@@ -708,7 +779,7 @@ where
             .argument(&first_tolerance)
             .argument(&last_tolerance)
             .argument(&max_price_stale_seconds)
-            .argument(&one_dex_pair_id)
+            .argument(&optional_one_dex_pair_id)
             .original_result()
     }
 
@@ -1295,6 +1366,11 @@ where
             .original_result()
     }
 
+    /// Get the swap router address 
+    /// Configures the external router used for token conversions in strategies. 
+    ///  
+    /// Returns 
+    /// - `ManagedAddress`: Router smart contract address 
     pub fn swap_router(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedAddress<Env::Api>> {
@@ -1401,6 +1477,11 @@ where
             .original_result()
     }
 
+    /// Reentrancy guard flag for flash loans 
+    /// Indicates if a flash loan is currently in progress to block nested calls. 
+    ///  
+    /// Returns 
+    /// - `bool`: True if flash loan ongoing 
     pub fn flash_loan_ongoing(
         self,
     ) -> TxTypedCall<Env, From, To, NotPayable, Gas, bool> {
@@ -1422,6 +1503,18 @@ where
             .original_result()
     }
 
+    /// Estimates liquidation outcomes for a proposed set of debt payments. 
+    ///  
+    /// Purpose: Simulate liquidation to preview seized collateral, protocol fees, 
+    /// refunds, and applied bonus, without mutating state. 
+    ///  
+    /// Arguments 
+    /// - `account_nonce`: Account NFT nonce to simulate 
+    /// - `debt_payments`: Candidate payments to apply in liquidation 
+    ///  
+    /// Returns 
+    /// - `LiquidationEstimate` with seized collaterals, protocol fees, refunds, 
+    ///   max repay amount (WAD), and bonus rate (BPS) 
     pub fn liquidation_estimations<
         Arg0: ProxyArg<u64>,
         Arg1: ProxyArg<ManagedVec<Env::Api, EgldOrEsdtTokenPayment<Env::Api>>>,
@@ -1438,6 +1531,16 @@ where
             .original_result()
     }
 
+    /// Retrieves updated market indexes and price information for multiple assets. 
+    ///  
+    /// Purpose: Provide monitoring data (supply/borrow indices and prices) for UIs. 
+    /// Uses simulated index updates and price components with tolerances. 
+    ///  
+    /// Arguments 
+    /// - `assets`: Asset identifiers to fetch 
+    ///  
+    /// Returns 
+    /// - `ManagedVec<MarketIndexView>` entries with indices and price data 
     pub fn all_market_indexes<
         Arg0: ProxyArg<MultiValueEncoded<Env::Api, EgldOrEsdtTokenIdentifier<Env::Api>>>,
     >(
@@ -1757,7 +1860,7 @@ where
         debt_token: Arg3,
         mode: Arg4,
         steps: Arg5,
-        steps_payment: Arg6,
+        optional_steps_payment: Arg6,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("multiply")
@@ -1767,7 +1870,7 @@ where
             .argument(&debt_token)
             .argument(&mode)
             .argument(&steps)
-            .argument(&steps_payment)
+            .argument(&optional_steps_payment)
             .original_result()
     }
 
@@ -1959,7 +2062,7 @@ where
         from_amount: Arg1,
         to_token: Arg2,
         close_position: Arg3,
-        steps: Arg4,
+        optional_steps: Arg4,
     ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
         self.wrapped_tx
             .raw_call("repayDebtWithCollateral")
@@ -1967,7 +2070,7 @@ where
             .argument(&from_amount)
             .argument(&to_token)
             .argument(&close_position)
-            .argument(&steps)
+            .argument(&optional_steps)
             .original_result()
     }
 

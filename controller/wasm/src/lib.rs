@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           70
+// Endpoints:                           71
 // Async Callback:                       1
-// Total number of exported functions:  73
+// Total number of exported functions:  74
 
 #![no_std]
 
@@ -33,6 +33,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         upgradeLiquidityPool => upgrade_liquidity_pool
         upgradeLiquidityPoolParams => upgrade_liquidity_pool_params
         claimRevenue => claim_revenue
+        addRewards => add_reward
         registerAccountToken => register_account_token
         setTokenOracle => set_token_oracle
         editTokenOracleTolerance => edit_token_oracle_tolerance
