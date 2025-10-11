@@ -1,8 +1,7 @@
 use crate::{cache::Cache, helpers, oracle, proxy_pool, storage, utils, validation};
 use common_errors::{
     ERROR_ACCOUNT_ATTRIBUTES_MISMATCH, ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL,
-    ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS, ERROR_MIX_ISOLATED_COLLATERAL,
-    ERROR_POSITION_NOT_FOUND, ERROR_SUPPLY_CAP,
+    ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS, ERROR_MIX_ISOLATED_COLLATERAL, ERROR_SUPPLY_CAP,
 };
 use common_structs::{
     AccountAttributes, AccountPosition, AccountPositionType, AssetConfig, PriceFeedShort,
@@ -505,13 +504,16 @@ pub trait PositionDepositModule:
         asset_id: &EgldOrEsdtTokenIdentifier<Self::Api>,
         has_risks: bool,
         asset_config: &mut AssetConfig<Self::Api>,
+        controller_sc: &ManagedAddress,
+        feed: &PriceFeedShort<Self::Api>,
         cache: &mut Cache<Self>,
     ) {
         self.require_active_account(account_nonce);
-        let controller_sc = self.blockchain().get_sc_address();
         let deposit_positions = self.positions(account_nonce, AccountPositionType::Deposit);
         let dp_option = deposit_positions.get(asset_id);
-        require!(dp_option.is_some(), ERROR_POSITION_NOT_FOUND);
+        if dp_option.is_none() {
+            return;
+        }
 
         let account_attributes = self.account_attributes(account_nonce).get();
         let e_mode_category = self.e_mode_category(account_attributes.emode_id());
@@ -549,12 +551,11 @@ pub trait PositionDepositModule:
             );
         }
 
-        let price_feed = self.token_price(asset_id, cache);
         self.emit_position_update_event(
             cache,
             &dp.zero_decimal(),
             &dp,
-            price_feed.price_wad,
+            feed.price_wad.clone(),
             &controller_sc,
             &account_attributes,
         );

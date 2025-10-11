@@ -421,6 +421,8 @@ pub trait Controller:
         cache.allow_unsafe_price = false;
         self.reentrancy_guard(cache.flash_loan_ongoing);
         let mut asset_config = cache.cached_asset_info(&asset_id);
+        let controller_sc = self.blockchain().get_sc_address();
+        let price_feed = self.token_price(&asset_id, &mut cache);
 
         for account_nonce in account_nonces {
             self.update_position_threshold(
@@ -428,6 +430,8 @@ pub trait Controller:
                 &asset_id,
                 has_risks,
                 &mut asset_config,
+                &controller_sc,
+                &price_feed,
                 &mut cache,
             );
         }
