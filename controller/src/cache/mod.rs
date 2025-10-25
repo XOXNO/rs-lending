@@ -45,6 +45,7 @@ where
             egld_token_id.clone().into_name(),
             &price_aggregator,
             egld_provider.max_price_stale_seconds,
+            false,
         );
         let egld_usd_price_wad = sc_ref.to_decimal_wad(egld_price_feed.price);
 

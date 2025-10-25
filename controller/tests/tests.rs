@@ -1,11 +1,11 @@
-use common_constants::EGLD_TICKER;
 use common_constants::RAY;
+use common_constants::{BPS_PRECISION, EGLD_TICKER};
 use controller::{
     AccountAttributes, PositionMode, ERROR_HEALTH_FACTOR_WITHDRAW,
     ERROR_INVALID_LIQUIDATION_THRESHOLD, ERROR_UN_SAFE_PRICE_NOT_ALLOWED,
 };
 use multiversx_sc::types::{
-    EgldOrEsdtTokenIdentifier, ManagedDecimal, ManagedOption, MultiValueEncoded,
+    EgldOrEsdtTokenIdentifier, ManagedDecimal, ManagedOption, MultiValueEncoded, NumDecimals,
 };
 use multiversx_sc_scenario::{
     api::StaticApi,
@@ -1216,6 +1216,178 @@ fn configuration_update_risky_values_with_borrows_allowed() {
 
     // Health should decrease due to lower collateral value
     assert!(health_after < health_before);
+}
+
+fn liquidation_threshold_for_account(
+    state: &mut LendingPoolTestState,
+    account_nonce: u64,
+    asset_id: &EgldOrEsdtTokenIdentifier<StaticApi>,
+) -> ManagedDecimal<StaticApi, NumDecimals> {
+    state
+        .deposit_positions(account_nonce)
+        .into_iter()
+        .find_map(|entry| {
+            let (token, position) = entry.into_tuple();
+            if token == *asset_id {
+                Some(position.liquidation_threshold_bps)
+            } else {
+                None
+            }
+        })
+        .expect("deposit position missing for asset")
+}
+
+/// Ensures bulk threshold updates respect per-account e-mode state regardless of nonce ordering.
+///
+/// Covers:
+/// - Mixed E-Mode and non E-Mode accounts in the same update call
+/// - Asset config edits with liquidation-threshold changes
+/// - Both ordering permutations of account nonce arrays
+#[test]
+fn update_account_threshold_preserves_emode_in_bulk_orders() {
+    let mut state = LendingPoolTestState::new();
+    let emode_user = TestAddress::new("emode-user");
+    let normal_user = TestAddress::new("normal-user");
+
+    setup_accounts(&mut state, emode_user, normal_user);
+
+    let asset_id = EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier());
+
+    // Create E-Mode account (category 1)
+    state.supply_asset(
+        &emode_user,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::Some(1),
+        false,
+    );
+    let emode_nonce = state.last_account_nonce();
+    assert_eq!(state.account_attributes(emode_nonce).emode_id(), 1);
+
+    // Create standard account (no E-Mode)
+    state.supply_asset(
+        &normal_user,
+        EGLD_TOKEN,
+        BigUint::from(100u64),
+        EGLD_DECIMALS,
+        OptionalValue::None,
+        OptionalValue::None,
+        false,
+    );
+    let normal_nonce = state.last_account_nonce();
+    assert_eq!(state.account_attributes(normal_nonce).emode_id(), 0);
+
+    // First config change: lower base threshold, then update with e-mode account first.
+    let base_config = state.asset_config(asset_id.clone());
+    let base_bonus_dec = base_config.liquidation_bonus_bps.clone();
+    let base_bonus = base_bonus_dec.into_raw_units();
+    let base_fee_dec = base_config.liquidation_fees_bps.clone();
+    let base_fee = base_fee_dec.into_raw_units();
+    let isolation_ceiling_dec = base_config.isolation_debt_ceiling_usd_wad.clone();
+    let isolation_ceiling = isolation_ceiling_dec.into_raw_units();
+    let flash_fee_dec = base_config.flashloan_fee_bps.clone();
+    let flash_fee = flash_fee_dec.into_raw_units();
+    let borrow_cap = base_config
+        .borrow_cap_wad
+        .clone()
+        .unwrap_or(BigUint::from(0u64));
+    let supply_cap = base_config
+        .supply_cap_wad
+        .clone()
+        .unwrap_or(BigUint::from(0u64));
+
+    let first_ltv = BigUint::from(7_200u64);
+    let first_liq = BigUint::from(8_200u64);
+    state.edit_asset_config(
+        asset_id.clone(),
+        &first_ltv,
+        &first_liq,
+        &base_bonus,
+        &base_fee,
+        base_config.is_isolated_asset,
+        isolation_ceiling,
+        base_config.is_siloed_borrowing,
+        base_config.is_flashloanable,
+        flash_fee,
+        base_config.is_collateralizable,
+        base_config.is_borrowable,
+        base_config.isolation_borrow_enabled,
+        &borrow_cap,
+        &supply_cap,
+        None,
+    );
+
+    let mut nonces = MultiValueEncoded::new();
+    nonces.push(emode_nonce);
+    nonces.push(normal_nonce);
+    state.update_account_threshold(asset_id.clone(), true, nonces, None);
+
+    let emode_threshold = liquidation_threshold_for_account(&mut state, emode_nonce, &asset_id);
+    let normal_threshold = liquidation_threshold_for_account(&mut state, normal_nonce, &asset_id);
+
+    let expected_emode =
+        ManagedDecimal::from_raw_units(BigUint::from(E_MODE_LIQ_THRESHOLD), BPS_PRECISION);
+    let expected_first_normal = ManagedDecimal::from_raw_units(first_liq.clone(), BPS_PRECISION);
+
+    assert_eq!(emode_threshold, expected_emode);
+    assert_eq!(normal_threshold, expected_first_normal);
+
+    // Second config change: raise base threshold, update with normal account first.
+    let refreshed_config = state.asset_config(asset_id.clone());
+    let base_bonus_dec = refreshed_config.liquidation_bonus_bps.clone();
+    let base_bonus = base_bonus_dec.into_raw_units();
+    let base_fee_dec = refreshed_config.liquidation_fees_bps.clone();
+    let base_fee = base_fee_dec.into_raw_units();
+    let isolation_ceiling_dec = refreshed_config.isolation_debt_ceiling_usd_wad.clone();
+    let isolation_ceiling = isolation_ceiling_dec.into_raw_units();
+    let flash_fee_dec = refreshed_config.flashloan_fee_bps.clone();
+    let flash_fee = flash_fee_dec.into_raw_units();
+    let borrow_cap = refreshed_config
+        .borrow_cap_wad
+        .clone()
+        .unwrap_or(BigUint::from(0u64));
+    let supply_cap = refreshed_config
+        .supply_cap_wad
+        .clone()
+        .unwrap_or(BigUint::from(0u64));
+
+    let second_ltv = BigUint::from(7_300u64);
+    let second_liq = BigUint::from(8_300u64);
+    state.edit_asset_config(
+        asset_id.clone(),
+        &second_ltv,
+        &second_liq,
+        &base_bonus,
+        &base_fee,
+        refreshed_config.is_isolated_asset,
+        isolation_ceiling,
+        refreshed_config.is_siloed_borrowing,
+        refreshed_config.is_flashloanable,
+        flash_fee,
+        refreshed_config.is_collateralizable,
+        refreshed_config.is_borrowable,
+        refreshed_config.isolation_borrow_enabled,
+        &borrow_cap,
+        &supply_cap,
+        None,
+    );
+
+    let mut reversed = MultiValueEncoded::new();
+    reversed.push(normal_nonce);
+    reversed.push(emode_nonce);
+    state.update_account_threshold(asset_id.clone(), true, reversed, None);
+
+    let emode_threshold_after =
+        liquidation_threshold_for_account(&mut state, emode_nonce, &asset_id);
+    let normal_threshold_after =
+        liquidation_threshold_for_account(&mut state, normal_nonce, &asset_id);
+
+    let expected_second_normal = ManagedDecimal::from_raw_units(second_liq, BPS_PRECISION);
+
+    assert_eq!(emode_threshold_after, expected_emode);
+    assert_eq!(normal_threshold_after, expected_second_normal);
 }
 
 /// Tests risky configuration updates that would harm health factor.

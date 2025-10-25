@@ -420,16 +420,18 @@ pub trait Controller:
         let mut cache = Cache::new(self);
         cache.allow_unsafe_price = false;
         self.reentrancy_guard(cache.flash_loan_ongoing);
-        let mut asset_config = cache.cached_asset_info(&asset_id);
+        let asset_config = cache.cached_asset_info(&asset_id);
         let controller_sc = self.blockchain().get_sc_address();
         let price_feed = self.token_price(&asset_id, &mut cache);
 
         for account_nonce in account_nonces {
+            // Clone base config for each account so e-mode overrides remain account-specific.
+            let mut account_asset_config = asset_config.clone();
             self.update_position_threshold(
                 account_nonce,
                 &asset_id,
                 has_risks,
-                &mut asset_config,
+                &mut account_asset_config,
                 &controller_sc,
                 &price_feed,
                 &mut cache,

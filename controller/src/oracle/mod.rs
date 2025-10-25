@@ -612,7 +612,7 @@ pub trait OracleModule:
                     configs.onedex_pair_id,
                 )
                 .get();
-            require!(pair_status == StateOnedex::Active, ERROR_PAIR_NOT_ACTIVE);
+            require!(pair_status == StateOnedex::Active || cache.allow_unsafe_price, ERROR_PAIR_NOT_ACTIVE);
             let from_identifier = token_id.clone().unwrap_esdt();
             let to_identifier = if from_identifier == configs.quote_token_id.clone().unwrap_esdt() {
                 configs.base_token_id.clone()
@@ -634,7 +634,7 @@ pub trait OracleModule:
             let pair_status = self
                 .xexchange_pair_state(configs.oracle_contract_address.clone())
                 .get();
-            require!(pair_status == StateXExchange::Active, ERROR_PAIR_NOT_ACTIVE);
+            require!(pair_status == StateXExchange::Active || cache.allow_unsafe_price, ERROR_PAIR_NOT_ACTIVE);
 
             self.safe_price_proxy(cache.safe_price_view.clone())
                 .get_safe_price_by_timestamp_offset(
@@ -854,7 +854,7 @@ pub trait OracleModule:
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let ticker = self.token_ticker(token_id, cache);
         let feed =
-            self.aggregator_price_feed(ticker, &cache.price_aggregator_sc, max_seconds_stale);
+            self.aggregator_price_feed(ticker, &cache.price_aggregator_sc, max_seconds_stale, cache.allow_unsafe_price);
         let token_usd_price_wad = self.to_decimal_wad(feed.price);
         self.rescale_half_up(
             &self.div_half_up(
@@ -1134,6 +1134,7 @@ pub trait OracleModule:
         from_ticker: ManagedBuffer,
         price_aggregator_sc: &ManagedAddress,
         max_seconds_stale: u64,
+        allow_unsafe_price: bool,
     ) -> PriceFeed<Self::Api> {
         require!(
             !price_aggregator_sc.is_zero(),
@@ -1155,12 +1156,12 @@ pub trait OracleModule:
             token_pair.from.clone(),
             token_pair.to.clone(),
         );
-        require!(!round_values.is_empty(), TOKEN_PAIR_NOT_FOUND_ERROR);
+        require!(!round_values.is_empty() || allow_unsafe_price, TOKEN_PAIR_NOT_FOUND_ERROR);
 
         let feed = self.make_price_feed(token_pair, round_values.get());
 
         require!(
-            self.blockchain().get_block_timestamp() - feed.timestamp < max_seconds_stale,
+            self.blockchain().get_block_timestamp() - feed.timestamp < max_seconds_stale || allow_unsafe_price,
             ERROR_PRICE_FEED_STALE
         );
 
