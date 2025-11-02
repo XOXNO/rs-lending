@@ -170,6 +170,8 @@ pub trait PositionRepayModule:
         position_attributes: &AccountAttributes<Self::Api>,
     ) {
         let mut borrow_position = self.validate_borrow_position_existence(account_nonce, token_id);
+        let total_debt = self.total_amount(&borrow_position, feed, cache);
+        let actual_repayment_amount = self.min(repay_amount.clone(), total_debt.clone());
 
         // Update isolated debt tracker using the applied portion of this repayment,
         // computed internally only when the position is isolated.
@@ -194,7 +196,7 @@ pub trait PositionRepayModule:
 
         self.emit_position_update_event(
             cache,
-            repay_amount,
+            &actual_repayment_amount,
             &borrow_position,
             feed.price_wad.clone(),
             caller,

@@ -70,7 +70,8 @@ pub trait PositionWithdrawModule:
         feed: &PriceFeedShort<Self::Api>,
     ) -> EgldOrEsdtTokenPayment<Self::Api> {
         let pool_address = cache.cached_pool_address(&deposit_position.asset_id);
-
+        let total_amount = self.total_amount(deposit_position, feed, cache);
+        let actual_withdrawal_amount = self.min(amount.clone(), total_amount);
         // The amount cap happens in the liquidity pool to account for the interest accrued after sync
         let payment = self.process_market_withdrawal(
             pool_address,
@@ -84,7 +85,7 @@ pub trait PositionWithdrawModule:
 
         self.emit_position_update_event(
             cache,
-            &amount,
+            &actual_withdrawal_amount,
             deposit_position,
             feed.price_wad.clone(),
             caller,
