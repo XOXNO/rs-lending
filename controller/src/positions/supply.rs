@@ -436,8 +436,11 @@ pub trait PositionDepositModule:
     /// require(total_supplied + deposit_amount <= supply_cap)
     /// ```
     ///
+    /// **Note**: supply_cap is stored in asset decimals (e.g., for USDC with 6 decimals,
+    /// a cap of 10 USDC is stored as 10_000_000).
+    ///
     /// # Arguments
-    /// - `asset_info`: Asset configuration containing optional supply cap
+    /// - `asset_info`: Asset configuration containing optional supply cap in asset decimals
     /// - `deposit_payment`: Deposit payment with amount to validate
     /// - `feed`: Price feed for decimal conversion
     /// - `cache`: Storage cache for pool address and market index access
