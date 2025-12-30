@@ -881,7 +881,7 @@ pub trait SnapModule:
         let back_transfers = self
             .tx()
             .to(self.swap_router().get()) // Use protocol-configured swap router
-            .raw_call(ManagedBuffer::new_from_bytes(b"swap"))
+            .raw_call(ManagedBuffer::new_from_bytes(b"xo"))
             .arguments_raw(args) // Pass through swap configuration (path, slippage, etc.)
             .egld_or_single_esdt(from_token, 0, from_amount)
             .returns(ReturnsBackTransfers) // Reset to capture all return transfers

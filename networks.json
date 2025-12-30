@@ -30,7 +30,7 @@
     "addresses": {
       "controller": "erd1qqqqqqqqqqqqqpgqyq9mwxkq7zelkupafta5ah95pw6362j745qsk5mdzw",
       "lp_template": "erd1qqqqqqqqqqqqqpgqmwgsf0gcjvrfas8pmmzzp7rx2xps2caw45qs2gr4jw",
-      "price_aggregator": "erd1qqqqqqqqqqqqqpgq4luh53qlc8ehlzmvxm06v0rs8r5q5p6h45qs9dx4vm",
+      "price_aggregator": "erd1qqqqqqqqqqqqqpgq5rf2sppxk2xu4m0pkmugw2es4gak3rgjah0sxvajva",
       "swap_router_address": "erd1qqqqqqqqqqqqqpgqfnarkmhu6tgjgtpenya0dek54jcwkak23g6su00nwn",
       "safe_price_view": "erd1qqqqqqqqqqqqqpgqtce4z8zzz76xjht3hak0hseshcmj3ush2jps2exxjn",
       "accumulator": "erd1qqqqqqqqqqqqqpgq8538ku69p97lq4eug75y8d6g6yfwhd7c45qs4zvejt"

@@ -640,8 +640,11 @@ pub trait ConfigModule:
         let map = self.asset_config(&asset);
         require!(!map.is_empty(), ERROR_ASSET_NOT_SUPPORTED);
 
+        // Allow both to be 0 for deprecated assets, otherwise threshold must exceed LTV
+        let both_zero =
+            loan_to_value == BigUint::zero() && liquidation_threshold == BigUint::zero();
         require!(
-            liquidation_threshold > loan_to_value,
+            both_zero || liquidation_threshold > loan_to_value,
             ERROR_INVALID_LIQUIDATION_THRESHOLD
         );
 

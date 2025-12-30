@@ -73,8 +73,8 @@ verifyContract() {
     --verifier-url="${VERIFIER_URL}" \
     --docker-image="${DOCKER_IMAGE}" \
     --ledger \
-    --ledger-account-index=${LEDGER_ACCOUNT_INDEX} \
-    --ledger-address-index=${LEDGER_ADDRESS_INDEX} || return
+     \
+    --sender-wallet-index=${LEDGER_ADDRESS_INDEX} || return
 }
 
 # Function to verify specific contracts
@@ -372,8 +372,8 @@ deploy_price_aggregator() {
     # Convert oracle addresses to CLI arguments
     read -a oracle_array <<< "$PRICE_AGGREGATOR_ORACLES"
 
-    mxpy contract deploy --bytecode=${PRICE_AGGREGATOR_PATH} --recall-nonce \
-    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    mxpy contract deploy --bytecode=${PRICE_AGGREGATOR_PATH}  \
+    --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --gas-limit=250000000 --outfile="deploy-price-aggregator-${NETWORK}.json" --arguments 0x$(printf "%02x" $submission_counts) ${oracle_array[@]} \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 
@@ -385,8 +385,8 @@ upgrade_price_aggregator() {
     echo "Upgrading price aggregator for network: $NETWORK"
     echo "Contract address: $PRICE_AGGREGATOR_ADDRESS"
     
-    mxpy contract upgrade ${PRICE_AGGREGATOR_ADDRESS} --bytecode=${PRICE_AGGREGATOR_PATH} --recall-nonce \
-    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    mxpy contract upgrade ${PRICE_AGGREGATOR_ADDRESS} --bytecode=${PRICE_AGGREGATOR_PATH}  \
+    --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --gas-limit=100000000 --outfile="upgrade-price-aggregator-${NETWORK}.json" \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 }
@@ -395,8 +395,8 @@ unpause_price_aggregator() {
     echo "Unpausing price aggregator for network: $NETWORK"
     echo "Contract address: $PRICE_AGGREGATOR_ADDRESS"
     
-    mxpy contract call ${PRICE_AGGREGATOR_ADDRESS} --recall-nonce --gas-limit=10000000 \
-    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    mxpy contract call ${PRICE_AGGREGATOR_ADDRESS}  --gas-limit=10000000 \
+    --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --function="unpause" \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
@@ -405,8 +405,8 @@ pause_price_aggregator() {
     echo "Pausing price aggregator for network: $NETWORK"
     echo "Contract address: $PRICE_AGGREGATOR_ADDRESS"
     
-    mxpy contract call ${PRICE_AGGREGATOR_ADDRESS} --recall-nonce --gas-limit=10000000 \
-    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    mxpy contract call ${PRICE_AGGREGATOR_ADDRESS}  --gas-limit=10000000 \
+    --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --function="pause" \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
@@ -426,22 +426,22 @@ add_oracles_price_aggregator() {
     
     echo "Adding ${#oracle_addresses[@]} oracles: ${oracle_addresses[*]}"
     
-    mxpy contract call ${PRICE_AGGREGATOR_ADDRESS} --recall-nonce --gas-limit=30000000 \
-    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    mxpy contract call ${PRICE_AGGREGATOR_ADDRESS}  --gas-limit=30000000 \
+    --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --function="addOracles" --arguments "${oracle_addresses[@]}" \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 
 deploy_controller() {
-    mxpy --verbose contract deploy --bytecode=${PROJECT_CONTROLLER} --recall-nonce \
-    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    mxpy --verbose contract deploy --bytecode=${PROJECT_CONTROLLER}  \
+    --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --gas-limit=450000000 --outfile="deploy-${NETWORK}.json" --arguments ${LP_TEMPLATE_ADDRESS} ${PRICE_AGGREGATOR_ADDRESS} ${SAFE_PRICE_VIEW_ADDRESS} ${ACCUMULATOR_ADDRESS} ${ASH_ADDRESS} \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 }
 
 upgrade_controller() {
-    mxpy --verbose contract upgrade ${ADDRESS} --bytecode=${PROJECT_CONTROLLER} --recall-nonce \
-    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    mxpy --verbose contract upgrade ${ADDRESS} --bytecode=${PROJECT_CONTROLLER}  \
+    --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --gas-limit=550000000 \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 }
@@ -450,8 +450,8 @@ pause_controller() {
     echo "Pausing controller for network: $NETWORK"
     echo "Contract address: $ADDRESS"
     
-    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=10000000 \
-    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    mxpy contract call ${ADDRESS}  --gas-limit=10000000 \
+    --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --function="pause" \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
@@ -460,8 +460,8 @@ unpause_controller() {
     echo "Unpausing controller for network: $NETWORK"
     echo "Contract address: $ADDRESS"
     
-    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=10000000 \
-    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    mxpy contract call ${ADDRESS}  --gas-limit=10000000 \
+    --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --function="unpause" \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
@@ -477,8 +477,8 @@ deploy_market_template() {
     echo "${args[@]}"
 
     mxpy contract deploy --bytecode=${PROJECT_MARKET} \
-    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
-    --recall-nonce --gas-limit=250000000 \
+    --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
+     --gas-limit=250000000 \
     --arguments "${args[@]}" \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 }
@@ -490,8 +490,8 @@ upgrade_market_template() {
     echo "Token ID: $(get_config_value "$market_name" "token_id")"
     
     mxpy contract upgrade ${LP_TEMPLATE_ADDRESS} \
-    --bytecode=${PROJECT_MARKET} --recall-nonce \
-    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    --bytecode=${PROJECT_MARKET}  \
+    --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --gas-limit=250000000 \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 }
@@ -505,8 +505,8 @@ create_token_oracle() {
     
     local args=( $(create_oracle_args "$market_name") )
     echo "${args[@]}"
-    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=100000000 \
-    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    mxpy contract call ${ADDRESS}  --gas-limit=100000000 \
+    --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --function="setTokenOracle" --arguments "${args[@]}" \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
@@ -519,8 +519,8 @@ upgrade_market_params() {
     
     local args=( $(build_market_upgrade_args "$market_name") )
 
-    mxpy contract call ${ADDRESS} --recall-nonce \
-    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    mxpy contract call ${ADDRESS}  \
+    --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --gas-limit=55000000 \
     --function="upgradeLiquidityPoolParams" --arguments "${args[@]}" \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
@@ -532,8 +532,8 @@ upgrade_market() {
     echo "Upgrading market for ${market_name}..."
     echo "Token ID: $(get_config_value "$market_name" "token_id")"
     
-    mxpy contract call ${ADDRESS} --recall-nonce \
-    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    mxpy contract call ${ADDRESS}  \
+    --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --gas-limit=55000000 \
     --function="upgradeLiquidityPool" --arguments "str:$(get_config_value "$market_name" "token_id")" \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
@@ -547,15 +547,15 @@ upgrade_market_with_nonce() {
     echo "Token ID: $(get_config_value "$market_name" "token_id")"
     
     mxpy contract call ${ADDRESS} --nonce=${nonce} \
-    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --gas-limit=55000000 \
     --function="upgradeLiquidityPool" --arguments "str:$(get_config_value "$market_name" "token_id")" \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 }
 
 registerAccountToken() {
-    mxpy contract call ${ADDRESS} --recall-nonce  --gas-limit=100000000 \
-    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    mxpy contract call ${ADDRESS}   --gas-limit=100000000 \
+    --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --function="registerAccountToken" --value=${ISSUE_COST} --arguments ${ACCOUNT_TOKEN_NAME} ${ACCOUNT_TOKEN_TICKER} \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 }
@@ -569,8 +569,8 @@ create_market() {
     
     local args=( $(build_market_args "$market_name") )
 
-    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=100000000 \
-    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    mxpy contract call ${ADDRESS}  --gas-limit=100000000 \
+    --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --function="createLiquidityPool" --arguments "${args[@]}" \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
@@ -667,8 +667,8 @@ edit_token_oracle_tolerance() {
     echo "First Tolerance: $(get_config_value "$market_name" "first_tolerance")"
     echo "Last Tolerance: $(get_config_value "$market_name" "last_tolerance")"
     
-    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=20000000 \
-    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    mxpy contract call ${ADDRESS}  --gas-limit=20000000 \
+    --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --function="editTokenOracleTolerance" --arguments "${args[@]}" \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
@@ -715,8 +715,8 @@ add_emode_category() {
     echo "Liquidation Threshold: ${liquidation_threshold}"
     echo "Liquidation Bonus: ${liquidation_bonus}"
     
-    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=20000000 \
-    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    mxpy contract call ${ADDRESS}  --gas-limit=20000000 \
+    --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --function="addEModeCategory" --arguments ${ltv} ${liquidation_threshold} ${liquidation_bonus} \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
@@ -736,8 +736,8 @@ add_asset_to_emode_category() {
     echo "Can Be Collateral: ${can_be_collateral}"
     echo "Can Be Borrowed: ${can_be_borrowed}"
     
-    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=20000000 \
-    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    mxpy contract call ${ADDRESS}  --gas-limit=20000000 \
+    --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --function="addAssetToEModeCategory" --arguments "str:${token_id}" ${category_id} ${can_be_collateral} ${can_be_borrowed} \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
@@ -778,8 +778,8 @@ edit_asset_config() {
     
     echo "${args[@]}"
     
-    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=20000000 \
-    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    mxpy contract call ${ADDRESS}  --gas-limit=20000000 \
+    --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --function="editAssetConfig" --arguments "${args[@]}" \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
@@ -824,8 +824,8 @@ claim_revenue() {
         args+=("str:$token_id")
     done
     
-    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=450000000 \
-    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    mxpy contract call ${ADDRESS}  --gas-limit=450000000 \
+    --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --function="claimRevenue" --arguments "${args[@]}" \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
@@ -842,8 +842,8 @@ set_ash_swap() {
     
     echo "Setting Swap router address to ${swap_router_address}..."
     
-    mxpy contract call ${ADDRESS} --recall-nonce --gas-limit=20000000 \
-    --ledger --ledger-account-index=${LEDGER_ACCOUNT_INDEX} --ledger-address-index=${LEDGER_ADDRESS_INDEX} \
+    mxpy contract call ${ADDRESS}  --gas-limit=20000000 \
+    --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --function="setSwapRouter" --arguments ${swap_router_address} \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
