@@ -657,19 +657,33 @@ list_networks() {
 edit_token_oracle_tolerance() {
     local market_name=$1
     local -a args=()
-    
+
     args+=("str:$(get_config_value "$market_name" "token_id")")
     args+=("$(get_config_value "$market_name" "first_tolerance")")
     args+=("$(get_config_value "$market_name" "last_tolerance")")
-    
+
     echo "Editing token oracle tolerance for ${market_name}..."
     echo "Token ID: $(get_config_value "$market_name" "token_id")"
     echo "First Tolerance: $(get_config_value "$market_name" "first_tolerance")"
     echo "Last Tolerance: $(get_config_value "$market_name" "last_tolerance")"
-    
+
     mxpy contract call ${ADDRESS}  --gas-limit=20000000 \
     --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --function="editTokenOracleTolerance" --arguments "${args[@]}" \
+    --proxy=${PROXY} --chain=${CHAIN_ID} --send
+}
+
+# Function to disable token oracle
+disable_token_oracle() {
+    local market_name=$1
+    local token_id=$(get_config_value "$market_name" "token_id")
+
+    echo "Disabling token oracle for ${market_name}..."
+    echo "Token ID: ${token_id}"
+
+    mxpy contract call ${ADDRESS}  --gas-limit=20000000 \
+    --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
+    --function="disableTokenOracle" --arguments "str:${token_id}" \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send
 }
 
@@ -956,6 +970,14 @@ case "$1" in
         fi
         edit_token_oracle_tolerance "$2"
         ;;
+    "disableTokenOracle")
+        if [ -z "$2" ]; then
+            echo "Please specify a market name"
+            list_markets
+            exit 1
+        fi
+        disable_token_oracle "$2"
+        ;;
     "addEModeCategory")
         if [ -z "$2" ]; then
             echo "Please specify a category ID"
@@ -1058,6 +1080,7 @@ case "$1" in
         echo ""
         echo "E-Mode Commands:"
         echo "  editOracleTolerance MARKET    - Edit token oracle tolerance settings"
+        echo "  disableTokenOracle MARKET     - Disable the oracle for a token"
         echo "  addEModeCategory ID           - Add an E-Mode category"
         echo "  addAssetToEMode ID ASSET      - Add an asset to an E-Mode category"
         echo "  editAssetConfig MARKET        - Edit asset configuration"

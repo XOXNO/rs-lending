@@ -1230,6 +1230,27 @@ where
             .original_result()
     }
 
+    /// Disables the oracle for a token. 
+    /// Prevents the token from being used as a price feed. 
+    ///  
+    /// # Arguments 
+    /// - `token_id`: Token identifier (EGLD or ESDT). 
+    ///  
+    /// # Errors 
+    /// - `ERROR_ORACLE_TOKEN_NOT_FOUND`: If oracle exists for the token. 
+    pub fn disable_token_oracle<
+        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+    >(
+        self,
+        token_id: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ()> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("disableTokenOracle")
+            .argument(&token_id)
+            .original_result()
+    }
+
     /// Get the set of allowed pools 
     /// This storage mapper holds the addresses of pools that are allowed to participate in the lending protocol. 
     pub fn pools(

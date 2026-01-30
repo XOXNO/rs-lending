@@ -212,10 +212,18 @@ pub trait OracleModule:
 
         let data = oracle_data.get();
 
-        let price = self.find_price_feed(&data, token_id, cache);
-        let feed = PriceFeedShort {
-            asset_decimals: data.asset_decimals,
-            price_wad: price,
+        let feed = if data.oracle_type == OracleType::None {
+            PriceFeedShort {
+                asset_decimals: data.asset_decimals,
+                price_wad: self.wad_zero(),
+            }
+        } else {
+            let price = self.find_price_feed(&data, token_id, cache);
+
+            PriceFeedShort {
+                asset_decimals: data.asset_decimals,
+                price_wad: price,
+            }
         };
 
         cache.prices_cache.put(token_id, &feed);
@@ -1376,7 +1384,13 @@ pub trait OracleModule:
 
                 (None, None, price, within_first, within_second)
             },
-            _ => sc_panic!(ERROR_INVALID_ORACLE_TOKEN_TYPE),
+            _ => (
+                Some(self.wad_zero()),
+                Some(self.wad_zero()),
+                self.wad_zero(),
+                true,
+                true,
+            ),
         }
     }
 

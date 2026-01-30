@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           71
+// Endpoints:                           72
 // Async Callback:                       1
-// Total number of exported functions:  74
+// Total number of exported functions:  75
 
 #![no_std]
 
@@ -50,6 +50,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         removeAssetFromEModeCategory => remove_asset_from_e_mode_category
         editAssetConfig => edit_asset_config
         setPositionLimits => set_position_limits
+        disableTokenOracle => disable_token_oracle
         getPools => pools
         getAccount => account
         getAccountNonce => account_nonce

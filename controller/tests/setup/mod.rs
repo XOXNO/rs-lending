@@ -1073,6 +1073,36 @@ impl LendingPoolTestState {
             .run();
     }
 
+    /// Disable token oracle
+    pub fn disable_token_oracle(
+        &mut self,
+        market_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
+    ) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .disable_token_oracle(market_token.clone())
+            .run();
+    }
+
+    /// Disable token oracle with error
+    pub fn disable_token_oracle_error(
+        &mut self,
+        market_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
+        error_message: &[u8],
+    ) {
+        self.world
+            .tx()
+            .from(OWNER_ADDRESS)
+            .to(self.lending_sc.clone())
+            .typed(proxy_lending_pool::ControllerProxy)
+            .disable_token_oracle(market_token.clone())
+            .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
+            .run();
+    }
+
     /// Set price aggregator address
     pub fn set_aggregator(&mut self, aggregator: ManagedAddress<StaticApi>) {
         self.world

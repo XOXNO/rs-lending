@@ -709,4 +709,26 @@ pub trait ConfigModule:
         };
         self.position_limits().set(limits);
     }
+
+    /// Disables the oracle for a token.
+    /// Prevents the token from being used as a price feed.
+    ///
+    /// # Arguments
+    /// - `token_id`: Token identifier (EGLD or ESDT).
+    ///
+    /// # Errors
+    /// - `ERROR_ORACLE_TOKEN_NOT_FOUND`: If oracle exists for the token.
+    #[only_owner]
+    #[endpoint(disableTokenOracle)]
+    fn disable_token_oracle(
+        &self,
+        token_id: &EgldOrEsdtTokenIdentifier,
+    ) {
+        let mapper = self.token_oracle(token_id);
+        require!(!mapper.is_empty(), ERROR_ORACLE_TOKEN_NOT_FOUND);
+        mapper.update(|oracle| {
+            oracle.oracle_type = OracleType::None;
+            self.update_asset_oracle_event(token_id, oracle);
+        });
+    }
 }

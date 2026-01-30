@@ -376,6 +376,49 @@ fn oracle_edit_tolerance_invalid_anchor_error() {
 }
 
 // ============================================
+// DISABLE TOKEN ORACLE TESTS
+// ============================================
+
+/// Tests disabling oracle for token returns zero price in market indexes.
+///
+/// Covers:
+/// - Oracle disable functionality
+/// - Price returns 0 after disable
+/// - Oracle type set to None
+#[test]
+fn oracle_disable_token_oracle_success() {
+    let mut state = LendingPoolTestState::new();
+
+    // Verify EGLD has a valid oracle before disabling
+    let before = state.token_oracle(EgldOrEsdtTokenIdentifier::egld());
+    assert!(before.oracle_type != OracleType::None);
+
+    // Disable the oracle
+    state.disable_token_oracle(&EgldOrEsdtTokenIdentifier::egld());
+
+    // Verify oracle type is now None
+    let after = state.token_oracle(EgldOrEsdtTokenIdentifier::egld());
+    assert!(after.oracle_type == OracleType::None);
+}
+
+/// Tests disabling oracle for non-existent token fails.
+///
+/// Covers:
+/// - Non-existent oracle validation
+/// - ERROR_ORACLE_TOKEN_NOT_FOUND error condition
+#[test]
+fn oracle_disable_token_oracle_not_found_error() {
+    let mut state = LendingPoolTestState::new();
+
+    let new_token = TestTokenIdentifier::new("NOTOKEN-123456");
+
+    state.disable_token_oracle_error(
+        &EgldOrEsdtTokenIdentifier::esdt(new_token.to_token_identifier()),
+        ERROR_ORACLE_TOKEN_NOT_FOUND,
+    );
+}
+
+// ============================================
 // ADDRESS CONFIGURATION TESTS
 // ============================================
 

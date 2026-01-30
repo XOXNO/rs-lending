@@ -24,4 +24,19 @@ pub trait SwapMock {
         // To be swapped
         self.tx().to(&caller).payment(payment).transfer();
     }
+
+    // xExchange swap endpoint used by strategy.rs swap_tokens()
+    #[payable("*")]
+    #[endpoint(xo)]
+    fn xo(&self, wanted_token: EgldOrEsdtTokenIdentifier, wanted_amount: BigUint) {
+        let caller = self.blockchain().get_caller();
+
+        let payment = EgldOrEsdtTokenPayment::new(wanted_token, 0, wanted_amount);
+
+        // To be refunded to the caller
+        self.tx().to(&caller).egld(BigUint::from(10u64)).transfer();
+
+        // To be swapped
+        self.tx().to(&caller).payment(payment).transfer();
+    }
 }

@@ -2,7 +2,7 @@
 
 SHELL := /bin/bash
 NETWORKS := devnet mainnet
-POSITIONAL_MARKET_ACTIONS := createMarket createOracle upgradeMarket upgradeMarketParams editAssetConfig editOracleTolerance show
+POSITIONAL_MARKET_ACTIONS := createMarket createOracle upgradeMarket upgradeMarketParams editAssetConfig editOracleTolerance disableTokenOracle show
 POSITIONAL_ID_ACTIONS := addEModeCategory
 POSITIONAL_ID_ASSET_ACTIONS := addAssetToEMode
 POSITIONAL_ORACLE_ACTIONS := addOracles
