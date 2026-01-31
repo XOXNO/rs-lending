@@ -116,6 +116,10 @@ pub trait MathsModule: common_math::SharedMathModule {
         amount_in_egld: &ManagedDecimal<Self::Api, NumDecimals>,
         token_data: &PriceFeedShort<Self::Api>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        // Return 0 if price is 0 to avoid division by zero (OracleType::None case)
+        if token_data.price_wad == self.wad_zero() {
+            return self.ray_zero();
+        }
         self.div_half_up(amount_in_egld, &token_data.price_wad, RAY_PRECISION)
     }
 

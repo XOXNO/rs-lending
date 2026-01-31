@@ -411,6 +411,10 @@ pub trait PositionLiquidationModule:
 
         for position in deposit_positions {
             let asset_price_feed = self.token_price(&position.asset_id, cache);
+            // Tokens with price 0 are not collateralizable thus no need to calculate anything, they will just be skipped from seized.
+            if asset_price_feed.price_wad == self.wad_zero() {
+                continue;
+            }
             let total_amount_ray = self.total_amount_ray(&position, cache);
             let asset_egld_value_ray =
                 self.token_egld_value_ray(&total_amount_ray, &asset_price_feed.price_wad);
