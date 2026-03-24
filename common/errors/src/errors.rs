@@ -58,6 +58,8 @@ pub static ERROR_FLASHLOAN_NOT_ENABLED: &[u8] = b"Flashloan not enabled for this
 
 pub static ERROR_INVALID_SHARD: &[u8] = b"Invalid shard for flashloan.";
 
+pub static ERROR_NOT_A_SMART_CONTRACT: &[u8] = b"Target address is not a smart contract.";
+
 pub static ERROR_INVALID_ENDPOINT: &[u8] = b"Invalid endpoint for flashloan.";
 
 pub static ERROR_SUPPLY_CAP: &[u8] = b"Supply cap reached.";

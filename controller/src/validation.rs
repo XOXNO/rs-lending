@@ -2,7 +2,7 @@ multiversx_sc::imports!();
 
 use common_errors::{
     ERROR_FLASH_LOAN_ALREADY_ONGOING, ERROR_INVALID_ENDPOINT, ERROR_INVALID_SHARD,
-    ERROR_POSITION_LIMIT_EXCEEDED,
+    ERROR_NOT_A_SMART_CONTRACT, ERROR_POSITION_LIMIT_EXCEEDED,
 };
 
 use crate::{
@@ -121,18 +121,20 @@ pub trait ValidationModule:
 
     // --- Helper Functions ---
 
-    /// Validates cross-shard security for flash loan operations.
+    /// Validates the flash loan target is a smart contract on the same shard.
     ///
-    /// **Purpose**: Ensures flash loans only occur within the same shard to prevent
-    /// cross-shard timing attacks and maintain atomic transaction guarantees.
-    /// Critical for preventing flash loan exploits that rely on shard-specific behavior.
+    /// **Purpose**: Ensures flash loans only target deployed smart contracts within the
+    /// same shard to prevent cross-shard timing attacks and maintain atomic transaction
+    /// guarantees. Rejects EOA addresses early to save gas on obviously invalid calls.
     ///
     /// **How it works**:
-    /// 1. Gets the destination contract's shard ID
-    /// 2. Gets the current controller contract's shard ID
-    /// 3. Compares shard IDs and reverts if different
+    /// 1. Verifies the destination address is a smart contract (not an EOA)
+    /// 2. Gets the destination contract's shard ID
+    /// 3. Gets the current controller contract's shard ID
+    /// 4. Compares shard IDs and reverts if different
     ///
     /// **Security rationale**:
+    /// - **Smart contract check**: EOAs cannot execute callback logic or repay flash loans
     /// - **Atomic execution**: Flash loans must execute atomically within single shard
     /// - **Timing attack prevention**: Cross-shard calls introduce timing vulnerabilities
     /// - **State consistency**: Same-shard execution ensures consistent state access
@@ -158,12 +160,18 @@ pub trait ValidationModule:
     /// - `contract_address`: Destination contract address for flash loan callback
     ///
     /// # Returns
-    /// Nothing - validates shard compatibility or reverts
+    /// Nothing - validates target address or reverts
     ///
     /// # Errors
+    /// - `ERROR_NOT_A_SMART_CONTRACT`: Destination address is not a smart contract
     /// - `ERROR_INVALID_SHARD`: Destination contract is on different shard
 
     fn validate_flash_loan_shard(&self, contract_address: &ManagedAddress) {
+        require!(
+            self.blockchain().is_smart_contract(contract_address),
+            ERROR_NOT_A_SMART_CONTRACT
+        );
+
         let destination_shard_id = self.blockchain().get_shard_of_address(contract_address);
         let current_shard_id = self
             .blockchain()

@@ -553,7 +553,24 @@ pub trait PositionLiquidationModule:
     ) {
         let mut total_repaid = self.ray_zero();
         let mut repaid_tokens = ManagedVec::new();
-        for payment_ref in repayments {
+
+        // Merge duplicate token entries so each token is priced against its debt only once.
+        let mut token_sums: ManagedMapEncoded<Self::Api, EgldOrEsdtTokenIdentifier, BigUint> =
+            ManagedMapEncoded::new();
+        let mut unique_tokens: ManagedVec<EgldOrEsdtTokenIdentifier<Self::Api>> = ManagedVec::new();
+        for payment in repayments {
+            if token_sums.contains(&payment.token_identifier) {
+                let prev = token_sums.get(&payment.token_identifier);
+                token_sums.put(&payment.token_identifier, &(prev + &payment.amount));
+            } else {
+                unique_tokens.push(payment.token_identifier.clone());
+                token_sums.put(&payment.token_identifier, &payment.amount);
+            }
+        }
+
+        for token_id in &unique_tokens {
+            let payment_ref =
+                EgldOrEsdtTokenPayment::new(token_id.clone(), 0, token_sums.get(&token_id));
             let token_price_feed = self.token_price(&payment_ref.token_identifier, cache);
             let original_borrow_position =
                 self.position_by_index(&payment_ref.token_identifier, borrows, &borrows_index_map);

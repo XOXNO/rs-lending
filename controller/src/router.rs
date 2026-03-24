@@ -476,6 +476,7 @@ pub trait RouterModule:
     #[endpoint(claimRevenue)]
     fn claim_revenue(&self, assets: MultiValueEncoded<EgldOrEsdtTokenIdentifier>) {
         let mut cache = Cache::new(self);
+        self.reentrancy_guard(cache.flash_loan_ongoing);
         let accumulator_address_mapper = self.accumulator_address();
 
         require!(
