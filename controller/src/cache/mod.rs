@@ -1,4 +1,5 @@
-use common_structs::{AssetConfig, MarketIndex, OracleProvider, PriceFeedShort};
+use common_constants::USD_TICKER;
+use common_structs::{AssetConfig, MarketIndex, OracleProvider, PriceFeedShort, PricingMethod};
 
 multiversx_sc::imports!();
 multiversx_sc::derive_imports!();
@@ -26,6 +27,13 @@ where
     pub flash_loan_ongoing: bool,
     pub safe_price_view: ManagedAddress<C::Api>,
     pub current_timestamp: u64,
+
+    pub price_aggregator_paused: bool,
+    pub aggregator_feeds: ManagedMapEncoded<
+        C::Api,
+        ManagedBuffer<C::Api>,
+        crate::proxy_price_aggregator::PriceFeed<C::Api>,
+    >,
 }
 
 impl<'a, C> Cache<'a, C>
@@ -37,33 +45,47 @@ where
     /// Returns cache with empty collections and current blockchain timestamp.
     pub fn new(sc_ref: &'a C) -> Self {
         let price_aggregator = sc_ref.price_aggregator_address().get();
+        let price_aggregator_paused = if !price_aggregator.is_zero() {
+            sc_ref
+                .price_aggregator_paused_state(price_aggregator.clone())
+                .get()
+        } else {
+            false
+        };
+
         let egld_token_id = EgldOrEsdtTokenIdentifier::egld();
         let egld_provider = sc_ref.token_oracle(&egld_token_id).get();
         let mut asset_oracles = ManagedMapEncoded::new();
         asset_oracles.put(&egld_token_id, &egld_provider);
-        let egld_price_feed = sc_ref.aggregator_price_feed(
-            egld_token_id.clone().into_name(),
-            &price_aggregator,
-            egld_provider.max_price_stale_seconds,
-            false,
-        );
-        let egld_usd_price_wad = sc_ref.to_decimal_wad(egld_price_feed.price);
 
-        Cache {
+        let mut cache = Cache {
             sc_ref,
             prices_cache: ManagedMapEncoded::new(),
             asset_configs: ManagedMapEncoded::new(),
             asset_pools: ManagedMapEncoded::new(),
             asset_oracles,
             market_indexes: ManagedMapEncoded::new(),
-            egld_usd_price_wad,
+            egld_usd_price_wad: ManagedDecimal::zero(),
             price_aggregator_sc: price_aggregator,
             egld_ticker: egld_token_id.into_name(),
             allow_unsafe_price: true,
             flash_loan_ongoing: sc_ref.flash_loan_ongoing().get(),
             safe_price_view: sc_ref.safe_price_view().get(),
             current_timestamp: sc_ref.blockchain().get_block_timestamp_ms(),
-        }
+            price_aggregator_paused,
+            aggregator_feeds: ManagedMapEncoded::new(),
+        };
+
+        let egld_price_feed = sc_ref.aggregator_price_feed(
+            cache.egld_ticker.clone(),
+            &cache.price_aggregator_sc,
+            egld_provider.max_price_stale_seconds,
+            false,
+            &mut cache,
+        );
+        cache.egld_usd_price_wad = sc_ref.to_decimal_wad(egld_price_feed.price);
+
+        cache
     }
 
     /// Clears price cache to force fresh price fetches after swaps.
@@ -158,5 +180,40 @@ where
         self.asset_pools.put(token_id, &address);
 
         address
+    }
+
+    /// Pre-fetches oracle configurations and aggregator prices for a list of assets.
+    /// Reduces gas costs by batching cross-contract calls and caching results.
+    pub fn pre_fetch_assets_data(
+        &mut self,
+        assets: &ManagedVec<C::Api, EgldOrEsdtTokenIdentifier<C::Api>>,
+    ) {
+        let mut pairs = MultiValueEncoded::new();
+        for asset in assets {
+            let oracle_configs = self.cached_oracle(&asset);
+            if oracle_configs.pricing_method == PricingMethod::Aggregator
+                || oracle_configs.pricing_method == PricingMethod::Mix
+            {
+                pairs.push(crate::proxy_price_aggregator::TokenPair {
+                    from: self.sc_ref.token_ticker(&asset, self),
+                    to: ManagedBuffer::new_from_bytes(USD_TICKER),
+                });
+            }
+        }
+
+        if !pairs.is_empty() && !self.price_aggregator_sc.is_zero() {
+            let results: MultiValueEncoded<crate::proxy_price_aggregator::PriceFeed<C::Api>> = self
+                .sc_ref
+                .tx()
+                .to(&self.price_aggregator_sc)
+                .typed(crate::proxy_price_aggregator::PriceAggregatorProxy)
+                .latest_round_data(pairs)
+                .returns(ReturnsResult)
+                .sync_call_readonly();
+
+            for result in results {
+                self.aggregator_feeds.put(&result.from, &result);
+            }
+        }
     }
 }

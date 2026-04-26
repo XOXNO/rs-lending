@@ -207,10 +207,7 @@ pub trait OracleModule:
             return cache.prices_cache.get(token_id);
         }
 
-        let oracle_data = self.token_oracle(token_id);
-        require!(!oracle_data.is_empty(), ERROR_ORACLE_TOKEN_NOT_FOUND);
-
-        let data = oracle_data.get();
+        let data = cache.cached_oracle(token_id);
 
         let feed = if data.oracle_type == OracleType::None {
             PriceFeedShort {
@@ -872,6 +869,7 @@ pub trait OracleModule:
             &cache.price_aggregator_sc,
             max_seconds_stale,
             cache.allow_unsafe_price,
+            cache,
         );
         let token_usd_price_wad = self.to_decimal_wad(feed.price);
         self.rescale_half_up(
@@ -1153,17 +1151,22 @@ pub trait OracleModule:
         price_aggregator_sc: &ManagedAddress,
         max_seconds_stale: u64,
         allow_unsafe_price: bool,
+        cache: &mut Cache<Self>,
     ) -> PriceFeed<Self::Api> {
         require!(
             !price_aggregator_sc.is_zero(),
             ERROR_PRICE_AGGREGATOR_NOT_SET
         );
-        require!(
-            !self
-                .price_aggregator_paused_state(price_aggregator_sc.clone())
-                .get(),
-            PAUSED_ERROR
-        );
+        require!(!cache.price_aggregator_paused, PAUSED_ERROR);
+
+        if cache.aggregator_feeds.contains(&from_ticker) {
+            let feed = cache.aggregator_feeds.get(&from_ticker);
+            if self.blockchain().get_block_timestamp() - feed.timestamp < max_seconds_stale
+                || allow_unsafe_price
+            {
+                return feed;
+            }
+        }
 
         let token_pair = TokenPair {
             from: from_ticker,
@@ -1281,9 +1284,7 @@ pub trait OracleModule:
             return (None, None, self.wad(), true, true);
         }
 
-        let oracle_data = self.token_oracle(token_id);
-        require!(!oracle_data.is_empty(), ERROR_ORACLE_TOKEN_NOT_FOUND);
-        let configs = oracle_data.get();
+        let configs = cache.cached_oracle(token_id);
 
         match configs.oracle_type {
             OracleType::Lp => {

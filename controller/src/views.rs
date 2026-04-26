@@ -1,6 +1,7 @@
 use common_constants::{BPS_PRECISION, WAD_PRECISION};
 use common_structs::{
     AccountPositionType, AssetExtendedConfigView, LiquidationEstimate, MarketIndexView,
+    PricingMethod,
 };
 
 use crate::{cache::Cache, helpers, oracle, positions, storage, utils, validation};
@@ -45,6 +46,24 @@ pub trait ViewsModule:
     ) -> LiquidationEstimate<Self::Api> {
         let mut cache = Cache::new(self);
         self.require_active_account(account_nonce);
+
+        let mut assets = ManagedVec::new();
+        for pos in self
+            .positions(account_nonce, AccountPositionType::Deposit)
+            .values()
+        {
+            assets.push(pos.asset_id.clone());
+        }
+        for pos in self
+            .positions(account_nonce, AccountPositionType::Borrow)
+            .values()
+        {
+            assets.push(pos.asset_id.clone());
+        }
+        for payment in debt_payments {
+            assets.push(payment.token_identifier.clone());
+        }
+        cache.pre_fetch_assets_data(&assets);
 
         let (collaterals, _, refunds, max_egld_payment_ray, bonus_rate_ray) =
             self.execute_liquidation(account_nonce, debt_payments, &mut cache);
@@ -92,11 +111,14 @@ pub trait ViewsModule:
         assets: MultiValueEncoded<EgldOrEsdtTokenIdentifier>,
     ) -> ManagedVec<MarketIndexView<Self::Api>> {
         let mut cache = Cache::new(self);
+        let assets_vec = assets.to_vec();
+        cache.pre_fetch_assets_data(&assets_vec);
+
         // Views allow unsafe prices to show monitoring data even when protocol would block operations
         // This matches the behavior of operational functions - cache defaults to allow_unsafe_price = true
         let mut markets = ManagedVec::new();
 
-        for asset in assets {
+        for asset in assets_vec {
             let indexes = self.update_asset_index(&asset, &mut cache, true);
 
             // Get price components including safe and aggregator prices
@@ -148,9 +170,12 @@ pub trait ViewsModule:
         assets: MultiValueEncoded<EgldOrEsdtTokenIdentifier>,
     ) -> ManagedVec<AssetExtendedConfigView<Self::Api>> {
         let mut cache = Cache::new(self);
+        let assets_vec = assets.to_vec();
+        cache.pre_fetch_assets_data(&assets_vec);
+
         let mut markets = ManagedVec::new();
-        for asset in assets {
-            let pool_address = self.pools_map(&asset).get();
+        for asset in assets_vec {
+            let pool_address = cache.cached_pool_address(&asset);
             let feed = self.token_price(&asset, &mut cache);
             let usd = self.egld_usd_value(&feed.price_wad, &cache.egld_usd_price_wad);
 
@@ -189,15 +214,27 @@ pub trait ViewsModule:
     #[view(getHealthFactor)]
     fn health_factor(&self, account_nonce: u64) -> ManagedDecimal<Self::Api, NumDecimals> {
         let mut cache = Cache::new(self);
-        let deposit_positions = self.positions(account_nonce, AccountPositionType::Deposit);
+        let deposit_positions: ManagedVec<AccountPosition<Self::Api>> = self
+            .positions(account_nonce, AccountPositionType::Deposit)
+            .values()
+            .collect();
 
-        let (weighted_collateral, _, _) =
-            self.calculate_collateral_values(&deposit_positions.values().collect(), &mut cache);
-
-        let borrow_positions = self
+        let borrow_positions: ManagedVec<AccountPosition<Self::Api>> = self
             .positions(account_nonce, AccountPositionType::Borrow)
             .values()
             .collect();
+
+        let mut assets = ManagedVec::new();
+        for pos in &deposit_positions {
+            assets.push(pos.asset_id.clone());
+        }
+        for pos in &borrow_positions {
+            assets.push(pos.asset_id.clone());
+        }
+        cache.pre_fetch_assets_data(&assets);
+
+        let (weighted_collateral, _, _) =
+            self.calculate_collateral_values(&deposit_positions, &mut cache);
 
         let total_borrow_ray = self.calculate_total_borrow_in_egld(&borrow_positions, &mut cache);
 
@@ -273,10 +310,17 @@ pub trait ViewsModule:
     #[view(getTotalBorrowInEgld)]
     fn total_borrow_in_egld(&self, account_nonce: u64) -> ManagedDecimal<Self::Api, NumDecimals> {
         let mut cache = Cache::new(self);
-        let borrow_positions = self
+        let borrow_positions: ManagedVec<AccountPosition<Self::Api>> = self
             .positions(account_nonce, AccountPositionType::Borrow)
             .values()
             .collect();
+
+        let mut assets = ManagedVec::new();
+        for pos in &borrow_positions {
+            assets.push(pos.asset_id.clone());
+        }
+        cache.pre_fetch_assets_data(&assets);
+
         let total_borrow_ray = self.calculate_total_borrow_in_egld(&borrow_positions, &mut cache);
 
         self.rescale_half_up(&total_borrow_ray, WAD_PRECISION)
@@ -295,12 +339,20 @@ pub trait ViewsModule:
         &self,
         account_nonce: u64,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let deposit_positions = self.positions(account_nonce, AccountPositionType::Deposit);
-
         let mut cache = Cache::new(self);
+        let deposit_positions: ManagedVec<AccountPosition<Self::Api>> = self
+            .positions(account_nonce, AccountPositionType::Deposit)
+            .values()
+            .collect();
+
+        let mut assets = ManagedVec::new();
+        for pos in &deposit_positions {
+            assets.push(pos.asset_id.clone());
+        }
+        cache.pre_fetch_assets_data(&assets);
 
         deposit_positions
-            .values()
+            .iter()
             .fold(self.wad_zero(), |accumulator, dp| {
                 let feed = self.token_price(&dp.asset_id, &mut cache);
                 let amount = self.total_amount_ray(&dp, &mut cache);
@@ -321,12 +373,20 @@ pub trait ViewsModule:
         &self,
         account_nonce: u64,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let deposit_positions = self.positions(account_nonce, AccountPositionType::Deposit);
-
         let mut cache = Cache::new(self);
+        let deposit_positions: ManagedVec<AccountPosition<Self::Api>> = self
+            .positions(account_nonce, AccountPositionType::Deposit)
+            .values()
+            .collect();
+
+        let mut assets = ManagedVec::new();
+        for pos in &deposit_positions {
+            assets.push(pos.asset_id.clone());
+        }
+        cache.pre_fetch_assets_data(&assets);
 
         let (weighted_collateral, _, _) =
-            self.calculate_collateral_values(&deposit_positions.values().collect(), &mut cache);
+            self.calculate_collateral_values(&deposit_positions, &mut cache);
 
         self.rescale_half_up(&weighted_collateral, WAD_PRECISION)
     }
@@ -341,12 +401,20 @@ pub trait ViewsModule:
     /// - LTV-weighted collateral in EGLD as a `ManagedDecimal`.
     #[view(getLtvCollateralInEgld)]
     fn ltv_collateral_in_egld(&self, account_nonce: u64) -> ManagedDecimal<Self::Api, NumDecimals> {
-        let deposit_positions = self.positions(account_nonce, AccountPositionType::Deposit);
-
         let mut cache = Cache::new(self);
+        let deposit_positions: ManagedVec<AccountPosition<Self::Api>> = self
+            .positions(account_nonce, AccountPositionType::Deposit)
+            .values()
+            .collect();
+
+        let mut assets = ManagedVec::new();
+        for pos in &deposit_positions {
+            assets.push(pos.asset_id.clone());
+        }
+        cache.pre_fetch_assets_data(&assets);
 
         let (_, _, ltv_collateral) =
-            self.calculate_collateral_values(&deposit_positions.values().collect(), &mut cache);
+            self.calculate_collateral_values(&deposit_positions, &mut cache);
 
         self.rescale_half_up(&ltv_collateral, WAD_PRECISION)
     }
