@@ -208,6 +208,25 @@ pub trait PositionLiquidationModule:
         let mut cache = Cache::new(self);
         self.reentrancy_guard(cache.flash_loan_ongoing);
         cache.allow_unsafe_price = false;
+
+        let mut assets = ManagedVec::new();
+        for pos in self
+            .positions(account_nonce, AccountPositionType::Deposit)
+            .values()
+        {
+            assets.push(pos.asset_id.clone());
+        }
+        for pos in self
+            .positions(account_nonce, AccountPositionType::Borrow)
+            .values()
+        {
+            assets.push(pos.asset_id.clone());
+        }
+        for payment in debt_payments {
+            assets.push(payment.token_identifier.clone());
+        }
+        cache.pre_fetch_assets_data(&assets);
+
         self.validate_liquidation_payments(debt_payments, caller);
 
         self.require_active_account(account_nonce);

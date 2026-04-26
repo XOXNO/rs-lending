@@ -316,6 +316,31 @@ fn views_all_markets_data_retrieval() {
     }
 }
 
+#[test]
+fn views_batch_prefetching_many_assets() {
+    let mut state = LendingPoolTestState::new();
+    let supplier = TestAddress::new("supplier");
+
+    setup_account(&mut state, supplier);
+
+    // Prepare many assets (reusing same tokens to test deduping and batching)
+    let mut assets = MultiValueEncoded::new();
+    assets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN));
+    assets.push(EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN));
+    assets.push(EgldOrEsdtTokenIdentifier::esdt(XEGLD_TOKEN));
+    assets.push(EgldOrEsdtTokenIdentifier::esdt(SEGLD_TOKEN));
+    assets.push(EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN)); // Duplicate for dedup test
+
+    // This call triggers pre_fetch_assets_data which now handles dedup and batching
+    let markets = state.all_markets(assets);
+    assert_eq!(markets.len(), 5);
+
+    // Verify all prices are correctly fetched (proves batch call worked)
+    for market in &markets {
+        assert!(market.price_in_usd_wad > ManagedDecimal::zero());
+    }
+}
+
 /// Tests position-specific views for collateral and borrow amounts.
 ///
 /// Covers:

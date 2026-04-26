@@ -1,7 +1,6 @@
 use common_constants::{BPS_PRECISION, WAD_PRECISION};
 use common_structs::{
     AccountPositionType, AssetExtendedConfigView, LiquidationEstimate, MarketIndexView,
-    PricingMethod,
 };
 
 use crate::{cache::Cache, helpers, oracle, positions, storage, utils, validation};

@@ -188,8 +188,22 @@ where
         &mut self,
         assets: &ManagedVec<C::Api, EgldOrEsdtTokenIdentifier<C::Api>>,
     ) {
-        let mut pairs = MultiValueEncoded::new();
+        let mut unique_assets = ManagedVec::new();
         for asset in assets {
+            let mut found = false;
+            for unique_asset in &unique_assets {
+                if &unique_asset == &asset {
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                unique_assets.push(asset);
+            }
+        }
+
+        let mut pairs = MultiValueEncoded::new();
+        for asset in unique_assets {
             let oracle_configs = self.cached_oracle(&asset);
             if oracle_configs.pricing_method == PricingMethod::Aggregator
                 || oracle_configs.pricing_method == PricingMethod::Mix
@@ -201,7 +215,7 @@ where
             }
         }
 
-        if !pairs.is_empty() && !self.price_aggregator_sc.is_zero() {
+        if pairs.len() > 1 && !self.price_aggregator_sc.is_zero() && !self.price_aggregator_paused {
             let results: MultiValueEncoded<crate::proxy_price_aggregator::PriceFeed<C::Api>> = self
                 .sc_ref
                 .tx()
