@@ -10,9 +10,9 @@ use common_constants::{EGLD_TICKER, MIN_FIRST_TOLERANCE, MIN_LAST_TOLERANCE};
 use multiversx_sc::{
     imports::{MultiValue2, OptionalValue},
     types::{
-        BigUint, EgldOrEsdtTokenPayment, ManagedAddress, ManagedArgBuffer, ManagedBuffer,
-        ManagedDecimal, MultiValueEncoded, NumDecimals, ReturnsNewManagedAddress, ReturnsResult,
-        TestTokenIdentifier,
+        BigUint, DurationSeconds, EgldOrEsdtTokenPayment, ManagedAddress, ManagedArgBuffer,
+        ManagedBuffer, ManagedDecimal, MultiValueEncoded, NumDecimals, ReturnsNewManagedAddress,
+        ReturnsResult, TestTokenIdentifier,
     },
 };
 use multiversx_sc_scenario::{
@@ -31,7 +31,8 @@ use storage::Storage;
 use common_structs::{AccountAttributes, OracleProvider};
 use controller::*;
 use multiversx_sc::types::{
-    EgldOrEsdtTokenIdentifier, EsdtLocalRole, EsdtTokenPayment, ManagedVec, TestEsdtTransfer,
+    EgldOrEsdtTokenIdentifier, EsdtLocalRole, EsdtTokenPayment, ManagedVec,
+    TimestampSeconds,
 };
 use multiversx_sc_scenario::imports::{ExpectMessage, TestAddress};
 
@@ -71,6 +72,160 @@ pub struct LendingPoolTestState {
     pub swap_mock: ManagedAddress<StaticApi>,
 }
 
+/// Parameters describing a supply transaction in the test harness.
+#[derive(Clone)]
+pub struct SupplyParams {
+    pub token_id: TestTokenIdentifier<'static>,
+    pub amount: BigUint<StaticApi>,
+    pub asset_decimals: usize,
+    pub account_nonce: OptionalValue<u64>,
+    pub e_mode_category: OptionalValue<u8>,
+}
+
+/// Parameters describing a flash loan call in the test harness.
+#[derive(Clone)]
+pub struct FlashLoanParams {
+    pub token: TestTokenIdentifier<'static>,
+    pub amount: BigUint<StaticApi>,
+    pub contract: ManagedAddress<StaticApi>,
+    pub endpoint: ManagedBuffer<StaticApi>,
+    pub arguments: ManagedArgBuffer<StaticApi>,
+}
+
+/// Parameters describing a token oracle configuration in the test harness.
+#[derive(Clone)]
+pub struct TokenOracleParams {
+    pub decimals: usize,
+    pub contract_address: ManagedAddress<StaticApi>,
+    pub pricing_method: PricingMethod,
+    pub oracle_type: OracleType,
+    pub source: ExchangeSource,
+    pub first_tolerance: BigUint<StaticApi>,
+    pub last_tolerance: BigUint<StaticApi>,
+    pub max_price_stale_seconds: DurationSeconds,
+    pub one_dex_pair_id: OptionalValue<usize>,
+}
+
+/// Interest rate model parameters used when creating or upgrading a market.
+#[derive(Clone)]
+pub struct MarketRateParams {
+    pub max_borrow_rate: BigUint<StaticApi>,
+    pub base_borrow_rate: BigUint<StaticApi>,
+    pub slope1: BigUint<StaticApi>,
+    pub slope2: BigUint<StaticApi>,
+    pub slope3: BigUint<StaticApi>,
+    pub mid_utilization: BigUint<StaticApi>,
+    pub optimal_utilization: BigUint<StaticApi>,
+    pub reserve_factor: BigUint<StaticApi>,
+}
+
+/// Risk and usage parameters used when creating a liquidity pool that expects an error.
+#[derive(Clone)]
+pub struct CreateLiquidityPoolRiskParams {
+    pub ltv: BigUint<StaticApi>,
+    pub liquidation_threshold: BigUint<StaticApi>,
+    pub liquidation_bonus: BigUint<StaticApi>,
+    pub liquidation_fees: BigUint<StaticApi>,
+    pub is_collateralizable: bool,
+    pub is_borrowable: bool,
+    pub is_isolated_asset: bool,
+    pub isolation_debt_ceiling_usd: BigUint<StaticApi>,
+    pub flashloan_fee: BigUint<StaticApi>,
+    pub is_siloed_borrowing: bool,
+    pub is_flashloanable: bool,
+    pub isolation_borrow_enabled: bool,
+    pub asset_decimals: usize,
+    pub borrow_cap: BigUint<StaticApi>,
+    pub supply_cap: BigUint<StaticApi>,
+}
+
+/// Configuration parameters applied when editing an asset's risk profile.
+#[derive(Clone)]
+pub struct EditAssetConfigParams {
+    pub loan_to_value: BigUint<StaticApi>,
+    pub liquidation_threshold: BigUint<StaticApi>,
+    pub liquidation_bonus: BigUint<StaticApi>,
+    pub liquidation_fees: BigUint<StaticApi>,
+    pub is_isolated_asset: bool,
+    pub isolation_debt_ceiling_usd: BigUint<StaticApi>,
+    pub is_siloed_borrowing: bool,
+    pub is_flashloanable: bool,
+    pub flashloan_fee: BigUint<StaticApi>,
+    pub is_collateralizable: bool,
+    pub is_borrowable: bool,
+    pub isolation_borrow_enabled: bool,
+    pub borrow_cap: BigUint<StaticApi>,
+    pub supply_cap: BigUint<StaticApi>,
+}
+
+/// Parameters describing a multiply (leveraged) position call in the test harness.
+#[derive(Clone)]
+pub struct MultiplyParams {
+    pub e_mode_category: u8,
+    pub collateral_token: EgldOrEsdtTokenIdentifier<StaticApi>,
+    pub debt_to_flash_loan: BigUint<StaticApi>,
+    pub debt_token: EgldOrEsdtTokenIdentifier<StaticApi>,
+    pub mode: PositionMode,
+    pub steps: ManagedArgBuffer<StaticApi>,
+    pub steps_payment: OptionalValue<ManagedArgBuffer<StaticApi>>,
+    pub payments: ManagedVec<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
+}
+
+/// Parameters describing a debt swap call in the test harness.
+#[derive(Clone)]
+pub struct SwapDebtParams {
+    pub existing_debt_token: EgldOrEsdtTokenIdentifier<StaticApi>,
+    pub new_debt_amount_raw: BigUint<StaticApi>,
+    pub new_debt_token: EgldOrEsdtTokenIdentifier<StaticApi>,
+    pub steps: ManagedArgBuffer<StaticApi>,
+    pub account_payment: ManagedVec<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
+}
+
+/// Parameters describing a collateral swap call in the test harness.
+#[derive(Clone)]
+pub struct SwapCollateralParams {
+    pub current_collateral: EgldOrEsdtTokenIdentifier<StaticApi>,
+    pub from_amount: BigUint<StaticApi>,
+    pub new_collateral: EgldOrEsdtTokenIdentifier<StaticApi>,
+    pub steps: ManagedArgBuffer<StaticApi>,
+    pub account_payment: ManagedVec<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
+}
+
+/// Parameters describing a repay-with-collateral call in the test harness.
+#[derive(Clone)]
+pub struct RepayWithCollateralParams {
+    pub from_token: EgldOrEsdtTokenIdentifier<StaticApi>,
+    pub from_amount: BigUint<StaticApi>,
+    pub to_token: EgldOrEsdtTokenIdentifier<StaticApi>,
+    pub close_position: bool,
+    pub steps: OptionalValue<ManagedArgBuffer<StaticApi>>,
+    pub account_payment: ManagedVec<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
+}
+
+/// Token configuration for deploying a xExchange pair in the test harness.
+#[derive(Clone)]
+pub struct DeployPairParams {
+    pub first_token: TestTokenIdentifier<'static>,
+    pub first_token_decimals: usize,
+    pub second_token: TestTokenIdentifier<'static>,
+    pub second_token_decimals: usize,
+    pub lp_token: TestTokenIdentifier<'static>,
+    pub first_token_price_usd: u64,
+    pub second_token_price_usd: u64,
+}
+
+/// Parameters describing a standalone multiply call against the controller.
+#[derive(Clone)]
+pub struct StandaloneMultiplyParams {
+    pub e_mode_category: u8,
+    pub collateral_token: EgldOrEsdtTokenIdentifier<StaticApi>,
+    pub debt_to_flash_loan: BigUint<StaticApi>,
+    pub debt_token: EgldOrEsdtTokenIdentifier<StaticApi>,
+    pub mode: PositionMode,
+    pub steps: ManagedArgBuffer<StaticApi>,
+    pub steps_payment: OptionalValue<ManagedArgBuffer<StaticApi>>,
+}
+
 impl Default for LendingPoolTestState {
     fn default() -> Self {
         Self::new()
@@ -82,7 +237,7 @@ impl LendingPoolTestState {
     pub fn new() -> Self {
         let mut world = world();
         setup_owner(&mut world);
-        world.current_block().block_timestamp(0);
+        world.current_block().block_timestamp_seconds(0);
 
         let template_address_liquidity_pool = setup_template_liquidity_pool(&mut world);
 
@@ -142,21 +297,14 @@ impl LendingPoolTestState {
     // ============================================
 
     /// Supply asset to the lending pool
-    pub fn supply_asset(
-        &mut self,
-        from: &TestAddress,
-        token_id: TestTokenIdentifier,
-        amount: BigUint<StaticApi>,
-        asset_decimals: usize,
-        account_nonce: OptionalValue<u64>,
-        e_mode_category: OptionalValue<u8>,
-        _is_vault: bool,
-    ) {
+    pub fn supply_asset(&mut self, from: &TestAddress, params: SupplyParams) {
         let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
 
-        let amount_to_transfer = amount.mul(BigUint::from(10u64).pow(asset_decimals as u32));
+        let amount_to_transfer = params
+            .amount
+            .mul(BigUint::from(10u64).pow(params.asset_decimals as u32));
         vec.push(EsdtTokenPayment::new(
-            token_id.to_token_identifier(),
+            params.token_id.to_esdt_token_identifier(),
             0,
             amount_to_transfer,
         ));
@@ -167,13 +315,13 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .supply(
-                match account_nonce.into_option() {
+                match params.account_nonce.into_option() {
                     Some(nonce) => OptionalValue::Some(nonce),
                     None => OptionalValue::Some(0),
                 },
-                e_mode_category,
+                params.e_mode_category,
             )
-            .multi_esdt(vec)
+            .payment(vec)
             .run();
     }
 
@@ -190,7 +338,7 @@ impl LendingPoolTestState {
         let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
 
         vec.push(EsdtTokenPayment::new(
-            token_id.to_token_identifier(),
+            token_id.to_esdt_token_identifier(),
             0,
             amount_to_transfer,
         ));
@@ -207,7 +355,7 @@ impl LendingPoolTestState {
                 },
                 e_mode_category,
             )
-            .multi_esdt(vec)
+            .payment(vec)
             .run();
     }
 
@@ -215,19 +363,16 @@ impl LendingPoolTestState {
     pub fn supply_asset_error(
         &mut self,
         from: &TestAddress,
-        token_id: TestTokenIdentifier,
-        amount: BigUint<StaticApi>,
-        asset_decimals: usize,
-        account_nonce: OptionalValue<u64>,
-        e_mode_category: OptionalValue<u8>,
-        _is_vault: bool,
+        params: SupplyParams,
         error_message: &[u8],
     ) {
         let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
 
-        let amount_to_transfer = amount.mul(BigUint::from(10u64).pow(asset_decimals as u32));
+        let amount_to_transfer = params
+            .amount
+            .mul(BigUint::from(10u64).pow(params.asset_decimals as u32));
         vec.push(EsdtTokenPayment::new(
-            token_id.to_token_identifier(),
+            params.token_id.to_esdt_token_identifier(),
             0,
             amount_to_transfer,
         ));
@@ -238,13 +383,13 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .supply(
-                match account_nonce.into_option() {
+                match params.account_nonce.into_option() {
                     Some(nonce) => OptionalValue::Some(nonce),
                     None => OptionalValue::Some(0),
                 },
-                e_mode_category,
+                params.e_mode_category,
             )
-            .multi_esdt(vec)
+            .payment(vec)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
     }
@@ -269,7 +414,7 @@ impl LendingPoolTestState {
                 },
                 e_mode_category,
             )
-            .multi_esdt(assets)
+            .payment(assets)
             .run();
     }
 
@@ -298,7 +443,7 @@ impl LendingPoolTestState {
                 },
                 e_mode_category,
             )
-            .multi_esdt(vec)
+            .payment(vec)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
     }
@@ -350,29 +495,26 @@ impl LendingPoolTestState {
     pub fn supply_asset_error_payment_count(
         &mut self,
         from: &TestAddress,
-        token_id: TestTokenIdentifier,
-        amount: BigUint<StaticApi>,
-        asset_decimals: usize,
-        account_nonce: OptionalValue<u64>,
-        e_mode_category: OptionalValue<u8>,
-        _is_vault: bool,
+        params: SupplyParams,
         error_message: &[u8],
     ) {
         let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
 
-        let amount_to_transfer = amount.mul(BigUint::from(10u64).pow(asset_decimals as u32));
+        let amount_to_transfer = params
+            .amount
+            .mul(BigUint::from(10u64).pow(params.asset_decimals as u32));
         vec.push(EsdtTokenPayment::new(
-            token_id.to_token_identifier(),
+            params.token_id.to_esdt_token_identifier(),
             0,
             amount_to_transfer.clone(),
         ));
         vec.push(EsdtTokenPayment::new(
-            token_id.to_token_identifier(),
+            params.token_id.to_esdt_token_identifier(),
             0,
             amount_to_transfer.clone(),
         ));
         vec.push(EsdtTokenPayment::new(
-            token_id.to_token_identifier(),
+            params.token_id.to_esdt_token_identifier(),
             0,
             amount_to_transfer,
         ));
@@ -383,13 +525,13 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .supply(
-                match account_nonce.into_option() {
+                match params.account_nonce.into_option() {
                     Some(nonce) => OptionalValue::Some(nonce),
                     None => OptionalValue::Some(0),
                 },
-                e_mode_category,
+                params.e_mode_category,
             )
-            .multi_esdt(vec)
+            .payment(vec)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
     }
@@ -404,14 +546,14 @@ impl LendingPoolTestState {
         asset_decimals: usize,
     ) {
         let transfer = EsdtTokenPayment::new(
-            ACCOUNT_TOKEN.to_token_identifier(),
+            ACCOUNT_TOKEN.to_esdt_token_identifier(),
             account_nonce,
             BigUint::from(1u64),
         );
 
         let amount_to_withdraw = amount.mul(BigUint::from(10u64).pow(asset_decimals as u32));
         let asset = EgldOrEsdtTokenPayment::new(
-            EgldOrEsdtTokenIdentifier::esdt(token_id.to_token_identifier()),
+            EgldOrEsdtTokenIdentifier::esdt(token_id.to_esdt_token_identifier()),
             0,
             amount_to_withdraw,
         );
@@ -425,7 +567,7 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .withdraw(array)
-            .esdt(transfer)
+            .payment(transfer)
             .run();
     }
 
@@ -438,13 +580,13 @@ impl LendingPoolTestState {
         account_nonce: u64,
     ) {
         let transfer = EsdtTokenPayment::new(
-            ACCOUNT_TOKEN.to_token_identifier(),
+            ACCOUNT_TOKEN.to_esdt_token_identifier(),
             account_nonce,
             BigUint::from(1u64),
         );
 
         let asset = EgldOrEsdtTokenPayment::new(
-            EgldOrEsdtTokenIdentifier::esdt(token_id.to_token_identifier()),
+            EgldOrEsdtTokenIdentifier::esdt(token_id.to_esdt_token_identifier()),
             0,
             amount,
         );
@@ -458,7 +600,7 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .withdraw(array)
-            .esdt(transfer)
+            .payment(transfer)
             .run();
     }
 
@@ -470,7 +612,7 @@ impl LendingPoolTestState {
         account_nonce: u64,
     ) {
         let transfer = EsdtTokenPayment::new(
-            ACCOUNT_TOKEN.to_token_identifier(),
+            ACCOUNT_TOKEN.to_esdt_token_identifier(),
             account_nonce,
             BigUint::from(1u64),
         );
@@ -481,7 +623,7 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .withdraw(assets)
-            .esdt(transfer)
+            .payment(transfer)
             .run();
     }
 
@@ -496,14 +638,14 @@ impl LendingPoolTestState {
         error_message: &[u8],
     ) {
         let transfer = EsdtTokenPayment::new(
-            ACCOUNT_TOKEN.to_token_identifier(),
+            ACCOUNT_TOKEN.to_esdt_token_identifier(),
             account_nonce,
             BigUint::from(1u64),
         );
 
         let amount_to_withdraw = amount.mul(BigUint::from(10u64).pow(asset_decimals as u32));
         let asset = EgldOrEsdtTokenPayment::new(
-            EgldOrEsdtTokenIdentifier::esdt(token_id.to_token_identifier()),
+            EgldOrEsdtTokenIdentifier::esdt(token_id.to_esdt_token_identifier()),
             0,
             amount_to_withdraw,
         );
@@ -517,7 +659,7 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .withdraw(array)
-            .esdt(transfer)
+            .payment(transfer)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
     }
@@ -532,7 +674,7 @@ impl LendingPoolTestState {
         asset_decimals: usize,
     ) {
         let asset = EgldOrEsdtTokenPayment::new(
-            EgldOrEsdtTokenIdentifier::esdt(asset_to_borrow.to_token_identifier()),
+            EgldOrEsdtTokenIdentifier::esdt(asset_to_borrow.to_esdt_token_identifier()),
             0,
             amount * BigUint::from(10u64.pow(asset_decimals as u32)),
         );
@@ -546,7 +688,11 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .borrow(array)
-            .esdt(TestEsdtTransfer(ACCOUNT_TOKEN, account_nonce, 1u64))
+            .payment(EsdtTokenPayment::new(
+                ACCOUNT_TOKEN.to_esdt_token_identifier(),
+                account_nonce,
+                BigUint::from(1u64),
+            ))
             .run();
     }
 
@@ -558,7 +704,7 @@ impl LendingPoolTestState {
         account_nonce: u64,
     ) {
         let asset = EgldOrEsdtTokenPayment::new(
-            EgldOrEsdtTokenIdentifier::esdt(asset_to_borrow.to_token_identifier()),
+            EgldOrEsdtTokenIdentifier::esdt(asset_to_borrow.to_esdt_token_identifier()),
             0,
             amount,
         );
@@ -572,7 +718,11 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .borrow(array)
-            .esdt(TestEsdtTransfer(ACCOUNT_TOKEN, account_nonce, 1u64))
+            .payment(EsdtTokenPayment::new(
+                ACCOUNT_TOKEN.to_esdt_token_identifier(),
+                account_nonce,
+                BigUint::from(1u64),
+            ))
             .run();
     }
 
@@ -589,7 +739,11 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .borrow(assets)
-            .esdt(TestEsdtTransfer(ACCOUNT_TOKEN, account_nonce, 1u64))
+            .payment(EsdtTokenPayment::new(
+                ACCOUNT_TOKEN.to_esdt_token_identifier(),
+                account_nonce,
+                BigUint::from(1u64),
+            ))
             .run();
     }
 
@@ -604,7 +758,7 @@ impl LendingPoolTestState {
         error_message: &[u8],
     ) {
         let asset = EgldOrEsdtTokenPayment::new(
-            EgldOrEsdtTokenIdentifier::esdt(asset_to_borrow.to_token_identifier()),
+            EgldOrEsdtTokenIdentifier::esdt(asset_to_borrow.to_esdt_token_identifier()),
             0,
             amount * BigUint::from(10u64.pow(asset_decimals as u32)),
         );
@@ -618,7 +772,11 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .borrow(array)
-            .esdt(TestEsdtTransfer(ACCOUNT_TOKEN, account_nonce, 1u64))
+            .payment(EsdtTokenPayment::new(
+                ACCOUNT_TOKEN.to_esdt_token_identifier(),
+                account_nonce,
+                BigUint::from(1u64),
+            ))
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
     }
@@ -637,7 +795,11 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .borrow(assets)
-            .esdt(TestEsdtTransfer(ACCOUNT_TOKEN, account_nonce, 1u64))
+            .payment(EsdtTokenPayment::new(
+                ACCOUNT_TOKEN.to_esdt_token_identifier(),
+                account_nonce,
+                BigUint::from(1u64),
+            ))
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
     }
@@ -658,8 +820,8 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .repay(account_nonce)
-            .esdt(EsdtTokenPayment::new(
-                token.to_token_identifier(),
+            .payment(EsdtTokenPayment::new(
+                token.to_esdt_token_identifier(),
                 0,
                 amount_to_transfer,
             ))
@@ -680,8 +842,8 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .repay(account_nonce)
-            .esdt(EsdtTokenPayment::new(
-                token.to_token_identifier(),
+            .payment(EsdtTokenPayment::new(
+                token.to_esdt_token_identifier(),
                 0,
                 amount,
             ))
@@ -705,8 +867,8 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .repay(account_nonce)
-            .esdt(EsdtTokenPayment::new(
-                token.to_token_identifier(),
+            .payment(EsdtTokenPayment::new(
+                token.to_esdt_token_identifier(),
                 0,
                 amount_to_transfer,
             ))
@@ -726,7 +888,7 @@ impl LendingPoolTestState {
         let amount_to_transfer = amount.mul(BigUint::from(10u64).pow(asset_decimals as u32));
         let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
         vec.push(EsdtTokenPayment::new(
-            liquidator_payment.to_token_identifier(),
+            liquidator_payment.to_esdt_token_identifier(),
             0,
             amount_to_transfer,
         ));
@@ -737,7 +899,7 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .liquidate(account_nonce)
-            .multi_esdt(vec)
+            .payment(vec)
             .run();
     }
 
@@ -751,7 +913,7 @@ impl LendingPoolTestState {
     ) {
         let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
         vec.push(EsdtTokenPayment::new(
-            liquidator_payment.to_token_identifier(),
+            liquidator_payment.to_esdt_token_identifier(),
             0,
             amount_to_transfer,
         ));
@@ -762,7 +924,7 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .liquidate(account_nonce)
-            .multi_esdt(vec)
+            .payment(vec)
             .run();
     }
 
@@ -776,7 +938,7 @@ impl LendingPoolTestState {
     ) {
         let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
         vec.push(EsdtTokenPayment::new(
-            liquidator_payment.to_token_identifier(),
+            liquidator_payment.to_esdt_token_identifier(),
             0,
             amount,
         ));
@@ -787,7 +949,7 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .liquidate(account_nonce)
-            .multi_esdt(vec)
+            .payment(vec)
             .run();
     }
 
@@ -801,7 +963,7 @@ impl LendingPoolTestState {
         let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
         for (token, amount) in payments {
             vec.push(EsdtTokenPayment::new(
-                token.to_token_identifier(),
+                token.to_esdt_token_identifier(),
                 0,
                 amount.clone(),
             ));
@@ -813,7 +975,7 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .liquidate(account_nonce)
-            .multi_esdt(vec)
+            .payment(vec)
             .run();
     }
 
@@ -830,7 +992,7 @@ impl LendingPoolTestState {
         let amount_to_transfer = amount.mul(BigUint::from(10u64).pow(asset_decimals as u32));
         let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
         vec.push(EsdtTokenPayment::new(
-            liquidator_payment.to_token_identifier(),
+            liquidator_payment.to_esdt_token_identifier(),
             0,
             amount_to_transfer,
         ));
@@ -841,7 +1003,7 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .liquidate(account_nonce)
-            .multi_esdt(vec)
+            .payment(vec)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
     }
@@ -862,7 +1024,7 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .flash_loan(
-                token.to_token_identifier(),
+                token.to_esdt_token_identifier(),
                 amount,
                 contract,
                 endpoint,
@@ -875,11 +1037,7 @@ impl LendingPoolTestState {
     pub fn flash_loan_error(
         &mut self,
         from: &TestAddress,
-        token: &TestTokenIdentifier,
-        amount: BigUint<StaticApi>,
-        contract: ManagedAddress<StaticApi>,
-        endpoint: ManagedBuffer<StaticApi>,
-        arguments: ManagedArgBuffer<StaticApi>,
+        params: FlashLoanParams,
         error_message: &[u8],
     ) {
         self.world
@@ -888,11 +1046,11 @@ impl LendingPoolTestState {
             .to(self.lending_sc.clone())
             .typed(proxy_lending_pool::ControllerProxy)
             .flash_loan(
-                token.to_token_identifier(),
-                amount,
-                contract,
-                endpoint,
-                arguments,
+                params.token.to_esdt_token_identifier(),
+                params.amount,
+                params.contract,
+                params.endpoint,
+                params.arguments,
             )
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
@@ -973,15 +1131,7 @@ impl LendingPoolTestState {
     pub fn set_token_oracle(
         &mut self,
         market_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
-        decimals: usize,
-        contract_address: &ManagedAddress<StaticApi>,
-        pricing_method: PricingMethod,
-        oracle_type: OracleType,
-        source: ExchangeSource,
-        first_tolerance: BigUint<StaticApi>,
-        last_tolerance: BigUint<StaticApi>,
-        max_price_stale_seconds: u64,
-        one_dex_pair_id: OptionalValue<usize>,
+        params: TokenOracleParams,
     ) {
         self.world
             .tx()
@@ -990,15 +1140,15 @@ impl LendingPoolTestState {
             .typed(proxy_lending_pool::ControllerProxy)
             .set_token_oracle(
                 market_token.clone(),
-                decimals,
-                contract_address.clone(),
-                pricing_method,
-                oracle_type,
-                source,
-                first_tolerance,
-                last_tolerance,
-                max_price_stale_seconds,
-                one_dex_pair_id,
+                params.decimals,
+                params.contract_address,
+                params.pricing_method,
+                params.oracle_type,
+                params.source,
+                params.first_tolerance,
+                params.last_tolerance,
+                params.max_price_stale_seconds,
+                params.one_dex_pair_id,
             )
             .run();
     }
@@ -1007,15 +1157,7 @@ impl LendingPoolTestState {
     pub fn set_token_oracle_error(
         &mut self,
         market_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
-        decimals: usize,
-        contract_address: &ManagedAddress<StaticApi>,
-        pricing_method: PricingMethod,
-        oracle_type: OracleType,
-        source: ExchangeSource,
-        first_tolerance: BigUint<StaticApi>,
-        last_tolerance: BigUint<StaticApi>,
-        max_price_stale_seconds: u64,
-        one_dex_pair_id: OptionalValue<usize>,
+        params: TokenOracleParams,
         error_message: &[u8],
     ) {
         self.world
@@ -1025,15 +1167,15 @@ impl LendingPoolTestState {
             .typed(proxy_lending_pool::ControllerProxy)
             .set_token_oracle(
                 market_token.clone(),
-                decimals,
-                contract_address.clone(),
-                pricing_method,
-                oracle_type,
-                source,
-                first_tolerance,
-                last_tolerance,
-                max_price_stale_seconds,
-                one_dex_pair_id,
+                params.decimals,
+                params.contract_address,
+                params.pricing_method,
+                params.oracle_type,
+                params.source,
+                params.first_tolerance,
+                params.last_tolerance,
+                params.max_price_stale_seconds,
+                params.one_dex_pair_id,
             )
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
@@ -1074,10 +1216,7 @@ impl LendingPoolTestState {
     }
 
     /// Disable token oracle
-    pub fn disable_token_oracle(
-        &mut self,
-        market_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
-    ) {
+    pub fn disable_token_oracle(&mut self, market_token: &EgldOrEsdtTokenIdentifier<StaticApi>) {
         self.world
             .tx()
             .from(OWNER_ADDRESS)
@@ -1257,7 +1396,7 @@ impl LendingPoolTestState {
     pub fn claim_revenue(&mut self, token_id: TestTokenIdentifier) {
         let mut array = MultiValueEncoded::new();
         array.push(EgldOrEsdtTokenIdentifier::esdt(
-            token_id.to_token_identifier(),
+            token_id.to_esdt_token_identifier(),
         ));
 
         self.world
@@ -1274,14 +1413,7 @@ impl LendingPoolTestState {
         &mut self,
         token_id: EgldOrEsdtTokenIdentifier<StaticApi>,
         config: AssetConfig<StaticApi>,
-        max_borrow_rate: u64,
-        base_borrow_rate: u64,
-        slope1: u64,
-        slope2: u64,
-        slope3: u64,
-        mid_utilization: u64,
-        optimal_utilization: u64,
-        reserve_factor: u64,
+        rates: MarketRateParams,
         asset_decimals: usize,
     ) -> ManagedAddress<StaticApi> {
         let pool_address = self
@@ -1292,23 +1424,23 @@ impl LendingPoolTestState {
             .typed(proxy_lending_pool::ControllerProxy)
             .create_liquidity_pool(
                 token_id.clone(),
-                BigUint::from(max_borrow_rate),
-                BigUint::from(base_borrow_rate),
-                BigUint::from(slope1),
-                BigUint::from(slope2),
-                BigUint::from(slope3),
-                BigUint::from(mid_utilization),
-                BigUint::from(optimal_utilization),
-                BigUint::from(reserve_factor),
-                config.loan_to_value_bps.into_raw_units(),
-                config.liquidation_threshold_bps.into_raw_units(),
-                config.liquidation_bonus_bps.into_raw_units(),
-                config.liquidation_fees_bps.into_raw_units(),
+                rates.max_borrow_rate,
+                rates.base_borrow_rate,
+                rates.slope1,
+                rates.slope2,
+                rates.slope3,
+                rates.mid_utilization,
+                rates.optimal_utilization,
+                rates.reserve_factor,
+                config.loan_to_value_bps.as_raw_units(),
+                config.liquidation_threshold_bps.as_raw_units(),
+                config.liquidation_bonus_bps.as_raw_units(),
+                config.liquidation_fees_bps.as_raw_units(),
                 config.is_collateralizable,
                 config.is_borrowable,
                 config.is_isolated_asset,
-                config.isolation_debt_ceiling_usd_wad.into_raw_units(),
-                config.flashloan_fee_bps.into_raw_units(),
+                config.isolation_debt_ceiling_usd_wad.as_raw_units(),
+                config.flashloan_fee_bps.as_raw_units(),
                 config.is_siloed_borrowing,
                 config.is_flashloanable,
                 config.isolation_borrow_enabled,
@@ -1346,14 +1478,7 @@ impl LendingPoolTestState {
         &mut self,
         token_id: EgldOrEsdtTokenIdentifier<StaticApi>,
         config: AssetConfig<StaticApi>,
-        max_borrow_rate: u64,
-        base_borrow_rate: u64,
-        slope1: u64,
-        slope2: u64,
-        slope3: u64,
-        mid_utilization: u64,
-        optimal_utilization: u64,
-        reserve_factor: u64,
+        rates: MarketRateParams,
     ) -> ManagedAddress<StaticApi> {
         self.world
             .tx()
@@ -1362,23 +1487,23 @@ impl LendingPoolTestState {
             .typed(proxy_lending_pool::ControllerProxy)
             .create_liquidity_pool(
                 token_id,
-                BigUint::from(max_borrow_rate),
-                BigUint::from(base_borrow_rate),
-                BigUint::from(slope1),
-                BigUint::from(slope2),
-                BigUint::from(slope3),
-                BigUint::from(mid_utilization),
-                BigUint::from(optimal_utilization),
-                BigUint::from(reserve_factor),
-                config.loan_to_value_bps.into_raw_units(),
-                config.liquidation_threshold_bps.into_raw_units(),
-                config.liquidation_bonus_bps.into_raw_units(),
-                config.liquidation_fees_bps.into_raw_units(),
+                rates.max_borrow_rate,
+                rates.base_borrow_rate,
+                rates.slope1,
+                rates.slope2,
+                rates.slope3,
+                rates.mid_utilization,
+                rates.optimal_utilization,
+                rates.reserve_factor,
+                config.loan_to_value_bps.as_raw_units(),
+                config.liquidation_threshold_bps.as_raw_units(),
+                config.liquidation_bonus_bps.as_raw_units(),
+                config.liquidation_fees_bps.as_raw_units(),
                 config.is_collateralizable,
                 config.is_borrowable,
                 config.is_isolated_asset,
-                config.isolation_debt_ceiling_usd_wad.into_raw_units(),
-                config.flashloan_fee_bps.into_raw_units(),
+                config.isolation_debt_ceiling_usd_wad.as_raw_units(),
+                config.flashloan_fee_bps.as_raw_units(),
                 config.is_siloed_borrowing,
                 config.is_flashloanable,
                 config.isolation_borrow_enabled,
@@ -1394,29 +1519,8 @@ impl LendingPoolTestState {
     pub fn create_liquidity_pool_error(
         &mut self,
         token_id: EgldOrEsdtTokenIdentifier<StaticApi>,
-        max_borrow_rate: BigUint<StaticApi>,
-        base_borrow_rate: BigUint<StaticApi>,
-        slope1: BigUint<StaticApi>,
-        slope2: BigUint<StaticApi>,
-        slope3: BigUint<StaticApi>,
-        mid_utilization: BigUint<StaticApi>,
-        optimal_utilization: BigUint<StaticApi>,
-        reserve_factor: BigUint<StaticApi>,
-        ltv: BigUint<StaticApi>,
-        liquidation_threshold: BigUint<StaticApi>,
-        liquidation_bonus: BigUint<StaticApi>,
-        liquidation_fees: BigUint<StaticApi>,
-        is_collateralizable: bool,
-        is_borrowable: bool,
-        is_isolated_asset: bool,
-        isolation_debt_ceiling_usd: BigUint<StaticApi>,
-        flashloan_fee: BigUint<StaticApi>,
-        is_siloed_borrowing: bool,
-        is_flashloanable: bool,
-        isolation_borrow_enabled: bool,
-        asset_decimals: usize,
-        borrow_cap: BigUint<StaticApi>,
-        supply_cap: BigUint<StaticApi>,
+        rates: MarketRateParams,
+        risk: CreateLiquidityPoolRiskParams,
         error_message: &[u8],
     ) {
         self.world
@@ -1426,29 +1530,29 @@ impl LendingPoolTestState {
             .typed(proxy_lending_pool::ControllerProxy)
             .create_liquidity_pool(
                 token_id,
-                max_borrow_rate,
-                base_borrow_rate,
-                slope1,
-                slope2,
-                slope3,
-                mid_utilization,
-                optimal_utilization,
-                reserve_factor,
-                ltv,
-                liquidation_threshold,
-                liquidation_bonus,
-                liquidation_fees,
-                is_collateralizable,
-                is_borrowable,
-                is_isolated_asset,
-                isolation_debt_ceiling_usd,
-                flashloan_fee,
-                is_siloed_borrowing,
-                is_flashloanable,
-                isolation_borrow_enabled,
-                asset_decimals,
-                borrow_cap,
-                supply_cap,
+                rates.max_borrow_rate,
+                rates.base_borrow_rate,
+                rates.slope1,
+                rates.slope2,
+                rates.slope3,
+                rates.mid_utilization,
+                rates.optimal_utilization,
+                rates.reserve_factor,
+                risk.ltv,
+                risk.liquidation_threshold,
+                risk.liquidation_bonus,
+                risk.liquidation_fees,
+                risk.is_collateralizable,
+                risk.is_borrowable,
+                risk.is_isolated_asset,
+                risk.isolation_debt_ceiling_usd,
+                risk.flashloan_fee,
+                risk.is_siloed_borrowing,
+                risk.is_flashloanable,
+                risk.isolation_borrow_enabled,
+                risk.asset_decimals,
+                risk.borrow_cap,
+                risk.supply_cap,
             )
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
@@ -1458,14 +1562,7 @@ impl LendingPoolTestState {
     pub fn upgrade_liquidity_pool_params(
         &mut self,
         base_asset: &EgldOrEsdtTokenIdentifier<StaticApi>,
-        max_borrow_rate: BigUint<StaticApi>,
-        base_borrow_rate: BigUint<StaticApi>,
-        slope1: BigUint<StaticApi>,
-        slope2: BigUint<StaticApi>,
-        slope3: BigUint<StaticApi>,
-        mid_utilization: BigUint<StaticApi>,
-        optimal_utilization: BigUint<StaticApi>,
-        reserve_factor: BigUint<StaticApi>,
+        rates: MarketRateParams,
     ) {
         self.world
             .tx()
@@ -1474,14 +1571,14 @@ impl LendingPoolTestState {
             .typed(proxy_lending_pool::ControllerProxy)
             .upgrade_liquidity_pool_params(
                 base_asset.clone(),
-                max_borrow_rate,
-                base_borrow_rate,
-                slope1,
-                slope2,
-                slope3,
-                mid_utilization,
-                optimal_utilization,
-                reserve_factor,
+                rates.max_borrow_rate,
+                rates.base_borrow_rate,
+                rates.slope1,
+                rates.slope2,
+                rates.slope3,
+                rates.mid_utilization,
+                rates.optimal_utilization,
+                rates.reserve_factor,
             )
             .run();
     }
@@ -1490,20 +1587,7 @@ impl LendingPoolTestState {
     pub fn edit_asset_config(
         &mut self,
         asset: EgldOrEsdtTokenIdentifier<StaticApi>,
-        loan_to_value: &BigUint<StaticApi>,
-        liquidation_threshold: &BigUint<StaticApi>,
-        liquidation_bonus: &BigUint<StaticApi>,
-        liquidation_fees: &BigUint<StaticApi>,
-        is_isolated_asset: bool,
-        isolation_debt_ceiling_usd: &BigUint<StaticApi>,
-        is_siloed_borrowing: bool,
-        is_flashloanable: bool,
-        flashloan_fee: &BigUint<StaticApi>,
-        is_collateralizable: bool,
-        is_borrowable: bool,
-        isolation_borrow_enabled: bool,
-        borrow_cap: &BigUint<StaticApi>,
-        supply_cap: &BigUint<StaticApi>,
+        params: EditAssetConfigParams,
         error_message: Option<&[u8]>,
     ) {
         let call = self
@@ -1514,20 +1598,20 @@ impl LendingPoolTestState {
             .typed(proxy_lending_pool::ControllerProxy)
             .edit_asset_config(
                 asset,
-                loan_to_value.clone(),
-                liquidation_threshold.clone(),
-                liquidation_bonus.clone(),
-                liquidation_fees.clone(),
-                is_isolated_asset,
-                isolation_debt_ceiling_usd.clone(),
-                is_siloed_borrowing,
-                is_flashloanable,
-                flashloan_fee.clone(),
-                is_collateralizable,
-                is_borrowable,
-                isolation_borrow_enabled,
-                borrow_cap.clone(),
-                supply_cap.clone(),
+                params.loan_to_value,
+                params.liquidation_threshold,
+                params.liquidation_bonus,
+                params.liquidation_fees,
+                params.is_isolated_asset,
+                params.isolation_debt_ceiling_usd,
+                params.is_siloed_borrowing,
+                params.is_flashloanable,
+                params.flashloan_fee,
+                params.is_collateralizable,
+                params.is_borrowable,
+                params.isolation_borrow_enabled,
+                params.borrow_cap,
+                params.supply_cap,
             );
 
         if let Some(err_msg) = error_message {
@@ -1733,33 +1817,22 @@ impl LendingPoolTestState {
     // ============================================
 
     /// Multiply position (leverage)
-    pub fn multiply(
-        &mut self,
-        from: &TestAddress,
-        e_mode_category: u8,
-        collateral_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
-        debt_to_flash_loan: BigUint<StaticApi>,
-        debt_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
-        mode: PositionMode,
-        steps: ManagedArgBuffer<StaticApi>,
-        steps_payment: OptionalValue<ManagedArgBuffer<StaticApi>>,
-        payments: ManagedVec<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
-    ) {
+    pub fn multiply(&mut self, from: &TestAddress, params: MultiplyParams) {
         self.world
             .tx()
             .from(from.to_managed_address())
             .to(&self.lending_sc)
             .typed(proxy_lending_pool::ControllerProxy)
             .multiply(
-                e_mode_category,
-                collateral_token,
-                debt_to_flash_loan,
-                debt_token,
-                mode,
-                steps,
-                steps_payment,
+                params.e_mode_category,
+                &params.collateral_token,
+                params.debt_to_flash_loan,
+                &params.debt_token,
+                params.mode,
+                params.steps,
+                params.steps_payment,
             )
-            .payment(payments)
+            .payment(params.payments)
             .run();
     }
 
@@ -1767,14 +1840,7 @@ impl LendingPoolTestState {
     pub fn multiply_error(
         &mut self,
         from: &TestAddress,
-        e_mode_category: u8,
-        collateral_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
-        debt_to_flash_loan: BigUint<StaticApi>,
-        debt_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
-        mode: PositionMode,
-        steps: ManagedArgBuffer<StaticApi>,
-        steps_payment: OptionalValue<ManagedArgBuffer<StaticApi>>,
-        payments: ManagedVec<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
+        params: MultiplyParams,
         error_message: &[u8],
     ) {
         self.world
@@ -1783,15 +1849,15 @@ impl LendingPoolTestState {
             .to(&self.lending_sc)
             .typed(proxy_lending_pool::ControllerProxy)
             .multiply(
-                e_mode_category,
-                collateral_token,
-                debt_to_flash_loan,
-                debt_token,
-                mode,
-                steps,
-                steps_payment,
+                params.e_mode_category,
+                &params.collateral_token,
+                params.debt_to_flash_loan,
+                &params.debt_token,
+                params.mode,
+                params.steps,
+                params.steps_payment,
             )
-            .payment(payments)
+            .payment(params.payments)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
     }
@@ -1825,11 +1891,7 @@ impl LendingPoolTestState {
     pub fn swap_debt_error(
         &mut self,
         from: &TestAddress,
-        existing_debt_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
-        new_debt_amount_raw: &BigUint<StaticApi>,
-        new_debt_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
-        steps: ManagedArgBuffer<StaticApi>,
-        account_payment: ManagedVec<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
+        params: SwapDebtParams,
         error_message: &[u8],
     ) {
         self.world
@@ -1838,12 +1900,12 @@ impl LendingPoolTestState {
             .to(&self.lending_sc)
             .typed(proxy_lending_pool::ControllerProxy)
             .swap_debt(
-                existing_debt_token,
-                new_debt_amount_raw,
-                new_debt_token,
-                steps,
+                &params.existing_debt_token,
+                &params.new_debt_amount_raw,
+                &params.new_debt_token,
+                params.steps,
             )
-            .payment(account_payment)
+            .payment(params.account_payment)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
     }
@@ -1872,11 +1934,7 @@ impl LendingPoolTestState {
     pub fn swap_collateral_error(
         &mut self,
         from: &TestAddress,
-        current_collateral: &EgldOrEsdtTokenIdentifier<StaticApi>,
-        from_amount: BigUint<StaticApi>,
-        new_collateral: &EgldOrEsdtTokenIdentifier<StaticApi>,
-        steps: ManagedArgBuffer<StaticApi>,
-        account_payment: ManagedVec<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
+        params: SwapCollateralParams,
         error_message: &[u8],
     ) {
         self.world
@@ -1884,30 +1942,32 @@ impl LendingPoolTestState {
             .from(from.to_managed_address())
             .to(&self.lending_sc)
             .typed(proxy_lending_pool::ControllerProxy)
-            .swap_collateral(current_collateral, from_amount, new_collateral, steps)
-            .payment(account_payment)
+            .swap_collateral(
+                &params.current_collateral,
+                params.from_amount,
+                &params.new_collateral,
+                params.steps,
+            )
+            .payment(params.account_payment)
             .returns(ExpectMessage(core::str::from_utf8(error_message).unwrap()))
             .run();
     }
 
     /// Repay debt with collateral
-    pub fn repay_debt_with_collateral(
-        &mut self,
-        from: &TestAddress,
-        from_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
-        from_amount: BigUint<StaticApi>,
-        to_token: &EgldOrEsdtTokenIdentifier<StaticApi>,
-        close_position: bool,
-        steps: OptionalValue<ManagedArgBuffer<StaticApi>>,
-        account_payment: ManagedVec<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>,
-    ) {
+    pub fn repay_debt_with_collateral(&mut self, from: &TestAddress, params: RepayWithCollateralParams) {
         self.world
             .tx()
             .from(from.to_managed_address())
             .to(&self.lending_sc)
             .typed(proxy_lending_pool::ControllerProxy)
-            .repay_debt_with_collateral(from_token, from_amount, to_token, close_position, steps)
-            .payment(account_payment)
+            .repay_debt_with_collateral(
+                &params.from_token,
+                params.from_amount,
+                &params.to_token,
+                params.close_position,
+                params.steps,
+            )
+            .payment(params.account_payment)
             .run();
     }
 
@@ -2406,7 +2466,7 @@ impl LendingPoolTestState {
             .typed(proxy_lending_pool::ControllerProxy)
             .add_reward()
             .payment(EsdtTokenPayment::new(
-                token.to_token_identifier(),
+                token.to_esdt_token_identifier(),
                 0,
                 raw_amount,
             ))
@@ -2636,6 +2696,22 @@ pub fn world() -> ScenarioWorld {
     blockchain
 }
 
+/// Addresses returned by [`setup_lending_pool`]: the lending controller followed
+/// by each deployed market.
+type DeployedContracts = (
+    ManagedAddress<StaticApi>,
+    ManagedAddress<StaticApi>,
+    ManagedAddress<StaticApi>,
+    ManagedAddress<StaticApi>,
+    ManagedAddress<StaticApi>,
+    ManagedAddress<StaticApi>,
+    ManagedAddress<StaticApi>,
+    ManagedAddress<StaticApi>,
+    ManagedAddress<StaticApi>,
+    ManagedAddress<StaticApi>,
+    ManagedAddress<StaticApi>,
+);
+
 /// Setup the lending pool
 pub fn setup_lending_pool(
     world: &mut ScenarioWorld,
@@ -2643,26 +2719,14 @@ pub fn setup_lending_pool(
     price_aggregator_sc: &ManagedAddress<StaticApi>,
     accumulator_sc: &ManagedAddress<StaticApi>,
     swap_mock_sc: &ManagedAddress<StaticApi>,
-) -> (
-    ManagedAddress<StaticApi>,
-    ManagedAddress<StaticApi>,
-    ManagedAddress<StaticApi>,
-    ManagedAddress<StaticApi>,
-    ManagedAddress<StaticApi>,
-    ManagedAddress<StaticApi>,
-    ManagedAddress<StaticApi>,
-    ManagedAddress<StaticApi>,
-    ManagedAddress<StaticApi>,
-    ManagedAddress<StaticApi>,
-    ManagedAddress<StaticApi>,
-) {
+) -> DeployedContracts {
     let safe_view_sc = world
         .tx()
         .from(OWNER_ADDRESS)
         .typed(proxy_xexchange_pair::PairProxy)
         .init(
-            XEGLD_TOKEN.to_token_identifier(),
-            USDC_TOKEN.to_token_identifier(),
+            XEGLD_TOKEN.to_esdt_token_identifier(),
+            USDC_TOKEN.to_esdt_token_identifier(),
             OWNER_ADDRESS,
             OWNER_ADDRESS,
             0u64,
@@ -2698,7 +2762,7 @@ pub fn setup_lending_pool(
         .to(lending_sc.clone())
         .whitebox(controller::contract_obj, |sc| {
             sc.account()
-                .set_token_id(ACCOUNT_TOKEN.to_token_identifier());
+                .set_token_id(ACCOUNT_TOKEN.to_esdt_token_identifier());
         });
 
     let (xegld_liquid_staking_sc, _) = setup_egld_liquid_staking(world);
@@ -2714,63 +2778,63 @@ pub fn setup_lending_pool(
     let usdc_market = setup_market(
         world,
         &lending_sc,
-        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_esdt_token_identifier()),
         get_usdc_config(),
     );
     let egld_market = setup_market(
         world,
         &lending_sc,
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
         get_egld_config(),
     );
     let xegld_market = setup_market(
         world,
         &lending_sc,
-        EgldOrEsdtTokenIdentifier::esdt(XEGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(XEGLD_TOKEN.to_esdt_token_identifier()),
         get_xegld_config(),
     );
     let isolated_market = setup_market(
         world,
         &lending_sc,
-        EgldOrEsdtTokenIdentifier::esdt(ISOLATED_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(ISOLATED_TOKEN.to_esdt_token_identifier()),
         get_isolated_config(),
     );
     let siloed_market = setup_market(
         world,
         &lending_sc,
-        EgldOrEsdtTokenIdentifier::esdt(SILOED_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(SILOED_TOKEN.to_esdt_token_identifier()),
         get_siloed_config(),
     );
     let capped_market = setup_market(
         world,
         &lending_sc,
-        EgldOrEsdtTokenIdentifier::esdt(CAPPED_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(CAPPED_TOKEN.to_esdt_token_identifier()),
         get_capped_config(),
     );
     let segld_market = setup_market(
         world,
         &lending_sc,
-        EgldOrEsdtTokenIdentifier::esdt(SEGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(SEGLD_TOKEN.to_esdt_token_identifier()),
         get_segld_config(),
     );
     let legld_market = setup_market(
         world,
         &lending_sc,
-        EgldOrEsdtTokenIdentifier::esdt(LEGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(LEGLD_TOKEN.to_esdt_token_identifier()),
         get_legld_config(),
     );
 
     let xoxno_market = setup_market(
         world,
         &lending_sc,
-        EgldOrEsdtTokenIdentifier::esdt(XOXNO_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(XOXNO_TOKEN.to_esdt_token_identifier()),
         get_xoxno_config(),
     );
 
     let lp_egld_market = setup_market(
         world,
         &lending_sc,
-        EgldOrEsdtTokenIdentifier::esdt(LP_EGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(LP_EGLD_TOKEN.to_esdt_token_identifier()),
         get_legld_config(),
     );
 
@@ -2809,7 +2873,7 @@ pub fn set_oracle_token_data(
         .to(lending_sc)
         .typed(proxy_lending_pool::ControllerProxy)
         .set_token_oracle(
-            XEGLD_TOKEN.to_token_identifier(),
+            XEGLD_TOKEN.to_esdt_token_identifier(),
             18usize,
             xegld_liquid_staking_sc,
             PricingMethod::None,
@@ -2817,7 +2881,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XEGLD,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
-            SECONDS_PER_HOUR * 1000,
+            DurationSeconds::new(SECONDS_PER_HOUR * 1000),
             OptionalValue::<usize>::None,
         )
         .run();
@@ -2828,7 +2892,7 @@ pub fn set_oracle_token_data(
         .to(lending_sc)
         .typed(proxy_lending_pool::ControllerProxy)
         .set_token_oracle(
-            LXOXNO_TOKEN.to_token_identifier(),
+            LXOXNO_TOKEN.to_esdt_token_identifier(),
             18usize,
             xoxno_liquid_staking_sc,
             PricingMethod::None,
@@ -2836,20 +2900,22 @@ pub fn set_oracle_token_data(
             ExchangeSource::LXOXNO,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
-            SECONDS_PER_HOUR * 1000,
+            DurationSeconds::new(SECONDS_PER_HOUR * 1000),
             OptionalValue::<usize>::None,
         )
         .run();
 
     let wegld_usdc_pair_sc = deploy_pair_sc(
         world,
-        &WEGLD_TOKEN,
-        EGLD_DECIMALS,
-        &USDC_TOKEN,
-        USDC_DECIMALS,
-        &LP_EGLD_TOKEN,
-        EGLD_PRICE_IN_DOLLARS,
-        USDC_PRICE_IN_DOLLARS,
+        DeployPairParams {
+            first_token: WEGLD_TOKEN,
+            first_token_decimals: EGLD_DECIMALS,
+            second_token: USDC_TOKEN,
+            second_token_decimals: USDC_DECIMALS,
+            lp_token: LP_EGLD_TOKEN,
+            first_token_price_usd: EGLD_PRICE_IN_DOLLARS,
+            second_token_price_usd: USDC_PRICE_IN_DOLLARS,
+        },
     );
     world
         .tx()
@@ -2865,7 +2931,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
-            SECONDS_PER_HOUR * 1000,
+            DurationSeconds::new(SECONDS_PER_HOUR * 1000),
             OptionalValue::<usize>::None,
         )
         .run();
@@ -2883,7 +2949,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
-            SECONDS_PER_HOUR * 1000,
+            DurationSeconds::new(SECONDS_PER_HOUR * 1000),
             OptionalValue::<usize>::None,
         )
         .run();
@@ -2893,7 +2959,7 @@ pub fn set_oracle_token_data(
         .to(lending_sc)
         .typed(proxy_lending_pool::ControllerProxy)
         .set_token_oracle(
-            EgldOrEsdtTokenIdentifier::esdt(WEGLD_TOKEN.to_token_identifier()),
+            EgldOrEsdtTokenIdentifier::esdt(WEGLD_TOKEN.to_esdt_token_identifier()),
             EGLD_DECIMALS as u8,
             &wegld_usdc_pair_sc,
             PricingMethod::Mix,
@@ -2901,7 +2967,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
-            SECONDS_PER_HOUR * 1000,
+            DurationSeconds::new(SECONDS_PER_HOUR * 1000),
             OptionalValue::<usize>::None,
         )
         .run();
@@ -2911,7 +2977,7 @@ pub fn set_oracle_token_data(
         .to(lending_sc)
         .typed(proxy_lending_pool::ControllerProxy)
         .set_token_oracle(
-            EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
+            EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
             EGLD_DECIMALS as u8,
             &wegld_usdc_pair_sc,
             PricingMethod::Mix,
@@ -2919,7 +2985,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
-            SECONDS_PER_HOUR * 1000,
+            DurationSeconds::new(SECONDS_PER_HOUR * 1000),
             OptionalValue::<usize>::None,
         )
         .run();
@@ -2930,7 +2996,7 @@ pub fn set_oracle_token_data(
         .to(lending_sc)
         .typed(proxy_lending_pool::ControllerProxy)
         .set_token_oracle(
-            USDC_TOKEN.to_token_identifier(),
+            USDC_TOKEN.to_esdt_token_identifier(),
             USDC_DECIMALS as u8,
             &wegld_usdc_pair_sc,
             PricingMethod::Mix,
@@ -2938,20 +3004,22 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
-            SECONDS_PER_HOUR * 1000,
+            DurationSeconds::new(SECONDS_PER_HOUR * 1000),
             OptionalValue::<usize>::None,
         )
         .run();
 
     let wegld_isolated_pair_sc = deploy_pair_sc(
         world,
-        &ISOLATED_TOKEN,
-        ISOLATED_DECIMALS,
-        &WEGLD_TOKEN,
-        EGLD_DECIMALS,
-        &LP_EGLD_TOKEN,
-        ISOLATED_PRICE_IN_DOLLARS,
-        EGLD_PRICE_IN_DOLLARS,
+        DeployPairParams {
+            first_token: ISOLATED_TOKEN,
+            first_token_decimals: ISOLATED_DECIMALS,
+            second_token: WEGLD_TOKEN,
+            second_token_decimals: EGLD_DECIMALS,
+            lp_token: LP_EGLD_TOKEN,
+            first_token_price_usd: ISOLATED_PRICE_IN_DOLLARS,
+            second_token_price_usd: EGLD_PRICE_IN_DOLLARS,
+        },
     );
 
     world
@@ -2960,7 +3028,7 @@ pub fn set_oracle_token_data(
         .to(lending_sc)
         .typed(proxy_lending_pool::ControllerProxy)
         .set_token_oracle(
-            ISOLATED_TOKEN.to_token_identifier(),
+            ISOLATED_TOKEN.to_esdt_token_identifier(),
             ISOLATED_DECIMALS as u8,
             &wegld_isolated_pair_sc,
             PricingMethod::Mix,
@@ -2968,20 +3036,22 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
-            SECONDS_PER_HOUR * 1000,
+            DurationSeconds::new(SECONDS_PER_HOUR * 1000),
             OptionalValue::<usize>::None,
         )
         .run();
 
     let wegld_siloed_pair_sc = deploy_pair_sc(
         world,
-        &WEGLD_TOKEN,
-        EGLD_DECIMALS,
-        &SILOED_TOKEN,
-        SILOED_DECIMALS,
-        &LP_EGLD_TOKEN,
-        EGLD_PRICE_IN_DOLLARS,
-        SILOED_PRICE_IN_DOLLARS,
+        DeployPairParams {
+            first_token: WEGLD_TOKEN,
+            first_token_decimals: EGLD_DECIMALS,
+            second_token: SILOED_TOKEN,
+            second_token_decimals: SILOED_DECIMALS,
+            lp_token: LP_EGLD_TOKEN,
+            first_token_price_usd: EGLD_PRICE_IN_DOLLARS,
+            second_token_price_usd: SILOED_PRICE_IN_DOLLARS,
+        },
     );
 
     world
@@ -2990,7 +3060,7 @@ pub fn set_oracle_token_data(
         .to(lending_sc)
         .typed(proxy_lending_pool::ControllerProxy)
         .set_token_oracle(
-            SILOED_TOKEN.to_token_identifier(),
+            SILOED_TOKEN.to_esdt_token_identifier(),
             SILOED_DECIMALS as u8,
             &wegld_siloed_pair_sc,
             PricingMethod::Mix,
@@ -2998,20 +3068,22 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
-            SECONDS_PER_HOUR * 1000,
+            DurationSeconds::new(SECONDS_PER_HOUR * 1000),
             OptionalValue::<usize>::None,
         )
         .run();
 
     let wegld_capped_pair_sc = deploy_pair_sc(
         world,
-        &WEGLD_TOKEN,
-        EGLD_DECIMALS,
-        &CAPPED_TOKEN,
-        CAPPED_DECIMALS,
-        &LP_EGLD_TOKEN,
-        EGLD_PRICE_IN_DOLLARS,
-        CAPPED_PRICE_IN_DOLLARS,
+        DeployPairParams {
+            first_token: WEGLD_TOKEN,
+            first_token_decimals: EGLD_DECIMALS,
+            second_token: CAPPED_TOKEN,
+            second_token_decimals: CAPPED_DECIMALS,
+            lp_token: LP_EGLD_TOKEN,
+            first_token_price_usd: EGLD_PRICE_IN_DOLLARS,
+            second_token_price_usd: CAPPED_PRICE_IN_DOLLARS,
+        },
     );
 
     world
@@ -3020,7 +3092,7 @@ pub fn set_oracle_token_data(
         .to(lending_sc)
         .typed(proxy_lending_pool::ControllerProxy)
         .set_token_oracle(
-            CAPPED_TOKEN.to_token_identifier(),
+            CAPPED_TOKEN.to_esdt_token_identifier(),
             CAPPED_DECIMALS as u8,
             &wegld_capped_pair_sc,
             PricingMethod::Mix,
@@ -3028,20 +3100,22 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
-            SECONDS_PER_HOUR * 1000,
+            DurationSeconds::new(SECONDS_PER_HOUR * 1000),
             OptionalValue::<usize>::None,
         )
         .run();
 
     let wegld_segld_pair_sc = deploy_pair_sc(
         world,
-        &WEGLD_TOKEN,
-        EGLD_DECIMALS,
-        &SEGLD_TOKEN,
-        SEGLD_DECIMALS,
-        &LP_EGLD_TOKEN,
-        EGLD_PRICE_IN_DOLLARS,
-        SEGLD_PRICE_IN_DOLLARS,
+        DeployPairParams {
+            first_token: WEGLD_TOKEN,
+            first_token_decimals: EGLD_DECIMALS,
+            second_token: SEGLD_TOKEN,
+            second_token_decimals: SEGLD_DECIMALS,
+            lp_token: LP_EGLD_TOKEN,
+            first_token_price_usd: EGLD_PRICE_IN_DOLLARS,
+            second_token_price_usd: SEGLD_PRICE_IN_DOLLARS,
+        },
     );
 
     world
@@ -3050,7 +3124,7 @@ pub fn set_oracle_token_data(
         .to(lending_sc)
         .typed(proxy_lending_pool::ControllerProxy)
         .set_token_oracle(
-            SEGLD_TOKEN.to_token_identifier(),
+            SEGLD_TOKEN.to_esdt_token_identifier(),
             SEGLD_DECIMALS as u8,
             &wegld_segld_pair_sc,
             PricingMethod::Mix,
@@ -3058,20 +3132,22 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
-            SECONDS_PER_HOUR * 1000,
+            DurationSeconds::new(SECONDS_PER_HOUR * 1000),
             OptionalValue::<usize>::None,
         )
         .run();
 
     let wegld_legld_pair_sc = deploy_pair_sc(
         world,
-        &WEGLD_TOKEN,
-        EGLD_DECIMALS,
-        &LEGLD_TOKEN,
-        LEGLD_DECIMALS,
-        &LP_EGLD_TOKEN,
-        EGLD_PRICE_IN_DOLLARS,
-        LEGLD_PRICE_IN_DOLLARS,
+        DeployPairParams {
+            first_token: WEGLD_TOKEN,
+            first_token_decimals: EGLD_DECIMALS,
+            second_token: LEGLD_TOKEN,
+            second_token_decimals: LEGLD_DECIMALS,
+            lp_token: LP_EGLD_TOKEN,
+            first_token_price_usd: EGLD_PRICE_IN_DOLLARS,
+            second_token_price_usd: LEGLD_PRICE_IN_DOLLARS,
+        },
     );
 
     world
@@ -3080,7 +3156,7 @@ pub fn set_oracle_token_data(
         .to(lending_sc)
         .typed(proxy_lending_pool::ControllerProxy)
         .set_token_oracle(
-            LEGLD_TOKEN.to_token_identifier(),
+            LEGLD_TOKEN.to_esdt_token_identifier(),
             LEGLD_DECIMALS as u8,
             &wegld_legld_pair_sc,
             PricingMethod::Mix,
@@ -3088,20 +3164,22 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
-            SECONDS_PER_HOUR * 1000,
+            DurationSeconds::new(SECONDS_PER_HOUR * 1000),
             OptionalValue::<usize>::None,
         )
         .run();
 
     let wegld_xoxno_pair_sc = deploy_pair_sc(
         world,
-        &WEGLD_TOKEN,
-        EGLD_DECIMALS,
-        &XOXNO_TOKEN,
-        XOXNO_DECIMALS,
-        &LP_EGLD_TOKEN,
-        EGLD_PRICE_IN_DOLLARS,
-        XOXNO_PRICE_IN_DOLLARS,
+        DeployPairParams {
+            first_token: WEGLD_TOKEN,
+            first_token_decimals: EGLD_DECIMALS,
+            second_token: XOXNO_TOKEN,
+            second_token_decimals: XOXNO_DECIMALS,
+            lp_token: LP_EGLD_TOKEN,
+            first_token_price_usd: EGLD_PRICE_IN_DOLLARS,
+            second_token_price_usd: XOXNO_PRICE_IN_DOLLARS,
+        },
     );
 
     world
@@ -3110,7 +3188,7 @@ pub fn set_oracle_token_data(
         .to(lending_sc)
         .typed(proxy_lending_pool::ControllerProxy)
         .set_token_oracle(
-            XOXNO_TOKEN.to_token_identifier(),
+            XOXNO_TOKEN.to_esdt_token_identifier(),
             XOXNO_DECIMALS as u8,
             &wegld_xoxno_pair_sc,
             PricingMethod::Mix,
@@ -3118,7 +3196,7 @@ pub fn set_oracle_token_data(
             ExchangeSource::XExchange,
             BigUint::from(MIN_FIRST_TOLERANCE),
             BigUint::from(MIN_LAST_TOLERANCE),
-            SECONDS_PER_HOUR * 1000,
+            DurationSeconds::new(SECONDS_PER_HOUR * 1000),
             OptionalValue::<usize>::None,
         )
         .run();
@@ -3127,21 +3205,15 @@ pub fn set_oracle_token_data(
 /// Deploy pair smart contract
 pub fn deploy_pair_sc(
     world: &mut ScenarioWorld,
-    first_token: &TestTokenIdentifier,
-    first_token_decimals: usize,
-    second_token: &TestTokenIdentifier,
-    second_token_decimals: usize,
-    lp_token: &TestTokenIdentifier,
-    first_token_price_usd: u64,
-    second_token_price_usd: u64,
+    params: DeployPairParams,
 ) -> ManagedAddress<StaticApi> {
     let sc = world
         .tx()
         .from(OWNER_ADDRESS)
         .typed(proxy_xexchange_pair::PairProxy)
         .init(
-            first_token.to_token_identifier(),
-            second_token.to_token_identifier(),
+            params.first_token.to_esdt_token_identifier(),
+            params.second_token.to_esdt_token_identifier(),
             OWNER_ADDRESS,
             OWNER_ADDRESS,
             0u64,
@@ -3153,32 +3225,33 @@ pub fn deploy_pair_sc(
         .returns(ReturnsNewManagedAddress)
         .run();
 
-    world.set_esdt_local_roles(sc.clone(), lp_token.as_bytes(), ESDT_ROLES);
+    world.set_esdt_local_roles(sc.clone(), params.lp_token.as_bytes(), ESDT_ROLES);
 
     world
         .tx()
         .from(OWNER_ADDRESS)
         .to(sc.clone())
         .whitebox(pair::contract_obj, |sc| {
-            sc.lp_token_identifier().set(lp_token.to_token_identifier());
+            sc.lp_token_identifier()
+                .set(params.lp_token.to_esdt_token_identifier());
         });
 
     let mut vec = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
 
     let (first_amount, second_amount) = calculate_optimal_liquidity(
-        first_token_price_usd,
-        second_token_price_usd,
-        first_token_decimals,
-        second_token_decimals,
+        params.first_token_price_usd,
+        params.second_token_price_usd,
+        params.first_token_decimals,
+        params.second_token_decimals,
     );
 
     vec.push(EsdtTokenPayment::new(
-        first_token.to_token_identifier(),
+        params.first_token.to_esdt_token_identifier(),
         0,
         first_amount,
     ));
     vec.push(EsdtTokenPayment::new(
-        second_token.to_token_identifier(),
+        params.second_token.to_esdt_token_identifier(),
         0,
         second_amount,
     ));
@@ -3205,9 +3278,12 @@ pub fn deploy_pair_sc(
         .from(OWNER_ADDRESS)
         .to(sc.clone())
         .typed(proxy_xexchange_pair::PairProxy)
-        .swap_tokens_fixed_input(first_token.to_token_identifier(), BigUint::from(1u64))
+        .swap_tokens_fixed_input(
+            params.first_token.to_esdt_token_identifier(),
+            BigUint::from(1u64),
+        )
         .single_esdt(
-            &second_token.to_token_identifier(),
+            &params.second_token.to_esdt_token_identifier(),
             0u64,
             &BigUint::from(1000000u64),
         )
@@ -3403,7 +3479,7 @@ pub fn setup_egld_liquid_staking(
         .to(egld_liquid_staking_sc.clone())
         .whitebox(rs_liquid_staking_sc::contract_obj, |sc| {
             sc.ls_token()
-                .set_token_id(XEGLD_TOKEN.to_token_identifier())
+                .set_token_id(XEGLD_TOKEN.to_esdt_token_identifier())
         });
 
     world
@@ -3412,7 +3488,7 @@ pub fn setup_egld_liquid_staking(
         .to(egld_liquid_staking_sc.clone())
         .whitebox(rs_liquid_staking_sc::contract_obj, |sc| {
             sc.unstake_token()
-                .set_token_id(XEGLD_TOKEN.to_token_identifier())
+                .set_token_id(XEGLD_TOKEN.to_esdt_token_identifier())
         });
 
     world.set_esdt_local_roles(
@@ -3480,7 +3556,7 @@ pub fn setup_xoxno_liquid_staking(
         .from(OWNER_ADDRESS)
         .to(xoxno_liquid_staking_sc.clone())
         .whitebox(rs_liquid_xoxno::contract_obj, |sc| {
-            sc.main_token().set(XOXNO_TOKEN.to_token_identifier());
+            sc.main_token().set(XOXNO_TOKEN.to_esdt_token_identifier());
         });
 
     world
@@ -3489,7 +3565,7 @@ pub fn setup_xoxno_liquid_staking(
         .to(xoxno_liquid_staking_sc.clone())
         .whitebox(rs_liquid_xoxno::contract_obj, |sc| {
             sc.unstake_token()
-                .set_token_id(UXOXNO_TOKEN.to_token_identifier())
+                .set_token_id(UXOXNO_TOKEN.to_esdt_token_identifier())
         });
 
     // Mirror xEGLD pattern: set the LS token id (LXOXNO) issued by the liquid staking contract
@@ -3499,7 +3575,7 @@ pub fn setup_xoxno_liquid_staking(
         .to(xoxno_liquid_staking_sc.clone())
         .whitebox(rs_liquid_xoxno::contract_obj, |sc| {
             sc.ls_token()
-                .set_token_id(LXOXNO_TOKEN.to_token_identifier())
+                .set_token_id(LXOXNO_TOKEN.to_esdt_token_identifier())
         });
 
     world.set_esdt_local_roles(
@@ -3548,7 +3624,7 @@ pub fn submit_price(
             .submit(
                 ManagedBuffer::from(from),
                 ManagedBuffer::from(DOLLAR_TICKER),
-                timestamp,
+                TimestampSeconds::new(timestamp),
                 BigUint::from(price).mul(BigUint::from(WAD)),
             )
             .run();
@@ -3588,8 +3664,8 @@ pub fn setup_accumulator(world: &mut ScenarioWorld) -> ManagedAddress<StaticApi>
             ManagedAddress::zero(),
             BigUint::from(1_000u64),
             BigUint::from(3_000u64),
-            XEGLD_TOKEN.to_token_identifier(),
-            USDC_TOKEN.to_token_identifier(),
+            XEGLD_TOKEN.to_esdt_token_identifier(),
+            USDC_TOKEN.to_esdt_token_identifier(),
             ManagedAddress::zero(),
         )
         .code(ACCUMULATOR_PATH)
@@ -3637,13 +3713,7 @@ pub fn add_asset_to_e_mode_category(
 pub fn multiply(
     world: &mut ScenarioWorld,
     lending_sc: &ManagedAddress<StaticApi>,
-    e_mode_category: u8,
-    collateral_token: EgldOrEsdtTokenIdentifier<StaticApi>,
-    debt_to_flash_loan: BigUint<StaticApi>,
-    debt_token: EgldOrEsdtTokenIdentifier<StaticApi>,
-    mode: PositionMode,
-    steps: ManagedArgBuffer<StaticApi>,
-    steps_payment: OptionalValue<ManagedArgBuffer<StaticApi>>,
+    params: StandaloneMultiplyParams,
 ) {
     world
         .tx()
@@ -3651,13 +3721,13 @@ pub fn multiply(
         .to(lending_sc)
         .typed(proxy_lending_pool::ControllerProxy)
         .multiply(
-            e_mode_category,
-            collateral_token,
-            debt_to_flash_loan,
-            debt_token,
-            mode,
-            steps,
-            match steps_payment.into_option() {
+            params.e_mode_category,
+            params.collateral_token,
+            params.debt_to_flash_loan,
+            params.debt_token,
+            params.mode,
+            params.steps,
+            match params.steps_payment.into_option() {
                 Some(payment) => OptionalValue::Some(payment),
                 None => OptionalValue::None,
             },
@@ -3762,18 +3832,15 @@ pub fn setup_market(
             BigUint::from(U_MID),
             BigUint::from(U_OPTIMAL),
             BigUint::from(RESERVE_FACTOR),
-            config.config.loan_to_value_bps.into_raw_units(),
-            config.config.liquidation_threshold_bps.into_raw_units(),
-            config.config.liquidation_bonus_bps.into_raw_units(),
-            config.config.liquidation_fees_bps.into_raw_units(),
+            config.config.loan_to_value_bps.as_raw_units(),
+            config.config.liquidation_threshold_bps.as_raw_units(),
+            config.config.liquidation_bonus_bps.as_raw_units(),
+            config.config.liquidation_fees_bps.as_raw_units(),
             config.config.is_collateralizable,
             config.config.is_borrowable,
             config.config.is_isolated_asset,
-            config
-                .config
-                .isolation_debt_ceiling_usd_wad
-                .into_raw_units(),
-            config.config.flashloan_fee_bps.into_raw_units(),
+            config.config.isolation_debt_ceiling_usd_wad.as_raw_units(),
+            config.config.flashloan_fee_bps.as_raw_units(),
             config.config.is_siloed_borrowing,
             config.config.is_flashloanable,
             config.config.isolation_borrow_enabled,
@@ -4058,7 +4125,7 @@ pub fn setup_swap_mock_owner(world: &mut ScenarioWorld, swap_mock: ManagedAddres
 impl LendingPoolTestState {
     /// Change the blockchain timestamp
     pub fn change_timestamp(&mut self, timestamp: u64) {
-        self.world.current_block().block_timestamp(timestamp);
+        self.world.current_block().block_timestamp_seconds(timestamp);
         let aggregator = &self.price_aggregator_sc;
         submit_price(
             &mut self.world,
@@ -4147,7 +4214,7 @@ impl LendingPoolTestState {
                 .submit(
                     ManagedBuffer::from(from),
                     ManagedBuffer::from(DOLLAR_TICKER),
-                    timestamp,
+                    TimestampSeconds::new(timestamp),
                     price.clone(),
                 )
                 .run();
@@ -4170,7 +4237,7 @@ impl LendingPoolTestState {
                 .submit(
                     ManagedBuffer::from(from),
                     ManagedBuffer::from(DOLLAR_TICKER),
-                    timestamp,
+                    TimestampSeconds::new(timestamp),
                     BigUint::from(price).mul(BigUint::from(WAD)),
                 )
                 .run();
@@ -4279,7 +4346,7 @@ impl LendingPoolTestState {
     ) {
         let actual_raw = self
             .borrow_amount_for_token(account_position, *token_id)
-            .into_raw_units()
+            .as_raw_units()
             .clone();
 
         assert_eq!(actual_raw, expected_raw, "{context}",);
@@ -4295,7 +4362,7 @@ impl LendingPoolTestState {
     ) {
         let actual_raw = self
             .collateral_amount_for_token(account_position, *token_id)
-            .into_raw_units()
+            .as_raw_units()
             .clone();
 
         assert_eq!(actual_raw, expected_raw, "{context}",);
@@ -4305,7 +4372,7 @@ impl LendingPoolTestState {
     pub fn assert_health_factor_at_least(&mut self, account_position: u64, minimum_ray: u128) {
         let actual_raw = self
             .account_health_factor(account_position)
-            .into_raw_units()
+            .as_raw_units()
             .clone();
 
         assert!(
@@ -4323,7 +4390,7 @@ impl LendingPoolTestState {
     ) {
         let actual_raw = self
             .total_borrow_in_egld(account_position)
-            .into_raw_units()
+            .as_raw_units()
             .clone();
 
         assert_eq!(actual_raw, expected_raw, "{context}");
@@ -4339,7 +4406,7 @@ impl LendingPoolTestState {
     ) {
         let actual_raw = self
             .total_borrow_in_egld(account_position)
-            .into_raw_units()
+            .as_raw_units()
             .clone();
 
         assert!(
@@ -4357,7 +4424,7 @@ impl LendingPoolTestState {
     ) {
         let actual_raw = self
             .total_collateral_in_egld(account_position)
-            .into_raw_units()
+            .as_raw_units()
             .clone();
 
         assert_eq!(actual_raw, expected_raw, "{context}");
@@ -4373,7 +4440,7 @@ impl LendingPoolTestState {
     ) {
         let actual_raw = self
             .total_collateral_in_egld(account_position)
-            .into_raw_units()
+            .as_raw_units()
             .clone();
 
         assert!(
@@ -4393,7 +4460,7 @@ impl LendingPoolTestState {
     ) {
         let actual_raw = self
             .borrow_amount_for_token(account_position, *token_id)
-            .into_raw_units()
+            .as_raw_units()
             .clone();
 
         assert!(
@@ -4441,7 +4508,7 @@ impl LendingPoolTestState {
     ) {
         let actual_raw = self
             .collateral_amount_for_token(account_position, *token_id)
-            .into_raw_units()
+            .as_raw_units()
             .clone();
 
         assert!(

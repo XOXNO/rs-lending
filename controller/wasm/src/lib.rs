@@ -6,9 +6,9 @@
 
 // Init:                                 1
 // Upgrade:                              1
-// Endpoints:                           72
+// Endpoints:                           73
 // Async Callback:                       1
-// Total number of exported functions:  75
+// Total number of exported functions:  76
 
 #![no_std]
 
@@ -74,6 +74,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         getPositionLimits => position_limits
         liquidationEstimations => liquidation_estimations
         getAllMarketIndexes => all_market_indexes
+        getAllMarketIndexesExtended => all_market_indexes_extended
         getAllMarkets => all_markets
         canBeLiquidated => can_be_liquidated
         getHealthFactor => health_factor

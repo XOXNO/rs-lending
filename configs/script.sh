@@ -126,7 +126,7 @@ LEDGER_ADDRESS_INDEX=$(get_network_value "ledger.address_index")
 
 # Load addresses
 ADDRESS=$(get_network_value "addresses.controller")
-LP_TEMPLATE_ADDRESS=$(get_network_value "addresses.lp_template") 
+LP_TEMPLATE_ADDRESS=$(get_network_value "addresses.lp_template")
 ASH_ADDRESS=$(get_network_value "addresses.swap_router_address")
 SAFE_PRICE_VIEW_ADDRESS=$(get_network_value "addresses.safe_price_view")
 ACCUMULATOR_ADDRESS=$(get_network_value "addresses.accumulator")
@@ -157,21 +157,21 @@ upgrade_all_markets() {
     # Read all market names (keys) from the configuration file into an array
     local markets
     IFS=$'\n' read -d '' -r -a markets < <(jq -r 'keys[]' "$MARKET_CONFIG_FILE" && printf '\0')
-    
+
     # Get the deployer wallet address and initial nonce
     local DEPLOYER_WALLET="erd1x45vnu7shhecfz0v03qqfmy8srndch50cdx7m763p743tzlwah0sgzewlm"
     local NONCE=$(mxpy account get --nonce --address="$DEPLOYER_WALLET" --proxy="$PROXY")
-    
+
     echo "Starting batch upgrade with initial nonce: $NONCE"
     echo "Total markets to upgrade: ${#markets[@]}"
-    
+
     for market in "${markets[@]}"; do
         echo "Upgrading market: $market (nonce: $NONCE)"
         upgrade_market_with_nonce "$market" "$NONCE"
         # Increment nonce for next transaction
         ((NONCE++))
     done
-    
+
     echo "All market upgrades submitted successfully!"
 }
 
@@ -179,16 +179,16 @@ upgrade_all_markets() {
 to_ray() {
     local value=$1
     local numeric_value=$(echo "$value" | sed 's/[^0-9.]//g')
-    
+
     if [ -z "$numeric_value" ] || [ "$numeric_value" = "null" ]; then
         echo "0"
         return
     fi
-    
+
     # Use higher precision for the division, then set scale=0 only for the final result
     # This ensures values like 40/100 = 0.4 are preserved during calculation
     local result=$(echo "scale=10; temp = ($numeric_value / 100) * 1000000000000000000000000000; scale=0; temp / 1" | bc)
-    
+
     # If result is empty (bc error), return 0
     if [ -z "$result" ]; then
         echo "0"
@@ -211,7 +211,7 @@ build_market_args() {
     local market_name=$1
     local -a args=()
     local oracle_decimals=$(get_config_value "$market_name" "oracle_decimals")
-    
+
     # Debug output
     # echo "Building market args for $market_name:"
     # echo "Token ID: $(get_config_value "$market_name" "token_id")"
@@ -222,7 +222,7 @@ build_market_args() {
     # echo "Slope3: $(get_config_value "$market_name" "slope3")"
     # echo "Mid utilization: $(get_config_value "$market_name" "mid_utilization")"
     # echo "Optimal utilization: $(get_config_value "$market_name" "optimal_utilization")"
-    
+
     # Token configuration
     args+=("str:$(get_config_value "$market_name" "token_id")")
 
@@ -234,7 +234,7 @@ build_market_args() {
     slope3=$(to_ray "$(get_config_value "$market_name" "slope3")")
     mid_util=$(to_ray "$(get_config_value "$market_name" "mid_utilization")")
     opt_util=$(to_ray "$(get_config_value "$market_name" "optimal_utilization")")
-    
+
     # echo "Converted values:"
     # echo "Max rate (RAY): $max_rate"
     # echo "Base rate (RAY): $base_rate"
@@ -243,13 +243,13 @@ build_market_args() {
     # echo "Slope3 (RAY): $slope3"
     # echo "Mid utilization (RAY): $mid_util"
     # echo "Optimal utilization (RAY): $opt_util"
-    
+
     args+=("$max_rate")
     args+=("$base_rate")
     args+=("$slope1")
     args+=("$slope2")
     args+=("$slope3")
-    args+=("$mid_util") 
+    args+=("$mid_util")
     args+=("$opt_util")
     args+=("$(get_config_value "$market_name" "reserve_factor")")
 
@@ -258,7 +258,7 @@ build_market_args() {
     args+=("$(get_config_value "$market_name" "liquidation_threshold")")
     args+=("$(get_config_value "$market_name" "liquidation_bonus")")
     args+=("$(get_config_value "$market_name" "liquidation_base_fee")")
-    
+
     # Flags
     args+=("$(get_config_value "$market_name" "can_be_collateral")")
     args+=("$(get_config_value "$market_name" "can_be_borrowed")")
@@ -273,15 +273,15 @@ build_market_args() {
     # Caps - scale according to oracle_decimals
     args+=("$(to_decimals "$(get_config_value "$market_name" "borrow_cap")" "$oracle_decimals")")
     args+=("$(to_decimals "$(get_config_value "$market_name" "supply_cap")" "$oracle_decimals")")
-    
+
     echo "${args[@]}"
 }
 
-# Function to build market upgrade arguments 
+# Function to build market upgrade arguments
 build_market_upgrade_args() {
     local market_name=$1
     local -a args=()
-    
+
     # Token configuration
     args+=("str:$(get_config_value "$market_name" "token_id")")
 
@@ -320,7 +320,7 @@ build_market_template_upgrade_args() {
 build_market_template_deploy_args() {
     local market_name=$1
     local -a args=()
-    
+
     # Token configuration
     args+=("str:$(get_config_value "$market_name" "token_id")")
 
@@ -356,7 +356,7 @@ create_oracle_args() {
     if [ ! -z "$pair_id" ]; then
         args+=("$pair_id")
     fi
-    
+
     echo "${args[@]}"
 }
 
@@ -374,7 +374,8 @@ deploy_price_aggregator() {
 
     mxpy contract deploy --bytecode=${PRICE_AGGREGATOR_PATH}  \
     --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
-    --gas-limit=250000000 --outfile="deploy-price-aggregator-${NETWORK}.json" --arguments 0x$(printf "%02x" $submission_counts) ${oracle_array[@]} \
+    --gas-limit=250000000 --outfile="deploy-price-aggregator-${NETWORK}.json" --arguments 0x$(printf "%02x" $submission_counts) \
+    ${oracle_array[@]} \
     --proxy=${PROXY} --chain=${CHAIN_ID} --send || return
 
     echo ""
@@ -384,7 +385,7 @@ deploy_price_aggregator() {
 upgrade_price_aggregator() {
     echo "Upgrading price aggregator for network: $NETWORK"
     echo "Contract address: $PRICE_AGGREGATOR_ADDRESS"
-    
+
     mxpy contract upgrade ${PRICE_AGGREGATOR_ADDRESS} --bytecode=${PRICE_AGGREGATOR_PATH}  \
     --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --gas-limit=100000000 --outfile="upgrade-price-aggregator-${NETWORK}.json" \
@@ -394,7 +395,7 @@ upgrade_price_aggregator() {
 unpause_price_aggregator() {
     echo "Unpausing price aggregator for network: $NETWORK"
     echo "Contract address: $PRICE_AGGREGATOR_ADDRESS"
-    
+
     mxpy contract call ${PRICE_AGGREGATOR_ADDRESS}  --gas-limit=10000000 \
     --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --function="unpause" \
@@ -404,7 +405,7 @@ unpause_price_aggregator() {
 pause_price_aggregator() {
     echo "Pausing price aggregator for network: $NETWORK"
     echo "Contract address: $PRICE_AGGREGATOR_ADDRESS"
-    
+
     mxpy contract call ${PRICE_AGGREGATOR_ADDRESS}  --gas-limit=10000000 \
     --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --function="pause" \
@@ -414,18 +415,18 @@ pause_price_aggregator() {
 add_oracles_price_aggregator() {
     echo "Adding oracles to price aggregator for network: $NETWORK"
     echo "Contract address: $PRICE_AGGREGATOR_ADDRESS"
-    
+
     # Get oracle addresses from function arguments
     local -a oracle_addresses=("$@")
-    
+
     if [ ${#oracle_addresses[@]} -eq 0 ]; then
         echo "Error: No oracle addresses provided."
         echo "Usage: addOracles <address1> <address2> ..."
         exit 1
     fi
-    
+
     echo "Adding ${#oracle_addresses[@]} oracles: ${oracle_addresses[*]}"
-    
+
     mxpy contract call ${PRICE_AGGREGATOR_ADDRESS}  --gas-limit=30000000 \
     --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --function="addOracles" --arguments "${oracle_addresses[@]}" \
@@ -449,7 +450,7 @@ upgrade_controller() {
 pause_controller() {
     echo "Pausing controller for network: $NETWORK"
     echo "Contract address: $ADDRESS"
-    
+
     mxpy contract call ${ADDRESS}  --gas-limit=10000000 \
     --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --function="pause" \
@@ -459,7 +460,7 @@ pause_controller() {
 unpause_controller() {
     echo "Unpausing controller for network: $NETWORK"
     echo "Contract address: $ADDRESS"
-    
+
     mxpy contract call ${ADDRESS}  --gas-limit=10000000 \
     --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --function="unpause" \
@@ -468,10 +469,10 @@ unpause_controller() {
 
 deploy_market_template() {
     local market_name=$1
-    
+
     echo "Creating market for ${market_name}..."
     echo "Token ID: $(get_config_value "$market_name" "token_id")"
-    
+
     local args=( $(build_market_template_deploy_args "$market_name") )
 
     echo "${args[@]}"
@@ -485,10 +486,10 @@ deploy_market_template() {
 
 upgrade_market_template() {
     local market_name=$1
-    
+
     echo "Creating market for ${market_name}..."
     echo "Token ID: $(get_config_value "$market_name" "token_id")"
-    
+
     mxpy contract upgrade ${LP_TEMPLATE_ADDRESS} \
     --bytecode=${PROJECT_MARKET}  \
     --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
@@ -499,10 +500,10 @@ upgrade_market_template() {
 # Function to create token oracle
 create_token_oracle() {
     local market_name=$1
-    
+
     echo "Creating token oracle for ${market_name}..."
     echo "Token ID: $(get_config_value "$market_name" "token_id")"
-    
+
     local args=( $(create_oracle_args "$market_name") )
     echo "${args[@]}"
     mxpy contract call ${ADDRESS}  --gas-limit=100000000 \
@@ -513,10 +514,10 @@ create_token_oracle() {
 
 upgrade_market_params() {
     local market_name=$1
-    
+
     echo "Upgrading market params for ${market_name}..."
     echo "Token ID: $(get_config_value "$market_name" "token_id")"
-    
+
     local args=( $(build_market_upgrade_args "$market_name") )
 
     mxpy contract call ${ADDRESS}  \
@@ -528,10 +529,10 @@ upgrade_market_params() {
 
 upgrade_market() {
     local market_name=$1
-    
+
     echo "Upgrading market for ${market_name}..."
     echo "Token ID: $(get_config_value "$market_name" "token_id")"
-    
+
     mxpy contract call ${ADDRESS}  \
     --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --gas-limit=55000000 \
@@ -543,9 +544,9 @@ upgrade_market() {
 upgrade_market_with_nonce() {
     local market_name=$1
     local nonce=$2
-    
+
     echo "Token ID: $(get_config_value "$market_name" "token_id")"
-    
+
     mxpy contract call ${ADDRESS} --nonce=${nonce} \
     --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --gas-limit=55000000 \
@@ -563,10 +564,10 @@ registerAccountToken() {
 # Function to create market
 create_market() {
     local market_name=$1
-    
+
     echo "Creating market for ${market_name}..."
     echo "Token ID: $(get_config_value "$market_name" "token_id")"
-    
+
     local args=( $(build_market_args "$market_name") )
 
     mxpy contract call ${ADDRESS}  --gas-limit=100000000 \
@@ -579,23 +580,23 @@ create_market() {
 format_percentage() {
     local value=$1
     local decimals=${2:-4}  # Default to 4 decimals if not specified
-    
+
     # Calculate percentage with high precision
     local result=$(echo "scale=3; $value/10^$decimals * 100" | bc)
-    
+
     # If the number starts with a dot, add a leading zero
     if [[ $result == .* ]]; then
         result="0$result"
     fi
-    
+
     # Remove trailing zeros after decimal point, but keep at least one decimal if it's a decimal number
     result=$(echo $result | sed 's/\.0*$\|0*$//')
-    
+
     # If no decimal point in result, add .0
     if [[ $result != *.* ]]; then
         result="$result.0"
     fi
-    
+
     echo $result
 }
 
@@ -612,7 +613,7 @@ format_token_amount() {
 show_market_config() {
     local market=$1
     local asset_decimals=$(get_config_value "$market" "oracle_decimals")
-    
+
     echo "${market} Market Configuration:"
     echo "Token ID: $(get_config_value "$market" "token_id")"
     echo "LTV: $(format_percentage $(get_config_value "$market" "ltv"))%"
@@ -621,7 +622,7 @@ show_market_config() {
     echo "Liquidation Base Fee: $(format_percentage $(get_config_value "$market" "liquidation_base_fee"))%"
     echo "Borrow Cap: $(get_config_value "$market" "borrow_cap") ${market}"
     echo "Supply Cap: $(get_config_value "$market" "supply_cap") ${market}"
-    
+
     # Interest rate parameters - already in percentage format in config
     echo "Base Rate: $(get_config_value "$market" "base_rate")%"
     echo "Max Rate: $(get_config_value "$market" "max_rate")%"
@@ -630,7 +631,7 @@ show_market_config() {
     echo "Slope3: $(get_config_value "$market" "slope3")%"
     echo "Mid Utilization: $(get_config_value "$market" "mid_utilization")%"
     echo "Optimal Utilization: $(get_config_value "$market" "optimal_utilization")%"
-    
+
     echo "Reserve Factor: $(format_percentage $(get_config_value "$market" "reserve_factor"))%"
     echo "Can Be Collateral: $(get_config_value "$market" "can_be_collateral")"
     echo "Can Be Borrowed: $(get_config_value "$market" "can_be_borrowed")"
@@ -693,22 +694,22 @@ list_emode_categories() {
     jq -r ".$NETWORK | keys[]" "$EMODES_CONFIG_FILE" | while read -r category_id; do
         name=$(get_emode_config_value "$category_id" ".name")
         echo "- Category $category_id: $name"
-        
+
         # List assets in this category
         jq -r ".$NETWORK.\"$category_id\".assets | keys[]" "$EMODES_CONFIG_FILE" | while read -r asset; do
             can_be_collateral=$(get_emode_config_value "$category_id" ".assets.\"$asset\".can_be_collateral")
             can_be_borrowed=$(get_emode_config_value "$category_id" ".assets.\"$asset\".can_be_borrowed")
-            
+
             collateral_status="Not Collateral"
             if [ "$can_be_collateral" = "0x01" ]; then
                 collateral_status="Collateral"
             fi
-            
+
             borrow_status="Not Borrowable"
             if [ "$can_be_borrowed" = "0x01" ]; then
                 borrow_status="Borrowable"
             fi
-            
+
             echo "  - $asset ($collateral_status, $borrow_status)"
         done
     done
@@ -717,18 +718,18 @@ list_emode_categories() {
 # Function to add E-Mode category
 add_emode_category() {
     local category_id=$1
-    
+
     echo "Adding E-Mode category ${category_id}..."
     echo "Name: $(get_emode_config_value "$category_id" ".name")"
-    
+
     local ltv=$(get_emode_config_value "$category_id" ".ltv")
     local liquidation_threshold=$(get_emode_config_value "$category_id" ".liquidation_threshold")
     local liquidation_bonus=$(get_emode_config_value "$category_id" ".liquidation_bonus")
-    
+
     echo "LTV: ${ltv}"
     echo "Liquidation Threshold: ${liquidation_threshold}"
     echo "Liquidation Bonus: ${liquidation_bonus}"
-    
+
     mxpy contract call ${ADDRESS}  --gas-limit=20000000 \
     --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --function="addEModeCategory" --arguments ${ltv} ${liquidation_threshold} ${liquidation_bonus} \
@@ -739,17 +740,17 @@ add_emode_category() {
 add_asset_to_emode_category() {
     local category_id=$1
     local asset_name=$2
-    
+
     echo "Adding asset ${asset_name} to E-Mode category ${category_id}..."
-    
+
     local token_id=$(get_config_value "$asset_name" "token_id")
     local can_be_collateral=$(get_emode_config_value "$category_id" ".assets.\"$asset_name\".can_be_collateral")
     local can_be_borrowed=$(get_emode_config_value "$category_id" ".assets.\"$asset_name\".can_be_borrowed")
-    
+
     echo "Token ID: ${token_id}"
     echo "Can Be Collateral: ${can_be_collateral}"
     echo "Can Be Borrowed: ${can_be_borrowed}"
-    
+
     mxpy contract call ${ADDRESS}  --gas-limit=20000000 \
     --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --function="addAssetToEModeCategory" --arguments "str:${token_id}" ${category_id} ${can_be_collateral} ${can_be_borrowed} \
@@ -759,23 +760,23 @@ add_asset_to_emode_category() {
 # Function to edit asset config
 edit_asset_config() {
     local market_name=$1
-    
+
     echo "Editing asset config for ${market_name}..."
     echo "Token ID: $(get_config_value "$market_name" "token_id")"
-    
+
     local -a args=()
-    
+
     local oracle_decimals=$(get_config_value "$market_name" "oracle_decimals")
 
     # Token identifier
     args+=("str:$(get_config_value "$market_name" "token_id")")
-    
+
     # Risk parameters
     args+=("$(get_config_value "$market_name" "ltv")")
     args+=("$(get_config_value "$market_name" "liquidation_threshold")")
     args+=("$(get_config_value "$market_name" "liquidation_bonus")")
     args+=("$(get_config_value "$market_name" "liquidation_base_fee")")
-    
+
     # Flags
     args+=("$(get_config_value "$market_name" "is_isolated")")
     args+=("$(to_decimals "$(get_config_value "$market_name" "debt_ceiling_usd")" "18")")
@@ -785,13 +786,13 @@ edit_asset_config() {
     args+=("$(get_config_value "$market_name" "can_be_collateral")")
     args+=("$(get_config_value "$market_name" "can_be_borrowed")")
     args+=("$(get_config_value "$market_name" "can_borrow_in_isolation")")
-    
+
     # Caps
     args+=("$(to_decimals "$(get_config_value "$market_name" "borrow_cap")" "$oracle_decimals")")
     args+=("$(to_decimals "$(get_config_value "$market_name" "supply_cap")" "$oracle_decimals")")
-    
+
     echo "${args[@]}"
-    
+
     mxpy contract call ${ADDRESS}  --gas-limit=20000000 \
     --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --function="editAssetConfig" --arguments "${args[@]}" \
@@ -802,12 +803,12 @@ edit_asset_config() {
 claim_revenue() {
     local token_names=("$@")
     local token_ids=()
-    
+
     if [ ${#token_names[@]} -eq 0 ]; then
         # No specific tokens provided, get all token IDs from the config file
         echo "Claiming revenue from all markets..."
         token_ids=($(jq -r 'to_entries[] | .value.token_id' "$MARKET_CONFIG_FILE"))
-        
+
         if [ ${#token_ids[@]} -eq 0 ]; then
             echo "No markets found in configuration"
             exit 1
@@ -815,29 +816,29 @@ claim_revenue() {
     else
         # Specific tokens provided, get their token_ids from config
         echo "Claiming revenue from specified markets: ${token_names[*]}"
-        
+
         for token_name in "${token_names[@]}"; do
             local token_id=$(get_config_value "$token_name" "token_id")
-            
+
             if [ "$token_id" = "null" ] || [ -z "$token_id" ]; then
                 echo "Error: Token '$token_name' not found in configuration"
                 echo "Available markets:"
                 jq -r 'keys[]' "$MARKET_CONFIG_FILE" | sed 's/^/  - /'
                 exit 1
             fi
-            
+
             token_ids+=("$token_id")
         done
     fi
-    
+
     echo "Token IDs to claim revenue from: ${token_ids[*]}"
-    
+
     # Prepare arguments for the contract call
     local args=()
     for token_id in "${token_ids[@]}"; do
         args+=("str:$token_id")
     done
-    
+
     mxpy contract call ${ADDRESS}  --gas-limit=450000000 \
     --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --function="claimRevenue" --arguments "${args[@]}" \
@@ -847,15 +848,15 @@ claim_revenue() {
 # Function to set AshSwap address
 set_ash_swap() {
     local swap_router_address=$1
-    
+
     if [ -z "$swap_router_address" ]; then
         echo "Error: Swap router address is required"
         echo "Usage: setSwapRouter <address>"
         exit 1
     fi
-    
+
     echo "Setting Swap router address to ${swap_router_address}..."
-    
+
     mxpy contract call ${ADDRESS}  --gas-limit=20000000 \
     --ledger  --sender-wallet-index=${LEDGER_ADDRESS_INDEX} \
     --function="setSwapRouter" --arguments ${swap_router_address} \
@@ -905,7 +906,7 @@ case "$1" in
             exit 1
         fi
         create_token_oracle "$2"
-        ;; 
+        ;;
     "createMarket")
         if [ -z "$2" ]; then
             echo "Please specify a market name"

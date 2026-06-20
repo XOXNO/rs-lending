@@ -77,6 +77,7 @@ pub trait PositionLiquidationModule:
         &self,
         account_nonce: u64,
         debt_payments: &ManagedVec<EgldOrEsdtTokenPayment<Self::Api>>,
+        is_view: bool,
         cache: &mut Cache<Self>,
     ) -> (
         ManagedVec<MultiValue2<EgldOrEsdtTokenPayment, ManagedDecimal<Self::Api, NumDecimals>>>,
@@ -125,6 +126,7 @@ pub trait PositionLiquidationModule:
                 &bonus_weighted,
                 &health_factor,
                 &debt_payment_in_egld_ray,
+                is_view,
             );
 
         let seized_collaterals = self.calculate_seized_collateral(
@@ -215,7 +217,7 @@ pub trait PositionLiquidationModule:
         let account_attributes = self.account_attributes(account_nonce).get();
 
         let (seized_collaterals, repaid_tokens, refunds, _, _) =
-            self.execute_liquidation(account_nonce, debt_payments, &mut cache);
+            self.execute_liquidation(account_nonce, debt_payments, false, &mut cache);
 
         if !refunds.is_empty() {
             self.tx()
@@ -295,7 +297,7 @@ pub trait PositionLiquidationModule:
     /// # Critical Security Note
     /// This validation is the primary defense against:
     /// - **Liquidation Attacks**: Preventing liquidation of healthy positions
-    /// - **MEV Exploitation**: Stopping profitable attacks on solvent positions  
+    /// - **MEV Exploitation**: Stopping profitable attacks on solvent positions
     /// - **Protocol Drain**: Ensuring only undercollateralized positions can be liquidated
     /// - **User Protection**: Safeguarding borrowers from premature liquidations
     ///
@@ -465,7 +467,7 @@ pub trait PositionLiquidationModule:
             let seized_asset = EgldOrEsdtTokenPayment::new(
                 position.asset_id.clone(),
                 0,
-                final_seizure_amount.into_raw_units().clone(),
+                final_seizure_amount.as_raw_units().clone(),
             );
             seized_amounts_by_collateral.push((seized_asset, protocol_fee_scaled).into());
         }
@@ -588,7 +590,7 @@ pub trait PositionLiquidationModule:
                 let excess_egld_ray = payment_egld_value_ray - outstanding_debt_egld_ray.clone();
                 let excess_token_amount_decimal =
                     self.convert_egld_to_tokens(&excess_egld_ray, &token_price_feed);
-                let excess_token_units = excess_token_amount_decimal.into_raw_units().clone();
+                let excess_token_units = excess_token_amount_decimal.as_raw_units().clone();
 
                 // Only create refund if amount is greater than zero
                 if excess_token_units > BigUint::zero() {
@@ -786,6 +788,7 @@ pub trait PositionLiquidationModule:
         base_liquidation_bonus: &ManagedDecimal<Self::Api, NumDecimals>,
         health_factor: &ManagedDecimal<Self::Api, NumDecimals>,
         egld_payment_ray: &ManagedDecimal<Self::Api, NumDecimals>,
+        is_view: bool,
     ) -> (
         ManagedDecimal<Self::Api, NumDecimals>,
         ManagedDecimal<Self::Api, NumDecimals>,
@@ -799,13 +802,13 @@ pub trait PositionLiquidationModule:
             base_liquidation_bonus,
             health_factor,
         );
-        let final_repayment_amount_ray = if egld_payment_ray > &self.ray_zero() {
+        let final_repayment_amount_ray = if is_view && egld_payment_ray == &self.ray_zero() {
+            estimated_max_repayable_debt_ray.clone()
+        } else {
             self.min(
                 egld_payment_ray.clone(),
                 estimated_max_repayable_debt_ray.clone(),
             )
-        } else {
-            estimated_max_repayable_debt_ray.clone()
         };
 
         let liquidation_premium_ray = bonus.clone() + self.ray();
@@ -901,13 +904,13 @@ pub trait PositionLiquidationModule:
 
             if egld_asset_amount_ray >= remaining_excess {
                 let excess_in_original = self.convert_egld_to_tokens(&remaining_excess, &feed);
-                debt_payment.amount -= excess_in_original.into_raw_units();
+                debt_payment.amount -= excess_in_original.as_raw_units();
                 egld_asset_amount_ray -= &remaining_excess;
 
                 refunds.push(EgldOrEsdtTokenPayment::new(
                     debt_payment.token_identifier.clone(),
                     0,
-                    excess_in_original.into_raw_units().clone(),
+                    excess_in_original.as_raw_units().clone(),
                 ));
                 let _ = repaid_tokens.set(
                     current_index,

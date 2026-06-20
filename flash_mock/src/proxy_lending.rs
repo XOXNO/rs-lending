@@ -752,7 +752,7 @@ where
         Arg5: ProxyArg<common_structs::ExchangeSource>,
         Arg6: ProxyArg<BigUint<Env::Api>>,
         Arg7: ProxyArg<BigUint<Env::Api>>,
-        Arg8: ProxyArg<u64>,
+        Arg8: ProxyArg<DurationSeconds>,
         Arg9: ProxyArg<OptionalValue<usize>>,
     >(
         self,
@@ -1208,7 +1208,7 @@ where
     ///  
     /// # Arguments 
     /// - `max_borrow_positions`: Maximum number of borrow positions per NFT 
-    /// - `max_supply_positions`: Maximum number of supply positions per NFT   
+    /// - `max_supply_positions`: Maximum number of supply positions per NFT 
     ///  
     /// # Security 
     /// - Only contract owner can modify position limits 
@@ -1266,7 +1266,7 @@ where
     /// This storage mapper holds the logic of the account token, which is a non-fungible token (NFT). 
     pub fn account(
         self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, TokenIdentifier<Env::Api>> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, EsdtTokenIdentifier<Env::Api>> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getAccount")
@@ -1571,6 +1571,30 @@ where
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getAllMarketIndexes")
+            .argument(&assets)
+            .original_result()
+    }
+
+    /// Retrieves market indexes and price information plus aggregator staleness. 
+    ///  
+    /// Purpose: Same monitoring data as `getAllMarketIndexes`, extended with the 
+    /// aggregator feed timestamp and staleness flag for consumers that need them. 
+    ///  
+    /// Arguments 
+    /// - `assets`: Asset identifiers to fetch 
+    ///  
+    /// Returns 
+    /// - `ManagedVec<MarketIndexExtendedView>` entries with indices, price data, 
+    ///   aggregator timestamp and staleness flag 
+    pub fn all_market_indexes_extended<
+        Arg0: ProxyArg<MultiValueEncoded<Env::Api, EgldOrEsdtTokenIdentifier<Env::Api>>>,
+    >(
+        self,
+        assets: Arg0,
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, ManagedVec<Env::Api, common_structs::MarketIndexExtendedView<Env::Api>>> {
+        self.wrapped_tx
+            .payment(NotPayable)
+            .raw_call("getAllMarketIndexesExtended")
             .argument(&assets)
             .original_result()
     }

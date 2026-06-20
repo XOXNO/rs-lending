@@ -21,12 +21,13 @@ fn dust_borrow_interest_stays_bounded() {
     // Seed liquidity for the market.
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(10_000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(10_000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         1,
@@ -96,7 +97,7 @@ fn dust_borrow_interest_stays_bounded() {
     state.repay_asset_deno(
         &borrower,
         &USDC_TOKEN,
-        debt_after_year.into_raw_units().clone(),
+        debt_after_year.as_raw_units().clone(),
         borrower_nonce,
     );
     let final_collateral = state.collateral_amount_for_token(borrower_nonce, USDC_TOKEN);
@@ -110,7 +111,7 @@ fn dust_borrow_interest_stays_bounded() {
     state.withdraw_asset_den(
         &borrower,
         USDC_TOKEN,
-        final_collateral.into_raw_units().clone(),
+        final_collateral.as_raw_units().clone(),
         borrower_nonce,
     );
     state.assert_no_collateral_entry(borrower_nonce, &USDC_TOKEN);
@@ -129,24 +130,26 @@ fn rapid_same_block_cycles_accumulate_no_interest() {
     // Provide ample liquidity so the attacker can loop.
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(10_000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(10_000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Attacker posts collateral worth 100 USDC.
     let attacker_nonce = 2_u64;
     state.supply_asset(
         &attacker,
-        USDC_TOKEN,
-        BigUint::from(100u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         attacker_nonce,
@@ -167,12 +170,12 @@ fn rapid_same_block_cycles_accumulate_no_interest() {
         state.repay_asset_deno(
             &attacker,
             &USDC_TOKEN,
-            debt.into_raw_units().clone(),
+            debt.as_raw_units().clone(),
             attacker_nonce,
         );
 
         total_borrowed += borrow_raw;
-        total_repaid += debt.into_raw_units();
+        total_repaid += debt.as_raw_units();
     }
 
     assert_eq!(
@@ -202,12 +205,13 @@ fn fractional_interest_growth_respects_bounds() {
 
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(1_000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(1_000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     let borrower_nonce = 2_u64;
@@ -270,7 +274,7 @@ fn fractional_interest_growth_respects_bounds() {
     );
 
     // Borrower should not be able to withdraw full collateral until debt is cleared.
-    let outstanding_raw = debt_after.into_raw_units().clone();
+    let outstanding_raw = debt_after.as_raw_units().clone();
     state.withdraw_asset_error(
         &borrower,
         USDC_TOKEN,
@@ -285,7 +289,7 @@ fn fractional_interest_growth_respects_bounds() {
     state.withdraw_asset_den(
         &borrower,
         USDC_TOKEN,
-        collateral_after.into_raw_units().clone(),
+        collateral_after.as_raw_units().clone(),
         borrower_nonce,
     );
     state.assert_no_collateral_entry(borrower_nonce, &USDC_TOKEN);

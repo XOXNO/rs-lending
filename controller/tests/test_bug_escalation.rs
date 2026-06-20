@@ -26,33 +26,36 @@ fn setup_liquidatable_positions(
     // Debt liquidity (EGLD)
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(120u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(120u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     // Collateral liquidity (USDC)
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(500_000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(500_000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower1 and Borrower2 – identical setup
     state.supply_asset(
         &borrower1,
-        USDC_TOKEN,
-        BigUint::from(2_600u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(2_600u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     let nonce1 = state.last_account_nonce();
     state.borrow_asset(
@@ -65,12 +68,13 @@ fn setup_liquidatable_positions(
 
     state.supply_asset(
         &borrower2,
-        USDC_TOKEN,
-        BigUint::from(2_600u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(2_600u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     let nonce2 = state.last_account_nonce();
     state.borrow_asset(
@@ -86,8 +90,8 @@ fn setup_liquidatable_positions(
     state.change_timestamp(current_ts);
     let mut markets = multiversx_sc::types::MultiValueEncoded::new();
     use multiversx_sc::types::EgldOrEsdtTokenIdentifier as TokenId;
-    markets.push(TokenId::esdt(EGLD_TOKEN.to_token_identifier()));
-    markets.push(TokenId::esdt(USDC_TOKEN.to_token_identifier()));
+    markets.push(TokenId::esdt(EGLD_TOKEN.to_esdt_token_identifier()));
+    markets.push(TokenId::esdt(USDC_TOKEN.to_esdt_token_identifier()));
     state.update_markets(&supplier, markets);
 
     let mut tries = 0u32;
@@ -105,8 +109,8 @@ fn setup_liquidatable_positions(
         state.change_timestamp(current_ts);
         let mut markets = multiversx_sc::types::MultiValueEncoded::new();
         use multiversx_sc::types::EgldOrEsdtTokenIdentifier as TokenId;
-        markets.push(TokenId::esdt(EGLD_TOKEN.to_token_identifier()));
-        markets.push(TokenId::esdt(USDC_TOKEN.to_token_identifier()));
+        markets.push(TokenId::esdt(EGLD_TOKEN.to_esdt_token_identifier()));
+        markets.push(TokenId::esdt(USDC_TOKEN.to_esdt_token_identifier()));
         state.update_markets(&supplier, markets);
     }
 
@@ -130,7 +134,7 @@ fn delta_for_n_micro(
     // Repayment amount ≈ half of current debt
     let debt1 = state
         .borrow_amount_for_token(nonce1, EGLD_TOKEN)
-        .into_raw_units()
+        .as_raw_units()
         .clone();
     let total_pay_deno = &debt1 / 2u32;
 
@@ -164,8 +168,8 @@ fn delta_for_n_micro(
     // delta = over-seizure thanks to micro-payments
     let delta = seized_micro.clone() - seized_single.clone();
     println!("n = {n} -> delta(seized_micro - seized_single) = {delta:?}");
-    let seized_micro_raw = seized_micro.into_raw_units();
-    let seized_single_raw = seized_single.into_raw_units();
+    let seized_micro_raw = seized_micro.as_raw_units();
+    let seized_single_raw = seized_single.as_raw_units();
     if seized_micro_raw.clone() > seized_single_raw.clone() {
         let diff = seized_micro_raw - seized_single_raw;
         println!("   over-seized raw units = {diff:?}");

@@ -252,7 +252,7 @@ where
     /// - `u64`: The timestamp when indexes were last updated, stored in milliseconds since Unix epoch. 
     pub fn last_timestamp(
         self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, u64> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, TimestampMillis> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("getLastTimestamp")
@@ -530,7 +530,7 @@ where
     /// Larger deltas mean more pending interest calculations. 
     pub fn delta_time(
         self,
-    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, u64> {
+    ) -> TxTypedCall<Env, From, To, NotPayable, Gas, DurationMillis> {
         self.wrapped_tx
             .payment(NotPayable)
             .raw_call("deltaTime")

@@ -27,12 +27,13 @@ fn repay_full_debt_with_interest_and_overpayment_success() {
     // Supplier provides liquidity
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         1,
@@ -44,12 +45,13 @@ fn repay_full_debt_with_interest_and_overpayment_success() {
     // Borrower supplies collateral
     state.supply_asset(
         &borrower,
-        USDC_TOKEN,
-        BigUint::from(5000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(5000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     let initial_collateral_raw = scaled_amount(5000, USDC_DECIMALS);
     state.assert_collateral_raw_eq(
@@ -86,13 +88,13 @@ fn repay_full_debt_with_interest_and_overpayment_success() {
 
     let reserves_before = state
         .market_reserves(state.egld_market.clone())
-        .into_raw_units()
+        .as_raw_units()
         .clone();
 
     // Verify debt increased due to interest
     let debt_with_interest_raw = state
         .borrow_amount_for_token(2, EGLD_TOKEN)
-        .into_raw_units()
+        .as_raw_units()
         .clone();
     assert!(
         debt_with_interest_raw > initial_debt_raw,
@@ -120,7 +122,7 @@ fn repay_full_debt_with_interest_and_overpayment_success() {
 
     let reserves_raw = state
         .market_reserves(state.egld_market.clone())
-        .into_raw_units()
+        .as_raw_units()
         .clone();
     assert!(reserves_raw >= reserves_before);
 }

@@ -33,12 +33,13 @@ fn isolated_supply_with_emode_incompatible_error() {
     // First supply a regular asset with E-Mode
     state.supply_asset(
         &supplier,
-        XEGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::Some(1),
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::Some(1),
+        },
     );
     state.assert_collateral_raw_eq(
         1,
@@ -50,12 +51,13 @@ fn isolated_supply_with_emode_incompatible_error() {
     // Attempt to supply isolated asset with E-Mode (should fail)
     state.supply_asset_error(
         &supplier,
-        ISOLATED_TOKEN,
-        BigUint::from(100u64),
-        ISOLATED_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: ISOLATED_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: ISOLATED_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
         ERROR_EMODE_CATEGORY_NOT_FOUND,
     );
 }
@@ -77,12 +79,13 @@ fn isolated_mix_with_regular_collateral_error() {
     // First supply isolated asset
     state.supply_asset(
         &supplier,
-        ISOLATED_TOKEN,
-        BigUint::from(100u64),
-        ISOLATED_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: ISOLATED_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: ISOLATED_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         1,
@@ -94,12 +97,13 @@ fn isolated_mix_with_regular_collateral_error() {
     // Attempt to supply non-isolated asset (should fail)
     state.supply_asset_error(
         &supplier,
-        XEGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
         ERROR_MIX_ISOLATED_COLLATERAL,
     );
     state.assert_collateral_raw_eq(
@@ -128,12 +132,13 @@ fn isolated_borrow_within_debt_ceiling_success() {
     // Supply liquidity for borrowing
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(1000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         1,
@@ -145,12 +150,13 @@ fn isolated_borrow_within_debt_ceiling_success() {
     // Borrower supplies isolated asset as collateral
     state.supply_asset(
         &borrower,
-        ISOLATED_TOKEN,
-        BigUint::from(100u64), // $500 collateral value
-        ISOLATED_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: ISOLATED_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: ISOLATED_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         2,
@@ -215,23 +221,25 @@ fn isolated_borrow_exceeds_debt_ceiling_error() {
     // Supply liquidity for borrowing
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(1005u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(1005u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower supplies large isolated asset position
     state.supply_asset(
         &borrower,
-        ISOLATED_TOKEN,
-        BigUint::from(1000u64), // $5000 collateral value
-        ISOLATED_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: ISOLATED_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: ISOLATED_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Attempt to borrow beyond debt ceiling ($1000 limit)
@@ -263,23 +271,25 @@ fn isolated_debt_ceiling_with_interest_accrual() {
     // Supply liquidity
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(1000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Supply isolated collateral
     state.supply_asset(
         &borrower,
-        ISOLATED_TOKEN,
-        BigUint::from(100u64), // $500 collateral
-        ISOLATED_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: ISOLATED_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: ISOLATED_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrow against isolated collateral
@@ -342,23 +352,25 @@ fn isolated_liquidation_reduces_debt_ceiling() {
     // Supply liquidity
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(1000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Supply isolated collateral
     state.supply_asset(
         &borrower,
-        ISOLATED_TOKEN,
-        BigUint::from(200u64), // $1000 collateral
-        ISOLATED_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: ISOLATED_TOKEN,
+            amount: BigUint::from(200u64),
+            asset_decimals: ISOLATED_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrow close to liquidation threshold
@@ -423,12 +435,13 @@ fn isolated_non_collateralizable_asset_with_emode_error() {
     // Attempt to supply non-collateralizable asset with E-Mode
     state.supply_asset_error(
         &borrower,
-        SEGLD_TOKEN,
-        BigUint::from(100u64),
-        SEGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::Some(1),
-        false,
+        SupplyParams {
+            token_id: SEGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: SEGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::Some(1),
+        },
         ERROR_ASSET_NOT_SUPPORTED_AS_COLLATERAL,
     );
 }

@@ -109,18 +109,18 @@ pub trait InterestRates: common_math::SharedMathModule {
     fn calculate_compounded_interest(
         &self,
         rate: ManagedDecimal<Self::Api, NumDecimals>,
-        expiration: u64,
+        expiration: DurationMillis,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         // Use Taylor expansion e^x = 1 + x + x^2/2! + x^3/3! + x^4/4! + x^5/5! + ...
         // where x = borrow_rate * expiration
 
         let ray = self.ray();
 
-        if expiration == 0 {
+        if expiration == DurationMillis::zero() {
             return ray;
         }
 
-        let expiration_decimal = self.to_decimal(BigUint::from(expiration), 0);
+        let expiration_decimal = self.to_decimal(BigUint::from(expiration.as_u64_millis()), 0);
 
         // x = rate * time_delta
         let x = self.mul_half_up(&rate, &expiration_decimal, RAY_PRECISION);
@@ -341,8 +341,8 @@ pub trait InterestRates: common_math::SharedMathModule {
     /// - `MarketIndex` with updated supply and borrow indexes
     fn simulate_update_indexes(
         &self,
-        current_timestamp: u64,
-        last_timestamp: u64,
+        current_timestamp: TimestampMillis,
+        last_timestamp: TimestampMillis,
         borrowed: ManagedDecimal<Self::Api, NumDecimals>,
         current_borrowed_index: ManagedDecimal<Self::Api, NumDecimals>,
         supplied: ManagedDecimal<Self::Api, NumDecimals>,
@@ -351,7 +351,7 @@ pub trait InterestRates: common_math::SharedMathModule {
     ) -> MarketIndex<Self::Api> {
         let delta = current_timestamp - last_timestamp;
 
-        if delta > 0 {
+        if delta > DurationMillis::zero() {
             let borrowed_original = self.scaled_to_original_ray(&borrowed, &current_borrowed_index);
             let supplied_original = self.scaled_to_original_ray(&supplied, &current_supply_index);
             let utilization = self.utilization(&borrowed_original, &supplied_original);

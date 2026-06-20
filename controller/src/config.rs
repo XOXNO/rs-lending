@@ -108,7 +108,7 @@ pub trait ConfigModule:
         source: ExchangeSource,
         first_tolerance: BigUint,
         last_tolerance: BigUint,
-        max_price_stale_seconds: u64,
+        max_price_stale_seconds: DurationSeconds,
         optional_one_dex_pair_id: OptionalValue<usize>,
     ) {
         let mapper = self.token_oracle(market_token);
@@ -694,7 +694,7 @@ pub trait ConfigModule:
     ///
     /// # Arguments
     /// - `max_borrow_positions`: Maximum number of borrow positions per NFT
-    /// - `max_supply_positions`: Maximum number of supply positions per NFT  
+    /// - `max_supply_positions`: Maximum number of supply positions per NFT
     ///
     /// # Security
     /// - Only contract owner can modify position limits
@@ -720,10 +720,7 @@ pub trait ConfigModule:
     /// - `ERROR_ORACLE_TOKEN_NOT_FOUND`: If oracle exists for the token.
     #[only_owner]
     #[endpoint(disableTokenOracle)]
-    fn disable_token_oracle(
-        &self,
-        token_id: &EgldOrEsdtTokenIdentifier,
-    ) {
+    fn disable_token_oracle(&self, token_id: &EgldOrEsdtTokenIdentifier) {
         let mapper = self.token_oracle(token_id);
         require!(!mapper.is_empty(), ERROR_ORACLE_TOKEN_NOT_FOUND);
         mapper.update(|oracle| {

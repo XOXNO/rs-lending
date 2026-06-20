@@ -14,10 +14,10 @@ path = "../constants"
 path = "../errors"
 
 [dependencies.multiversx-sc]
-version = "0.59.0"
+version = "0.66.1"
 
 [dev-dependencies]
-multiversx-sc-scenario = { version = "0.59.0" }
+multiversx-sc-scenario = { version = "0.66.1" }
 
 [[test]]
 name = "model_flags"

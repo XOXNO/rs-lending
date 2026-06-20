@@ -36,22 +36,24 @@ fn edge_case_100_percent_utilization_rounding() {
     // Supply 100 EGLD and collateral
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(5000u64),
-        USDC_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(5000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrow entire supply (100% utilization)
@@ -103,7 +105,7 @@ fn edge_case_100_percent_utilization_rounding() {
     state.repay_asset_deno(
         &supplier,
         &EGLD_TOKEN,
-        borrowed_after.into_raw_units().clone(),
+        borrowed_after.as_raw_units().clone(),
         1,
     );
 
@@ -114,7 +116,7 @@ fn edge_case_100_percent_utilization_rounding() {
     state.withdraw_asset_den(
         &supplier,
         EGLD_TOKEN,
-        collateral_final.into_raw_units().clone(),
+        collateral_final.as_raw_units().clone(),
         1,
     );
 
@@ -147,22 +149,24 @@ fn edge_case_overpayment_reserve_accumulation() {
     // Supply initial liquidity
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(5000u64),
-        USDC_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(5000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrow entire supply
@@ -232,7 +236,7 @@ fn edge_case_overpayment_reserve_accumulation() {
     state.withdraw_asset_den(
         &supplier,
         EGLD_TOKEN,
-        collateral_final.into_raw_units().clone(),
+        collateral_final.as_raw_units().clone(),
         1,
     );
 
@@ -261,23 +265,25 @@ fn market_complete_exit_multi_user() {
     // Supplier provides liquidity
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower supplies collateral
     state.supply_asset(
         &borrower,
-        USDC_TOKEN,
-        BigUint::from(5000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(5000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower takes loan
@@ -292,12 +298,13 @@ fn market_complete_exit_multi_user() {
     // Owner also supplies to market
     state.supply_asset(
         &OWNER_ADDRESS,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Update markets after time passage
@@ -328,7 +335,7 @@ fn market_complete_exit_multi_user() {
     state.repay_asset_deno(
         &borrower,
         &EGLD_TOKEN,
-        borrow_amount.into_raw_units().clone(),
+        borrow_amount.as_raw_units().clone(),
         2,
     );
 
@@ -346,7 +353,7 @@ fn market_complete_exit_multi_user() {
     state.withdraw_asset_den(
         &borrower,
         USDC_TOKEN,
-        supplied_collateral.into_raw_units().clone(),
+        supplied_collateral.as_raw_units().clone(),
         2,
     );
 
@@ -375,7 +382,7 @@ fn market_complete_exit_multi_user() {
     state.withdraw_asset_den(
         &supplier,
         EGLD_TOKEN,
-        supplied_collateral.into_raw_units().clone(),
+        supplied_collateral.as_raw_units().clone(),
         1,
     );
 
@@ -387,7 +394,7 @@ fn market_complete_exit_multi_user() {
     state.withdraw_asset_den(
         &OWNER_ADDRESS,
         EGLD_TOKEN,
-        supplied_collateral.into_raw_units().clone(),
+        supplied_collateral.as_raw_units().clone(),
         3,
     );
 
@@ -426,23 +433,25 @@ fn interest_accrual_long_term_high_utilization() {
     // Supply liquidity
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(200u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(200u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower supplies large collateral
     state.supply_asset(
         &borrower,
-        XEGLD_TOKEN,
-        BigUint::from(1500000u64),
-        XEGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(1500000u64),
+            asset_decimals: XEGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrow 80% of supply (high utilization)
@@ -476,7 +485,7 @@ fn interest_accrual_long_term_high_utilization() {
     state.repay_asset_deno(
         &borrower,
         &EGLD_TOKEN,
-        final_borrow.into_raw_units().clone(),
+        final_borrow.as_raw_units().clone(),
         2,
     );
 
@@ -509,33 +518,36 @@ fn interest_accrual_multiple_suppliers_different_times() {
     // First supplier enters
     state.supply_asset(
         &supplier1,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     // First supplier enters
     state.supply_asset(
         &supplier2,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower provides collateral and borrows
     state.supply_asset(
         &borrower,
-        XEGLD_TOKEN,
-        BigUint::from(200u64),
-        XEGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(200u64),
+            asset_decimals: XEGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.borrow_asset(
@@ -558,12 +570,13 @@ fn interest_accrual_multiple_suppliers_different_times() {
     // Second supplier enters after interest has accrued
     state.supply_asset(
         &supplier2,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     let supplier2_initial = state.collateral_amount_for_token(2, EGLD_TOKEN);
 
@@ -585,7 +598,7 @@ fn interest_accrual_multiple_suppliers_different_times() {
     state.repay_asset_deno(
         &borrower,
         &EGLD_TOKEN,
-        borrower_debt.into_raw_units().clone(),
+        borrower_debt.as_raw_units().clone(),
         3,
     );
 
@@ -593,13 +606,13 @@ fn interest_accrual_multiple_suppliers_different_times() {
     state.withdraw_asset_den(
         &supplier1,
         EGLD_TOKEN,
-        supplier1_final.into_raw_units().clone(),
+        supplier1_final.as_raw_units().clone(),
         1,
     );
     state.withdraw_asset_den(
         &supplier2,
         EGLD_TOKEN,
-        supplier2_final.into_raw_units().clone(),
+        supplier2_final.as_raw_units().clone(),
         2,
     );
     // Verify clean exit
@@ -624,12 +637,13 @@ fn oracle_price_second_tolerance_averaging_success() {
     // Initial supply at normal price
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Change price to be within second tolerance bounds
@@ -642,12 +656,13 @@ fn oracle_price_second_tolerance_averaging_success() {
     // Operations should succeed with averaged price
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(50u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(50u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 }
 
@@ -672,12 +687,13 @@ fn oracle_unsafe_price_supply_allowed() {
     // Supply should still succeed despite unsafe price
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Verify supply was successful
@@ -701,22 +717,24 @@ fn oracle_unsafe_price_borrow_rejected_when_not_egld_position() {
     // Setup initial positions at normal prices
     state.supply_asset(
         &supplier,
-        XOXNO_TOKEN,
-        BigUint::from(100u64),
-        XOXNO_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: XOXNO_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: XOXNO_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &borrower,
-        XEGLD_TOKEN,
-        BigUint::from(100u64),
-        XEGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: XEGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Change XOXNO price drastically down
@@ -750,22 +768,24 @@ fn oracle_unsafe_price_borrow_allowed_when_egld_position() {
     // Setup initial positions at normal prices
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &borrower,
-        XEGLD_TOKEN,
-        BigUint::from(100u64),
-        XEGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: XEGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Change EGLD price drastically down
@@ -799,22 +819,24 @@ fn oracle_unsafe_price_withdraw_rejected() {
     // Setup positions
     state.supply_asset(
         &supplier,
-        XEGLD_TOKEN,
-        BigUint::from(100u64),
-        XEGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: XEGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &borrower,
-        XOXNO_TOKEN,
-        BigUint::from(100u64),
-        XOXNO_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: XOXNO_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: XOXNO_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrow to create a leveraged position
@@ -858,22 +880,24 @@ fn oracle_unsafe_price_repay_allowed() {
     // Setup initial positions
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &borrower,
-        XOXNO_TOKEN,
-        BigUint::from(10000u64),
-        XOXNO_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: XOXNO_TOKEN,
+            amount: BigUint::from(10000u64),
+            asset_decimals: XOXNO_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.borrow_asset(
@@ -927,22 +951,24 @@ fn configuration_update_with_existing_supply() {
     // Initial supply and borrow
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &borrower,
-        XEGLD_TOKEN,
-        BigUint::from(200u64),
-        XEGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(200u64),
+            asset_decimals: XEGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.borrow_asset(
@@ -956,24 +982,23 @@ fn configuration_update_with_existing_supply() {
     // Update asset configuration using edit_asset_config
     let config = get_egld_config();
     state.edit_asset_config(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
-        &BigUint::from(7500u64), // 75% loan_to_value
-        &BigUint::from(8000u64), // 80% liquidation_threshold
-        &BigUint::from(555u64),  // liquidation_bonus
-        &BigUint::from(1800u64), // 18% reserve_factor
-        config.config.is_isolated_asset,
-        config
-            .config
-            .isolation_debt_ceiling_usd_wad
-            .into_raw_units(),
-        config.config.is_siloed_borrowing,
-        config.config.is_flashloanable,
-        config.config.flashloan_fee_bps.into_raw_units(),
-        config.config.is_collateralizable,
-        config.config.is_borrowable,
-        config.config.isolation_borrow_enabled,
-        &config.config.borrow_cap_wad.unwrap_or(BigUint::from(0u64)),
-        &config.config.supply_cap_wad.unwrap_or(BigUint::from(0u64)),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
+        EditAssetConfigParams {
+            loan_to_value: BigUint::from(7500u64),
+            liquidation_threshold: BigUint::from(8000u64),
+            liquidation_bonus: BigUint::from(555u64),
+            liquidation_fees: BigUint::from(1800u64),
+            is_isolated_asset: config.config.is_isolated_asset,
+            isolation_debt_ceiling_usd: config.config.isolation_debt_ceiling_usd_wad.as_raw_units().clone(),
+            is_siloed_borrowing: config.config.is_siloed_borrowing,
+            is_flashloanable: config.config.is_flashloanable,
+            flashloan_fee: config.config.flashloan_fee_bps.as_raw_units().clone(),
+            is_collateralizable: config.config.is_collateralizable,
+            is_borrowable: config.config.is_borrowable,
+            isolation_borrow_enabled: config.config.isolation_borrow_enabled,
+            borrow_cap: config.config.borrow_cap_wad.unwrap_or(BigUint::from(0u64)),
+            supply_cap: config.config.supply_cap_wad.unwrap_or(BigUint::from(0u64)),
+        },
         None,
     );
 
@@ -1012,22 +1037,24 @@ fn configuration_update_endpoint_safe_values() {
     // Setup initial positions
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &borrower,
-        XEGLD_TOKEN,
-        BigUint::from(200u64),
-        XEGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(200u64),
+            asset_decimals: XEGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.borrow_asset(
@@ -1041,24 +1068,23 @@ fn configuration_update_endpoint_safe_values() {
     // Use edit_asset_config to update multiple parameters
     let config = get_egld_config();
     state.edit_asset_config(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
-        &BigUint::from(7500u64), // 75% loan_to_value
-        &BigUint::from(8000u64), // 80% liquidation_threshold
-        &BigUint::from(500u64),  // 5% liquidation_bonus
-        &BigUint::from(1800u64), // 18% reserve_factor
-        config.config.is_isolated_asset,
-        config
-            .config
-            .isolation_debt_ceiling_usd_wad
-            .into_raw_units(),
-        config.config.is_siloed_borrowing,
-        config.config.is_flashloanable,
-        config.config.flashloan_fee_bps.into_raw_units(),
-        config.config.is_collateralizable,
-        config.config.is_borrowable,
-        config.config.isolation_borrow_enabled,
-        &config.config.borrow_cap_wad.unwrap_or(BigUint::from(0u64)),
-        &config.config.supply_cap_wad.unwrap_or(BigUint::from(0u64)),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
+        EditAssetConfigParams {
+            loan_to_value: BigUint::from(7500u64),
+            liquidation_threshold: BigUint::from(8000u64),
+            liquidation_bonus: BigUint::from(500u64),
+            liquidation_fees: BigUint::from(1800u64),
+            is_isolated_asset: config.config.is_isolated_asset,
+            isolation_debt_ceiling_usd: config.config.isolation_debt_ceiling_usd_wad.as_raw_units().clone(),
+            is_siloed_borrowing: config.config.is_siloed_borrowing,
+            is_flashloanable: config.config.is_flashloanable,
+            flashloan_fee: config.config.flashloan_fee_bps.as_raw_units().clone(),
+            is_collateralizable: config.config.is_collateralizable,
+            is_borrowable: config.config.is_borrowable,
+            isolation_borrow_enabled: config.config.isolation_borrow_enabled,
+            borrow_cap: config.config.borrow_cap_wad.unwrap_or(BigUint::from(0u64)),
+            supply_cap: config.config.supply_cap_wad.unwrap_or(BigUint::from(0u64)),
+        },
         None,
     );
 }
@@ -1080,46 +1106,47 @@ fn configuration_update_risky_values_no_borrows() {
     // Supply without borrows
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Apply risky changes (allowed without borrows)
     let config = get_egld_config();
     state.edit_asset_config(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
-        &BigUint::from(9000u64), // 90% loan_to_value
-        &BigUint::from(9200u64), // 92% liquidation_threshold
-        &BigUint::from(555u64),
-        &BigUint::from(600u64),
-        config.config.is_isolated_asset,
-        config
-            .config
-            .isolation_debt_ceiling_usd_wad
-            .into_raw_units(),
-        config.config.is_siloed_borrowing,
-        config.config.is_flashloanable,
-        config.config.flashloan_fee_bps.into_raw_units(),
-        true,  // is_collateralizable = false
-        false, // is_borrowable = false
-        false, // isolation_borrow_enabled = false
-        &config.config.borrow_cap_wad.unwrap_or(BigUint::from(0u64)),
-        &config.config.supply_cap_wad.unwrap_or(BigUint::from(0u64)),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
+        EditAssetConfigParams {
+            loan_to_value: BigUint::from(9000u64),
+            liquidation_threshold: BigUint::from(9200u64),
+            liquidation_bonus: BigUint::from(555u64),
+            liquidation_fees: BigUint::from(600u64),
+            is_isolated_asset: config.config.is_isolated_asset,
+            isolation_debt_ceiling_usd: config.config.isolation_debt_ceiling_usd_wad.as_raw_units().clone(),
+            is_siloed_borrowing: config.config.is_siloed_borrowing,
+            is_flashloanable: config.config.is_flashloanable,
+            flashloan_fee: config.config.flashloan_fee_bps.as_raw_units().clone(),
+            is_collateralizable: true,
+            is_borrowable: false,
+            isolation_borrow_enabled: false,
+            borrow_cap: config.config.borrow_cap_wad.unwrap_or(BigUint::from(0u64)),
+            supply_cap: config.config.supply_cap_wad.unwrap_or(BigUint::from(0u64)),
+        },
         None,
     );
     // Supply without borrows
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
 }
 
@@ -1141,22 +1168,24 @@ fn configuration_update_risky_values_with_borrows_allowed() {
     // Create active borrow position
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(200u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(200u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &borrower,
-        XEGLD_TOKEN,
-        BigUint::from(200u64),
-        XEGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(200u64),
+            asset_decimals: XEGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.borrow_asset(
@@ -1173,24 +1202,23 @@ fn configuration_update_risky_values_with_borrows_allowed() {
     // Update XEGLD configuration to reduce collateral value
     let config = get_xegld_config();
     state.edit_asset_config(
-        EgldOrEsdtTokenIdentifier::esdt(XEGLD_TOKEN.to_token_identifier()),
-        &BigUint::from(6200u64), // Reduce from 75% to 60%
-        &BigUint::from(7000u64), // Reduce from 80% to 70%
-        &BigUint::from(640u64),
-        &BigUint::from(640u64),
-        config.config.is_isolated_asset,
-        config
-            .config
-            .isolation_debt_ceiling_usd_wad
-            .into_raw_units(),
-        config.config.is_siloed_borrowing,
-        config.config.is_flashloanable,
-        config.config.flashloan_fee_bps.into_raw_units(),
-        config.config.is_collateralizable,
-        config.config.is_borrowable,
-        config.config.isolation_borrow_enabled,
-        &config.config.borrow_cap_wad.unwrap_or(BigUint::from(0u64)),
-        &config.config.supply_cap_wad.unwrap_or(BigUint::from(0u64)),
+        EgldOrEsdtTokenIdentifier::esdt(XEGLD_TOKEN.to_esdt_token_identifier()),
+        EditAssetConfigParams {
+            loan_to_value: BigUint::from(6200u64),
+            liquidation_threshold: BigUint::from(7000u64),
+            liquidation_bonus: BigUint::from(640u64),
+            liquidation_fees: BigUint::from(640u64),
+            is_isolated_asset: config.config.is_isolated_asset,
+            isolation_debt_ceiling_usd: config.config.isolation_debt_ceiling_usd_wad.as_raw_units().clone(),
+            is_siloed_borrowing: config.config.is_siloed_borrowing,
+            is_flashloanable: config.config.is_flashloanable,
+            flashloan_fee: config.config.flashloan_fee_bps.as_raw_units().clone(),
+            is_collateralizable: config.config.is_collateralizable,
+            is_borrowable: config.config.is_borrowable,
+            isolation_borrow_enabled: config.config.isolation_borrow_enabled,
+            borrow_cap: config.config.borrow_cap_wad.unwrap_or(BigUint::from(0u64)),
+            supply_cap: config.config.supply_cap_wad.unwrap_or(BigUint::from(0u64)),
+        },
         None,
     );
 
@@ -1198,13 +1226,13 @@ fn configuration_update_risky_values_with_borrows_allowed() {
     let mut nonces = MultiValueEncoded::new();
     nonces.push(2u64); // borrower's nonce
     state.update_account_threshold(
-        EgldOrEsdtTokenIdentifier::esdt(XEGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(XEGLD_TOKEN.to_esdt_token_identifier()),
         true, // risky update
         nonces.clone(),
         None,
     );
     state.update_account_threshold(
-        EgldOrEsdtTokenIdentifier::esdt(XEGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(XEGLD_TOKEN.to_esdt_token_identifier()),
         false, // risky update
         nonces,
         None,
@@ -1251,17 +1279,18 @@ fn update_account_threshold_preserves_emode_in_bulk_orders() {
 
     setup_accounts(&mut state, emode_user, normal_user);
 
-    let asset_id = EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier());
+    let asset_id = EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier());
 
     // Create E-Mode account (category 1)
     state.supply_asset(
         &emode_user,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::Some(1),
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::Some(1),
+        },
     );
     let emode_nonce = state.last_account_nonce();
     assert_eq!(state.account_attributes(emode_nonce).emode_id(), 1);
@@ -1269,12 +1298,13 @@ fn update_account_threshold_preserves_emode_in_bulk_orders() {
     // Create standard account (no E-Mode)
     state.supply_asset(
         &normal_user,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     let normal_nonce = state.last_account_nonce();
     assert_eq!(state.account_attributes(normal_nonce).emode_id(), 0);
@@ -1282,13 +1312,13 @@ fn update_account_threshold_preserves_emode_in_bulk_orders() {
     // First config change: lower base threshold, then update with e-mode account first.
     let base_config = state.asset_config(asset_id.clone());
     let base_bonus_dec = base_config.liquidation_bonus_bps.clone();
-    let base_bonus = base_bonus_dec.into_raw_units();
+    let base_bonus = base_bonus_dec.as_raw_units().clone();
     let base_fee_dec = base_config.liquidation_fees_bps.clone();
-    let base_fee = base_fee_dec.into_raw_units();
+    let base_fee = base_fee_dec.as_raw_units().clone();
     let isolation_ceiling_dec = base_config.isolation_debt_ceiling_usd_wad.clone();
-    let isolation_ceiling = isolation_ceiling_dec.into_raw_units();
+    let isolation_ceiling = isolation_ceiling_dec.as_raw_units().clone();
     let flash_fee_dec = base_config.flashloan_fee_bps.clone();
-    let flash_fee = flash_fee_dec.into_raw_units();
+    let flash_fee = flash_fee_dec.as_raw_units().clone();
     let borrow_cap = base_config
         .borrow_cap_wad
         .clone()
@@ -1302,20 +1332,22 @@ fn update_account_threshold_preserves_emode_in_bulk_orders() {
     let first_liq = BigUint::from(8_200u64);
     state.edit_asset_config(
         asset_id.clone(),
-        &first_ltv,
-        &first_liq,
-        &base_bonus,
-        &base_fee,
-        base_config.is_isolated_asset,
-        isolation_ceiling,
-        base_config.is_siloed_borrowing,
-        base_config.is_flashloanable,
-        flash_fee,
-        base_config.is_collateralizable,
-        base_config.is_borrowable,
-        base_config.isolation_borrow_enabled,
-        &borrow_cap,
-        &supply_cap,
+        EditAssetConfigParams {
+            loan_to_value: first_ltv,
+            liquidation_threshold: first_liq.clone(),
+            liquidation_bonus: base_bonus,
+            liquidation_fees: base_fee,
+            is_isolated_asset: base_config.is_isolated_asset,
+            isolation_debt_ceiling_usd: isolation_ceiling,
+            is_siloed_borrowing: base_config.is_siloed_borrowing,
+            is_flashloanable: base_config.is_flashloanable,
+            flashloan_fee: flash_fee,
+            is_collateralizable: base_config.is_collateralizable,
+            is_borrowable: base_config.is_borrowable,
+            isolation_borrow_enabled: base_config.isolation_borrow_enabled,
+            borrow_cap,
+            supply_cap,
+        },
         None,
     );
 
@@ -1337,13 +1369,13 @@ fn update_account_threshold_preserves_emode_in_bulk_orders() {
     // Second config change: raise base threshold, update with normal account first.
     let refreshed_config = state.asset_config(asset_id.clone());
     let base_bonus_dec = refreshed_config.liquidation_bonus_bps.clone();
-    let base_bonus = base_bonus_dec.into_raw_units();
+    let base_bonus = base_bonus_dec.as_raw_units().clone();
     let base_fee_dec = refreshed_config.liquidation_fees_bps.clone();
-    let base_fee = base_fee_dec.into_raw_units();
+    let base_fee = base_fee_dec.as_raw_units().clone();
     let isolation_ceiling_dec = refreshed_config.isolation_debt_ceiling_usd_wad.clone();
-    let isolation_ceiling = isolation_ceiling_dec.into_raw_units();
+    let isolation_ceiling = isolation_ceiling_dec.as_raw_units().clone();
     let flash_fee_dec = refreshed_config.flashloan_fee_bps.clone();
-    let flash_fee = flash_fee_dec.into_raw_units();
+    let flash_fee = flash_fee_dec.as_raw_units().clone();
     let borrow_cap = refreshed_config
         .borrow_cap_wad
         .clone()
@@ -1357,20 +1389,22 @@ fn update_account_threshold_preserves_emode_in_bulk_orders() {
     let second_liq = BigUint::from(8_300u64);
     state.edit_asset_config(
         asset_id.clone(),
-        &second_ltv,
-        &second_liq,
-        &base_bonus,
-        &base_fee,
-        refreshed_config.is_isolated_asset,
-        isolation_ceiling,
-        refreshed_config.is_siloed_borrowing,
-        refreshed_config.is_flashloanable,
-        flash_fee,
-        refreshed_config.is_collateralizable,
-        refreshed_config.is_borrowable,
-        refreshed_config.isolation_borrow_enabled,
-        &borrow_cap,
-        &supply_cap,
+        EditAssetConfigParams {
+            loan_to_value: second_ltv,
+            liquidation_threshold: second_liq.clone(),
+            liquidation_bonus: base_bonus,
+            liquidation_fees: base_fee,
+            is_isolated_asset: refreshed_config.is_isolated_asset,
+            isolation_debt_ceiling_usd: isolation_ceiling,
+            is_siloed_borrowing: refreshed_config.is_siloed_borrowing,
+            is_flashloanable: refreshed_config.is_flashloanable,
+            flashloan_fee: flash_fee,
+            is_collateralizable: refreshed_config.is_collateralizable,
+            is_borrowable: refreshed_config.is_borrowable,
+            isolation_borrow_enabled: refreshed_config.isolation_borrow_enabled,
+            borrow_cap,
+            supply_cap,
+        },
         None,
     );
 
@@ -1408,22 +1442,24 @@ fn configuration_update_risky_values_health_factor_violation() {
     // Create position close to liquidation
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(200u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(200u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &borrower,
-        XEGLD_TOKEN,
-        BigUint::from(120u64), // Lower collateral
-        XEGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(120u64),
+            asset_decimals: XEGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.borrow_asset(
@@ -1437,24 +1473,23 @@ fn configuration_update_risky_values_health_factor_violation() {
     // Try to reduce XEGLD collateral value drastically
     let config = get_xegld_config();
     state.edit_asset_config(
-        EgldOrEsdtTokenIdentifier::esdt(XEGLD_TOKEN.to_token_identifier()),
-        &BigUint::from(3000u64), // 30% (from 75%)
-        &BigUint::from(4000u64), // 40% (from 80%)
-        &BigUint::from(600u64),
-        &BigUint::from(600u64),
-        config.config.is_isolated_asset,
-        config
-            .config
-            .isolation_debt_ceiling_usd_wad
-            .into_raw_units(),
-        config.config.is_siloed_borrowing,
-        config.config.is_flashloanable,
-        config.config.flashloan_fee_bps.into_raw_units(),
-        config.config.is_collateralizable,
-        config.config.is_borrowable,
-        config.config.isolation_borrow_enabled,
-        &config.config.borrow_cap_wad.unwrap_or(BigUint::from(0u64)),
-        &config.config.supply_cap_wad.unwrap_or(BigUint::from(0u64)),
+        EgldOrEsdtTokenIdentifier::esdt(XEGLD_TOKEN.to_esdt_token_identifier()),
+        EditAssetConfigParams {
+            loan_to_value: BigUint::from(3000u64),
+            liquidation_threshold: BigUint::from(4000u64),
+            liquidation_bonus: BigUint::from(600u64),
+            liquidation_fees: BigUint::from(600u64),
+            is_isolated_asset: config.config.is_isolated_asset,
+            isolation_debt_ceiling_usd: config.config.isolation_debt_ceiling_usd_wad.as_raw_units().clone(),
+            is_siloed_borrowing: config.config.is_siloed_borrowing,
+            is_flashloanable: config.config.is_flashloanable,
+            flashloan_fee: config.config.flashloan_fee_bps.as_raw_units().clone(),
+            is_collateralizable: config.config.is_collateralizable,
+            is_borrowable: config.config.is_borrowable,
+            isolation_borrow_enabled: config.config.isolation_borrow_enabled,
+            borrow_cap: config.config.borrow_cap_wad.unwrap_or(BigUint::from(0u64)),
+            supply_cap: config.config.supply_cap_wad.unwrap_or(BigUint::from(0u64)),
+        },
         None,
     );
 
@@ -1462,7 +1497,7 @@ fn configuration_update_risky_values_health_factor_violation() {
     let mut nonces = MultiValueEncoded::new();
     nonces.push(2u64); // borrower's nonce
     state.update_account_threshold(
-        EgldOrEsdtTokenIdentifier::esdt(XEGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(XEGLD_TOKEN.to_esdt_token_identifier()),
         true, // risky update
         nonces,
         Some(ERROR_HEALTH_FACTOR_WITHDRAW),
@@ -1482,24 +1517,23 @@ fn configuration_update_invalid_ltv_threshold_relationship() {
     // Try to set LTV higher than liquidation threshold
     let config = get_egld_config();
     state.edit_asset_config(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
-        &BigUint::from(8500u64), // 85% LTV
-        &BigUint::from(8000u64), // 80% liquidation_threshold (invalid - lower than LTV)
-        &BigUint::from(555u64),
-        &BigUint::from(600u64),
-        config.config.is_isolated_asset,
-        config
-            .config
-            .isolation_debt_ceiling_usd_wad
-            .into_raw_units(),
-        config.config.is_siloed_borrowing,
-        config.config.is_flashloanable,
-        config.config.flashloan_fee_bps.into_raw_units(),
-        config.config.is_collateralizable,
-        config.config.is_borrowable,
-        config.config.isolation_borrow_enabled,
-        &config.config.borrow_cap_wad.unwrap_or(BigUint::from(0u64)),
-        &config.config.supply_cap_wad.unwrap_or(BigUint::from(0u64)),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
+        EditAssetConfigParams {
+            loan_to_value: BigUint::from(8500u64),
+            liquidation_threshold: BigUint::from(8000u64),
+            liquidation_bonus: BigUint::from(555u64),
+            liquidation_fees: BigUint::from(600u64),
+            is_isolated_asset: config.config.is_isolated_asset,
+            isolation_debt_ceiling_usd: config.config.isolation_debt_ceiling_usd_wad.as_raw_units().clone(),
+            is_siloed_borrowing: config.config.is_siloed_borrowing,
+            is_flashloanable: config.config.is_flashloanable,
+            flashloan_fee: config.config.flashloan_fee_bps.as_raw_units().clone(),
+            is_collateralizable: config.config.is_collateralizable,
+            is_borrowable: config.config.is_borrowable,
+            isolation_borrow_enabled: config.config.isolation_borrow_enabled,
+            borrow_cap: config.config.borrow_cap_wad.unwrap_or(BigUint::from(0u64)),
+            supply_cap: config.config.supply_cap_wad.unwrap_or(BigUint::from(0u64)),
+        },
         Some(ERROR_INVALID_LIQUIDATION_THRESHOLD),
     );
 }
@@ -1522,22 +1556,24 @@ fn oracle_price_second_tolerance_xoxno_egld_averaging() {
 
     state.supply_asset(
         &supplier,
-        XOXNO_TOKEN,
-        BigUint::from(10000u64),
-        XOXNO_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: XOXNO_TOKEN,
+            amount: BigUint::from(10000u64),
+            asset_decimals: XOXNO_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     let get_usd_price_before = state.usd_price(XOXNO_TOKEN);
@@ -1551,7 +1587,7 @@ fn oracle_price_second_tolerance_xoxno_egld_averaging() {
     state.change_price_denominated(XOXNO_TICKER, new_price.clone(), 0); // Using 101 cents = $1.01
     let get_usd_price = state.usd_price(XOXNO_TOKEN);
     // Result second bound as average price
-    assert!(get_usd_price > get_usd_price_before && get_usd_price.into_raw_units() < &new_price);
+    assert!(get_usd_price > get_usd_price_before && get_usd_price.as_raw_units() < &new_price);
 
     // Borrow should succeed with averaged prices
     state.borrow_asset(
@@ -1588,12 +1624,13 @@ fn oracle_price_first_tolerance_lp_egld_averaging() {
 
     state.supply_asset(
         &supplier,
-        LP_EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: LP_EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 }
 
@@ -1618,12 +1655,13 @@ fn oracle_price_second_tolerance_lp_egld_averaging() {
 
     state.supply_asset(
         &supplier,
-        LP_EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: LP_EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 }
 
@@ -1648,12 +1686,13 @@ fn oracle_price_out_of_tolerance_lp_egld_averaging() {
 
     state.supply_asset(
         &supplier,
-        LP_EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: LP_EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.borrow_asset_error(

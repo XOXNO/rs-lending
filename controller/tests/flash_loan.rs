@@ -30,12 +30,13 @@ fn flash_loan_full_repayment_success() {
     // Supply liquidity to enable flash loan
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         1,
@@ -46,7 +47,7 @@ fn flash_loan_full_repayment_success() {
 
     let reserves_before = state
         .market_reserves(state.egld_market.clone())
-        .into_raw_units()
+        .as_raw_units()
         .clone();
 
     // Execute flash loan with successful repayment
@@ -61,7 +62,7 @@ fn flash_loan_full_repayment_success() {
 
     let reserves_after = state
         .market_reserves(state.egld_market.clone())
-        .into_raw_units()
+        .as_raw_units()
         .clone();
     assert!(
         reserves_after >= reserves_before,
@@ -86,31 +87,34 @@ fn flash_loan_no_repayment_error() {
     // Supply liquidity to enable flash loan
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     let reserves_before = state
         .market_reserves(state.egld_market.clone())
-        .into_raw_units()
+        .as_raw_units()
         .clone();
 
     // Attempt flash loan without repayment
     state.flash_loan_error(
         &OWNER_ADDRESS,
-        &EGLD_TOKEN,
-        flash_amount_raw(),
-        state.flash_mock.clone(),
-        ManagedBuffer::from("flashNoRepay"), // Endpoint that doesn't repay
-        ManagedArgBuffer::new(),
+        FlashLoanParams {
+            token: EGLD_TOKEN,
+            amount: flash_amount_raw(),
+            contract: state.flash_mock.clone(),
+            endpoint: ManagedBuffer::from("flashNoRepay"),
+            arguments: ManagedArgBuffer::new(),
+        },
         ERROR_INVALID_FLASHLOAN_REPAYMENT,
     );
     let reserves_after = state
         .market_reserves(state.egld_market.clone())
-        .into_raw_units()
+        .as_raw_units()
         .clone();
     assert_eq!(
         reserves_after, reserves_before,
@@ -134,20 +138,22 @@ fn flash_loan_zero_amount_error() {
     // Attempt flash loan with zero amount
     let reserves_before = state
         .market_reserves(state.egld_market.clone())
-        .into_raw_units()
+        .as_raw_units()
         .clone();
     state.flash_loan_error(
         &OWNER_ADDRESS,
-        &EGLD_TOKEN,
-        BigUint::from(0u64),
-        state.flash_mock.clone(),
-        ManagedBuffer::from("flashNoRepay"),
-        ManagedArgBuffer::new(),
+        FlashLoanParams {
+            token: EGLD_TOKEN,
+            amount: BigUint::from(0u64),
+            contract: state.flash_mock.clone(),
+            endpoint: ManagedBuffer::from("flashNoRepay"),
+            arguments: ManagedArgBuffer::new(),
+        },
         ERROR_AMOUNT_MUST_BE_GREATER_THAN_ZERO,
     );
     let reserves_after = state
         .market_reserves(state.egld_market.clone())
-        .into_raw_units()
+        .as_raw_units()
         .clone();
     assert_eq!(
         reserves_after, reserves_before,
@@ -171,31 +177,34 @@ fn flash_loan_partial_repayment_error() {
     // Supply liquidity to enable flash loan
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     let reserves_before = state
         .market_reserves(state.egld_market.clone())
-        .into_raw_units()
+        .as_raw_units()
         .clone();
 
     // Attempt flash loan with partial repayment
     state.flash_loan_error(
         &OWNER_ADDRESS,
-        &EGLD_TOKEN,
-        flash_amount_raw(),
-        state.flash_mock.clone(),
-        ManagedBuffer::from("flashRepaySome"), // Endpoint that repays partially
-        ManagedArgBuffer::new(),
+        FlashLoanParams {
+            token: EGLD_TOKEN,
+            amount: flash_amount_raw(),
+            contract: state.flash_mock.clone(),
+            endpoint: ManagedBuffer::from("flashRepaySome"),
+            arguments: ManagedArgBuffer::new(),
+        },
         ERROR_INVALID_FLASHLOAN_REPAYMENT,
     );
     let reserves_after = state
         .market_reserves(state.egld_market.clone())
-        .into_raw_units()
+        .as_raw_units()
         .clone();
     assert_eq!(
         reserves_after, reserves_before,
@@ -219,16 +228,17 @@ fn flash_loan_partial_repayment_wrong_token_error() {
     // Supply liquidity to enable flash loan
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     let reserves_before = state
         .market_reserves(state.egld_market.clone())
-        .into_raw_units()
+        .as_raw_units()
         .clone();
 
     let mut args = ManagedArgBuffer::new();
@@ -237,16 +247,18 @@ fn flash_loan_partial_repayment_wrong_token_error() {
     // Attempt flash loan with partial repayment
     state.flash_loan_error(
         &OWNER_ADDRESS,
-        &EGLD_TOKEN,
-        flash_amount_raw(),
-        state.flash_mock.clone(),
-        ManagedBuffer::from("flashRepaySomeWrongToken"), // Endpoint that repays partially
-        args,
+        FlashLoanParams {
+            token: EGLD_TOKEN,
+            amount: flash_amount_raw(),
+            contract: state.flash_mock.clone(),
+            endpoint: ManagedBuffer::from("flashRepaySomeWrongToken"),
+            arguments: args,
+        },
         ERROR_INVALID_FLASHLOAN_REPAYMENT,
     );
     let reserves_after = state
         .market_reserves(state.egld_market.clone())
-        .into_raw_units()
+        .as_raw_units()
         .clone();
     assert_eq!(reserves_after, reserves_before);
 }
@@ -264,11 +276,13 @@ fn flash_loan_empty_endpoint_error() {
     // Attempt flash loan with empty endpoint name
     state.flash_loan_error(
         &OWNER_ADDRESS,
-        &EGLD_TOKEN,
-        BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32)),
-        state.flash_mock.clone(),
-        ManagedBuffer::new(), // Empty endpoint
-        ManagedArgBuffer::new(),
+        FlashLoanParams {
+            token: EGLD_TOKEN,
+            amount: BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32)),
+            contract: state.flash_mock.clone(),
+            endpoint: ManagedBuffer::new(),
+            arguments: ManagedArgBuffer::new(),
+        },
         ERROR_INVALID_ENDPOINT,
     );
 }
@@ -304,11 +318,13 @@ fn flash_loan_builtin_functions_blocked_error() {
     for endpoint in restricted_endpoints.iter() {
         state.flash_loan_error(
             &OWNER_ADDRESS,
-            &EGLD_TOKEN,
-            BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32)),
-            state.flash_mock.clone(),
-            ManagedBuffer::from(*endpoint),
-            ManagedArgBuffer::new(),
+            FlashLoanParams {
+                token: EGLD_TOKEN,
+                amount: BigUint::from(100u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32)),
+                contract: state.flash_mock.clone(),
+                endpoint: ManagedBuffer::from(*endpoint),
+                arguments: ManagedArgBuffer::new(),
+            },
             ERROR_INVALID_ENDPOINT,
         );
     }

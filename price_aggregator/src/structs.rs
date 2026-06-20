@@ -14,7 +14,7 @@ pub struct PriceFeed<M: ManagedTypeApi> {
     pub round_id: u32,
     pub from: ManagedBuffer<M>,
     pub to: ManagedBuffer<M>,
-    pub timestamp: u64,
+    pub timestamp: TimestampSeconds,
     pub price: BigUint<M>,
 }
 
@@ -22,7 +22,7 @@ pub struct PriceFeed<M: ManagedTypeApi> {
 #[derive(TopEncode, TopDecode, Debug, PartialEq, Eq)]
 pub struct TimestampedPrice<M: ManagedTypeApi> {
     pub price: BigUint<M>,
-    pub timestamp: u64,
+    pub timestamp: TimestampSeconds,
     pub round: u32,
 }
 
@@ -37,7 +37,7 @@ pub struct OracleStatus {
 #[derive(TopEncode)]
 pub struct NewRoundEvent<M: ManagedTypeApi> {
     pub price: BigUint<M>,
-    pub timestamp: u64,
+    pub timestamp: TimestampSeconds,
     pub block: u64,
     pub epoch: u64,
 }
@@ -45,7 +45,7 @@ pub struct NewRoundEvent<M: ManagedTypeApi> {
 #[type_abi]
 #[derive(TopEncode)]
 pub struct DiscardSubmissionEvent {
-    pub submission_timestamp: u64,
-    pub first_submission_timestamp: u64,
+    pub submission_timestamp: TimestampSeconds,
+    pub first_submission_timestamp: TimestampSeconds,
     pub has_caller_already_submitted: bool,
 }

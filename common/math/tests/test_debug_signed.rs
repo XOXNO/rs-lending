@@ -24,7 +24,7 @@ fn debug_signed_rescale() {
     println!(
         "Rescaled to 0 decimals: {} (raw: {:?})",
         rescaled,
-        rescaled.into_raw_units()
+        rescaled.as_raw_units()
     );
 
     // Test how 1.0 gets rescaled to 0 decimals
@@ -37,6 +37,6 @@ fn debug_signed_rescale() {
     println!(
         "1.0 rescaled to 0 decimals: {} (raw: {:?})",
         rescaled_one,
-        rescaled_one.into_raw_units()
+        rescaled_one.as_raw_units()
     );
 }

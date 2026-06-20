@@ -30,23 +30,25 @@ fn borrow_single_asset_against_collateral_success() {
     // Supplier provides liquidity to the pool
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false, // is_vault = false
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower supplies collateral
     state.supply_asset(
         &borrower,
-        USDC_TOKEN,
-        BigUint::from(5000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false, // is_vault = false
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(5000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower takes out a loan against their collateral
@@ -91,12 +93,13 @@ fn borrow_exceeds_cap_error() {
     // Supply capped token to enable borrowing
     state.supply_asset(
         &supplier,
-        CAPPED_TOKEN,
-        BigUint::from(150u64),
-        CAPPED_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false, // is_vault = false
+        SupplyParams {
+            token_id: CAPPED_TOKEN,
+            amount: BigUint::from(150u64),
+            asset_decimals: CAPPED_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // First borrow succeeds (within cap)
@@ -152,32 +155,35 @@ fn borrow_bulk_new_positions_success() {
     // Supply liquidity for both assets
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false, // is_vault = false
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(1000u64),
-        USDC_DECIMALS,
-        OptionalValue::Some(1), // Existing account
-        OptionalValue::None,
-        false, // is_vault = false
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower supplies collateral
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(1000u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        true, // is_vault = true (though this parameter seems unused in test)
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Prepare bulk borrow request
@@ -185,14 +191,14 @@ fn borrow_bulk_new_positions_success() {
         MultiValueEncoded::new();
 
     let egld_borrow = EgldOrEsdtTokenPayment::new(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
         0,
         BigUint::from(50u64) * BigUint::from(10u64.pow(EGLD_DECIMALS as u32)),
     );
     assets.push(egld_borrow.clone());
 
     let usdc_borrow = EgldOrEsdtTokenPayment::new(
-        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_esdt_token_identifier()),
         0,
         BigUint::from(500u64) * BigUint::from(10u64.pow(USDC_DECIMALS as u32)),
     );
@@ -234,32 +240,35 @@ fn borrow_bulk_existing_positions_success() {
     // Supply liquidity for both assets
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false, // is_vault = false
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(1000u64),
-        USDC_DECIMALS,
-        OptionalValue::Some(1), // Existing account
-        OptionalValue::None,
-        false, // is_vault = false
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower supplies collateral
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(1000u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        true, // is_vault = true (though this parameter seems unused in test)
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Create initial borrow positions
@@ -268,11 +277,11 @@ fn borrow_bulk_existing_positions_success() {
 
     let existing_usdc_debt = state
         .borrow_amount_for_token(2, USDC_TOKEN)
-        .into_raw_units()
+        .as_raw_units()
         .clone();
     let existing_egld_debt = state
         .borrow_amount_for_token(2, EGLD_TOKEN)
-        .into_raw_units()
+        .as_raw_units()
         .clone();
 
     // Prepare additional bulk borrow
@@ -280,14 +289,14 @@ fn borrow_bulk_existing_positions_success() {
         MultiValueEncoded::new();
 
     let egld_borrow = EgldOrEsdtTokenPayment::new(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
         0,
         BigUint::from(50u64) * BigUint::from(10u64.pow(EGLD_DECIMALS as u32)),
     );
     assets.push(egld_borrow.clone());
 
     let usdc_borrow = EgldOrEsdtTokenPayment::new(
-        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_esdt_token_identifier()),
         0,
         BigUint::from(500u64) * BigUint::from(10u64.pow(USDC_DECIMALS as u32)),
     );
@@ -335,43 +344,47 @@ fn borrow_exceeds_position_limit_error() {
     // Supplier provides liquidity to pools for borrowing (following successful test pattern)
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(10000u64), // $10,000 worth
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false, // is_vault = false
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(10000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &supplier,
-        CAPPED_TOKEN,
-        BigUint::from(100u64), // $200 worth (CAPPED_PRICE = $2)
-        CAPPED_DECIMALS,
-        OptionalValue::Some(1), // Existing account
-        OptionalValue::None,
-        false, // is_vault = false
+        SupplyParams {
+            token_id: CAPPED_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: CAPPED_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64), // $4,000 worth (EGLD_PRICE = $40)
-        EGLD_DECIMALS,
-        OptionalValue::Some(1), // Existing account
-        OptionalValue::None,
-        false, // is_vault = false
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower supplies collateral (following successful test pattern)
     state.supply_asset(
         &borrower,
-        USDC_TOKEN,
-        BigUint::from(5000u64), // $5,000 collateral
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false, // is_vault = false
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(5000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     let account_nonce = 2; // borrower account
@@ -426,32 +439,35 @@ fn borrow_bulk_exceeds_position_limit_error() {
     // Supply liquidity for both assets (follow working test pattern exactly)
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false, // is_vault = false
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(1000u64),
-        USDC_DECIMALS,
-        OptionalValue::Some(1), // Existing account
-        OptionalValue::None,
-        false, // is_vault = false
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower supplies collateral (follow working test pattern exactly)
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(1000u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false, // is_vault = false
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Prepare bulk borrow request for 2 assets when limit is 1
@@ -460,26 +476,26 @@ fn borrow_bulk_exceeds_position_limit_error() {
         MultiValueEncoded::new();
 
     let egld_borrow = EgldOrEsdtTokenPayment::new(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
         0,
         BigUint::from(50u64) * BigUint::from(10u64.pow(EGLD_DECIMALS as u32)),
     );
     assets.push(egld_borrow);
 
     let usdc_borrow = EgldOrEsdtTokenPayment::new(
-        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_esdt_token_identifier()),
         0,
         BigUint::from(500u64) * BigUint::from(10u64.pow(USDC_DECIMALS as u32)),
     );
     assets.push(usdc_borrow);
 
-    let total_borrow_before = state.total_borrow_in_egld(2).into_raw_units().clone();
+    let total_borrow_before = state.total_borrow_in_egld(2).as_raw_units().clone();
 
     // This bulk borrow should fail because it would create 2 new positions
     // when the limit is 1
     state.borrow_assets_error(2, &borrower, assets, ERROR_POSITION_LIMIT_EXCEEDED);
 
-    let total_borrow_after = state.total_borrow_in_egld(2).into_raw_units().clone();
+    let total_borrow_after = state.total_borrow_in_egld(2).as_raw_units().clone();
     assert_eq!(
         total_borrow_after, total_borrow_before,
         "bulk borrow failure must leave account debt unchanged",

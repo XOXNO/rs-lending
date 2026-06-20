@@ -56,7 +56,7 @@ pub trait UtilsModule:
             round_id = wrapped_rounds.get().round + 1u32;
         }
 
-        let current_timestamp = self.blockchain().get_block_timestamp();
+        let current_timestamp = self.blockchain().get_block_timestamp_seconds();
         let mut is_first_submission = false;
         let mut first_submission_timestamp = if submissions.is_empty() {
             first_sub_time_mapper.set(current_timestamp);
@@ -68,7 +68,9 @@ pub trait UtilsModule:
         };
 
         // round was not completed in time, so it's discarded
-        if current_timestamp > first_submission_timestamp + MAX_ROUND_DURATION_SECONDS {
+        if current_timestamp
+            > first_submission_timestamp + DurationSeconds::new(MAX_ROUND_DURATION_SECONDS)
+        {
             submissions.clear();
             first_sub_time_mapper.set(current_timestamp);
             last_sub_time_mapper.set(current_timestamp);
@@ -114,14 +116,15 @@ pub trait UtilsModule:
 
     /// Validates submission timestamp is not from future and within acceptable age.
     /// Prevents replay attacks and ensures price freshness.
-    fn require_valid_submission_timestamp(&self, submission_timestamp: u64) {
-        let current_timestamp = self.blockchain().get_block_timestamp();
+    fn require_valid_submission_timestamp(&self, submission_timestamp: TimestampSeconds) {
+        let current_timestamp = self.blockchain().get_block_timestamp_seconds();
         require!(
             submission_timestamp <= current_timestamp,
             TIMESTAMP_FROM_FUTURE_ERROR
         );
         require!(
-            current_timestamp - submission_timestamp <= FIRST_SUBMISSION_TIMESTAMP_MAX_DIFF_SECONDS,
+            current_timestamp - submission_timestamp
+                <= DurationSeconds::new(FIRST_SUBMISSION_TIMESTAMP_MAX_DIFF_SECONDS),
             FIRST_SUBMISSION_TOO_OLD_ERROR
         );
     }
@@ -152,7 +155,7 @@ pub trait UtilsModule:
             let price = price_opt.unwrap_or_else(|| sc_panic!(NO_SUBMISSIONS_ERROR));
             let feed = TimestampedPrice {
                 price,
-                timestamp: self.blockchain().get_block_timestamp(),
+                timestamp: self.blockchain().get_block_timestamp_seconds(),
                 round: round_id,
             };
 

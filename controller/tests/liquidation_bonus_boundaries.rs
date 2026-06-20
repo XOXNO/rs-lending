@@ -34,22 +34,24 @@ fn setup_unhealthy_single_asset_position() -> (
     // Supplier provides EGLD liquidity, borrower supplies EGLD as collateral then borrows EGLD
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     // Supplier minted first, so borrower NFT nonce = 2 here
     let borrower_nonce = 2u64;
@@ -82,13 +84,13 @@ fn liquidation_bonus_within_tolerance_keeps_scaled_bonus() {
     let base_est = state.liquidation_estimations(nonce, empty);
 
     // Build a capped payment set at 0.5% below the estimate (within 100 bps tolerance)
-    let target_wad = base_est.max_egld_payment_wad.into_raw_units().clone();
+    let target_wad = base_est.max_egld_payment_wad.as_raw_units().clone();
     // 0.5% underpayment -> multiply by 9950 / 10000
     let within_amount = target_wad.clone() * 9_950u64 / 10_000u64;
 
     let mut payments = ManagedVec::new();
     payments.push(EgldOrEsdtTokenPayment::new(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
         0,
         within_amount,
     ));
@@ -113,12 +115,12 @@ fn liquidation_bonus_above_tolerance_fallback_or_scaled() {
     let base_est = state.liquidation_estimations(nonce, empty);
 
     // Build a capped payment set at 2% below the estimate (> 100 bps tolerance)
-    let target_wad = base_est.max_egld_payment_wad.into_raw_units().clone();
+    let target_wad = base_est.max_egld_payment_wad.as_raw_units().clone();
     let above_amount = target_wad.clone() * 9_800u64 / 10_000u64;
 
     let mut payments = ManagedVec::new();
     payments.push(EgldOrEsdtTokenPayment::new(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
         0,
         above_amount,
     ));
@@ -145,12 +147,12 @@ fn liquidation_exact_estimate_is_uncapped_and_improves_hf() {
     let base_est = state.liquidation_estimations(nonce, empty);
 
     // Use exactly the estimated payment
-    let exact_amount = base_est.max_egld_payment_wad.into_raw_units().clone();
+    let exact_amount = base_est.max_egld_payment_wad.as_raw_units().clone();
 
     // View with explicit exact payment should match uncapped bonus
     let mut payments = ManagedVec::new();
     payments.push(EgldOrEsdtTokenPayment::new(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
         0,
         exact_amount.clone(),
     ));
@@ -175,7 +177,7 @@ fn liquidation_zero_payment_estimation_matches_empty() {
 
     let mut zero = ManagedVec::new();
     zero.push(EgldOrEsdtTokenPayment::new(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
         0,
         BigUint::zero(),
     ));

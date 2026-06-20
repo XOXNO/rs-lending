@@ -37,22 +37,24 @@ fn market_exit_dust_accumulation_minimal() {
     // First pair - supplier1 and borrower1
     state.supply_asset(
         &supplier1,
-        EGLD_TOKEN,
-        BigUint::from(100000u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100000u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &borrower1,
-        EGLD_TOKEN,
-        BigUint::from(100000u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100000u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.borrow_asset(
@@ -66,22 +68,24 @@ fn market_exit_dust_accumulation_minimal() {
     // Second pair - supplier2 and borrower2
     state.supply_asset(
         &supplier2,
-        EGLD_TOKEN,
-        BigUint::from(100000u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100000u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &borrower2,
-        EGLD_TOKEN,
-        BigUint::from(100000u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100000u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.borrow_asset(
@@ -123,42 +127,42 @@ fn market_exit_dust_accumulation_minimal() {
     state.repay_asset_deno(
         &borrower1,
         &EGLD_TOKEN,
-        final_borrow_borrower1.into_raw_units().clone(),
+        final_borrow_borrower1.as_raw_units().clone(),
         2,
     );
 
     state.withdraw_asset_den(
         &supplier1,
         EGLD_TOKEN,
-        final_supply_supplier1.into_raw_units().clone(),
+        final_supply_supplier1.as_raw_units().clone(),
         1,
     );
 
     state.withdraw_asset_den(
         &borrower1,
         EGLD_TOKEN,
-        final_supply_borrower1.into_raw_units().clone(),
+        final_supply_borrower1.as_raw_units().clone(),
         2,
     );
 
     state.repay_asset_deno(
         &borrower2,
         &EGLD_TOKEN,
-        final_borrow_borrower2.into_raw_units().clone(),
+        final_borrow_borrower2.as_raw_units().clone(),
         4,
     );
 
     state.withdraw_asset_den(
         &supplier2,
         EGLD_TOKEN,
-        final_supply_supplier2.into_raw_units().clone(),
+        final_supply_supplier2.as_raw_units().clone(),
         3,
     );
 
     state.withdraw_asset_den(
         &borrower2,
         EGLD_TOKEN,
-        final_supply_borrower2.into_raw_units().clone(),
+        final_supply_borrower2.as_raw_units().clone(),
         4,
     );
 
@@ -275,22 +279,24 @@ fn stress_test_random_user_actions_large_scale() {
                     let nonce = user_nonces.get(&user_addr);
                     state.supply_asset(
                         &user_addr,
-                        EGLD_TOKEN,
-                        amount,
-                        EGLD_DECIMALS,
-                        OptionalValue::Some(nonce),
-                        OptionalValue::None,
-                        false,
+                        SupplyParams {
+                            token_id: EGLD_TOKEN,
+                            amount,
+                            asset_decimals: EGLD_DECIMALS,
+                            account_nonce: OptionalValue::Some(nonce),
+                            e_mode_category: OptionalValue::None,
+                        },
                     );
                 } else {
                     state.supply_asset(
                         &user_addr,
-                        EGLD_TOKEN,
-                        amount,
-                        EGLD_DECIMALS,
-                        OptionalValue::None,
-                        OptionalValue::None,
-                        false,
+                        SupplyParams {
+                            token_id: EGLD_TOKEN,
+                            amount,
+                            asset_decimals: EGLD_DECIMALS,
+                            account_nonce: OptionalValue::None,
+                            e_mode_category: OptionalValue::None,
+                        },
                     );
                     nonce_counter += 1;
                     user_nonces.put(&user_addr, &nonce_counter);
@@ -308,7 +314,7 @@ fn stress_test_random_user_actions_large_scale() {
                         state.borrow_asset(
                             &user_addr,
                             EGLD_TOKEN,
-                            available_borrow.into_raw_units().clone() / BigUint::from(WAD),
+                            available_borrow.as_raw_units().clone() / BigUint::from(WAD),
                             nonce,
                             EGLD_DECIMALS,
                         );
@@ -319,15 +325,15 @@ fn stress_test_random_user_actions_large_scale() {
                 if user_nonces.contains(&user_addr) {
                     let nonce = user_nonces.get(&user_addr);
                     let current_borrow = state.total_borrow_in_egld(nonce);
-                    if current_borrow.into_raw_units() > &BigUint::zero() {
+                    if current_borrow.as_raw_units() > &BigUint::zero() {
                         state.repay_asset_deno(
                             &user_addr,
                             &EGLD_TOKEN,
-                            current_borrow.into_raw_units().clone(),
+                            current_borrow.as_raw_units().clone(),
                             nonce,
                         );
                         assert!(
-                            state.total_borrow_in_egld(nonce).into_raw_units() == &BigUint::zero()
+                            state.total_borrow_in_egld(nonce).as_raw_units() == &BigUint::zero()
                         );
                     }
                 }
@@ -338,14 +344,14 @@ fn stress_test_random_user_actions_large_scale() {
                     let current_supply = state.total_collateral_in_egld(nonce);
                     let total_borrow = state.total_borrow_in_egld(nonce);
 
-                    if current_supply.into_raw_units() > &BigUint::zero()
-                        && total_borrow.into_raw_units() == &BigUint::zero()
+                    if current_supply.as_raw_units() > &BigUint::zero()
+                        && total_borrow.as_raw_units() == &BigUint::zero()
                     {
                         let max_withdraw = current_supply;
                         state.withdraw_asset_den(
                             &user_addr,
                             EGLD_TOKEN,
-                            max_withdraw.into_raw_units().clone(),
+                            max_withdraw.as_raw_units().clone(),
                             nonce,
                         );
                         user_nonces.remove(&user_addr);
@@ -361,22 +367,24 @@ fn stress_test_random_user_actions_large_scale() {
                     let nonce = user_nonces.get(&user_addr);
                     state.supply_asset(
                         &user_addr,
-                        EGLD_TOKEN,
-                        amount,
-                        EGLD_DECIMALS,
-                        OptionalValue::Some(nonce),
-                        OptionalValue::None,
-                        false,
+                        SupplyParams {
+                            token_id: EGLD_TOKEN,
+                            amount,
+                            asset_decimals: EGLD_DECIMALS,
+                            account_nonce: OptionalValue::Some(nonce),
+                            e_mode_category: OptionalValue::None,
+                        },
                     );
                 } else {
                     state.supply_asset(
                         &user_addr,
-                        EGLD_TOKEN,
-                        amount,
-                        EGLD_DECIMALS,
-                        OptionalValue::None,
-                        OptionalValue::None,
-                        false,
+                        SupplyParams {
+                            token_id: EGLD_TOKEN,
+                            amount,
+                            asset_decimals: EGLD_DECIMALS,
+                            account_nonce: OptionalValue::None,
+                            e_mode_category: OptionalValue::None,
+                        },
                     );
                     nonce_counter += 1;
                     user_nonces.put(&user_addr, &nonce_counter);
@@ -386,19 +394,19 @@ fn stress_test_random_user_actions_large_scale() {
                 if user_nonces.contains(&user_addr) {
                     let nonce = user_nonces.get(&user_addr);
                     let current_supply = state.total_collateral_in_egld(nonce);
-                    if current_supply.into_raw_units() > &BigUint::zero() {
+                    if current_supply.as_raw_units() > &BigUint::zero() {
                         state.withdraw_asset_den(
                             &user_addr,
                             EGLD_TOKEN,
-                            current_supply.into_raw_units().clone(),
+                            current_supply.as_raw_units().clone(),
                             nonce,
                         );
                         assert!(
-                            state.total_collateral_in_egld(nonce).into_raw_units()
+                            state.total_collateral_in_egld(nonce).as_raw_units()
                                 == &BigUint::zero()
                         );
                         assert!(
-                            state.total_borrow_in_egld(nonce).into_raw_units() == &BigUint::zero()
+                            state.total_borrow_in_egld(nonce).as_raw_units() == &BigUint::zero()
                         );
                         user_nonces.remove(&user_addr);
                     }
@@ -419,11 +427,11 @@ fn stress_test_random_user_actions_large_scale() {
             // Repay all debt if borrower
             if borrowers.contains(user_addr) {
                 let final_borrow = state.total_borrow_in_egld(nonce);
-                if final_borrow.into_raw_units() > &BigUint::zero() {
+                if final_borrow.as_raw_units() > &BigUint::zero() {
                     state.repay_asset_deno(
                         user_addr,
                         &EGLD_TOKEN,
-                        final_borrow.into_raw_units().clone(),
+                        final_borrow.as_raw_units().clone(),
                         nonce,
                     );
                 }
@@ -431,18 +439,18 @@ fn stress_test_random_user_actions_large_scale() {
 
             // Withdraw all supply
             let final_supply = state.total_collateral_in_egld(nonce);
-            if final_supply.into_raw_units() > &BigUint::zero() {
+            if final_supply.as_raw_units() > &BigUint::zero() {
                 state.withdraw_asset_den(
                     user_addr,
                     EGLD_TOKEN,
-                    final_supply.into_raw_units().clone(),
+                    final_supply.as_raw_units().clone(),
                     nonce,
                 );
                 user_nonces.remove(user_addr);
             }
 
-            assert!(state.total_collateral_in_egld(nonce).into_raw_units() == &BigUint::zero());
-            assert!(state.total_borrow_in_egld(nonce).into_raw_units() == &BigUint::zero());
+            assert!(state.total_collateral_in_egld(nonce).as_raw_units() == &BigUint::zero());
+            assert!(state.total_borrow_in_egld(nonce).as_raw_units() == &BigUint::zero());
         }
     }
 
@@ -454,8 +462,8 @@ fn stress_test_random_user_actions_large_scale() {
     let borrowed = state.market_borrowed(state.egld_market.clone());
 
     // Basic sanity checks
-    assert!(reserves.into_raw_units() >= &BigUint::zero());
-    assert!(protocol_revenue.into_raw_units() >= &BigUint::zero());
+    assert!(reserves.as_raw_units() >= &BigUint::zero());
+    assert!(protocol_revenue.as_raw_units() >= &BigUint::zero());
     // Use precision tolerance (allow up to 1000 wei difference):
     let diff = if protocol_revenue > reserves {
         protocol_revenue - reserves
@@ -464,8 +472,8 @@ fn stress_test_random_user_actions_large_scale() {
     };
     assert!(diff <= ManagedDecimal::from_raw_units(BigUint::from(1000u64), WAD_PRECISION));
 
-    assert!(supplied.into_raw_units() >= &BigUint::zero());
-    assert!(borrowed.into_raw_units() == &BigUint::zero());
+    assert!(supplied.as_raw_units() >= &BigUint::zero());
+    assert!(borrowed.as_raw_units() == &BigUint::zero());
     assert!(final_utilization == ManagedDecimal::from_raw_units(BigUint::zero(), 27));
 
     state.claim_revenue(EGLD_TOKEN);
@@ -475,13 +483,13 @@ fn stress_test_random_user_actions_large_scale() {
     let supplied = state.market_supplied(state.egld_market.clone());
     let borrowed = state.market_borrowed(state.egld_market.clone());
 
-    assert!(protocol_revenue.into_raw_units() == &BigUint::zero());
-    let residual_reserve = reserves.into_raw_units().clone();
+    assert!(protocol_revenue.as_raw_units() == &BigUint::zero());
+    let residual_reserve = reserves.as_raw_units().clone();
     assert!(
         residual_reserve <= 1000u64,
         "Reserve dust after revenue claim should stay under tolerance",
     );
 
-    assert!(supplied.into_raw_units() == &BigUint::zero());
-    assert!(borrowed.into_raw_units() == &BigUint::zero());
+    assert!(supplied.as_raw_units() == &BigUint::zero());
+    assert!(borrowed.as_raw_units() == &BigUint::zero());
 }

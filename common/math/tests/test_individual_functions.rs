@@ -26,7 +26,7 @@ fn test_to_decimal_wad() {
     let value = BigUint::<StaticApi>::from(1_000_000_000_000_000_000u64); // 1 WAD
     let result = tester.to_decimal_wad(value.clone());
 
-    assert_eq!(result.into_raw_units(), &value);
+    assert_eq!(result.as_raw_units(), &value);
     assert_eq!(result.scale(), 18);
 }
 
@@ -35,7 +35,7 @@ fn test_wad_zero() {
     let tester = MathTester;
 
     let result = tester.wad_zero();
-    assert_eq!(result.into_raw_units(), &BigUint::<StaticApi>::zero());
+    assert_eq!(result.as_raw_units(), &BigUint::<StaticApi>::zero());
     assert_eq!(result.scale(), 18);
 }
 
@@ -44,7 +44,7 @@ fn test_ray_zero() {
     let tester = MathTester;
 
     let result = tester.ray_zero();
-    assert_eq!(result.into_raw_units(), &BigUint::<StaticApi>::zero());
+    assert_eq!(result.as_raw_units(), &BigUint::<StaticApi>::zero());
     assert_eq!(result.scale(), 27);
 }
 
@@ -53,7 +53,7 @@ fn test_bps_zero() {
     let tester = MathTester;
 
     let result = tester.bps_zero();
-    assert_eq!(result.into_raw_units(), &BigUint::<StaticApi>::zero());
+    assert_eq!(result.as_raw_units(), &BigUint::<StaticApi>::zero());
     assert_eq!(result.scale(), 4);
 }
 
@@ -75,7 +75,7 @@ fn test_mul_half_up() {
 
     // Should be 3.0 WAD
     assert_eq!(
-        result.into_raw_units(),
+        result.as_raw_units(),
         &BigUint::<StaticApi>::from(3_000_000_000_000_000_000u64)
     );
 }
@@ -91,7 +91,7 @@ fn test_mul_half_up_rounding() {
     let result = tester.mul_half_up(&a, &b, 1);
 
     // 1.5 * 1.3 = 1.95, rounds to 2.0
-    assert_eq!(result.into_raw_units(), &BigUint::<StaticApi>::from(20u64));
+    assert_eq!(result.as_raw_units(), &BigUint::<StaticApi>::from(20u64));
 }
 
 #[test]
@@ -112,7 +112,7 @@ fn test_div_half_up() {
 
     // Should be 1.5 WAD
     assert_eq!(
-        result.into_raw_units(),
+        result.as_raw_units(),
         &BigUint::<StaticApi>::from(1_500_000_000_000_000_000u64)
     );
 }
@@ -128,7 +128,7 @@ fn test_div_half_up_rounding() {
     let result = tester.div_half_up(&a, &b, 1);
 
     // 5.0 / 3.0 = 1.666..., rounds to 1.7
-    assert_eq!(result.into_raw_units(), &BigUint::<StaticApi>::from(17u64));
+    assert_eq!(result.as_raw_units(), &BigUint::<StaticApi>::from(17u64));
 }
 
 #[test]
@@ -158,7 +158,7 @@ fn test_get_min() {
     let b = ManagedDecimal::<StaticApi, usize>::from_raw_units(BigUint::from(200u64), 2);
 
     let result = tester.min(a.clone(), b.clone());
-    assert_eq!(result.into_raw_units(), a.into_raw_units());
+    assert_eq!(result.as_raw_units(), a.as_raw_units());
 }
 
 #[test]
@@ -169,5 +169,5 @@ fn test_get_max() {
     let b = ManagedDecimal::<StaticApi, usize>::from_raw_units(BigUint::from(200u64), 2);
 
     let result = tester.max(a.clone(), b.clone());
-    assert_eq!(result.into_raw_units(), b.into_raw_units());
+    assert_eq!(result.as_raw_units(), b.as_raw_units());
 }

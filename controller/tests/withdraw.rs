@@ -34,12 +34,13 @@ fn withdraw_excess_amount_capped_to_available_success() {
     // Supply 1000 USDC
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(1000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     let supplied_raw = scaled_amount(1000, USDC_DECIMALS);
     state.assert_collateral_raw_eq(
@@ -86,12 +87,13 @@ fn withdraw_insufficient_liquidity_error() {
     // Supplier deposits 1000 USDC
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(1000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     let expected_supply_raw = scaled_amount(1000, USDC_DECIMALS);
     state.assert_collateral_raw_eq(
@@ -104,12 +106,13 @@ fn withdraw_insufficient_liquidity_error() {
     // Borrower supplies collateral
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower takes out 100 USDC loan
@@ -128,8 +131,8 @@ fn withdraw_insufficient_liquidity_error() {
         "borrowed USDC debt should equal request",
     );
 
-    let total_collateral_before = state.total_collateral_in_egld(1).into_raw_units().clone();
-    let total_borrow_before = state.total_borrow_in_egld(2).into_raw_units().clone();
+    let total_collateral_before = state.total_collateral_in_egld(1).as_raw_units().clone();
+    let total_borrow_before = state.total_borrow_in_egld(2).as_raw_units().clone();
 
     // Supplier tries to withdraw full 1000 USDC but only 900 is available
     state.withdraw_asset_error(
@@ -154,8 +157,8 @@ fn withdraw_insufficient_liquidity_error() {
         expected_borrow_raw.clone(),
         "failed withdrawal must not mutate borrower debt",
     );
-    let total_collateral_after = state.total_collateral_in_egld(1).into_raw_units().clone();
-    let total_borrow_after = state.total_borrow_in_egld(2).into_raw_units().clone();
+    let total_collateral_after = state.total_collateral_in_egld(1).as_raw_units().clone();
+    let total_borrow_after = state.total_borrow_in_egld(2).as_raw_units().clone();
     let coll_diff = if total_collateral_after >= total_collateral_before {
         total_collateral_after.clone() - total_collateral_before.clone()
     } else {
@@ -194,23 +197,25 @@ fn withdraw_with_accumulated_interest_success() {
     // Supplier deposits 1000 USDC
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(1000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower supplies collateral and borrows
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(10u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(10u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.borrow_asset(
@@ -226,7 +231,7 @@ fn withdraw_with_accumulated_interest_success() {
 
     // Record initial collateral with interest
     let initial_collateral = state.collateral_amount_for_token(1, USDC_TOKEN);
-    let initial_raw = initial_collateral.into_raw_units().clone();
+    let initial_raw = initial_collateral.as_raw_units().clone();
 
     // Advance more time
     state.change_timestamp(SECONDS_PER_DAY * 20);
@@ -242,7 +247,7 @@ fn withdraw_with_accumulated_interest_success() {
 
     // Verify collateral was reduced by withdrawal amount
     let final_collateral = state.collateral_amount_for_token(1, USDC_TOKEN);
-    let final_raw = final_collateral.into_raw_units().clone();
+    let final_raw = final_collateral.as_raw_units().clone();
     let withdrawn_raw = scaled_amount(500, USDC_DECIMALS);
     let tolerance_raw = usdc_tolerance_raw(200_000); // 0.2 USDC tolerance due to interest rounding
     assert!(
@@ -287,12 +292,13 @@ fn withdraw_single_user_supply_borrow_full_cycle() {
     // User supplies 100 EGLD
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     let supplied_egld = scaled_amount(100, EGLD_DECIMALS);
     state.assert_collateral_raw_eq(
@@ -319,7 +325,7 @@ fn withdraw_single_user_supply_borrow_full_cycle() {
 
     let borrow_after_updates = state
         .borrow_amount_for_token(1, EGLD_TOKEN)
-        .into_raw_units()
+        .as_raw_units()
         .clone();
     assert!(
         borrow_after_updates >= scaled_amount(72, EGLD_DECIMALS),
@@ -344,7 +350,7 @@ fn withdraw_single_user_supply_borrow_full_cycle() {
     state.withdraw_asset_den(
         &supplier,
         EGLD_TOKEN,
-        final_collateral.into_raw_units().clone(),
+        final_collateral.as_raw_units().clone(),
         1,
     );
 
@@ -385,12 +391,13 @@ fn withdraw_with_prior_index_update_success() {
     // User supplies 100 EGLD
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     let initial_supply_raw = scaled_amount(100, EGLD_DECIMALS);
     state.assert_collateral_raw_eq(
@@ -418,7 +425,7 @@ fn withdraw_with_prior_index_update_success() {
     // Get current positions
     let initial_borrow = state.borrow_amount_for_token(1, EGLD_TOKEN);
     assert!(
-        initial_borrow.into_raw_units() > &BigUint::zero(),
+        initial_borrow.as_raw_units() > &BigUint::zero(),
         "borrow should accrue prior to repayment",
     );
 
@@ -426,7 +433,7 @@ fn withdraw_with_prior_index_update_success() {
     state.repay_asset_deno(
         &supplier,
         &EGLD_TOKEN,
-        initial_borrow.into_raw_units().clone(),
+        initial_borrow.as_raw_units().clone(),
         1,
     );
 
@@ -446,7 +453,7 @@ fn withdraw_with_prior_index_update_success() {
     state.withdraw_asset_den(
         &supplier,
         EGLD_TOKEN,
-        final_collateral.into_raw_units().clone(),
+        final_collateral.as_raw_units().clone(),
         1,
     );
 
@@ -481,23 +488,25 @@ fn withdraw_self_liquidation_protection_error() {
     // Supplier deposits EGLD for others to borrow
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower supplies USDC as collateral
     state.supply_asset(
         &borrower,
-        USDC_TOKEN,
-        BigUint::from(5000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(5000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower takes 80 EGLD loan (high utilization)
@@ -570,23 +579,25 @@ fn withdraw_non_deposited_asset_error() {
     // Supplier deposits EGLD
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower supplies USDC as collateral
     state.supply_asset(
         &borrower,
-        USDC_TOKEN,
-        BigUint::from(5000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(5000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower borrows EGLD
@@ -612,8 +623,8 @@ fn withdraw_non_deposited_asset_error() {
         "borrower USDC collateral should be tracked",
     );
 
-    let total_collateral_before = state.total_collateral_in_egld(2).into_raw_units().clone();
-    let total_borrow_before = state.total_borrow_in_egld(2).into_raw_units().clone();
+    let total_collateral_before = state.total_collateral_in_egld(2).as_raw_units().clone();
+    let total_borrow_before = state.total_borrow_in_egld(2).as_raw_units().clone();
 
     // Try to withdraw XEGLD which was never deposited
     let custom_error_message = format!(
@@ -642,8 +653,8 @@ fn withdraw_non_deposited_asset_error() {
         usdc_collateral_raw.clone(),
         "failed withdrawal on non-deposited asset must not alter collateral",
     );
-    let total_collateral_after = state.total_collateral_in_egld(2).into_raw_units().clone();
-    let total_borrow_after = state.total_borrow_in_egld(2).into_raw_units().clone();
+    let total_collateral_after = state.total_collateral_in_egld(2).as_raw_units().clone();
+    let total_borrow_after = state.total_borrow_in_egld(2).as_raw_units().clone();
     let coll_diff = if total_collateral_after >= total_collateral_before {
         total_collateral_after.clone() - total_collateral_before.clone()
     } else {

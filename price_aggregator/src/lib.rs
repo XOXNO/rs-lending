@@ -29,7 +29,7 @@ pub trait PriceAggregator:
         &self,
         from: ManagedBuffer,
         to: ManagedBuffer,
-        submission_timestamp: u64,
+        submission_timestamp: TimestampSeconds,
         price: BigUint,
     ) {
         self.require_not_paused();
@@ -46,7 +46,9 @@ pub trait PriceAggregator:
     #[endpoint(submitBatch)]
     fn submit_batch(
         &self,
-        submissions: MultiValueEncoded<MultiValue4<ManagedBuffer, ManagedBuffer, u64, BigUint>>,
+        submissions: MultiValueEncoded<
+            MultiValue4<ManagedBuffer, ManagedBuffer, TimestampSeconds, BigUint>,
+        >,
     ) {
         self.require_not_paused();
         self.require_is_oracle();

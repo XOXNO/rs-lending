@@ -686,7 +686,7 @@ pub trait MathsModule: common_math::SharedMathModule {
         let ray = self.ray();
 
         let target_health_factor_primary_ray =
-            ray.clone().into_raw_units() / 50u32 + ray.into_raw_units(); // 1.02 RAY
+            ray.clone().as_raw_units() / 50u32 + ray.as_raw_units(); // 1.02 RAY
 
         let (safest_debt_ray, safest_bonus_ray, safe_new_health_factor_ray) = self
             .simulate_liquidation(
@@ -704,7 +704,7 @@ pub trait MathsModule: common_math::SharedMathModule {
         }
 
         let target_health_factor_secondary_ray =
-            ray.clone().into_raw_units() / 100u32 + ray.into_raw_units(); // 1.01 RAY
+            ray.clone().as_raw_units() / 100u32 + ray.as_raw_units(); // 1.01 RAY
         let (limit_debt_ray, limit_bonus_ray, _) = self.simulate_liquidation(
             weighted_collateral_in_egld,
             proportion_seized,

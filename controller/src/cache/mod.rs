@@ -25,7 +25,7 @@ where
     pub allow_unsafe_price: bool,
     pub flash_loan_ongoing: bool,
     pub safe_price_view: ManagedAddress<C::Api>,
-    pub current_timestamp: u64,
+    pub current_timestamp: TimestampMillis,
 }
 
 impl<'a, C> Cache<'a, C>
@@ -62,7 +62,7 @@ where
             allow_unsafe_price: true,
             flash_loan_ongoing: sc_ref.flash_loan_ongoing().get(),
             safe_price_view: sc_ref.safe_price_view().get(),
-            current_timestamp: sc_ref.blockchain().get_block_timestamp_ms(),
+            current_timestamp: sc_ref.blockchain().get_block_timestamp_millis(),
         }
     }
 

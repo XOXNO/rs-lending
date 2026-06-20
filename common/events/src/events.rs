@@ -87,7 +87,7 @@ pub trait EventsModule {
     /// - Nothing.
     fn update_market_state_event(
         &self,
-        timestamp: u64,
+        timestamp: TimestampMillis,
         supply_index: &ManagedDecimal<Self::Api, NumDecimals>,
         borrow_index: &ManagedDecimal<Self::Api, NumDecimals>,
         reserves: &ManagedDecimal<Self::Api, NumDecimals>,
@@ -128,7 +128,7 @@ pub trait EventsModule {
     #[event("update_market_state")]
     fn _emit_update_market_state_event(
         &self,
-        #[indexed] timestamp: u64,
+        #[indexed] timestamp: TimestampMillis,
         #[indexed] supply_index: &ManagedDecimal<Self::Api, NumDecimals>,
         #[indexed] borrow_index: &ManagedDecimal<Self::Api, NumDecimals>,
         #[indexed] reserves: &ManagedDecimal<Self::Api, NumDecimals>,

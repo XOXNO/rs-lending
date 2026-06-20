@@ -28,7 +28,7 @@ pub trait UtilsModule:
     fn global_sync(&self, cache: &mut Cache<Self>) {
         let delta_ms = cache.timestamp - cache.last_timestamp;
 
-        if delta_ms > 0 {
+        if delta_ms > DurationMillis::zero() {
             let borrow_rate =
                 self.calculate_borrow_rate(cache.calculate_utilization(), cache.parameters.clone());
             let borrow_factor = self.calculate_compounded_interest(borrow_rate.clone(), delta_ms);
@@ -140,7 +140,7 @@ pub trait UtilsModule:
         let payment = EgldOrEsdtTokenPayment::new(
             cache.parameters.asset_id.clone(),
             0,
-            amount.into_raw_units().clone(),
+            amount.as_raw_units().clone(),
         );
 
         self.tx().to(to).payment(&payment).transfer_if_not_empty();

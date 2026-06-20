@@ -30,21 +30,22 @@ fn add_rewards_increases_supply_index_proportionally() {
     // 1) Provide initial USDC liquidity: 1000 USDC
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(1000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     let usdc_pool = state.usdc_market.clone();
 
     // Snapshot before adding rewards
     let pre_index = state.market_supply_index(usdc_pool.clone());
-    let pre_index_raw = pre_index.into_raw_units().clone();
+    let pre_index_raw = pre_index.as_raw_units().clone();
     let pre_supplied_actual = state.market_supplied_amount(usdc_pool.clone());
-    let pre_supplied_raw = pre_supplied_actual.into_raw_units().clone();
+    let pre_supplied_raw = pre_supplied_actual.as_raw_units().clone();
 
     // 2) Add 100 USDC in rewards as owner via controller.addRewards
     let reward_raw = BigUint::from(100u64) * BigUint::from(10u64).pow(USDC_DECIMALS as u32);
@@ -62,10 +63,10 @@ fn add_rewards_increases_supply_index_proportionally() {
     // Read post state
     let post_index = state.market_supply_index(usdc_pool.clone());
     println!("post index: {post_index:?}");
-    let post_index_raw = post_index.into_raw_units().clone();
+    let post_index_raw = post_index.as_raw_units().clone();
     let post_supplied_actual = state.market_supplied_amount(usdc_pool);
     println!("post supplied actual: {post_supplied_actual:?}");
-    let post_supplied_raw = post_supplied_actual.into_raw_units().clone();
+    let post_supplied_raw = post_supplied_actual.as_raw_units().clone();
 
     // Supply index increased as expected (within tiny rounding tolerance)
     let tol = small_ray_tolerance();

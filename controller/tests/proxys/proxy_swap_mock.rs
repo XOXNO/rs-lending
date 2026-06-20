@@ -95,4 +95,19 @@ where
             .argument(&wanted_amount)
             .original_result()
     }
+
+    pub fn xo<
+        Arg0: ProxyArg<EgldOrEsdtTokenIdentifier<Env::Api>>,
+        Arg1: ProxyArg<BigUint<Env::Api>>,
+    >(
+        self,
+        wanted_token: Arg0,
+        wanted_amount: Arg1,
+    ) -> TxTypedCall<Env, From, To, (), Gas, ()> {
+        self.wrapped_tx
+            .raw_call("xo")
+            .argument(&wanted_token)
+            .argument(&wanted_amount)
+            .original_result()
+    }
 }

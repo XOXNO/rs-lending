@@ -10,14 +10,13 @@ path = "src/lib.rs"
 doctest = false
 
 [dependencies.multiversx-sc-modules]
-version = "0.59.0"
+version = "0.66.1"
 
 [dependencies.multiversx-sc]
-version = "0.59.0"
-features = ["barnard"]
+version = "0.66.1"
 
 [dependencies.multiversx-wegld-swap-sc]
-version = "0.59.0"
+version = "0.66.1"
 
 [dependencies.liquidity_layer]
 path = "../liquidity_layer"
@@ -53,10 +52,10 @@ path = "../flash_mock"
 path = "../swap_mock"
 
 [dev-dependencies]
-multiversx-sc-scenario = "0.59.0"
-rs-liquid-xoxno        = { git = "https://github.com/XOXNO/rs-liquid-xoxno" }
-accumulator         = { git = "https://github.com/XOXNO/rs-accumulator" }
-rs-liquid-staking-sc   = { git = "https://github.com/XOXNO/rs-liquid-staking-sc", package = "liquid-staking" }
-pair                   = { git = "https://github.com/mihaieremia/mx-exchange-sc", package = "pair" }
+multiversx-sc-scenario = "0.66.1"
+rs-liquid-xoxno        = { git = "https://github.com/XOXNO/rs-liquid-xoxno", rev = "cb2219a7f9c4de563437c8097edae2cb5f7e6fe7" }
+accumulator         = { git = "https://github.com/XOXNO/rs-accumulator", rev = "7db7bc6b3f67cef5d74f36988b92955be97d9df0" }
+rs-liquid-staking-sc   = { git = "https://github.com/XOXNO/rs-liquid-staking-sc", rev = "2e8c81d9fff9ba05eee3d55dabbed045c1289123", package = "liquid-staking" }
+pair                   = { git = "https://github.com/mihaieremia/mx-exchange-sc", rev = "91fb26787f9dfd0be599e1a1ac63568fe54d08fc", package = "pair" }
 rand                   = "0.9.1"
 rand_chacha            = "0.9.0"

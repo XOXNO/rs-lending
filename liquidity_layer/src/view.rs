@@ -79,8 +79,8 @@ pub trait ViewModule:
     /// Indicates accumulated interest awaiting index updates.
     /// Larger deltas mean more pending interest calculations.
     #[view(deltaTime)]
-    fn delta_time(&self) -> u64 {
-        self.blockchain().get_block_timestamp_ms() - self.last_timestamp().get()
+    fn delta_time(&self) -> DurationMillis {
+        self.blockchain().get_block_timestamp_millis() - self.last_timestamp().get()
     }
 
     /// Returns accumulated protocol revenue value in asset decimals.

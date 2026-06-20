@@ -65,12 +65,13 @@ fn multiply_strategy_success_payment_as_collateral_flow() {
     // Supplier provides XEGLD liquidity with E-Mode category 1
     state.supply_asset(
         &supplier,
-        XEGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::Some(1), // E-Mode category 1
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::Some(1),
+        },
     );
     state.assert_collateral_raw_eq(
         1,
@@ -80,12 +81,13 @@ fn multiply_strategy_success_payment_as_collateral_flow() {
     );
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::Some(1), // E-Mode category 1
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::Some(1),
+        },
     );
     state.assert_collateral_raw_eq(
         1,
@@ -104,14 +106,16 @@ fn multiply_strategy_success_payment_as_collateral_flow() {
     let wanted_debt = BigUint::from(100u64) * BigUint::from(WAD);
     state.multiply(
         &borrower,
-        1,
-        &EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
-        wanted_debt.clone(),
-        &EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
-        PositionMode::Multiply,
-        steps,
-        OptionalValue::None,
-        payments,
+        MultiplyParams {
+            e_mode_category: 1,
+            collateral_token: EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
+            debt_to_flash_loan: wanted_debt.clone(),
+            debt_token: EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
+            mode: PositionMode::Multiply,
+            steps,
+            steps_payment: OptionalValue::None,
+            payments,
+        },
     );
 
     state.assert_borrow_raw_eq(
@@ -122,7 +126,7 @@ fn multiply_strategy_success_payment_as_collateral_flow() {
     );
     let market_revenue = state.market_revenue(state.egld_market.clone());
     assert_eq!(
-        market_revenue.into_raw_units().clone(),
+        market_revenue.as_raw_units().clone(),
         BigUint::from(WAD) / 2u64
     );
 }
@@ -139,12 +143,13 @@ fn multiply_strategy_success_payment_as_debt_flow() {
     // Supplier provides XEGLD liquidity with E-Mode category 1
     state.supply_asset(
         &supplier,
-        XEGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::Some(1), // E-Mode category 1
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::Some(1),
+        },
     );
     state.assert_collateral_raw_eq(
         1,
@@ -154,12 +159,13 @@ fn multiply_strategy_success_payment_as_debt_flow() {
     );
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::Some(1), // E-Mode category 1
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::Some(1),
+        },
     );
     state.assert_collateral_raw_eq(
         1,
@@ -178,14 +184,16 @@ fn multiply_strategy_success_payment_as_debt_flow() {
     let wanted_debt = BigUint::from(80u64) * BigUint::from(WAD);
     state.multiply(
         &borrower,
-        1,
-        &EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
-        wanted_debt.clone(),
-        &EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
-        PositionMode::Multiply,
-        steps,
-        OptionalValue::None,
-        payments,
+        MultiplyParams {
+            e_mode_category: 1,
+            collateral_token: EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
+            debt_to_flash_loan: wanted_debt.clone(),
+            debt_token: EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
+            mode: PositionMode::Multiply,
+            steps,
+            steps_payment: OptionalValue::None,
+            payments,
+        },
     );
 
     state.assert_borrow_raw_eq(
@@ -208,21 +216,23 @@ fn multiply_strategy_success_payment_as_random_token_flow() {
     // Supplier provides XEGLD liquidity with E-Mode category 1
     state.supply_asset(
         &supplier,
-        XEGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::Some(1), // E-Mode category 1
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::Some(1),
+        },
     );
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::Some(1), // E-Mode category 1
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::Some(1),
+        },
     );
 
     // Borrower supplies EGLD as collateral with E-Mode category 1
@@ -247,18 +257,20 @@ fn multiply_strategy_success_payment_as_random_token_flow() {
     let wanted_debt = BigUint::from(80u64) * BigUint::from(WAD);
     state.multiply(
         &borrower,
-        1,
-        &EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
-        wanted_debt.clone(),
-        &EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
-        PositionMode::Multiply,
-        steps,
-        OptionalValue::Some(steps_last),
-        payments,
+        MultiplyParams {
+            e_mode_category: 1,
+            collateral_token: EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
+            debt_to_flash_loan: wanted_debt.clone(),
+            debt_token: EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
+            mode: PositionMode::Multiply,
+            steps,
+            steps_payment: OptionalValue::Some(steps_last),
+            payments,
+        },
     );
 
     let total_debt = state.borrow_amount_for_token(2, EGLD_TOKEN);
-    assert_eq!(total_debt.into_raw_units().clone(), wanted_debt);
+    assert_eq!(total_debt.as_raw_units().clone(), wanted_debt);
 }
 
 #[test]
@@ -273,21 +285,23 @@ fn multiply_strategy_success_payment_as_collateral_flow_increase_leverage() {
     // Supplier provides XEGLD liquidity with E-Mode category 1
     state.supply_asset(
         &supplier,
-        XEGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::Some(1), // E-Mode category 1
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::Some(1),
+        },
     );
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(200u64),
-        EGLD_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::Some(1), // E-Mode category 1
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(200u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::Some(1),
+        },
     );
 
     // Borrower supplies EGLD as collateral with E-Mode category 1
@@ -306,35 +320,39 @@ fn multiply_strategy_success_payment_as_collateral_flow_increase_leverage() {
     let wanted_debt = BigUint::from(100u64) * BigUint::from(WAD);
     state.multiply(
         &borrower,
-        1,
-        &EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
-        wanted_debt.clone(),
-        &EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
-        PositionMode::Multiply,
-        steps.clone(),
-        OptionalValue::None,
-        payments,
+        MultiplyParams {
+            e_mode_category: 1,
+            collateral_token: EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
+            debt_to_flash_loan: wanted_debt.clone(),
+            debt_token: EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
+            mode: PositionMode::Multiply,
+            steps: steps.clone(),
+            steps_payment: OptionalValue::None,
+            payments,
+        },
     );
 
     let total_debt = state.borrow_amount_for_token(2, EGLD_TOKEN);
-    assert_eq!(total_debt.into_raw_units().clone(), wanted_debt);
+    assert_eq!(total_debt.as_raw_units().clone(), wanted_debt);
     let market_revenue = state.market_revenue(state.egld_market.clone());
     assert_eq!(
-        market_revenue.into_raw_units().clone(),
+        market_revenue.as_raw_units().clone(),
         BigUint::from(WAD) / 2u64
     );
 
     let nft_payment = account_nft_payment(2);
     state.multiply(
         &borrower,
-        1,
-        &EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
-        wanted_debt.clone(),
-        &EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
-        PositionMode::Multiply,
-        steps,
-        OptionalValue::None,
-        nft_payment,
+        MultiplyParams {
+            e_mode_category: 1,
+            collateral_token: EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
+            debt_to_flash_loan: wanted_debt.clone(),
+            debt_token: EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
+            mode: PositionMode::Multiply,
+            steps,
+            steps_payment: OptionalValue::None,
+            payments: nft_payment,
+        },
     );
 }
 
@@ -365,14 +383,16 @@ fn multiply_strategy_invalid_mode_error() {
     // Use PositionMode::Normal which is not allowed for multiply
     state.multiply_error(
         &borrower,
-        1,
-        &EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
-        BigUint::from(80u64) * BigUint::from(WAD),
-        &EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
-        PositionMode::Normal,
-        steps,
-        OptionalValue::None,
-        payments,
+        MultiplyParams {
+            e_mode_category: 1,
+            collateral_token: EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
+            debt_to_flash_loan: BigUint::from(80u64) * BigUint::from(WAD),
+            debt_token: EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
+            mode: PositionMode::Normal,
+            steps,
+            steps_payment: OptionalValue::None,
+            payments,
+        },
         ERROR_INVALID_POSITION_MODE,
     );
 }
@@ -389,21 +409,23 @@ fn swap_debt() {
     // Supplier provides XEGLD liquidity with E-Mode category 1
     state.supply_asset(
         &supplier,
-        XEGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::Some(1), // E-Mode category 1
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::Some(1),
+        },
     );
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(200u64),
-        EGLD_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::Some(1), // E-Mode category 1
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(200u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::Some(1),
+        },
     );
 
     // Borrower supplies EGLD as collateral with E-Mode category 1
@@ -422,21 +444,23 @@ fn swap_debt() {
     let wanted_debt = BigUint::from(100u64) * BigUint::from(WAD);
     state.multiply(
         &borrower,
-        1,
-        &EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
-        wanted_debt.clone(),
-        &EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
-        PositionMode::Multiply,
-        steps.clone(),
-        OptionalValue::None,
-        payments,
+        MultiplyParams {
+            e_mode_category: 1,
+            collateral_token: EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
+            debt_to_flash_loan: wanted_debt.clone(),
+            debt_token: EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
+            mode: PositionMode::Multiply,
+            steps: steps.clone(),
+            steps_payment: OptionalValue::None,
+            payments,
+        },
     );
 
     let total_debt = state.borrow_amount_for_token(2, EGLD_TOKEN);
-    assert_eq!(total_debt.into_raw_units().clone(), wanted_debt);
+    assert_eq!(total_debt.as_raw_units().clone(), wanted_debt);
     let market_revenue = state.market_revenue(state.egld_market.clone());
     assert_eq!(
-        market_revenue.into_raw_units().clone(),
+        market_revenue.as_raw_units().clone(),
         BigUint::from(WAD) / 2u64
     );
 
@@ -448,14 +472,16 @@ fn swap_debt() {
     ));
     state.multiply(
         &borrower,
-        1,
-        &EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
-        wanted_debt.clone(),
-        &EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
-        PositionMode::Multiply,
-        steps,
-        OptionalValue::None,
-        nft_payment.clone(),
+        MultiplyParams {
+            e_mode_category: 1,
+            collateral_token: EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
+            debt_to_flash_loan: wanted_debt.clone(),
+            debt_token: EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
+            mode: PositionMode::Multiply,
+            steps,
+            steps_payment: OptionalValue::None,
+            payments: nft_payment.clone(),
+        },
     );
 
     let mut steps_swap = ManagedArgBuffer::<StaticApi>::new();
@@ -485,21 +511,23 @@ fn repay_debt_with_collateral_full_close_position() {
     // Supplier provides XEGLD liquidity with E-Mode category 1
     state.supply_asset(
         &supplier,
-        XEGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::Some(1), // E-Mode category 1
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::Some(1),
+        },
     );
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(200u64),
-        EGLD_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::Some(1), // E-Mode category 1
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(200u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::Some(1),
+        },
     );
 
     // Borrower supplies EGLD as collateral with E-Mode category 1
@@ -518,21 +546,23 @@ fn repay_debt_with_collateral_full_close_position() {
     let wanted_debt = BigUint::from(100u64) * BigUint::from(WAD);
     state.multiply(
         &borrower,
-        1,
-        &EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
-        wanted_debt.clone(),
-        &EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
-        PositionMode::Multiply,
-        steps.clone(),
-        OptionalValue::None,
-        payments,
+        MultiplyParams {
+            e_mode_category: 1,
+            collateral_token: EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
+            debt_to_flash_loan: wanted_debt.clone(),
+            debt_token: EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
+            mode: PositionMode::Multiply,
+            steps: steps.clone(),
+            steps_payment: OptionalValue::None,
+            payments,
+        },
     );
 
     let total_debt = state.borrow_amount_for_token(2, EGLD_TOKEN);
-    assert_eq!(total_debt.into_raw_units().clone(), wanted_debt);
+    assert_eq!(total_debt.as_raw_units().clone(), wanted_debt);
     let market_revenue = state.market_revenue(state.egld_market.clone());
     assert_eq!(
-        market_revenue.into_raw_units().clone(),
+        market_revenue.as_raw_units().clone(),
         BigUint::from(WAD) / 2u64
     );
 
@@ -544,14 +574,16 @@ fn repay_debt_with_collateral_full_close_position() {
     ));
     state.multiply(
         &borrower,
-        1,
-        &EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
-        wanted_debt.clone(),
-        &EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
-        PositionMode::Multiply,
-        steps,
-        OptionalValue::None,
-        nft_payment.clone(),
+        MultiplyParams {
+            e_mode_category: 1,
+            collateral_token: EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
+            debt_to_flash_loan: wanted_debt.clone(),
+            debt_token: EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
+            mode: PositionMode::Multiply,
+            steps,
+            steps_payment: OptionalValue::None,
+            payments: nft_payment.clone(),
+        },
     );
     let total_debt = state.borrow_amount_for_token(2, EGLD_TOKEN);
     println!("total_debt: {total_debt:?}");
@@ -559,7 +591,7 @@ fn repay_debt_with_collateral_full_close_position() {
     steps_swap.push_arg(EgldOrEsdtTokenIdentifier::<StaticApi>::from(
         EGLD_TOKEN.as_bytes(),
     ));
-    steps_swap.push_arg(total_debt.into_raw_units().clone());
+    steps_swap.push_arg(total_debt.as_raw_units().clone());
     state.swap_debt(
         &borrower,
         &EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
@@ -576,15 +608,17 @@ fn repay_debt_with_collateral_full_close_position() {
     repay_steps.push_arg(EgldOrEsdtTokenIdentifier::<StaticApi>::from(
         XEGLD_TOKEN.as_bytes(),
     ));
-    repay_steps.push_arg(total_debt.into_raw_units().clone());
+    repay_steps.push_arg(total_debt.as_raw_units().clone());
     state.repay_debt_with_collateral(
         &borrower,
-        &EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
-        total_collateral.into_raw_units().clone() - 1u64,
-        &EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
-        true,
-        OptionalValue::Some(repay_steps),
-        nft_payment,
+        RepayWithCollateralParams {
+            from_token: EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
+            from_amount: total_collateral.as_raw_units().clone() - 1u64,
+            to_token: EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
+            close_position: true,
+            steps: OptionalValue::Some(repay_steps),
+            account_payment: nft_payment,
+        },
     );
 }
 
@@ -600,21 +634,23 @@ fn repay_debt_with_collateral_partial() {
     // Supplier provides XEGLD liquidity with E-Mode category 1
     state.supply_asset(
         &supplier,
-        XEGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::Some(1), // E-Mode category 1
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::Some(1),
+        },
     );
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(200u64),
-        EGLD_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::Some(1), // E-Mode category 1
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(200u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::Some(1),
+        },
     );
 
     // Borrower supplies EGLD as collateral with E-Mode category 1
@@ -633,21 +669,23 @@ fn repay_debt_with_collateral_partial() {
     let wanted_debt = BigUint::from(100u64) * BigUint::from(WAD);
     state.multiply(
         &borrower,
-        1,
-        &EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
-        wanted_debt.clone(),
-        &EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
-        PositionMode::Multiply,
-        steps.clone(),
-        OptionalValue::None,
-        payments,
+        MultiplyParams {
+            e_mode_category: 1,
+            collateral_token: EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
+            debt_to_flash_loan: wanted_debt.clone(),
+            debt_token: EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
+            mode: PositionMode::Multiply,
+            steps: steps.clone(),
+            steps_payment: OptionalValue::None,
+            payments,
+        },
     );
 
     let total_debt = state.borrow_amount_for_token(2, EGLD_TOKEN);
-    assert_eq!(total_debt.into_raw_units().clone(), wanted_debt);
+    assert_eq!(total_debt.as_raw_units().clone(), wanted_debt);
     let market_revenue = state.market_revenue(state.egld_market.clone());
     assert_eq!(
-        market_revenue.into_raw_units().clone(),
+        market_revenue.as_raw_units().clone(),
         BigUint::from(WAD) / 2u64
     );
 
@@ -659,14 +697,16 @@ fn repay_debt_with_collateral_partial() {
     ));
     state.multiply(
         &borrower,
-        1,
-        &EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
-        wanted_debt.clone(),
-        &EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
-        PositionMode::Multiply,
-        steps,
-        OptionalValue::None,
-        nft_payment.clone(),
+        MultiplyParams {
+            e_mode_category: 1,
+            collateral_token: EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
+            debt_to_flash_loan: wanted_debt.clone(),
+            debt_token: EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
+            mode: PositionMode::Multiply,
+            steps,
+            steps_payment: OptionalValue::None,
+            payments: nft_payment.clone(),
+        },
     );
     let total_debt = state.borrow_amount_for_token(2, EGLD_TOKEN);
     println!("total_debt: {total_debt:?}");
@@ -674,7 +714,7 @@ fn repay_debt_with_collateral_partial() {
     steps_swap.push_arg(EgldOrEsdtTokenIdentifier::<StaticApi>::from(
         EGLD_TOKEN.as_bytes(),
     ));
-    steps_swap.push_arg(total_debt.into_raw_units().clone());
+    steps_swap.push_arg(total_debt.as_raw_units().clone());
     state.swap_debt(
         &borrower,
         &EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
@@ -691,15 +731,17 @@ fn repay_debt_with_collateral_partial() {
     repay_steps.push_arg(EgldOrEsdtTokenIdentifier::<StaticApi>::from(
         XEGLD_TOKEN.as_bytes(),
     ));
-    repay_steps.push_arg(total_debt.into_raw_units().clone() / 5u64);
+    repay_steps.push_arg(total_debt.as_raw_units().clone() / 5u64);
     state.repay_debt_with_collateral(
         &borrower,
-        &EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
-        total_collateral.into_raw_units().clone() / 5u64,
-        &EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
-        false,
-        OptionalValue::Some(repay_steps),
-        nft_payment,
+        RepayWithCollateralParams {
+            from_token: EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
+            from_amount: total_collateral.as_raw_units().clone() / 5u64,
+            to_token: EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
+            close_position: false,
+            steps: OptionalValue::Some(repay_steps),
+            account_payment: nft_payment,
+        },
     );
 }
 
@@ -715,21 +757,23 @@ fn swap_collateral() {
     // Supplier provides XEGLD liquidity with E-Mode category 1
     state.supply_asset(
         &supplier,
-        XEGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::Some(1), // E-Mode category 1
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::Some(1),
+        },
     );
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(200u64),
-        EGLD_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::Some(1), // E-Mode category 1
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(200u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::Some(1),
+        },
     );
 
     // Borrower supplies EGLD as collateral with E-Mode category 1
@@ -748,21 +792,23 @@ fn swap_collateral() {
     let wanted_debt = BigUint::from(100u64) * BigUint::from(WAD);
     state.multiply(
         &borrower,
-        1,
-        &EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
-        wanted_debt.clone(),
-        &EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
-        PositionMode::Multiply,
-        steps.clone(),
-        OptionalValue::None,
-        payments,
+        MultiplyParams {
+            e_mode_category: 1,
+            collateral_token: EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
+            debt_to_flash_loan: wanted_debt.clone(),
+            debt_token: EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
+            mode: PositionMode::Multiply,
+            steps: steps.clone(),
+            steps_payment: OptionalValue::None,
+            payments,
+        },
     );
 
     let total_debt = state.borrow_amount_for_token(2, EGLD_TOKEN);
-    assert_eq!(total_debt.into_raw_units().clone(), wanted_debt);
+    assert_eq!(total_debt.as_raw_units().clone(), wanted_debt);
     let market_revenue = state.market_revenue(state.egld_market.clone());
     assert_eq!(
-        market_revenue.into_raw_units().clone(),
+        market_revenue.as_raw_units().clone(),
         BigUint::from(WAD) / 2u64
     );
 
@@ -774,14 +820,16 @@ fn swap_collateral() {
     ));
     state.multiply(
         &borrower,
-        1,
-        &EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
-        wanted_debt.clone(),
-        &EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
-        PositionMode::Multiply,
-        steps,
-        OptionalValue::None,
-        nft_payment.clone(),
+        MultiplyParams {
+            e_mode_category: 1,
+            collateral_token: EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
+            debt_to_flash_loan: wanted_debt.clone(),
+            debt_token: EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
+            mode: PositionMode::Multiply,
+            steps,
+            steps_payment: OptionalValue::None,
+            payments: nft_payment.clone(),
+        },
     );
 
     let mut steps_swap = ManagedArgBuffer::<StaticApi>::new();
@@ -793,7 +841,7 @@ fn swap_collateral() {
     state.swap_collateral(
         &borrower,
         &EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
-        total_collateral.into_raw_units().clone() / 5u64,
+        total_collateral.as_raw_units().clone() / 5u64,
         &EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
         steps_swap,
         nft_payment,
@@ -832,11 +880,13 @@ fn swap_debt_missing_account_nft_error() {
     // Expect error because account NFT is required but first payment is not the NFT
     state.swap_debt_error(
         &borrower,
-        &EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
-        &new_debt_amount_raw,
-        &EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
-        steps,
-        wrong_payment,
+        SwapDebtParams {
+            existing_debt_token: EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
+            new_debt_amount_raw,
+            new_debt_token: EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
+            steps,
+            account_payment: wrong_payment,
+        },
         ERROR_INVALID_NUMBER_OF_ESDT_TRANSFERS,
     );
 }
@@ -870,14 +920,16 @@ fn multiply_random_payment_missing_steps_error() {
     // Missing steps_payment on purpose to trigger the require
     state.multiply_error(
         &borrower,
-        1,
-        &EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
-        BigUint::from(80u64) * BigUint::from(WAD),
-        &EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
-        PositionMode::Multiply,
-        steps,
-        OptionalValue::None, // missing extra steps for random payment
-        payments,
+        MultiplyParams {
+            e_mode_category: 1,
+            collateral_token: EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
+            debt_to_flash_loan: BigUint::from(80u64) * BigUint::from(WAD),
+            debt_token: EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
+            mode: PositionMode::Multiply,
+            steps,
+            steps_payment: OptionalValue::None,
+            payments,
+        },
         ERROR_MULTIPLY_REQUIRE_EXTRA_STEPS,
     );
 }
@@ -896,12 +948,13 @@ fn swap_debt_same_token_error() {
     // Create a simple account for borrower to obtain NFT
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(1u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(1u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Build NFT payment (account nonce = 1 as first minted for borrower)
@@ -922,11 +975,13 @@ fn swap_debt_same_token_error() {
     // existing_debt_token == new_debt_token triggers error
     state.swap_debt_error(
         &borrower,
-        &EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
-        &(BigUint::from(1u64) * BigUint::from(WAD)),
-        &EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
-        steps,
-        nft_payment,
+        SwapDebtParams {
+            existing_debt_token: EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
+            new_debt_amount_raw: (BigUint::from(1u64) * BigUint::from(WAD)),
+            new_debt_token: EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
+            steps,
+            account_payment: nft_payment,
+        },
         ERROR_SWAP_DEBT_NOT_SUPPORTED,
     );
 }
@@ -944,12 +999,13 @@ fn swap_debt_with_siloed_token_error() {
     // Create account for borrower
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(1u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(1u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     let mut nft_payment = ManagedVec::<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>::new();
@@ -968,11 +1024,13 @@ fn swap_debt_with_siloed_token_error() {
     // Using a siloed token as new debt triggers the siloed check
     state.swap_debt_error(
         &borrower,
-        &EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
-        &(BigUint::from(1u64) * BigUint::from(WAD)),
-        &EgldOrEsdtTokenIdentifier::from(SILOED_TOKEN.as_bytes()),
-        steps,
-        nft_payment,
+        SwapDebtParams {
+            existing_debt_token: EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
+            new_debt_amount_raw: (BigUint::from(1u64) * BigUint::from(WAD)),
+            new_debt_token: EgldOrEsdtTokenIdentifier::from(SILOED_TOKEN.as_bytes()),
+            steps,
+            account_payment: nft_payment,
+        },
         ERROR_SWAP_DEBT_NOT_SUPPORTED,
     );
 }
@@ -990,12 +1048,13 @@ fn swap_collateral_same_token_error() {
     // Create account for borrower
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(1u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(1u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     let mut nft_payment = ManagedVec::<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>::new();
@@ -1014,11 +1073,13 @@ fn swap_collateral_same_token_error() {
     // Same asset for current and new triggers ERROR_ASSETS_ARE_THE_SAME
     state.swap_collateral_error(
         &borrower,
-        &EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
-        BigUint::from(1u64) * BigUint::from(WAD),
-        &EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
-        steps,
-        nft_payment,
+        SwapCollateralParams {
+            current_collateral: EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
+            from_amount: BigUint::from(1u64) * BigUint::from(WAD),
+            new_collateral: EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
+            steps,
+            account_payment: nft_payment,
+        },
         ERROR_ASSETS_ARE_THE_SAME,
     );
 }
@@ -1036,12 +1097,13 @@ fn swap_collateral_isolated_account_error() {
     // Create isolated account by supplying isolated asset
     state.supply_asset(
         &borrower,
-        ISOLATED_TOKEN,
-        BigUint::from(1u64),
-        ISOLATED_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: ISOLATED_TOKEN,
+            amount: BigUint::from(1u64),
+            asset_decimals: ISOLATED_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     let mut nft_payment = ManagedVec::<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>::new();
@@ -1060,11 +1122,13 @@ fn swap_collateral_isolated_account_error() {
     // Different assets but isolated account should still fail
     state.swap_collateral_error(
         &borrower,
-        &EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
-        BigUint::from(1u64) * BigUint::from(WAD),
-        &EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
-        steps,
-        nft_payment,
+        SwapCollateralParams {
+            current_collateral: EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
+            from_amount: BigUint::from(1u64) * BigUint::from(WAD),
+            new_collateral: EgldOrEsdtTokenIdentifier::from(XEGLD_TOKEN.as_bytes()),
+            steps,
+            account_payment: nft_payment,
+        },
         ERROR_SWAP_COLLATERAL_NOT_SUPPORTED,
     );
 }
@@ -1082,12 +1146,13 @@ fn swap_collateral_target_isolated_asset_error() {
     // Create regular (non-isolated) account
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(1u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(1u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     let mut nft_payment = ManagedVec::<StaticApi, EgldOrEsdtTokenPayment<StaticApi>>::new();
@@ -1106,11 +1171,13 @@ fn swap_collateral_target_isolated_asset_error() {
     // Swapping to an isolated asset should be blocked
     state.swap_collateral_error(
         &borrower,
-        &EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
-        BigUint::from(1u64) * BigUint::from(WAD),
-        &EgldOrEsdtTokenIdentifier::from(ISOLATED_TOKEN.as_bytes()),
-        steps,
-        nft_payment,
+        SwapCollateralParams {
+            current_collateral: EgldOrEsdtTokenIdentifier::from(EGLD_TOKEN.as_bytes()),
+            from_amount: BigUint::from(1u64) * BigUint::from(WAD),
+            new_collateral: EgldOrEsdtTokenIdentifier::from(ISOLATED_TOKEN.as_bytes()),
+            steps,
+            account_payment: nft_payment,
+        },
         ERROR_SWAP_COLLATERAL_NOT_SUPPORTED,
     );
 }

@@ -23,13 +23,13 @@ pub trait StorageModule {
     fn first_submission_timestamp(
         &self,
         token_pair: &TokenPair<Self::Api>,
-    ) -> SingleValueMapper<u64>;
+    ) -> SingleValueMapper<TimestampSeconds>;
 
     #[storage_mapper("last_submission_timestamp")]
     fn last_submission_timestamp(
         &self,
         token_pair: &TokenPair<Self::Api>,
-    ) -> SingleValueMapper<u64>;
+    ) -> SingleValueMapper<TimestampSeconds>;
 
     #[storage_mapper("submissions")]
     fn submissions(

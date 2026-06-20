@@ -29,23 +29,25 @@ fn emode_supply_and_borrow_same_category_success() {
     // Supplier provides XEGLD liquidity with E-Mode category 1
     state.supply_asset(
         &supplier,
-        XEGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::Some(1), // E-Mode category 1
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::Some(1),
+        },
     );
 
     // Borrower supplies EGLD as collateral with E-Mode category 1
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::Some(1), // E-Mode category 1
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::Some(1),
+        },
     );
 
     // Borrower takes XEGLD loan (compatible in same E-Mode)
@@ -82,12 +84,13 @@ fn emode_supply_incompatible_asset_category_error() {
     // Attempt to supply USDC with E-Mode category 1 (USDC not compatible)
     state.supply_asset_error(
         &borrower,
-        USDC_TOKEN,
-        BigUint::from(100u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::Some(1), // E-Mode category 1 doesn't support USDC
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::Some(1),
+        },
         ERROR_EMODE_CATEGORY_NOT_FOUND,
     );
 }
@@ -110,12 +113,13 @@ fn emode_borrow_with_isolated_collateral_error() {
     // Borrower supplies isolated asset as collateral
     state.supply_asset(
         &borrower,
-        ISOLATED_TOKEN,
-        BigUint::from(1000u64),
-        ISOLATED_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: ISOLATED_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: ISOLATED_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Attempt to borrow EGLD (not allowed with isolated collateral)
@@ -146,12 +150,13 @@ fn emode_borrow_asset_outside_category_error() {
     // Borrower supplies EGLD with E-Mode category 1
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::Some(1), // E-Mode category 1
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::Some(1),
+        },
     );
 
     // Attempt to borrow USDC (not in E-Mode category 1)
@@ -182,12 +187,13 @@ fn emode_borrow_non_borrowable_asset_error() {
     // Borrower supplies EGLD with E-Mode category 1
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::Some(1), // E-Mode category 1
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::Some(1),
+        },
     );
 
     // Attempt to borrow LEGLD (not borrowable)

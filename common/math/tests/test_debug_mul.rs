@@ -24,7 +24,7 @@ fn debug_mul_test() {
     let result = tester.mul_half_up(&a, &b, 2);
 
     println!("result = {} (scale {})", result, result.scale());
-    println!("result raw = {:?}", result.into_raw_units());
+    println!("result raw = {:?}", result.as_raw_units());
 
     // Manual calculation:
     // 1.234 * 5.6 = 6.9104

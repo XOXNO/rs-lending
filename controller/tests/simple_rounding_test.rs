@@ -64,7 +64,7 @@ fn rounding_precision_stays_stable_for_dust_flows() {
     );
 
     let borrow_after_year = state.borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
-    let interest_wei = borrow_after_year.into_raw_units() - initial_borrow.into_raw_units();
+    let interest_wei = borrow_after_year.as_raw_units() - initial_borrow.as_raw_units();
 
     state.assert_borrow_raw_eq(
         borrower_nonce,
@@ -84,7 +84,7 @@ fn rounding_precision_stays_stable_for_dust_flows() {
     state.repay_asset(
         &borrower,
         &USDC_TOKEN,
-        borrow_after_year.into_raw_units().clone(),
+        borrow_after_year.as_raw_units().clone(),
         borrower_nonce,
         USDC_DECIMALS,
     );
@@ -102,10 +102,10 @@ fn rounding_precision_stays_stable_for_dust_flows() {
         state.repay_asset_deno(
             &borrower,
             &USDC_TOKEN,
-            debt.into_raw_units().clone(),
+            debt.as_raw_units().clone(),
             borrower_nonce,
         );
-        let interest = debt.into_raw_units().clone() - BigUint::from(1_000_000u64);
+        let interest = debt.as_raw_units().clone() - BigUint::from(1_000_000u64);
         total_interest_paid += interest;
     }
     assert!(
@@ -132,8 +132,8 @@ fn rounding_precision_stays_stable_for_dust_flows() {
         BigUint::from(2_000u64),
         "Supplier balance should only earn minimal interest",
     );
-    assert!(revenue.into_raw_units() <= &BigUint::from(1_000u64));
-    assert!(reserves.into_raw_units() >= &scaled_amount(10_000, USDC_DECIMALS));
+    assert!(revenue.as_raw_units() <= &BigUint::from(1_000u64));
+    assert!(reserves.as_raw_units() >= &scaled_amount(10_000, USDC_DECIMALS));
     state.assert_no_borrow_entry(borrower_nonce, &USDC_TOKEN);
     state.assert_no_borrow_entry(borrower_nonce, &EGLD_TOKEN);
 }

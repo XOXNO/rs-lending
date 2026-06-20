@@ -52,6 +52,30 @@ pub enum PositionMode {
     Short,
 }
 
+/// PositionRiskParams groups the risk parameters captured on a position at entry.
+///
+/// - `liquidation_threshold_bps`: The liquidation threshold at entry.
+/// - `liquidation_bonus_bps`: The liquidation bonus at entry.
+/// - `liquidation_fees_bps`: The liquidation fees at entry.
+/// - `loan_to_value_bps`: The loan-to-value ratio at entry.
+pub struct PositionRiskParams<M: ManagedTypeApi> {
+    pub liquidation_threshold_bps: ManagedDecimal<M, NumDecimals>,
+    pub liquidation_bonus_bps: ManagedDecimal<M, NumDecimals>,
+    pub liquidation_fees_bps: ManagedDecimal<M, NumDecimals>,
+    pub loan_to_value_bps: ManagedDecimal<M, NumDecimals>,
+}
+
+impl<M: ManagedTypeApi> From<&AssetConfig<M>> for PositionRiskParams<M> {
+    fn from(config: &AssetConfig<M>) -> Self {
+        PositionRiskParams {
+            liquidation_threshold_bps: config.liquidation_threshold_bps.clone(),
+            liquidation_bonus_bps: config.liquidation_bonus_bps.clone(),
+            liquidation_fees_bps: config.liquidation_fees_bps.clone(),
+            loan_to_value_bps: config.loan_to_value_bps.clone(),
+        }
+    }
+}
+
 /// AccountPosition represents a user's position in the liquidity pool.
 /// It is part of each NFT managed by the protocol and includes details such as:
 /// - The position type (Deposit or Borrow).
@@ -95,20 +119,17 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
         asset_id: EgldOrEsdtTokenIdentifier<M>,
         scaled_amount_ray: ManagedDecimal<M, NumDecimals>,
         account_nonce: u64,
-        liquidation_threshold_bps: ManagedDecimal<M, NumDecimals>,
-        liquidation_bonus_bps: ManagedDecimal<M, NumDecimals>,
-        liquidation_fees_bps: ManagedDecimal<M, NumDecimals>,
-        loan_to_value_bps: ManagedDecimal<M, NumDecimals>,
+        risk_params: PositionRiskParams<M>,
     ) -> Self {
         AccountPosition {
             position_type,
             asset_id,
             scaled_amount_ray,
             account_nonce,
-            liquidation_threshold_bps,
-            liquidation_bonus_bps,
-            liquidation_fees_bps,
-            loan_to_value_bps,
+            liquidation_threshold_bps: risk_params.liquidation_threshold_bps,
+            liquidation_bonus_bps: risk_params.liquidation_bonus_bps,
+            liquidation_fees_bps: risk_params.liquidation_fees_bps,
+            loan_to_value_bps: risk_params.loan_to_value_bps,
         }
     }
 
@@ -131,7 +152,7 @@ impl<M: ManagedTypeApi> AccountPosition<M> {
     /// Checks if position can be removed (has zero balance).
     /// Used for cleanup and position management.
     pub fn can_remove(&self) -> bool {
-        self.scaled_amount_ray.into_raw_units().eq(&BigUint::zero())
+        self.scaled_amount_ray.as_raw_units().eq(&BigUint::zero())
     }
 }
 
@@ -370,7 +391,7 @@ pub struct OracleProvider<M: ManagedTypeApi> {
     pub exchange_source: ExchangeSource,
     pub asset_decimals: usize,
     pub onedex_pair_id: usize,
-    pub max_price_stale_seconds: u64,
+    pub max_price_stale_seconds: DurationSeconds,
 }
 /// PriceFeedShort provides a compact representation of a token's price,
 /// including the price value and the number of asset_decimals used.
@@ -412,6 +433,29 @@ pub struct MarketIndexView<M: ManagedTypeApi> {
     pub safe_price_usd_wad: ManagedDecimal<M, NumDecimals>,
     pub aggregator_price_egld_wad: ManagedDecimal<M, NumDecimals>,
     pub aggregator_price_usd_wad: ManagedDecimal<M, NumDecimals>,
+    pub within_first_tolerance: bool,
+    pub within_second_tolerance: bool,
+}
+
+/// MarketIndexExtendedView augments `MarketIndexView` with aggregator staleness
+/// data. Exposed by `getAllMarketIndexesExtended` so the base view stays
+/// wire-compatible with existing consumers.
+#[type_abi]
+#[derive(ManagedVecItem, TopEncode, TopDecode, NestedEncode, NestedDecode, Clone)]
+pub struct MarketIndexExtendedView<M: ManagedTypeApi> {
+    pub asset_id: EgldOrEsdtTokenIdentifier<M>,
+    pub supply_index_ray: ManagedDecimal<M, NumDecimals>,
+    pub borrow_index_ray: ManagedDecimal<M, NumDecimals>,
+    pub egld_price_wad: ManagedDecimal<M, NumDecimals>,
+    pub usd_price_wad: ManagedDecimal<M, NumDecimals>,
+    pub safe_price_egld_wad: ManagedDecimal<M, NumDecimals>,
+    pub safe_price_usd_wad: ManagedDecimal<M, NumDecimals>,
+    pub aggregator_price_egld_wad: ManagedDecimal<M, NumDecimals>,
+    pub aggregator_price_usd_wad: ManagedDecimal<M, NumDecimals>,
+    /// Aggregator feed timestamp (Unix seconds). 0 when no aggregator feed applies.
+    pub aggregator_timestamp_secs: TimestampSeconds,
+    /// Mirrors the protocol staleness gate (`max_price_stale_seconds`).
+    pub is_stale: bool,
     pub within_first_tolerance: bool,
     pub within_second_tolerance: bool,
 }

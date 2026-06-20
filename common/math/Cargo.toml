@@ -8,13 +8,13 @@ edition = "2021"
 path = "src/math.rs"
 
 [dependencies.multiversx-sc]
-version = "0.59.0"
+version = "0.66.1"
 
 [dependencies.common-constants]
 path = "../constants"
 
 [dev-dependencies]
-multiversx-sc-scenario = { version = "0.59.0" }
+multiversx-sc-scenario = { version = "0.66.1" }
 
 [[test]]
 name = "test_individual_functions"

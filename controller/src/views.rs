@@ -1,6 +1,7 @@
 use common_constants::{BPS_PRECISION, WAD_PRECISION};
 use common_structs::{
-    AccountPositionType, AssetExtendedConfigView, LiquidationEstimate, MarketIndexView,
+    AccountPositionType, AssetExtendedConfigView, LiquidationEstimate, MarketIndexExtendedView,
+    MarketIndexView,
 };
 
 use crate::{cache::Cache, helpers, oracle, positions, storage, utils, validation};
@@ -47,7 +48,7 @@ pub trait ViewsModule:
         self.require_active_account(account_nonce);
 
         let (collaterals, _, refunds, max_egld_payment_ray, bonus_rate_ray) =
-            self.execute_liquidation(account_nonce, debt_payments, &mut cache);
+            self.execute_liquidation(account_nonce, debt_payments, true, &mut cache);
 
         let mut seized_collaterals = ManagedVec::new();
         let mut protocol_fees = ManagedVec::new();
@@ -61,7 +62,7 @@ pub trait ViewsModule:
             let protocol_fees_view = EgldOrEsdtTokenPayment::new(
                 seized_collateral.token_identifier,
                 seized_collateral.token_nonce,
-                fees.into_raw_units().clone(),
+                fees.as_raw_units().clone(),
             );
             seized_collaterals.push(collateral_view);
             protocol_fees.push(protocol_fees_view);
@@ -92,46 +93,103 @@ pub trait ViewsModule:
         assets: MultiValueEncoded<EgldOrEsdtTokenIdentifier>,
     ) -> ManagedVec<MarketIndexView<Self::Api>> {
         let mut cache = Cache::new(self);
-        // Views allow unsafe prices to show monitoring data even when protocol would block operations
-        // This matches the behavior of operational functions - cache defaults to allow_unsafe_price = true
         let mut markets = ManagedVec::new();
 
         for asset in assets {
-            let indexes = self.update_asset_index(&asset, &mut cache, true);
-
-            // Get price components including safe and aggregator prices
-            let (safe_price, aggregator_price, final_price, within_first, within_second) =
-                self.price_components(&asset, &mut cache);
-
-            let usd_price = self.egld_usd_value(&final_price, &cache.egld_usd_price_wad);
-
-            // Calculate USD prices for safe and aggregator prices if they exist
-            let safe_price_usd = safe_price
-                .as_ref()
-                .map(|price| self.egld_usd_value(price, &cache.egld_usd_price_wad))
-                .unwrap_or(usd_price.clone());
-
-            let aggregator_price_usd = aggregator_price
-                .as_ref()
-                .map(|price| self.egld_usd_value(price, &cache.egld_usd_price_wad))
-                .unwrap_or(usd_price.clone());
-
+            let m = self.build_market_index(asset, &mut cache);
             markets.push(MarketIndexView {
-                asset_id: asset,
-                supply_index_ray: indexes.supply_index_ray,
-                borrow_index_ray: indexes.borrow_index_ray,
-                egld_price_wad: final_price.clone(),
-                usd_price_wad: usd_price,
-                safe_price_egld_wad: safe_price.unwrap_or(final_price.clone()),
-                safe_price_usd_wad: safe_price_usd,
-                aggregator_price_egld_wad: aggregator_price.unwrap_or(final_price),
-                aggregator_price_usd_wad: aggregator_price_usd,
-                within_first_tolerance: within_first,
-                within_second_tolerance: within_second,
+                asset_id: m.asset_id,
+                supply_index_ray: m.supply_index_ray,
+                borrow_index_ray: m.borrow_index_ray,
+                egld_price_wad: m.egld_price_wad,
+                usd_price_wad: m.usd_price_wad,
+                safe_price_egld_wad: m.safe_price_egld_wad,
+                safe_price_usd_wad: m.safe_price_usd_wad,
+                aggregator_price_egld_wad: m.aggregator_price_egld_wad,
+                aggregator_price_usd_wad: m.aggregator_price_usd_wad,
+                within_first_tolerance: m.within_first_tolerance,
+                within_second_tolerance: m.within_second_tolerance,
             });
         }
 
         markets
+    }
+
+    /// Retrieves market indexes and price information plus aggregator staleness.
+    ///
+    /// Purpose: Same monitoring data as `getAllMarketIndexes`, extended with the
+    /// aggregator feed timestamp and staleness flag for consumers that need them.
+    ///
+    /// Arguments
+    /// - `assets`: Asset identifiers to fetch
+    ///
+    /// Returns
+    /// - `ManagedVec<MarketIndexExtendedView>` entries with indices, price data,
+    ///   aggregator timestamp and staleness flag
+    #[view(getAllMarketIndexesExtended)]
+    fn all_market_indexes_extended(
+        &self,
+        assets: MultiValueEncoded<EgldOrEsdtTokenIdentifier>,
+    ) -> ManagedVec<MarketIndexExtendedView<Self::Api>> {
+        let mut cache = Cache::new(self);
+        let mut markets = ManagedVec::new();
+
+        for asset in assets {
+            markets.push(self.build_market_index(asset, &mut cache));
+        }
+
+        markets
+    }
+
+    /// Computes the full market index entry (indices, prices, aggregator
+    /// staleness) for a single asset. Views allow unsafe prices to show
+    /// monitoring data even when the protocol would block operations
+    /// (cache defaults to `allow_unsafe_price = true`).
+    fn build_market_index(
+        &self,
+        asset: EgldOrEsdtTokenIdentifier,
+        cache: &mut Cache<Self>,
+    ) -> MarketIndexExtendedView<Self::Api> {
+        let indexes = self.update_asset_index(&asset, cache, true);
+
+        let (
+            safe_price,
+            aggregator_price,
+            final_price,
+            aggregator_timestamp_secs,
+            is_stale,
+            within_first,
+            within_second,
+        ) = self.price_components(&asset, cache);
+
+        let usd_price = self.egld_usd_value(&final_price, &cache.egld_usd_price_wad);
+
+        // Calculate USD prices for safe and aggregator prices if they exist
+        let safe_price_usd = safe_price
+            .as_ref()
+            .map(|price| self.egld_usd_value(price, &cache.egld_usd_price_wad))
+            .unwrap_or(usd_price.clone());
+
+        let aggregator_price_usd = aggregator_price
+            .as_ref()
+            .map(|price| self.egld_usd_value(price, &cache.egld_usd_price_wad))
+            .unwrap_or(usd_price.clone());
+
+        MarketIndexExtendedView {
+            asset_id: asset,
+            supply_index_ray: indexes.supply_index_ray,
+            borrow_index_ray: indexes.borrow_index_ray,
+            egld_price_wad: final_price.clone(),
+            usd_price_wad: usd_price,
+            safe_price_egld_wad: safe_price.unwrap_or(final_price.clone()),
+            safe_price_usd_wad: safe_price_usd,
+            aggregator_price_egld_wad: aggregator_price.unwrap_or(final_price),
+            aggregator_price_usd_wad: aggregator_price_usd,
+            aggregator_timestamp_secs,
+            is_stale,
+            within_first_tolerance: within_first,
+            within_second_tolerance: within_second,
+        }
     }
 
     /// Retrieves extended configuration views for multiple assets.

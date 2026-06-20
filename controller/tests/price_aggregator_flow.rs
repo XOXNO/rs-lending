@@ -1,6 +1,6 @@
 use multiversx_sc::types::ManagedBuffer;
 use multiversx_sc_scenario::imports::{
-    BigUint, EgldOrEsdtTokenIdentifier, ScenarioTxRun, TestAddress,
+    BigUint, EgldOrEsdtTokenIdentifier, ScenarioTxRun, TestAddress, TimestampSeconds,
 };
 
 pub mod constants;
@@ -29,7 +29,7 @@ fn aggregator_happy_path_and_pause() {
         .submit(
             ManagedBuffer::from(EGLD_TICKER),
             ManagedBuffer::from(DOLLAR_TICKER),
-            0u64,
+            TimestampSeconds::new(0),
             BigUint::from(EGLD_PRICE_IN_DOLLARS) * BigUint::from(WAD),
         )
         .run();
@@ -53,7 +53,7 @@ fn aggregator_happy_path_and_pause() {
         .submit(
             ManagedBuffer::from(EGLD_TICKER),
             ManagedBuffer::from(DOLLAR_TICKER),
-            0u64,
+            TimestampSeconds::new(0),
             BigUint::from(1u64),
         )
         .returns(multiversx_sc_scenario::imports::ExpectMessage(
@@ -131,7 +131,7 @@ fn aggregator_only_oracles_can_submit() {
         .submit(
             ManagedBuffer::from(EGLD_TICKER),
             ManagedBuffer::from(DOLLAR_TICKER),
-            0u64,
+            TimestampSeconds::new(0),
             BigUint::from(1u64),
         )
         .returns(multiversx_sc_scenario::imports::ExpectMessage(
@@ -146,7 +146,7 @@ fn aggregator_timestamp_validation_errors() {
     let agg = state.price_aggregator_sc.clone();
 
     // Move time forward
-    state.world.current_block().block_timestamp(100);
+    state.world.current_block().block_timestamp_seconds(100);
 
     // Too old first submission (exceeds FIRST_SUBMISSION_TIMESTAMP_MAX_DIFF_SECONDS = 30)
     state
@@ -158,7 +158,7 @@ fn aggregator_timestamp_validation_errors() {
         .submit(
             ManagedBuffer::from(EGLD_TICKER),
             ManagedBuffer::from(DOLLAR_TICKER),
-            0u64,
+            TimestampSeconds::new(0),
             BigUint::from(1u64),
         )
         .returns(multiversx_sc_scenario::imports::ExpectMessage(
@@ -176,7 +176,7 @@ fn aggregator_timestamp_validation_errors() {
         .submit(
             ManagedBuffer::from(EGLD_TICKER),
             ManagedBuffer::from(DOLLAR_TICKER),
-            1_000_000u64, // future compared to current 100
+            TimestampSeconds::new(1_000_000), // future compared to current 100
             BigUint::from(1u64),
         )
         .returns(multiversx_sc_scenario::imports::ExpectMessage(
@@ -200,13 +200,13 @@ fn aggregator_discard_stale_round_and_finalize() {
         .submit(
             ManagedBuffer::from(EGLD_TICKER),
             ManagedBuffer::from(DOLLAR_TICKER),
-            0u64,
+            TimestampSeconds::new(0),
             BigUint::from(38u64) * BigUint::from(WAD),
         )
         .run();
 
     // Advance beyond MAX_ROUND_DURATION_SECONDS (1800) -> stale, will discard on next submission
-    state.world.current_block().block_timestamp(2000);
+    state.world.current_block().block_timestamp_seconds(2000);
 
     // Submissions after stale should discard previous and start a fresh round at t=2000
     for (addr, price) in [
@@ -224,7 +224,7 @@ fn aggregator_discard_stale_round_and_finalize() {
             .submit(
                 ManagedBuffer::from(EGLD_TICKER),
                 ManagedBuffer::from(DOLLAR_TICKER),
-                2000u64,
+                TimestampSeconds::new(2000),
                 BigUint::from(price) * BigUint::from(WAD),
             )
             .run();
@@ -243,7 +243,7 @@ fn aggregator_discard_stale_round_and_finalize() {
         .returns(ReturnsResult)
         .run();
 
-    assert_eq!(pf.timestamp, 2000);
+    assert_eq!(pf.timestamp, TimestampSeconds::new(2000));
 }
 
 #[test]
@@ -256,7 +256,7 @@ fn oracle_tolerance_boundary_case_uses_safe_price_in_views() {
     // Query all_market_indexes for USDC and check tolerance flags and price source
     let mut assets = multiversx_sc::types::MultiValueEncoded::new();
     assets.push(EgldOrEsdtTokenIdentifier::esdt(
-        USDC_TOKEN.to_token_identifier(),
+        USDC_TOKEN.to_esdt_token_identifier(),
     ));
 
     let views = state
@@ -278,6 +278,42 @@ fn oracle_tolerance_boundary_case_uses_safe_price_in_views() {
 }
 
 #[test]
+fn market_index_marks_zero_timestamp_aggregator_feed_as_stale() {
+    let mut state = LendingPoolTestState::new();
+    let stale_timestamp = SECONDS_PER_HOUR * 1000 + 1;
+
+    state
+        .world
+        .current_block()
+        .block_timestamp_seconds(stale_timestamp);
+    submit_price(
+        &mut state.world,
+        &state.price_aggregator_sc,
+        EGLD_TICKER,
+        EGLD_PRICE_IN_DOLLARS,
+        stale_timestamp,
+    );
+
+    let mut assets = multiversx_sc::types::MultiValueEncoded::new();
+    assets.push(EgldOrEsdtTokenIdentifier::esdt(
+        USDC_TOKEN.to_esdt_token_identifier(),
+    ));
+
+    let views = state
+        .world
+        .query()
+        .to(state.lending_sc.clone())
+        .typed(proxys::proxy_lending_pool::ControllerProxy)
+        .all_market_indexes_extended(assets)
+        .returns(ReturnsResult)
+        .run();
+
+    let v = views.get(0);
+    assert_eq!(v.aggregator_timestamp_secs, TimestampSeconds::zero());
+    assert!(v.is_stale);
+}
+
+#[test]
 fn oracle_lp_high_deviation_returns_average() {
     let mut state = LendingPoolTestState::new();
 
@@ -286,7 +322,7 @@ fn oracle_lp_high_deviation_returns_average() {
 
     let mut assets = multiversx_sc::types::MultiValueEncoded::new();
     assets.push(EgldOrEsdtTokenIdentifier::esdt(
-        LP_EGLD_TOKEN.to_token_identifier(),
+        LP_EGLD_TOKEN.to_esdt_token_identifier(),
     ));
 
     let views = state
@@ -320,14 +356,14 @@ fn lxoxno_inherits_underlying_tolerance_flags() {
     let _lxoxno_market = setup::setup_market(
         &mut state.world,
         &state.lending_sc,
-        EgldOrEsdtTokenIdentifier::esdt(LXOXNO_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(LXOXNO_TOKEN.to_esdt_token_identifier()),
         get_lxoxno_config(),
     );
 
     // Query only LXOXNO market index
     let mut assets = multiversx_sc::types::MultiValueEncoded::new();
     assets.push(EgldOrEsdtTokenIdentifier::esdt(
-        LXOXNO_TOKEN.to_token_identifier(),
+        LXOXNO_TOKEN.to_esdt_token_identifier(),
     ));
 
     let views = state
@@ -354,7 +390,7 @@ fn lxoxno_view_prices_consistency_and_usd_median() {
     let _lxoxno_market = setup::setup_market(
         &mut state.world,
         &state.lending_sc,
-        EgldOrEsdtTokenIdentifier::esdt(LXOXNO_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(LXOXNO_TOKEN.to_esdt_token_identifier()),
         get_lxoxno_config(),
     );
 
@@ -376,12 +412,12 @@ fn lxoxno_view_prices_consistency_and_usd_median() {
         .run();
 
     // USD price should equal EGLD price * EGLD/USD (WAD math)
-    let lx_egld_raw = lx_egld.into_raw_units().clone();
+    let lx_egld_raw = lx_egld.as_raw_units().clone();
     let egld_usd_raw = egld_usd_feed.price;
     let expected_usd = (lx_egld_raw.clone() * egld_usd_raw) / BigUint::from(WAD);
-    assert_eq!(lx_usd.into_raw_units(), &expected_usd);
+    assert_eq!(lx_usd.as_raw_units(), &expected_usd);
 
     // With initial exchange rate = 1, LXOXNO and XOXNO EGLD prices match
     let xoxno_egld = state.egld_price(XOXNO_TOKEN);
-    assert_eq!(lx_egld.into_raw_units(), xoxno_egld.into_raw_units());
+    assert_eq!(lx_egld.as_raw_units(), xoxno_egld.as_raw_units());
 }

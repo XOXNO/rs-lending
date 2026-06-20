@@ -1,0 +1,3 @@
+# Match the reproducible Docker builder (sdk-rust-contract-builder:v12.0.0 -> rustc 1.95.0).
+# Keeps clippy from suggesting standard-library APIs newer than the build toolchain.
+msrv = "1.95.0"

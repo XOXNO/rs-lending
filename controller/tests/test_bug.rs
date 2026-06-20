@@ -27,31 +27,34 @@ fn build_liquidation_case() -> (
 
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(120u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(120u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(500_000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(500_000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &borrower,
-        USDC_TOKEN,
-        BigUint::from(2_600u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(2_600u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     let borrower_nonce = state.last_account_nonce();
 
@@ -67,8 +70,8 @@ fn build_liquidation_case() -> (
     state.change_timestamp(current_ts);
     let mut markets = multiversx_sc::types::MultiValueEncoded::new();
     use multiversx_sc::types::EgldOrEsdtTokenIdentifier as TokenId;
-    markets.push(TokenId::esdt(EGLD_TOKEN.to_token_identifier()));
-    markets.push(TokenId::esdt(USDC_TOKEN.to_token_identifier()));
+    markets.push(TokenId::esdt(EGLD_TOKEN.to_esdt_token_identifier()));
+    markets.push(TokenId::esdt(USDC_TOKEN.to_esdt_token_identifier()));
     state.update_markets(&borrower, markets.clone());
 
     let mut tries = 0u32;
@@ -86,7 +89,7 @@ fn build_liquidation_case() -> (
 
     let total_pay_deno = state
         .borrow_amount_for_token(borrower_nonce, EGLD_TOKEN)
-        .into_raw_units()
+        .as_raw_units()
         .clone()
         / 4u32;
 
@@ -109,7 +112,7 @@ fn liquidation_micro_payments_do_not_gain_extra_collateral() {
 
     let pre_single_collateral = single_state
         .total_collateral_in_egld(single_nonce)
-        .into_raw_units()
+        .as_raw_units()
         .clone();
     let single_health_before = single_state.account_health_factor(single_nonce);
     single_state.liquidate_account_dem_bulk(
@@ -119,7 +122,7 @@ fn liquidation_micro_payments_do_not_gain_extra_collateral() {
     );
     let post_single_collateral = single_state
         .total_collateral_in_egld(single_nonce)
-        .into_raw_units()
+        .as_raw_units()
         .clone();
     let single_health_after = single_state.account_health_factor(single_nonce);
 
@@ -138,7 +141,7 @@ fn liquidation_micro_payments_do_not_gain_extra_collateral() {
     );
     let post_micro_collateral = micro_state
         .total_collateral_in_egld(micro_nonce)
-        .into_raw_units()
+        .as_raw_units()
         .clone();
     let micro_health_after = micro_state.account_health_factor(micro_nonce);
 
@@ -160,11 +163,11 @@ fn liquidation_micro_payments_do_not_gain_extra_collateral() {
 
     let single_debt = single_state
         .total_borrow_in_egld(single_nonce)
-        .into_raw_units()
+        .as_raw_units()
         .clone();
     let micro_debt = micro_state
         .total_borrow_in_egld(micro_nonce)
-        .into_raw_units()
+        .as_raw_units()
         .clone();
     assert!(single_debt <= ray_dust_tolerance());
     assert!(micro_debt <= ray_dust_tolerance());

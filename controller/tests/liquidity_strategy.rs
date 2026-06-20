@@ -19,10 +19,15 @@ fn make_borrow_position(
         asset,
         ManagedDecimal::from_raw_units(BigUint::zero(), RAY_PRECISION),
         account_nonce,
-        ManagedDecimal::from_raw_units(BigUint::zero(), BPS_PRECISION),
-        ManagedDecimal::from_raw_units(BigUint::zero(), BPS_PRECISION),
-        ManagedDecimal::from_raw_units(BigUint::zero(), BPS_PRECISION),
-        ManagedDecimal::from_raw_units(BigUint::zero(), BPS_PRECISION),
+        common_structs::PositionRiskParams {
+            liquidation_threshold_bps: ManagedDecimal::from_raw_units(
+                BigUint::zero(),
+                BPS_PRECISION,
+            ),
+            liquidation_bonus_bps: ManagedDecimal::from_raw_units(BigUint::zero(), BPS_PRECISION),
+            liquidation_fees_bps: ManagedDecimal::from_raw_units(BigUint::zero(), BPS_PRECISION),
+            loan_to_value_bps: ManagedDecimal::from_raw_units(BigUint::zero(), BPS_PRECISION),
+        },
     )
 }
 
@@ -32,11 +37,11 @@ fn pool_create_strategy_invalid_asset_error() {
 
     // Use EGLD pool but pass a USDC borrow position => ERROR_INVALID_ASSET
     let egld_pool = state.pool_address(EgldOrEsdtTokenIdentifier::esdt(
-        EGLD_TOKEN.to_token_identifier(),
+        EGLD_TOKEN.to_esdt_token_identifier(),
     ));
 
     let wrong_position = make_borrow_position(
-        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_esdt_token_identifier()),
         1,
     );
 
@@ -64,11 +69,11 @@ fn pool_create_strategy_insufficient_liquidity_error() {
 
     // EGLD pool has zero reserves initially; attempt strategy borrow > 0
     let egld_pool = state.pool_address(EgldOrEsdtTokenIdentifier::esdt(
-        EGLD_TOKEN.to_token_identifier(),
+        EGLD_TOKEN.to_esdt_token_identifier(),
     ));
 
     let position = make_borrow_position(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
         1,
     );
     let amount = ManagedDecimal::from_raw_units(BigUint::from(10u64), EGLD_DECIMALS);
@@ -93,7 +98,7 @@ fn pool_create_strategy_fee_exceeds_amount_error() {
     let mut state = LendingPoolTestState::new();
 
     let egld_pool = state.pool_address(EgldOrEsdtTokenIdentifier::esdt(
-        EGLD_TOKEN.to_token_identifier(),
+        EGLD_TOKEN.to_esdt_token_identifier(),
     ));
 
     // Ensure pool has enough reserves so we hit the fee check, not liquidity
@@ -102,16 +107,17 @@ fn pool_create_strategy_fee_exceeds_amount_error() {
     setup_accounts(&mut state, supplier, borrower);
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     let position = make_borrow_position(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
         1,
     );
 
@@ -144,20 +150,21 @@ fn pool_claim_revenue_partial_burn_and_invariants() {
     setup_accounts(&mut state, supplier, borrower);
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(1_000u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(1_000u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Owner (controller) triggers pool.createStrategy with amount equal to reserves
     let egld_pool = state.pool_address(EgldOrEsdtTokenIdentifier::esdt(
-        EGLD_TOKEN.to_token_identifier(),
+        EGLD_TOKEN.to_esdt_token_identifier(),
     ));
     let borrow_position = make_borrow_position(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
         1,
     );
     // Borrow full reserves; leave small fee as on-chain reserves
@@ -222,7 +229,7 @@ fn pool_claim_revenue_partial_burn_and_invariants() {
         .run();
 
     // Ensure partial-claim condition holds (revenue > reserves)
-    assert!(pre_rev.into_raw_units() > pre_reserves.into_raw_units());
+    assert!(pre_rev.as_raw_units() > pre_reserves.as_raw_units());
 
     // Claim revenue from pool directly (owner = controller)
     let payment = state
@@ -264,19 +271,18 @@ fn pool_claim_revenue_partial_burn_and_invariants() {
     // Invariants: partial claim behavior and solvency
     let claimed = payment.amount;
     // Claimed equals pre-claim reserves
-    assert_eq!(claimed, pre_reserves.into_raw_units().clone());
+    assert_eq!(claimed, pre_reserves.as_raw_units().clone());
     // Reserves reduced by claimed amount (to zero in our construction)
-    assert_eq!(post_reserves.into_raw_units().clone(), BigUint::zero());
+    assert_eq!(post_reserves.as_raw_units().clone(), BigUint::zero());
     // Revenue decreased but remains positive (partial burn)
-    assert!(post_rev.into_raw_units().clone() < pre_rev.into_raw_units().clone());
-    assert!(post_rev.into_raw_units().clone() > BigUint::zero());
+    assert!(post_rev.as_raw_units().clone() < pre_rev.as_raw_units().clone());
+    assert!(post_rev.as_raw_units().clone() > BigUint::zero());
     // Total supplied decreased and by at least the claimed amount
-    let supplied_delta =
-        pre_supplied.into_raw_units().clone() - post_supplied.into_raw_units().clone();
+    let supplied_delta = pre_supplied.as_raw_units().clone() - post_supplied.as_raw_units().clone();
     assert!(supplied_delta >= claimed.clone());
     // Borrowed unchanged by revenue claim
     let pool_addr = state.pool_address(EgldOrEsdtTokenIdentifier::esdt(
-        EGLD_TOKEN.to_token_identifier(),
+        EGLD_TOKEN.to_esdt_token_identifier(),
     ));
     let post_borrowed = state
         .world
@@ -286,10 +292,7 @@ fn pool_claim_revenue_partial_burn_and_invariants() {
         .borrowed_amount()
         .returns(multiversx_sc::proxy_imports::ReturnsResult)
         .run();
-    assert_eq!(
-        post_borrowed.into_raw_units(),
-        pre_borrowed.into_raw_units()
-    );
+    assert_eq!(post_borrowed.as_raw_units(), pre_borrowed.as_raw_units());
     // Solvency: contract never transferred more than available reserves
     // (already enforced by claimed == pre_reserves and post_reserves == 0)
 }

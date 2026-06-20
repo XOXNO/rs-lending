@@ -31,15 +31,17 @@ fn router_upgrade_liquidity_pool_params_success() {
 
     // Apply an upgrade with modified slopes and reserve factor
     state.upgrade_liquidity_pool_params(
-        &EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
-        BigUint::from(9_000_000u64), // max_borrow_rate (RAY)
-        BigUint::from(100_000u64),   // base_borrow_rate (RAY)
-        BigUint::from(400_000u64),   // slope1 (RAY)
-        BigUint::from(700_000u64),   // slope2 (RAY)
-        BigUint::from(900_000u64),   // slope3 (RAY)
-        BigUint::from(4_000_000u64), // mid_utilization (RAY)
-        BigUint::from(8_000_000u64), // optimal_utilization (RAY)
-        BigUint::from(1_500u64),     // reserve_factor (BPS)
+        &EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
+        MarketRateParams {
+            max_borrow_rate: BigUint::from(9_000_000u64),
+            base_borrow_rate: BigUint::from(100_000u64),
+            slope1: BigUint::from(400_000u64),
+            slope2: BigUint::from(700_000u64),
+            slope3: BigUint::from(900_000u64),
+            mid_utilization: BigUint::from(4_000_000u64),
+            optimal_utilization: BigUint::from(8_000_000u64),
+            reserve_factor: BigUint::from(1_500u64),
+        },
     );
 
     let new_params = state
@@ -52,42 +54,42 @@ fn router_upgrade_liquidity_pool_params_success() {
         .run();
 
     assert_eq!(
-        new_params.reserve_factor_bps.into_raw_units().clone(),
+        new_params.reserve_factor_bps.as_raw_units().clone(),
         BigUint::from(1_500u64),
         "reserve factor must update to requested value",
     );
     assert_ne!(
-        new_params.max_borrow_rate_ray.into_raw_units().clone(),
-        old_params.max_borrow_rate_ray.into_raw_units().clone(),
+        new_params.max_borrow_rate_ray.as_raw_units().clone(),
+        old_params.max_borrow_rate_ray.as_raw_units().clone(),
         "max borrow rate should change after upgrade",
     );
     assert_ne!(
-        new_params.base_borrow_rate_ray.into_raw_units().clone(),
-        old_params.base_borrow_rate_ray.into_raw_units().clone(),
+        new_params.base_borrow_rate_ray.as_raw_units().clone(),
+        old_params.base_borrow_rate_ray.as_raw_units().clone(),
     );
     assert_ne!(
-        new_params.slope1_ray.into_raw_units().clone(),
-        old_params.slope1_ray.into_raw_units().clone(),
+        new_params.slope1_ray.as_raw_units().clone(),
+        old_params.slope1_ray.as_raw_units().clone(),
     );
     assert_ne!(
-        new_params.slope2_ray.into_raw_units().clone(),
-        old_params.slope2_ray.into_raw_units().clone(),
+        new_params.slope2_ray.as_raw_units().clone(),
+        old_params.slope2_ray.as_raw_units().clone(),
     );
     assert_ne!(
-        new_params.slope3_ray.into_raw_units().clone(),
-        old_params.slope3_ray.into_raw_units().clone(),
+        new_params.slope3_ray.as_raw_units().clone(),
+        old_params.slope3_ray.as_raw_units().clone(),
     );
     assert_ne!(
-        new_params.mid_utilization_ray.into_raw_units().clone(),
-        old_params.mid_utilization_ray.into_raw_units().clone(),
+        new_params.mid_utilization_ray.as_raw_units().clone(),
+        old_params.mid_utilization_ray.as_raw_units().clone(),
     );
     assert_ne!(
-        new_params.optimal_utilization_ray.into_raw_units().clone(),
-        old_params.optimal_utilization_ray.into_raw_units().clone(),
+        new_params.optimal_utilization_ray.as_raw_units().clone(),
+        old_params.optimal_utilization_ray.as_raw_units().clone(),
     );
     assert_ne!(
-        new_params.reserve_factor_bps.into_raw_units().clone(),
-        old_params.reserve_factor_bps.into_raw_units().clone(),
+        new_params.reserve_factor_bps.as_raw_units().clone(),
+        old_params.reserve_factor_bps.as_raw_units().clone(),
         "reserve factor must differ from previous value",
     );
 }
@@ -114,7 +116,7 @@ fn router_upgrade_liquidity_pool_params_no_pool_error() {
         .to(state.lending_sc.clone())
         .typed(proxys::proxy_lending_pool::ControllerProxy)
         .upgrade_liquidity_pool_params(
-            EgldOrEsdtTokenIdentifier::esdt(bogus.to_token_identifier()),
+            EgldOrEsdtTokenIdentifier::esdt(bogus.to_esdt_token_identifier()),
             BigUint::from(1u64),
             BigUint::from(1u64),
             BigUint::from(1u64),
@@ -138,13 +140,13 @@ fn router_upgrade_liquidity_pool_params_no_pool_error() {
         .returns(multiversx_sc::proxy_imports::ReturnsResult)
         .run();
     assert_eq!(
-        egld_after.max_borrow_rate_ray.into_raw_units().clone(),
-        egld_before.max_borrow_rate_ray.into_raw_units().clone(),
+        egld_after.max_borrow_rate_ray.as_raw_units().clone(),
+        egld_before.max_borrow_rate_ray.as_raw_units().clone(),
         "failed upgrade should leave pool params unchanged",
     );
     assert_eq!(
-        egld_after.reserve_factor_bps.into_raw_units().clone(),
-        egld_before.reserve_factor_bps.into_raw_units().clone(),
+        egld_after.reserve_factor_bps.as_raw_units().clone(),
+        egld_before.reserve_factor_bps.as_raw_units().clone(),
     );
 }
 
@@ -160,17 +162,18 @@ fn router_claim_revenue_runs_successfully() {
 
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     let pre_reserves = state
         .market_reserves(state.egld_market.clone())
-        .into_raw_units()
+        .as_raw_units()
         .clone();
 
     // Advance time to accrue some interest and call claim revenue
@@ -179,7 +182,7 @@ fn router_claim_revenue_runs_successfully() {
 
     let post_reserves = state
         .market_reserves(state.egld_market.clone())
-        .into_raw_units()
+        .as_raw_units()
         .clone();
     assert_eq!(post_reserves, pre_reserves);
 }
@@ -195,21 +198,23 @@ fn router_claim_revenue_no_accumulator_error() {
     setup_accounts(&mut state, supplier, borrower);
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.supply_asset(
         &borrower,
-        USDC_TOKEN,
-        BigUint::from(5_000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(5_000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.borrow_asset(
         &borrower,
@@ -224,7 +229,7 @@ fn router_claim_revenue_no_accumulator_error() {
     state.update_markets(&borrower, markets.clone());
     let outstanding = state
         .borrow_amount_for_token(2, EGLD_TOKEN)
-        .into_raw_units()
+        .as_raw_units()
         .clone();
     state.repay_asset_deno(
         &borrower,
@@ -234,7 +239,7 @@ fn router_claim_revenue_no_accumulator_error() {
     );
     let reserves_before = state
         .market_reserves(state.egld_market.clone())
-        .into_raw_units()
+        .as_raw_units()
         .clone();
     assert!(reserves_before > BigUint::zero());
 
@@ -251,7 +256,7 @@ fn router_claim_revenue_no_accumulator_error() {
     // Try to claim revenue for EGLD; expect ERROR_NO_ACCUMULATOR_FOUND
     let mut array = multiversx_sc::types::MultiValueEncoded::new();
     array.push(EgldOrEsdtTokenIdentifier::esdt(
-        EGLD_TOKEN.to_token_identifier(),
+        EGLD_TOKEN.to_esdt_token_identifier(),
     ));
 
     state
@@ -268,7 +273,7 @@ fn router_claim_revenue_no_accumulator_error() {
 
     let reserves_after = state
         .market_reserves(state.egld_market.clone())
-        .into_raw_units()
+        .as_raw_units()
         .clone();
     assert_eq!(reserves_after, reserves_before);
 }
@@ -286,23 +291,25 @@ fn router_upgrade_liquidity_pool_mid_usage_keeps_state_and_rates() {
     // Supplier provides EGLD liquidity
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(1_000u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(1_000u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower supplies USDC as collateral and borrows EGLD to create utilization
     state.supply_asset(
         &borrower,
-        USDC_TOKEN,
-        BigUint::from(10_000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(10_000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrow some EGLD against collateral (borrower account NFT nonce = 2)
@@ -316,7 +323,7 @@ fn router_upgrade_liquidity_pool_mid_usage_keeps_state_and_rates() {
 
     // Snapshot pool state and rates before upgrade
     let pool_addr = state.pool_address(EgldOrEsdtTokenIdentifier::esdt(
-        EGLD_TOKEN.to_token_identifier(),
+        EGLD_TOKEN.to_esdt_token_identifier(),
     ));
     let pre_supplied = state
         .world
@@ -383,7 +390,7 @@ fn router_upgrade_liquidity_pool_mid_usage_keeps_state_and_rates() {
         .to(state.lending_sc.clone())
         .typed(proxys::proxy_lending_pool::ControllerProxy)
         .upgrade_liquidity_pool(EgldOrEsdtTokenIdentifier::esdt(
-            EGLD_TOKEN.to_token_identifier(),
+            EGLD_TOKEN.to_esdt_token_identifier(),
         ))
         .returns(multiversx_sc::proxy_imports::ReturnsResult)
         .run();
@@ -483,33 +490,37 @@ fn router_create_liquidity_pool_asset_already_supported_error() {
 
     // Attempt to create a second pool for EGLD which is already set up in state
     let cfg = state.asset_config(EgldOrEsdtTokenIdentifier::esdt(
-        EGLD_TOKEN.to_token_identifier(),
+        EGLD_TOKEN.to_esdt_token_identifier(),
     ));
     state.create_liquidity_pool_error(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
-        BigUint::from(1u64),
-        BigUint::from(1u64),
-        BigUint::from(1u64),
-        BigUint::from(1u64),
-        BigUint::from(1u64),
-        BigUint::from(1u64),
-        BigUint::from(1u64),
-        BigUint::from(1u64),
-        cfg.loan_to_value_bps.into_raw_units().clone(),
-        cfg.liquidation_threshold_bps.into_raw_units().clone(),
-        cfg.liquidation_bonus_bps.into_raw_units().clone(),
-        cfg.liquidation_fees_bps.into_raw_units().clone(),
-        cfg.is_collateralizable,
-        cfg.is_borrowable,
-        cfg.is_isolated_asset,
-        cfg.isolation_debt_ceiling_usd_wad.into_raw_units().clone(),
-        cfg.flashloan_fee_bps.into_raw_units().clone(),
-        cfg.is_siloed_borrowing,
-        cfg.is_flashloanable,
-        cfg.isolation_borrow_enabled,
-        EGLD_DECIMALS,
-        cfg.borrow_cap_wad.unwrap_or_default(),
-        cfg.supply_cap_wad.unwrap_or_default(),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
+        MarketRateParams {
+            max_borrow_rate: BigUint::from(1u64),
+            base_borrow_rate: BigUint::from(1u64),
+            slope1: BigUint::from(1u64),
+            slope2: BigUint::from(1u64),
+            slope3: BigUint::from(1u64),
+            mid_utilization: BigUint::from(1u64),
+            optimal_utilization: BigUint::from(1u64),
+            reserve_factor: BigUint::from(1u64),
+        },
+        CreateLiquidityPoolRiskParams {
+            ltv: cfg.loan_to_value_bps.as_raw_units().clone(),
+            liquidation_threshold: cfg.liquidation_threshold_bps.as_raw_units().clone(),
+            liquidation_bonus: cfg.liquidation_bonus_bps.as_raw_units().clone(),
+            liquidation_fees: cfg.liquidation_fees_bps.as_raw_units().clone(),
+            is_collateralizable: cfg.is_collateralizable,
+            is_borrowable: cfg.is_borrowable,
+            is_isolated_asset: cfg.is_isolated_asset,
+            isolation_debt_ceiling_usd: cfg.isolation_debt_ceiling_usd_wad.as_raw_units().clone(),
+            flashloan_fee: cfg.flashloan_fee_bps.as_raw_units().clone(),
+            is_siloed_borrowing: cfg.is_siloed_borrowing,
+            is_flashloanable: cfg.is_flashloanable,
+            isolation_borrow_enabled: cfg.isolation_borrow_enabled,
+            asset_decimals: EGLD_DECIMALS,
+            borrow_cap: cfg.borrow_cap_wad.unwrap_or_default(),
+            supply_cap: cfg.supply_cap_wad.unwrap_or_default(),
+        },
         controller::ERROR_ASSET_ALREADY_SUPPORTED,
     );
 }
@@ -521,30 +532,34 @@ fn router_create_liquidity_pool_invalid_ticker_error() {
     let bogus = TestTokenIdentifier::new("INVALID\u{0}");
 
     state.create_liquidity_pool_error(
-        EgldOrEsdtTokenIdentifier::esdt(bogus.to_token_identifier()),
-        BigUint::from(1u64),
-        BigUint::from(1u64),
-        BigUint::from(1u64),
-        BigUint::from(1u64),
-        BigUint::from(1u64),
-        BigUint::from(1u64),
-        BigUint::from(1u64),
-        BigUint::from(1u64),
-        BigUint::from(1u64),
-        BigUint::from(2u64),
-        BigUint::from(1u64),
-        BigUint::from(1u64),
-        true,
-        true,
-        false,
-        BigUint::zero(),
-        BigUint::from(10u64),
-        false,
-        true,
-        true,
-        EGLD_DECIMALS,
-        BigUint::zero(),
-        BigUint::zero(),
+        EgldOrEsdtTokenIdentifier::esdt(bogus.to_esdt_token_identifier()),
+        MarketRateParams {
+            max_borrow_rate: BigUint::from(1u64),
+            base_borrow_rate: BigUint::from(1u64),
+            slope1: BigUint::from(1u64),
+            slope2: BigUint::from(1u64),
+            slope3: BigUint::from(1u64),
+            mid_utilization: BigUint::from(1u64),
+            optimal_utilization: BigUint::from(1u64),
+            reserve_factor: BigUint::from(1u64),
+        },
+        CreateLiquidityPoolRiskParams {
+            ltv: BigUint::from(1u64),
+            liquidation_threshold: BigUint::from(2u64),
+            liquidation_bonus: BigUint::from(1u64),
+            liquidation_fees: BigUint::from(1u64),
+            is_collateralizable: true,
+            is_borrowable: true,
+            is_isolated_asset: false,
+            isolation_debt_ceiling_usd: BigUint::zero(),
+            flashloan_fee: BigUint::from(10u64),
+            is_siloed_borrowing: false,
+            is_flashloanable: true,
+            isolation_borrow_enabled: true,
+            asset_decimals: EGLD_DECIMALS,
+            borrow_cap: BigUint::zero(),
+            supply_cap: BigUint::zero(),
+        },
         controller::ERROR_INVALID_TICKER,
     );
 }
@@ -555,30 +570,34 @@ fn router_create_liquidity_pool_invalid_liquidation_threshold_error() {
     // liquidation_threshold <= ltv should error
     // Use WEGLD which has an oracle configured in setup but no pool yet
     state.create_liquidity_pool_error(
-        EgldOrEsdtTokenIdentifier::esdt(WEGLD_TOKEN.to_token_identifier()),
-        BigUint::from(R_MAX),
-        BigUint::from(R_BASE),
-        BigUint::from(R_SLOPE1),
-        BigUint::from(R_SLOPE2),
-        BigUint::from(R_SLOPE3),
-        BigUint::from(U_MID),
-        BigUint::from(U_OPTIMAL),
-        BigUint::from(RESERVE_FACTOR),
-        BigUint::from(5_000u64), // ltv
-        BigUint::from(5_000u64), // liquidation_threshold == ltv
-        BigUint::from(1_000u64),
-        BigUint::from(500u64),
-        true,
-        true,
-        false,
-        BigUint::zero(),
-        BigUint::from(10u64),
-        false,
-        true,
-        true,
-        EGLD_DECIMALS,
-        BigUint::zero(),
-        BigUint::zero(),
+        EgldOrEsdtTokenIdentifier::esdt(WEGLD_TOKEN.to_esdt_token_identifier()),
+        MarketRateParams {
+            max_borrow_rate: BigUint::from(R_MAX),
+            base_borrow_rate: BigUint::from(R_BASE),
+            slope1: BigUint::from(R_SLOPE1),
+            slope2: BigUint::from(R_SLOPE2),
+            slope3: BigUint::from(R_SLOPE3),
+            mid_utilization: BigUint::from(U_MID),
+            optimal_utilization: BigUint::from(U_OPTIMAL),
+            reserve_factor: BigUint::from(RESERVE_FACTOR),
+        },
+        CreateLiquidityPoolRiskParams {
+            ltv: BigUint::from(5_000u64),
+            liquidation_threshold: BigUint::from(5_000u64),
+            liquidation_bonus: BigUint::from(1_000u64),
+            liquidation_fees: BigUint::from(500u64),
+            is_collateralizable: true,
+            is_borrowable: true,
+            is_isolated_asset: false,
+            isolation_debt_ceiling_usd: BigUint::zero(),
+            flashloan_fee: BigUint::from(10u64),
+            is_siloed_borrowing: false,
+            is_flashloanable: true,
+            isolation_borrow_enabled: true,
+            asset_decimals: EGLD_DECIMALS,
+            borrow_cap: BigUint::zero(),
+            supply_cap: BigUint::zero(),
+        },
         controller::ERROR_INVALID_LIQUIDATION_THRESHOLD,
     );
 }

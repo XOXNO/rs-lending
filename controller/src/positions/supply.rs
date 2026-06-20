@@ -119,10 +119,7 @@ pub trait PositionDepositModule:
                     token_id.clone(),
                     self.ray_zero(),
                     account_nonce,
-                    asset_info.liquidation_threshold_bps.clone(),
-                    asset_info.liquidation_bonus_bps.clone(),
-                    asset_info.liquidation_fees_bps.clone(),
-                    asset_info.loan_to_value_bps.clone(),
+                    asset_info.into(),
                 )
             })
     }
@@ -463,7 +460,7 @@ pub trait PositionDepositModule:
                 );
 
                 require!(
-                    total_supplied.into_raw_units() + &deposit_payment.amount <= *supply_cap,
+                    total_supplied.as_raw_units() + &deposit_payment.amount <= *supply_cap,
                     ERROR_SUPPLY_CAP
                 );
             },

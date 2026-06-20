@@ -72,5 +72,5 @@ pub trait Storage {
     /// - `u64`: The timestamp when indexes were last updated, stored in milliseconds since Unix epoch.
     #[view(getLastTimestamp)]
     #[storage_mapper("last_timestamp")]
-    fn last_timestamp(&self) -> SingleValueMapper<u64>;
+    fn last_timestamp(&self) -> SingleValueMapper<TimestampMillis>;
 }

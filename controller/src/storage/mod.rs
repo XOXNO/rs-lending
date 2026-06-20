@@ -226,7 +226,7 @@ pub trait Storage {
     fn last_timestamp(
         &self,
         liquidity_pool_address: ManagedAddress,
-    ) -> SingleValueMapper<u64, ManagedAddress>;
+    ) -> SingleValueMapper<TimestampMillis, ManagedAddress>;
 
     /// Retrieves a timestamped price from the aggregator by token pair names.
     ///

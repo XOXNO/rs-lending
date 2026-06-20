@@ -210,8 +210,8 @@ where
             .original_result()
     }
 
-    /// Also receives submission count, 
-    /// so the owner does not have to update it manually with setSubmissionCount before this call 
+    /// Also receives submission count,
+    /// so the owner does not have to update it manually with setSubmissionCount before this call
     pub fn remove_oracles<
         Arg0: ProxyArg<usize>,
         Arg1: ProxyArg<MultiValueEncoded<Env::Api, ManagedAddress<Env::Api>>>,
@@ -281,6 +281,6 @@ where
     pub round_id: u32,
     pub from: ManagedBuffer<Api>,
     pub to: ManagedBuffer<Api>,
-    pub timestamp: u64,
+    pub timestamp: TimestampSeconds,
     pub price: BigUint<Api>,
 }

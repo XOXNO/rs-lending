@@ -38,12 +38,13 @@ fn liquidate_multiple_debt_positions_sequential_success() {
     // Supplier provides liquidity across multiple assets ($5000 total)
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         1,
@@ -53,12 +54,13 @@ fn liquidate_multiple_debt_positions_sequential_success() {
     );
     state.supply_asset(
         &supplier,
-        CAPPED_TOKEN,
-        BigUint::from(10u64),
-        CAPPED_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: CAPPED_TOKEN,
+            amount: BigUint::from(10u64),
+            asset_decimals: CAPPED_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         1,
@@ -68,12 +70,13 @@ fn liquidate_multiple_debt_positions_sequential_success() {
     );
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(1000u64),
-        USDC_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         1,
@@ -85,12 +88,13 @@ fn liquidate_multiple_debt_positions_sequential_success() {
     // Borrower provides collateral ($5000 total)
     state.supply_asset(
         &borrower,
-        XEGLD_TOKEN,
-        BigUint::from(20u64),
-        XEGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(20u64),
+            asset_decimals: XEGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         2,
@@ -100,12 +104,13 @@ fn liquidate_multiple_debt_positions_sequential_success() {
     );
     state.supply_asset(
         &borrower,
-        SEGLD_TOKEN,
-        BigUint::from(80u64),
-        SEGLD_DECIMALS,
-        OptionalValue::Some(2),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: SEGLD_TOKEN,
+            amount: BigUint::from(80u64),
+            asset_decimals: SEGLD_DECIMALS,
+            account_nonce: OptionalValue::Some(2),
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         2,
@@ -177,7 +182,7 @@ fn liquidate_multiple_debt_positions_sequential_success() {
     state.liquidate_account_dem(
         &liquidator,
         &EGLD_TOKEN,
-        borrowed_egld.into_raw_units().clone(),
+        borrowed_egld.as_raw_units().clone(),
         2,
     );
     let after_health = state.account_health_factor(2);
@@ -188,7 +193,7 @@ fn liquidate_multiple_debt_positions_sequential_success() {
     state.liquidate_account_dem(
         &liquidator,
         &USDC_TOKEN,
-        borrowed_usdc.into_raw_units().clone(),
+        borrowed_usdc.as_raw_units().clone(),
         2,
     );
     let post_liquidation_health = state.account_health_factor(2);
@@ -227,12 +232,13 @@ fn liquidate_bulk_multiple_assets_with_overpayment_success() {
 
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         1,
@@ -242,12 +248,13 @@ fn liquidate_bulk_multiple_assets_with_overpayment_success() {
     );
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(1000u64),
-        USDC_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         1,
@@ -257,12 +264,13 @@ fn liquidate_bulk_multiple_assets_with_overpayment_success() {
     );
     state.supply_asset(
         &supplier,
-        CAPPED_TOKEN,
-        BigUint::from(10u64),
-        CAPPED_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: CAPPED_TOKEN,
+            amount: BigUint::from(10u64),
+            asset_decimals: CAPPED_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         1,
@@ -273,12 +281,13 @@ fn liquidate_bulk_multiple_assets_with_overpayment_success() {
 
     state.supply_asset(
         &borrower,
-        XEGLD_TOKEN,
-        BigUint::from(20u64),
-        XEGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(20u64),
+            asset_decimals: XEGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         2,
@@ -288,12 +297,13 @@ fn liquidate_bulk_multiple_assets_with_overpayment_success() {
     );
     state.supply_asset(
         &borrower,
-        SEGLD_TOKEN,
-        BigUint::from(80u64),
-        SEGLD_DECIMALS,
-        OptionalValue::Some(2),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: SEGLD_TOKEN,
+            amount: BigUint::from(80u64),
+            asset_decimals: SEGLD_DECIMALS,
+            account_nonce: OptionalValue::Some(2),
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         2,
@@ -352,9 +362,9 @@ fn liquidate_bulk_multiple_assets_with_overpayment_success() {
 
     let borrowed_usdc = state.borrow_amount_for_token(2, USDC_TOKEN);
     let borrowed_egld = state.borrow_amount_for_token(2, EGLD_TOKEN);
-    let usdc_payment = borrowed_usdc.into_raw_units().clone() * 3u64;
+    let usdc_payment = borrowed_usdc.as_raw_units().clone() * 3u64;
     let payments = vec![
-        (&EGLD_TOKEN, borrowed_egld.into_raw_units()),
+        (&EGLD_TOKEN, borrowed_egld.as_raw_units()),
         (&USDC_TOKEN, &usdc_payment),
     ];
 
@@ -395,12 +405,13 @@ fn liquidate_bulk_with_refund_handling_success() {
 
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         1,
@@ -410,12 +421,13 @@ fn liquidate_bulk_with_refund_handling_success() {
     );
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(1000u64),
-        USDC_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         1,
@@ -425,12 +437,13 @@ fn liquidate_bulk_with_refund_handling_success() {
     );
     state.supply_asset(
         &supplier,
-        CAPPED_TOKEN,
-        BigUint::from(10u64),
-        CAPPED_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: CAPPED_TOKEN,
+            amount: BigUint::from(10u64),
+            asset_decimals: CAPPED_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         1,
@@ -441,12 +454,13 @@ fn liquidate_bulk_with_refund_handling_success() {
 
     state.supply_asset(
         &borrower,
-        XEGLD_TOKEN,
-        BigUint::from(20u64),
-        XEGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(20u64),
+            asset_decimals: XEGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         2,
@@ -456,12 +470,13 @@ fn liquidate_bulk_with_refund_handling_success() {
     );
     state.supply_asset(
         &borrower,
-        SEGLD_TOKEN,
-        BigUint::from(80u64),
-        SEGLD_DECIMALS,
-        OptionalValue::Some(2),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: SEGLD_TOKEN,
+            amount: BigUint::from(80u64),
+            asset_decimals: SEGLD_DECIMALS,
+            account_nonce: OptionalValue::Some(2),
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         2,
@@ -524,9 +539,9 @@ fn liquidate_bulk_with_refund_handling_success() {
     let borrowed_egld = state.borrow_amount_for_token(2, EGLD_TOKEN);
 
     // Prepare bulk liquidation with excess payments
-    let usdc_payment = borrowed_usdc.into_raw_units().clone() * 3u64;
+    let usdc_payment = borrowed_usdc.as_raw_units().clone() * 3u64;
     let payments = vec![
-        (&EGLD_TOKEN, borrowed_egld.into_raw_units()),
+        (&EGLD_TOKEN, borrowed_egld.as_raw_units()),
         (&USDC_TOKEN, &usdc_payment),
     ];
 
@@ -583,12 +598,13 @@ fn liquidate_insufficient_collateral_creates_bad_debt_success() {
     // Setup liquidity pools
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         1,
@@ -598,12 +614,13 @@ fn liquidate_insufficient_collateral_creates_bad_debt_success() {
     );
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(1000u64),
-        USDC_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         1,
@@ -615,12 +632,13 @@ fn liquidate_insufficient_collateral_creates_bad_debt_success() {
     // Borrower provides limited collateral
     state.supply_asset(
         &borrower,
-        XEGLD_TOKEN,
-        BigUint::from(20u64), // $2500
-        XEGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(20u64),
+            asset_decimals: XEGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         2,
@@ -630,12 +648,13 @@ fn liquidate_insufficient_collateral_creates_bad_debt_success() {
     );
     state.supply_asset(
         &borrower,
-        SEGLD_TOKEN,
-        BigUint::from(80u64), // $2500
-        SEGLD_DECIMALS,
-        OptionalValue::Some(2),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: SEGLD_TOKEN,
+            amount: BigUint::from(80u64),
+            asset_decimals: SEGLD_DECIMALS,
+            account_nonce: OptionalValue::Some(2),
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         2,
@@ -773,12 +792,13 @@ fn liquidate_single_asset_position_high_interest_success() {
     // Supplier provides EGLD liquidity
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         1,
@@ -790,12 +810,13 @@ fn liquidate_single_asset_position_high_interest_success() {
     // Borrower supplies EGLD as collateral
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         2,
@@ -881,32 +902,35 @@ fn liquidate_severe_undercollateralization_bad_debt_success() {
     // Create positions
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(4000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(4000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(1000u64),
-        USDC_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower provides minimal collateral
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower takes large loan relative to collateral
@@ -970,23 +994,25 @@ fn liquidation_bonus_selection_behavior() {
     // Supplier provides EGLD liquidity
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower supplies and borrows single asset (EGLD) to make base bonus easy to compute
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.borrow_asset(
         &borrower,
@@ -1008,10 +1034,10 @@ fn liquidation_bonus_selection_behavior() {
 
     // CASE A: Capped and significantly short repayment → expect base (weighted) bonus to be applied
     let borrowed_egld = state.borrow_amount_for_token(2, EGLD_TOKEN);
-    let tiny_payment = borrowed_egld.into_raw_units().clone() / 1000u64; // << 1% of debt
+    let tiny_payment = borrowed_egld.as_raw_units().clone() / 1000u64; // << 1% of debt
     let mut debt_payments = ManagedVec::new();
     debt_payments.push(EgldOrEsdtTokenPayment::new(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
         0,
         tiny_payment.clone(),
     ));
@@ -1063,23 +1089,25 @@ fn liquidation_estimate_primary_vs_secondary() {
     // Provide some EGLD liquidity and mint supplier NFT first so borrower gets nonce = 2
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower supplies and borrows the same asset (EGLD) to simplify setup
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.borrow_asset(
         &borrower,
@@ -1119,23 +1147,25 @@ fn liquidation_no_death_spiral_under_tiny_payments() {
     // Liquidity
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(200u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(200u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower supplies and borrows same-asset to keep math simple
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.borrow_asset(
         &borrower,
@@ -1160,7 +1190,7 @@ fn liquidation_no_death_spiral_under_tiny_payments() {
     let mut last_hf = state.account_health_factor(2);
     for _ in 0..3 {
         let borrowed = state.borrow_amount_for_token(2, EGLD_TOKEN);
-        let tiny = borrowed.into_raw_units().clone() / 2000u64; // 0.05%
+        let tiny = borrowed.as_raw_units().clone() / 2000u64; // 0.05%
         state.liquidate_account_dem(&liq, &EGLD_TOKEN, tiny, 2);
         let hf = state.account_health_factor(2);
         assert!(hf >= last_hf);
@@ -1182,32 +1212,35 @@ fn liquidation_excess_distribution_partial_and_full() {
     // Setup basic liquidity by supplying some assets
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(2000u64),
-        USDC_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(2000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower deposits and borrows USDC only (sufficient for refund testing)
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(25u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(25u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.borrow_asset(
         &borrower,
@@ -1229,9 +1262,9 @@ fn liquidation_excess_distribution_partial_and_full() {
 
     let mut debt_payments = ManagedVec::new();
     debt_payments.push(EgldOrEsdtTokenPayment::new(
-        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_esdt_token_identifier()),
         0,
-        borrowed_usdc.into_raw_units() * 3u64, // overpay USDC by 3x
+        borrowed_usdc.as_raw_units() * 3u64, // overpay USDC by 3x
     ));
 
     // Simulate liquidation and verify refunds are reported
@@ -1257,23 +1290,25 @@ fn borrow_insufficient_collateral_for_siloed_asset_error() {
     // Borrower supplies standard collateral
     state.supply_asset(
         &borrower,
-        USDC_TOKEN,
-        BigUint::from(1000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Supplier provides siloed token liquidity
     state.supply_asset(
         &supplier,
-        SILOED_TOKEN,
-        BigUint::from(1000u64),
-        SILOED_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: SILOED_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: SILOED_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Attempt to borrow more than allowed by collateral
@@ -1315,32 +1350,35 @@ fn seize_dust_collateral_after_bad_debt_success() {
     // Setup liquidity pools
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(5000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(5000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(1000u64),
-        USDC_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower provides EGLD collateral that will be liquidated down to dust
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(20u64), // 10 EGLD = $1250
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(20u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower takes loan that will create bad debt after interest
@@ -1436,7 +1474,7 @@ fn seize_dust_collateral_after_bad_debt_success() {
     let lost_usdc_due_to_socialization =
         usdc_supplied_before_bad_debt.clone() - usdc_supplied_after_bad_debt.clone();
     println!("lost_usdc_due_to_socialization: {lost_usdc_due_to_socialization:?}");
-    assert!(lost_usdc_due_to_socialization.into_raw_units().clone() > 0u64);
+    assert!(lost_usdc_due_to_socialization.as_raw_units().clone() > 0u64);
     let supplied_usdc = state.market_supplied_amount(state.usdc_market.clone());
     let market_reserves = state.market_reserves(state.usdc_market.clone());
     let protoocl_revenue = state.market_protocol_revenue(state.usdc_market.clone());
@@ -1446,7 +1484,7 @@ fn seize_dust_collateral_after_bad_debt_success() {
     state.withdraw_asset_den(
         &supplier,
         USDC_TOKEN,
-        usdc_supplied_after_bad_debt.into_raw_units().clone(),
+        usdc_supplied_after_bad_debt.as_raw_units().clone(),
         1,
     );
     let supplied_usdc = state.market_supplied_amount(state.usdc_market.clone());
@@ -1458,15 +1496,15 @@ fn seize_dust_collateral_after_bad_debt_success() {
     state.claim_revenue(USDC_TOKEN);
     let final_protoocl_revenue = state.market_protocol_revenue(state.usdc_market.clone());
     println!("final_protoocl_revenue: {final_protoocl_revenue:?}");
-    assert!(final_protoocl_revenue.into_raw_units().clone() == BigUint::zero());
+    assert!(final_protoocl_revenue.as_raw_units().clone() == BigUint::zero());
     let scaled_borrowed = state.market_borrowed(state.usdc_market.clone());
     println!("scaled_borrowed: {scaled_borrowed:?}");
-    assert!(scaled_borrowed.into_raw_units().clone() == BigUint::zero());
+    assert!(scaled_borrowed.as_raw_units().clone() == BigUint::zero());
     let scaled_supplied = state.market_supplied(state.usdc_market.clone());
     println!("scaled_supplied: {scaled_supplied:?}");
     // With the fix, there should be no dust when claiming full revenue
     assert!(
-        scaled_supplied.into_raw_units().clone() == BigUint::zero(),
+        scaled_supplied.as_raw_units().clone() == BigUint::zero(),
         "Scaled supplied should be zero after full revenue claim"
     );
 }
@@ -1496,32 +1534,35 @@ fn seize_dust_collateral_after_bad_debt_success_just_debt_no_collateral() {
     // Setup liquidity pools
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(5000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(5000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(1000u64),
-        USDC_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower provides EGLD collateral that will be liquidated down to dust
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(20u64), // 10 EGLD = $1250
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(20u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower takes loan that will create bad debt after interest
@@ -1594,22 +1635,24 @@ fn e_mode_liquidate_leave_bad_debt_success() {
     // Supplier provides liquidity across multiple assets ($5000 total)
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::Some(1),
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::Some(1),
+        },
     );
 
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(40u64), // $2500
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::Some(1),
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(40u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::Some(1),
+        },
     );
 
     // Borrower takes loans
@@ -1675,7 +1718,7 @@ fn e_mode_liquidate_leave_bad_debt_success() {
         // So we use the EGLD_TOKEN test identifier to validate the invariant for this scenario.
         let current_collateral = state.collateral_amount_for_token(2, EGLD_TOKEN);
         assert!(
-            seized.amount <= current_collateral.into_raw_units().clone(),
+            seized.amount <= current_collateral.as_raw_units().clone(),
             "Seized amount must not exceed deposited collateral"
         );
     }
@@ -1712,7 +1755,7 @@ fn e_mode_liquidate_leave_bad_debt_success() {
     state.liquidate_account_dem(
         &liquidator,
         &EGLD_TOKEN,
-        borrowed_egld.into_raw_units().clone(),
+        borrowed_egld.as_raw_units().clone(),
         2,
     );
     let borrowed_egld = state.total_borrow_in_egld(2);

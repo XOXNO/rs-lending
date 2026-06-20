@@ -17,6 +17,7 @@ lcov.info
 
 **/*.rs.bk
 .vscode
+.claude/settings.local.json
 
 **/deploy.json
 **/upgrade.json

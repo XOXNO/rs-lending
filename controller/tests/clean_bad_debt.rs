@@ -39,32 +39,35 @@ fn clean_bad_debt_keeps_borrow_index_constant() {
     // Provide USDC liquidity for borrowing
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(5000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(5000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(1000u64),
-        USDC_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower collateral and borrow
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(20u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(20u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.borrow_asset(
         &borrower,
@@ -130,32 +133,35 @@ fn clean_bad_debt_supply_index_exact_factor() {
     // Provide USDC liquidity
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(5000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(5000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(1000u64),
-        USDC_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower collateral and borrow
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(20u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(20u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.borrow_asset(
         &borrower,
@@ -188,8 +194,8 @@ fn clean_bad_debt_supply_index_exact_factor() {
 
     // Compute expected new supply index using the same half-up rounding scheme
     let ray = BigUint::from(RAY);
-    let total_raw = supplied_amount_before.into_raw_units().clone();
-    let debt_raw = bad_debt_before.into_raw_units().clone();
+    let total_raw = supplied_amount_before.as_raw_units().clone();
+    let debt_raw = bad_debt_before.as_raw_units().clone();
     let capped_bad_debt = if debt_raw > total_raw {
         total_raw.clone()
     } else {
@@ -202,7 +208,7 @@ fn clean_bad_debt_supply_index_exact_factor() {
     let reduction_factor_ray = half_up_div(&reduction_numer, &total_raw);
 
     // expected_index = round_half_up(supply_index_before * reduction_factor_ray / RAY)
-    let sib_raw = supply_index_before.into_raw_units().clone();
+    let sib_raw = supply_index_before.as_raw_units().clone();
     let numer = sib_raw * &reduction_factor_ray;
     let expected_index_raw = half_up_div(&numer, &ray);
 
@@ -210,7 +216,7 @@ fn clean_bad_debt_supply_index_exact_factor() {
     state.clean_bad_debt(2);
 
     let supply_index_after = state.market_supply_index(usdc_pool);
-    let after_raw = supply_index_after.into_raw_units().clone();
+    let after_raw = supply_index_after.as_raw_units().clone();
 
     // Allow tiny rounding drift tolerance
     let tol = small_ray_tolerance();
@@ -246,22 +252,24 @@ fn clean_bad_debt_supply_index_clamped_min() {
     // Provide minimal liquidity above the borrow so the position can be created
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(500u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(500u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(20u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(20u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.borrow_asset(
         &borrower,
@@ -294,10 +302,7 @@ fn clean_bad_debt_supply_index_clamped_min() {
 
     // Expect supply index to be reduced significantly and never below the hard
     // minimum raw value 1 (RAY floor)
-    let supply_index_after_raw = state
-        .market_supply_index(usdc_pool)
-        .into_raw_units()
-        .clone();
+    let supply_index_after_raw = state.market_supply_index(usdc_pool).as_raw_units().clone();
     assert!(supply_index_after_raw >= 1u64);
 }
 
@@ -320,32 +325,35 @@ fn clean_bad_debt_affects_only_impacted_market() {
     // Supply into two markets
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(2000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(2000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower posts EGLD collateral and borrows USDC only
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(50u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(50u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.borrow_asset(
         &borrower,

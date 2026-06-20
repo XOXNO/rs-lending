@@ -237,12 +237,12 @@ pub trait SnapModule:
         let mut final_collateral = self.convert_token_from_to(
             collateral_token,
             debt_token,
-            debt_to_be_swapped.into_raw_units(),
+            debt_to_be_swapped.as_raw_units(),
             &caller,
             steps,
         );
         // Add any directly supplied collateral to the swapped amount
-        final_collateral.amount += collateral_to_be_supplied.into_raw_units();
+        final_collateral.amount += collateral_to_be_supplied.as_raw_units();
 
         // Deposit the final collateral amount to complete the leveraged position
         self.process_deposit(
@@ -377,7 +377,7 @@ pub trait SnapModule:
         let received = self.swap_tokens(
             existing_debt_token,
             new_debt_token,
-            received_debt.into_raw_units(),
+            received_debt.as_raw_units(),
             &caller,
             steps,
         );
@@ -877,6 +877,8 @@ pub trait SnapModule:
         caller: &ManagedAddress,
         args: ManagedArgBuffer<Self::Api>,
     ) -> EgldOrEsdtTokenPayment {
+        self.flash_loan_ongoing().set(true);
+
         // Execute swap via external router with source tokens and configuration
         let back_transfers = self
             .tx()
@@ -886,6 +888,8 @@ pub trait SnapModule:
             .egld_or_single_esdt(from_token, 0, from_amount)
             .returns(ReturnsBackTransfers) // Reset to capture all return transfers
             .sync_call();
+
+        self.flash_loan_ongoing().set(false);
 
         // Initialize result container for target token accumulation
         let mut target_token_result =

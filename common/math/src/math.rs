@@ -22,7 +22,7 @@ pub trait SharedMathModule {
         let scaled_b = b.rescale(precision);
 
         // Perform multiplication in BigUint
-        let product = scaled_a.into_raw_units() * scaled_b.into_raw_units();
+        let product = scaled_a.as_raw_units() * scaled_b.as_raw_units();
 
         // Half-up rounding at precision
         let scaled = BigUint::from(10u64).pow(precision as u32);
@@ -49,8 +49,8 @@ pub trait SharedMathModule {
 
         // Perform division in BigUint
         let scaled = BigUint::from(10u64).pow(precision as u32);
-        let numerator = scaled_a.into_raw_units() * &scaled;
-        let denominator = scaled_b.into_raw_units();
+        let numerator = scaled_a.as_raw_units() * &scaled;
+        let denominator = scaled_b.as_raw_units();
 
         // Half-up rounding
         let half_denominator = denominator / &BigUint::from(2u64);
@@ -73,7 +73,7 @@ pub trait SharedMathModule {
         let scaled_b = b.rescale(precision);
 
         // Perform multiplication in BigUint
-        let product = scaled_a.into_raw_units() * scaled_b.into_raw_units();
+        let product = scaled_a.as_raw_units() * scaled_b.as_raw_units();
 
         // Half-up rounding at precision
         let scaled = BigInt::from(10i64).pow(precision as u32);
@@ -106,8 +106,8 @@ pub trait SharedMathModule {
 
         // Perform division in BigUint
         let scaled = BigInt::from(10i64).pow(precision as u32);
-        let numerator = scaled_a.into_raw_units() * &scaled;
-        let denominator = scaled_b.into_raw_units();
+        let numerator = scaled_a.as_raw_units() * &scaled;
+        let denominator = scaled_b.as_raw_units();
 
         // Half-up rounding
         let half_denominator = denominator / &BigInt::from(2i64);
@@ -202,7 +202,7 @@ pub trait SharedMathModule {
         new_precision: NumDecimals,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
         let old_precision = value.scale();
-        let raw_value = value.into_raw_units();
+        let raw_value = value.as_raw_units();
 
         match new_precision.cmp(&old_precision) {
             Ordering::Equal => value.clone(),

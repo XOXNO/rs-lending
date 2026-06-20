@@ -863,9 +863,20 @@ pub trait OracleModule:
     fn token_price_in_egld_from_aggregator(
         &self,
         token_id: &EgldOrEsdtTokenIdentifier,
-        max_seconds_stale: u64,
+        max_seconds_stale: DurationSeconds,
         cache: &mut Cache<Self>,
     ) -> ManagedDecimal<Self::Api, NumDecimals> {
+        self.aggregator_feed_in_egld(token_id, max_seconds_stale, cache)
+            .0
+    }
+
+    /// Returns `(price_in_egld_wad, feed_timestamp_secs)`.
+    fn aggregator_feed_in_egld(
+        &self,
+        token_id: &EgldOrEsdtTokenIdentifier,
+        max_seconds_stale: DurationSeconds,
+        cache: &mut Cache<Self>,
+    ) -> (ManagedDecimal<Self::Api, NumDecimals>, TimestampSeconds) {
         let ticker = self.token_ticker(token_id, cache);
         let feed = self.aggregator_price_feed(
             ticker,
@@ -874,14 +885,15 @@ pub trait OracleModule:
             cache.allow_unsafe_price,
         );
         let token_usd_price_wad = self.to_decimal_wad(feed.price);
-        self.rescale_half_up(
+        let price_in_egld = self.rescale_half_up(
             &self.div_half_up(
                 &token_usd_price_wad,
                 &cache.egld_usd_price_wad,
                 RAY_PRECISION,
             ),
             WAD_PRECISION,
-        )
+        );
+        (price_in_egld, feed.timestamp)
     }
 
     /// Routes aggregator price fetching based on token type (normal vs derived).
@@ -1081,7 +1093,7 @@ pub trait OracleModule:
         // STEP 4a: Calculate modified reserve X' using geometric mean approach
         // X' = sqrt(K × Price_B/Price_A) where K is the constant product
         // Step 4a.1: Extract square root from WAD-precision value
-        let sqrt_raw_x_half_wad = inner_x_wad.into_raw_units().sqrt(); // sqrt(K × ratio * 10^18) = result * 10^9
+        let sqrt_raw_x_half_wad = inner_x_wad.as_raw_units().sqrt(); // sqrt(K × ratio * 10^18) = result * 10^9
 
         // Step 4a.2: Convert sqrt result to ManagedDecimal with half-WAD precision (9 decimals)
         // Square root of WAD value naturally has 9 decimals: sqrt(10^18) = 10^9
@@ -1098,7 +1110,7 @@ pub trait OracleModule:
 
         // STEP 4b: Calculate modified reserve Y' using same geometric mean approach
         // Y' = sqrt(K × Price_A/Price_B) - symmetric calculation to X'
-        let sqrt_raw_y_half_wad = inner_y_wad.into_raw_units().sqrt();
+        let sqrt_raw_y_half_wad = inner_y_wad.as_raw_units().sqrt();
         let sqrt_decimal_temp_y = self.to_decimal(sqrt_raw_y_half_wad, WAD_HALF_PRECISION);
         // Step 4b.1-4: Apply same sqrt and scaling operations as X' calculation
         // Reuse scaling factor for efficiency and consistency
@@ -1151,7 +1163,7 @@ pub trait OracleModule:
         &self,
         from_ticker: ManagedBuffer,
         price_aggregator_sc: &ManagedAddress,
-        max_seconds_stale: u64,
+        max_seconds_stale: DurationSeconds,
         allow_unsafe_price: bool,
     ) -> PriceFeed<Self::Api> {
         require!(
@@ -1182,7 +1194,7 @@ pub trait OracleModule:
         let feed = self.make_price_feed(token_pair, round_values.get());
 
         require!(
-            self.blockchain().get_block_timestamp() - feed.timestamp < max_seconds_stale
+            self.blockchain().get_block_timestamp_seconds() - feed.timestamp < max_seconds_stale
                 || allow_unsafe_price,
             ERROR_PRICE_FEED_STALE
         );
@@ -1252,19 +1264,10 @@ pub trait OracleModule:
     /// **Purpose:** Provides comprehensive price information including individual price sources,
     /// final calculated price, and tolerance compliance status for monitoring and analysis.
     ///
-    /// **Returns:**
-    /// - `safe_price`: On-chain/TWAP price (if applicable)
-    /// - `aggregator_price`: Off-chain aggregator price (if applicable)  
-    /// - `final_price`: Actual price used by the protocol
-    /// - `within_first_tolerance`: True if prices are within ±2% bounds
-    /// - `within_second_tolerance`: True if prices are within ±5% bounds
-    ///
-    /// **Security considerations:**
-    /// - For derived tokens like LXOXNO, validates underlying asset (XOXNO) tolerance
-    /// - LP tokens check tolerance between on-chain and off-chain calculations
-    /// - Normal tokens compare aggregator vs safe price feeds
-    ///
-    /// **Usage:** Primarily for price monitoring, deviation alerts, and operational dashboards
+    /// Returns `(safe_price, aggregator_price, final_price,
+    /// aggregator_timestamp_secs, is_stale, within_first, within_second)`.
+    /// `aggregator_timestamp_secs` is 0 and `is_stale` false when the asset
+    /// does not consume the aggregator (LP, Derived, OnlySafe, EGLD).
     fn price_components(
         &self,
         token_id: &EgldOrEsdtTokenIdentifier<Self::Api>,
@@ -1273,12 +1276,22 @@ pub trait OracleModule:
         Option<ManagedDecimal<Self::Api, NumDecimals>>,
         Option<ManagedDecimal<Self::Api, NumDecimals>>,
         ManagedDecimal<Self::Api, NumDecimals>,
+        TimestampSeconds,
+        bool,
         bool,
         bool,
     ) {
         let ticker = self.token_ticker(token_id, cache);
         if ticker == cache.egld_ticker {
-            return (None, None, self.wad(), true, true);
+            return (
+                None,
+                None,
+                self.wad(),
+                TimestampSeconds::zero(),
+                false,
+                true,
+                true,
+            );
         }
 
         let oracle_data = self.token_oracle(token_id);
@@ -1322,13 +1335,26 @@ pub trait OracleModule:
                     Some(safe_lp_price),
                     Some(off_chain_lp_price),
                     final_price,
+                    TimestampSeconds::zero(),
+                    false,
                     within_first,
                     within_second,
                 )
             },
             OracleType::Normal => {
-                let aggregator_price =
-                    self.aggregator_price_if_applicable(&configs, token_id, cache);
+                let uses_aggregator = configs.pricing_method == PricingMethod::Aggregator
+                    || configs.pricing_method == PricingMethod::Mix;
+                let (aggregator_price, aggregator_timestamp_secs) = if uses_aggregator {
+                    let (price, ts) = self.aggregator_feed_in_egld(
+                        token_id,
+                        configs.max_price_stale_seconds,
+                        cache,
+                    );
+                    (OptionalValue::Some(price), ts)
+                } else {
+                    (OptionalValue::None, TimestampSeconds::zero())
+                };
+
                 let safe_price = self.safe_price_if_applicable(&configs, token_id, cache);
                 let final_price = self.calculate_final_price(
                     aggregator_price.clone(),
@@ -1347,10 +1373,16 @@ pub trait OracleModule:
                             &configs.tolerance.last_upper_ratio_bps,
                             &configs.tolerance.last_lower_ratio_bps,
                         ),
-                    _ => (true, true), // Single source, no deviation
+                    _ => (true, true),
                 };
 
-                // Convert OptionalValue to Option for consistent return type
+                let is_stale = uses_aggregator
+                    && self
+                        .blockchain()
+                        .get_block_timestamp_seconds()
+                        .sub(aggregator_timestamp_secs)
+                        >= configs.max_price_stale_seconds;
+
                 let safe_price_opt = match safe_price {
                     OptionalValue::Some(price) => Some(price),
                     OptionalValue::None => None,
@@ -1364,6 +1396,8 @@ pub trait OracleModule:
                     safe_price_opt,
                     optional_aggregator_price,
                     final_price,
+                    aggregator_timestamp_secs,
+                    is_stale,
                     within_first,
                     within_second,
                 )
@@ -1375,19 +1409,29 @@ pub trait OracleModule:
                 let (within_first, within_second) = match configs.exchange_source {
                     ExchangeSource::LXOXNO => {
                         // Recursively check XOXNO tolerance status
-                        let (_, _, _, first, second) =
+                        let (_, _, _, _, _, first, second) =
                             self.price_components(&configs.base_token_id, cache);
                         (first, second)
                     },
                     _ => (true, true), // XEGLD and LEGLD only depend on exchange rate contracts
                 };
 
-                (None, None, price, within_first, within_second)
+                (
+                    None,
+                    None,
+                    price,
+                    TimestampSeconds::zero(),
+                    false,
+                    within_first,
+                    within_second,
+                )
             },
             _ => (
                 Some(self.wad_zero()),
                 Some(self.wad_zero()),
                 self.wad_zero(),
+                TimestampSeconds::zero(),
+                false,
                 true,
                 true,
             ),

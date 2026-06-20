@@ -30,23 +30,25 @@ fn views_basic_market_metrics_success() {
     // Supply $4000 worth of EGLD
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower supplies $2500 worth of XEGLD as collateral
     state.supply_asset(
         &borrower,
-        XEGLD_TOKEN,
-        BigUint::from(100u64),
-        XEGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: XEGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower takes $1800 EGLD loan (45% utilization)
@@ -118,43 +120,47 @@ fn views_liquidation_estimation_unhealthy_position() {
     // Supply liquidity
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(2000u64),
-        USDC_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(2000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &supplier,
-        XEGLD_TOKEN,
-        BigUint::from(50u64),
-        XEGLD_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(50u64),
+            asset_decimals: XEGLD_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower supplies $3000 USDC as collateral
     state.supply_asset(
         &borrower,
-        USDC_TOKEN,
-        BigUint::from(3000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(3000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower takes loans
@@ -197,14 +203,14 @@ fn views_liquidation_estimation_unhealthy_position() {
 
     let mut debt_payments = ManagedVec::new();
     debt_payments.push(EgldOrEsdtTokenPayment::new(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
         0,
-        borrowed_egld.into_raw_units() / 2u64,
+        borrowed_egld.as_raw_units() / 2u64,
     ));
     debt_payments.push(EgldOrEsdtTokenPayment::new(
-        EgldOrEsdtTokenIdentifier::esdt(XEGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(XEGLD_TOKEN.to_esdt_token_identifier()),
         0,
-        borrowed_xegld.into_raw_units() / 2u64,
+        borrowed_xegld.as_raw_units() / 2u64,
     ));
 
     // Get liquidation estimations
@@ -242,32 +248,35 @@ fn views_all_markets_data_retrieval() {
     // Supply to multiple markets
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(1000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &supplier,
-        XEGLD_TOKEN,
-        BigUint::from(50u64),
-        XEGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(50u64),
+            asset_decimals: XEGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Prepare asset list
@@ -335,33 +344,36 @@ fn views_position_data_and_aggregates() {
     // Create positions
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(200u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(200u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower supplies multiple collaterals
     state.supply_asset(
         &borrower,
-        USDC_TOKEN,
-        BigUint::from(3000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(3000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &borrower,
-        XEGLD_TOKEN,
-        BigUint::from(40u64),
-        XEGLD_DECIMALS,
-        OptionalValue::Some(2),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(40u64),
+            asset_decimals: XEGLD_DECIMALS,
+            account_nonce: OptionalValue::Some(2),
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower takes loan
@@ -488,12 +500,13 @@ fn views_error_handling_non_existent_data() {
     // Create minimal position
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(10u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(10u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Test error for non-existent collateral token
@@ -521,53 +534,58 @@ fn views_complex_liquidation_bad_debt_scenario() {
     // Create large liquidity pools
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(500u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(500u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(10000u64),
-        USDC_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(10000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &supplier,
-        CAPPED_TOKEN,
-        BigUint::from(100u64),
-        CAPPED_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: CAPPED_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: CAPPED_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower supplies multiple collaterals
     state.supply_asset(
         &borrower,
-        XEGLD_TOKEN,
-        BigUint::from(30u64), // $1500
-        XEGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(30u64),
+            asset_decimals: XEGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &borrower,
-        SEGLD_TOKEN,
-        BigUint::from(40u64), // $2000
-        SEGLD_DECIMALS,
-        OptionalValue::Some(2),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: SEGLD_TOKEN,
+            amount: BigUint::from(40u64),
+            asset_decimals: SEGLD_DECIMALS,
+            account_nonce: OptionalValue::Some(2),
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower takes multiple loans
@@ -622,19 +640,19 @@ fn views_complex_liquidation_bad_debt_scenario() {
 
     let mut debt_payments = ManagedVec::new();
     debt_payments.push(EgldOrEsdtTokenPayment::new(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
         0,
-        borrowed_egld.into_raw_units().clone(),
+        borrowed_egld.as_raw_units().clone(),
     ));
     debt_payments.push(EgldOrEsdtTokenPayment::new(
-        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_esdt_token_identifier()),
         0,
-        borrowed_usdc.into_raw_units().clone(),
+        borrowed_usdc.as_raw_units().clone(),
     ));
     debt_payments.push(EgldOrEsdtTokenPayment::new(
-        EgldOrEsdtTokenIdentifier::esdt(CAPPED_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(CAPPED_TOKEN.to_esdt_token_identifier()),
         0,
-        borrowed_capped.into_raw_units().clone(),
+        borrowed_capped.as_raw_units().clone(),
     ));
 
     // Get liquidation estimations
@@ -643,15 +661,15 @@ fn views_complex_liquidation_bad_debt_scenario() {
     // Full refund of the last paid debt since it was overpaid
     assert_eq!(
         liquidation_estimate.refunds.get(0).amount,
-        borrowed_capped.into_raw_units().clone()
+        borrowed_capped.as_raw_units().clone()
     );
     // Partial refund of the second paid debt since it was overpaid
     assert_eq!(
         liquidation_estimate.refunds.get(1).amount,
-        borrowed_usdc.into_raw_units().clone()
+        borrowed_usdc.as_raw_units().clone()
     );
     // Partial refund of the first paid debt since it was underpaid
-    assert!(liquidation_estimate.refunds.get(2).amount < borrowed_egld.into_raw_units().clone());
+    assert!(liquidation_estimate.refunds.get(2).amount < borrowed_egld.as_raw_units().clone());
     // Verify complex liquidation results
     assert_eq!(liquidation_estimate.seized_collaterals.len(), 2); // Both collateral types seized
     assert_eq!(liquidation_estimate.protocol_fees.len(), 2); // Fees for each seized asset

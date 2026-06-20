@@ -8,7 +8,7 @@ edition = "2021"
 path = "src/rates.rs"
 
 [dependencies.multiversx-sc]
-version = "0.59.0"
+version = "0.66.1"
 
 [dependencies.common-constants]
 path = "../constants"

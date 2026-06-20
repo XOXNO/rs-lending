@@ -9,7 +9,9 @@ use controller::{
     ERROR_ORACLE_TOKEN_EXISTING, ERROR_ORACLE_TOKEN_NOT_FOUND, ERROR_UNEXPECTED_ANCHOR_TOLERANCES,
     ERROR_UNEXPECTED_FIRST_TOLERANCE, ERROR_UNEXPECTED_LAST_TOLERANCE,
 };
-use multiversx_sc::types::{EgldOrEsdtTokenIdentifier, ManagedAddress, ManagedDecimal};
+use multiversx_sc::types::{
+    DurationSeconds, EgldOrEsdtTokenIdentifier, ManagedAddress, ManagedDecimal,
+};
 use multiversx_sc_scenario::imports::{BigUint, OptionalValue, TestAddress, TestTokenIdentifier};
 pub mod constants;
 pub mod proxys;
@@ -38,15 +40,17 @@ fn oracle_set_token_oracle_already_exists_error() {
 
     state.set_token_oracle_error(
         &EgldOrEsdtTokenIdentifier::egld(),
-        18usize,
-        &oracle_address,
-        PricingMethod::Aggregator,
-        OracleType::Normal,
-        ExchangeSource::XExchange,
-        BigUint::from(MIN_FIRST_TOLERANCE),
-        BigUint::from(MIN_LAST_TOLERANCE),
-        3600u64,
-        OptionalValue::None,
+        TokenOracleParams {
+            decimals: 18usize,
+            contract_address: oracle_address.clone(),
+            pricing_method: PricingMethod::Aggregator,
+            oracle_type: OracleType::Normal,
+            source: ExchangeSource::XExchange,
+            first_tolerance: BigUint::from(MIN_FIRST_TOLERANCE),
+            last_tolerance: BigUint::from(MIN_LAST_TOLERANCE),
+            max_price_stale_seconds: DurationSeconds::new(3600),
+            one_dex_pair_id: OptionalValue::None,
+        },
         ERROR_ORACLE_TOKEN_EXISTING,
     );
 
@@ -60,52 +64,28 @@ fn oracle_set_token_oracle_already_exists_error() {
     assert!(after.exchange_source == before.exchange_source);
     assert_eq!(after.asset_decimals, before.asset_decimals);
     assert_eq!(
-        after
-            .tolerance
-            .first_upper_ratio_bps
-            .into_raw_units()
-            .clone(),
+        after.tolerance.first_upper_ratio_bps.as_raw_units().clone(),
         before
             .tolerance
             .first_upper_ratio_bps
-            .into_raw_units()
+            .as_raw_units().clone()
             .clone(),
     );
     assert_eq!(
-        after
-            .tolerance
-            .first_lower_ratio_bps
-            .into_raw_units()
-            .clone(),
+        after.tolerance.first_lower_ratio_bps.as_raw_units().clone(),
         before
             .tolerance
             .first_lower_ratio_bps
-            .into_raw_units()
+            .as_raw_units().clone()
             .clone(),
     );
     assert_eq!(
-        after
-            .tolerance
-            .last_upper_ratio_bps
-            .into_raw_units()
-            .clone(),
-        before
-            .tolerance
-            .last_upper_ratio_bps
-            .into_raw_units()
-            .clone(),
+        after.tolerance.last_upper_ratio_bps.as_raw_units().clone(),
+        before.tolerance.last_upper_ratio_bps.as_raw_units().clone(),
     );
     assert_eq!(
-        after
-            .tolerance
-            .last_lower_ratio_bps
-            .into_raw_units()
-            .clone(),
-        before
-            .tolerance
-            .last_lower_ratio_bps
-            .into_raw_units()
-            .clone(),
+        after.tolerance.last_lower_ratio_bps.as_raw_units().clone(),
+        before.tolerance.last_lower_ratio_bps.as_raw_units().clone(),
     );
 }
 
@@ -123,31 +103,35 @@ fn oracle_set_token_oracle_onedex_missing_pair_id_error() {
     let oracle_address = TestAddress::new("oracle").to_managed_address();
 
     state.set_token_oracle_error(
-        &EgldOrEsdtTokenIdentifier::esdt(new_token.to_token_identifier()),
-        18usize,
-        &oracle_address,
-        PricingMethod::Aggregator,
-        OracleType::Normal,
-        ExchangeSource::Onedex,
-        BigUint::from(MIN_FIRST_TOLERANCE),
-        BigUint::from(MIN_LAST_TOLERANCE),
-        3600u64,
-        OptionalValue::None, // Missing pair ID
+        &EgldOrEsdtTokenIdentifier::esdt(new_token.to_esdt_token_identifier()),
+        TokenOracleParams {
+            decimals: 18usize,
+            contract_address: oracle_address.clone(),
+            pricing_method: PricingMethod::Aggregator,
+            oracle_type: OracleType::Normal,
+            source: ExchangeSource::Onedex,
+            first_tolerance: BigUint::from(MIN_FIRST_TOLERANCE),
+            last_tolerance: BigUint::from(MIN_LAST_TOLERANCE),
+            max_price_stale_seconds: DurationSeconds::new(3600),
+            one_dex_pair_id: OptionalValue::None,
+        },
         ERROR_INVALID_ONEDEX_PAIR_ID,
     );
 
     // Oracle entry must not be created for the new token
     state.set_token_oracle_error(
-        &EgldOrEsdtTokenIdentifier::esdt(new_token.to_token_identifier()),
-        18usize,
-        &oracle_address,
-        PricingMethod::Aggregator,
-        OracleType::Normal,
-        ExchangeSource::Onedex,
-        BigUint::from(MIN_FIRST_TOLERANCE),
-        BigUint::from(MIN_LAST_TOLERANCE),
-        3600u64,
-        OptionalValue::None,
+        &EgldOrEsdtTokenIdentifier::esdt(new_token.to_esdt_token_identifier()),
+        TokenOracleParams {
+            decimals: 18usize,
+            contract_address: oracle_address.clone(),
+            pricing_method: PricingMethod::Aggregator,
+            oracle_type: OracleType::Normal,
+            source: ExchangeSource::Onedex,
+            first_tolerance: BigUint::from(MIN_FIRST_TOLERANCE),
+            last_tolerance: BigUint::from(MIN_LAST_TOLERANCE),
+            max_price_stale_seconds: DurationSeconds::new(3600),
+            one_dex_pair_id: OptionalValue::None,
+        },
         ERROR_INVALID_ONEDEX_PAIR_ID,
     );
 }
@@ -178,45 +162,30 @@ fn oracle_edit_tolerance_success() {
         oracle
             .tolerance
             .first_upper_ratio_bps
-            .into_raw_units()
+            .as_raw_units().clone()
             .clone(),
         expected_first_raw,
     );
     assert_eq!(
-        oracle
-            .tolerance
-            .last_upper_ratio_bps
-            .into_raw_units()
-            .clone(),
+        oracle.tolerance.last_upper_ratio_bps.as_raw_units().clone(),
         expected_last_raw,
     );
     let first_lower_raw = oracle
         .tolerance
         .first_lower_ratio_bps
-        .into_raw_units()
+        .as_raw_units().clone()
         .clone();
-    let last_lower_raw = oracle
-        .tolerance
-        .last_lower_ratio_bps
-        .into_raw_units()
-        .clone();
+    let last_lower_raw = oracle.tolerance.last_lower_ratio_bps.as_raw_units().clone();
     assert!(
         first_lower_raw
             < before
                 .tolerance
                 .first_lower_ratio_bps
-                .into_raw_units()
+                .as_raw_units().clone()
                 .clone()
     );
     assert!(first_lower_raw > BigUint::zero());
-    assert!(
-        last_lower_raw
-            < before
-                .tolerance
-                .last_lower_ratio_bps
-                .into_raw_units()
-                .clone()
-    );
+    assert!(last_lower_raw < before.tolerance.last_lower_ratio_bps.as_raw_units().clone());
     assert!(last_lower_raw > BigUint::zero());
 }
 
@@ -233,7 +202,7 @@ fn oracle_edit_tolerance_token_not_found_error() {
     let before = state.token_oracle(EgldOrEsdtTokenIdentifier::egld());
 
     state.edit_token_oracle_tolerance_error(
-        &EgldOrEsdtTokenIdentifier::esdt(new_token.to_token_identifier()),
+        &EgldOrEsdtTokenIdentifier::esdt(new_token.to_esdt_token_identifier()),
         BigUint::from(MIN_FIRST_TOLERANCE),
         BigUint::from(MIN_LAST_TOLERANCE),
         ERROR_ORACLE_TOKEN_NOT_FOUND,
@@ -241,28 +210,16 @@ fn oracle_edit_tolerance_token_not_found_error() {
 
     let after = state.token_oracle(EgldOrEsdtTokenIdentifier::egld());
     assert_eq!(
-        after
-            .tolerance
-            .first_upper_ratio_bps
-            .into_raw_units()
-            .clone(),
+        after.tolerance.first_upper_ratio_bps.as_raw_units().clone(),
         before
             .tolerance
             .first_upper_ratio_bps
-            .into_raw_units()
+            .as_raw_units().clone()
             .clone(),
     );
     assert_eq!(
-        after
-            .tolerance
-            .last_upper_ratio_bps
-            .into_raw_units()
-            .clone(),
-        before
-            .tolerance
-            .last_upper_ratio_bps
-            .into_raw_units()
-            .clone(),
+        after.tolerance.last_upper_ratio_bps.as_raw_units().clone(),
+        before.tolerance.last_upper_ratio_bps.as_raw_units().clone(),
     );
 }
 
@@ -288,12 +245,12 @@ fn oracle_edit_tolerance_first_tolerance_too_low_error() {
         oracle
             .tolerance
             .first_upper_ratio_bps
-            .into_raw_units()
+            .as_raw_units().clone()
             .clone(),
         before
             .tolerance
             .first_upper_ratio_bps
-            .into_raw_units()
+            .as_raw_units().clone()
             .clone(),
     );
 }
@@ -317,16 +274,8 @@ fn oracle_edit_tolerance_last_tolerance_too_low_error() {
 
     let oracle = state.token_oracle(EgldOrEsdtTokenIdentifier::egld());
     assert_eq!(
-        oracle
-            .tolerance
-            .last_upper_ratio_bps
-            .into_raw_units()
-            .clone(),
-        before
-            .tolerance
-            .last_upper_ratio_bps
-            .into_raw_units()
-            .clone(),
+        oracle.tolerance.last_upper_ratio_bps.as_raw_units().clone(),
+        before.tolerance.last_upper_ratio_bps.as_raw_units().clone(),
     );
 }
 
@@ -353,25 +302,17 @@ fn oracle_edit_tolerance_invalid_anchor_error() {
         oracle
             .tolerance
             .first_upper_ratio_bps
-            .into_raw_units()
+            .as_raw_units().clone()
             .clone(),
         before
             .tolerance
             .first_upper_ratio_bps
-            .into_raw_units()
+            .as_raw_units().clone()
             .clone(),
     );
     assert_eq!(
-        oracle
-            .tolerance
-            .last_upper_ratio_bps
-            .into_raw_units()
-            .clone(),
-        before
-            .tolerance
-            .last_upper_ratio_bps
-            .into_raw_units()
-            .clone(),
+        oracle.tolerance.last_upper_ratio_bps.as_raw_units().clone(),
+        before.tolerance.last_upper_ratio_bps.as_raw_units().clone(),
     );
 }
 
@@ -413,7 +354,7 @@ fn oracle_disable_token_oracle_not_found_error() {
     let new_token = TestTokenIdentifier::new("NOTOKEN-123456");
 
     state.disable_token_oracle_error(
-        &EgldOrEsdtTokenIdentifier::esdt(new_token.to_token_identifier()),
+        &EgldOrEsdtTokenIdentifier::esdt(new_token.to_esdt_token_identifier()),
         ERROR_ORACLE_TOKEN_NOT_FOUND,
     );
 }
@@ -617,15 +558,15 @@ fn emode_add_category_success() {
         .find(|(id, _)| *id == 2)
         .expect("new e-mode category should exist");
     assert_eq!(
-        category.loan_to_value_bps.into_raw_units().clone(),
+        category.loan_to_value_bps.as_raw_units().clone(),
         BigUint::from(8500u64),
     );
     assert_eq!(
-        category.liquidation_threshold_bps.into_raw_units().clone(),
+        category.liquidation_threshold_bps.as_raw_units().clone(),
         BigUint::from(9000u64),
     );
     assert_eq!(
-        category.liquidation_bonus_bps.into_raw_units().clone(),
+        category.liquidation_bonus_bps.as_raw_units().clone(),
         BigUint::from(200u64),
     );
     assert!(!category.is_deprecated);
@@ -671,15 +612,15 @@ fn emode_edit_category_success() {
         .into_tuple()
         .1;
     assert_eq!(
-        updated.loan_to_value_bps.into_raw_units().clone(),
+        updated.loan_to_value_bps.as_raw_units().clone(),
         BigUint::from(8000u64),
     );
     assert_eq!(
-        updated.liquidation_threshold_bps.into_raw_units().clone(),
+        updated.liquidation_threshold_bps.as_raw_units().clone(),
         BigUint::from(8500u64),
     );
     assert_eq!(
-        updated.liquidation_bonus_bps.into_raw_units().clone(),
+        updated.liquidation_bonus_bps.as_raw_units().clone(),
         BigUint::from(300u64),
     );
     assert_eq!(updated.is_deprecated, before_category.is_deprecated);
@@ -721,15 +662,12 @@ fn emode_edit_category_not_found_error() {
     for ((before_id, before_cat), (after_id, after_cat)) in before.iter().zip(after.iter()) {
         assert_eq!(before_id, after_id);
         assert_eq!(
-            before_cat.loan_to_value_bps.into_raw_units().clone(),
-            after_cat.loan_to_value_bps.into_raw_units().clone(),
+            before_cat.loan_to_value_bps.as_raw_units().clone(),
+            after_cat.loan_to_value_bps.as_raw_units().clone(),
         );
         assert_eq!(
-            before_cat
-                .liquidation_threshold_bps
-                .into_raw_units()
-                .clone(),
-            after_cat.liquidation_threshold_bps.into_raw_units().clone(),
+            before_cat.liquidation_threshold_bps.as_raw_units().clone(),
+            after_cat.liquidation_threshold_bps.as_raw_units().clone(),
         );
         assert_eq!(before_cat.is_deprecated, after_cat.is_deprecated);
     }
@@ -816,12 +754,12 @@ fn emode_add_asset_to_category_success() {
 
     let before_ids: Vec<_> = state
         .asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
-            USDC_TOKEN.to_token_identifier(),
+            USDC_TOKEN.to_esdt_token_identifier(),
         ))
         .into_iter()
         .collect();
     state.add_asset_to_e_mode_category(
-        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_esdt_token_identifier()),
         1,
         true, // can be collateral
         true, // can be borrowed
@@ -829,7 +767,7 @@ fn emode_add_asset_to_category_success() {
 
     // Verify asset was added
     let asset_e_modes = state.asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
-        USDC_TOKEN.to_token_identifier(),
+        USDC_TOKEN.to_esdt_token_identifier(),
     ));
     let collected: Vec<_> = asset_e_modes.into_iter().collect();
     assert_eq!(collected.len(), before_ids.len() + 1);
@@ -839,7 +777,7 @@ fn emode_add_asset_to_category_success() {
     let mut found = None;
     for item in configs {
         let (asset, cfg) = item.into_tuple();
-        if asset == EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_token_identifier()) {
+        if asset == EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_esdt_token_identifier()) {
             found = Some(cfg);
             break;
         }
@@ -860,12 +798,12 @@ fn emode_add_asset_to_invalid_category_error() {
 
     let before = state
         .asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
-            USDC_TOKEN.to_token_identifier(),
+            USDC_TOKEN.to_esdt_token_identifier(),
         ))
         .into_iter()
         .collect::<Vec<_>>();
     state.add_asset_to_e_mode_category_error(
-        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_esdt_token_identifier()),
         99, // Non-existent category
         true,
         true,
@@ -874,7 +812,7 @@ fn emode_add_asset_to_invalid_category_error() {
 
     let after = state
         .asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
-            USDC_TOKEN.to_token_identifier(),
+            USDC_TOKEN.to_esdt_token_identifier(),
         ))
         .into_iter()
         .collect::<Vec<_>>();
@@ -892,7 +830,7 @@ fn emode_add_unsupported_asset_error() {
 
     let new_token = TestTokenIdentifier::new("NOASSET-123456");
     state.add_asset_to_e_mode_category_error(
-        EgldOrEsdtTokenIdentifier::esdt(new_token.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(new_token.to_esdt_token_identifier()),
         1,
         true,
         true,
@@ -905,7 +843,7 @@ fn emode_add_unsupported_asset_error() {
         let (asset, _) = item.into_tuple();
         assert_ne!(
             asset,
-            EgldOrEsdtTokenIdentifier::esdt(new_token.to_token_identifier())
+            EgldOrEsdtTokenIdentifier::esdt(new_token.to_esdt_token_identifier())
         );
     }
 }
@@ -922,7 +860,7 @@ fn emode_add_duplicate_asset_error() {
     // EGLD is already in category 1
     let before_flags = state.e_modes_assets(1).into_iter().collect::<Vec<_>>();
     state.add_asset_to_e_mode_category_error(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
         1,
         true,
         true,
@@ -953,7 +891,7 @@ fn emode_edit_asset_in_category_success() {
     };
 
     state.edit_asset_in_e_mode_category(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
         1,
         config,
     );
@@ -967,7 +905,7 @@ fn emode_edit_asset_in_category_success() {
     let cfg = e_mode_assets
         .iter()
         .find(|(asset, _)| {
-            *asset == EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier())
+            *asset == EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier())
         })
         .map(|(_, cfg)| cfg)
         .expect("EGLD config should be present");
@@ -976,7 +914,7 @@ fn emode_edit_asset_in_category_success() {
 
     // Other assets remain unchanged
     for (asset, cfg_after) in &e_mode_assets {
-        if *asset == EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()) {
+        if *asset == EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()) {
             continue;
         }
         let (_, cfg_before) = before_assets
@@ -1007,7 +945,7 @@ fn emode_edit_asset_invalid_category_error() {
 
     let before = state.e_modes_assets(1).into_iter().collect::<Vec<_>>();
     state.edit_asset_in_e_mode_category_error(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
         99, // Non-existent category
         config,
         ERROR_EMODE_CATEGORY_NOT_FOUND,
@@ -1034,7 +972,7 @@ fn emode_edit_missing_asset_error() {
     // USDC not in category 1
     let before = state.e_modes_assets(1).into_iter().collect::<Vec<_>>();
     state.edit_asset_in_e_mode_category_error(
-        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_esdt_token_identifier()),
         1,
         config,
         ERROR_ASSET_NOT_SUPPORTED_IN_EMODE,
@@ -1055,18 +993,18 @@ fn emode_remove_asset_from_category_success() {
 
     let before = state
         .asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
-            EGLD_TOKEN.to_token_identifier(),
+            EGLD_TOKEN.to_esdt_token_identifier(),
         ))
         .into_iter()
         .collect::<Vec<_>>();
     state.remove_asset_from_e_mode_category(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
         1,
     );
 
     // Verify asset was removed
     let asset_e_modes = state.asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
-        EGLD_TOKEN.to_token_identifier(),
+        EGLD_TOKEN.to_esdt_token_identifier(),
     ));
     let collected: Vec<_> = asset_e_modes.into_iter().collect();
     assert_eq!(collected.len(), before.len().saturating_sub(1));
@@ -1084,20 +1022,20 @@ fn emode_remove_asset_invalid_category_error() {
 
     let before = state
         .asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
-            EGLD_TOKEN.to_token_identifier(),
+            EGLD_TOKEN.to_esdt_token_identifier(),
         ))
         .into_iter()
         .collect::<Vec<_>>();
 
     state.remove_asset_from_e_mode_category_error(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
         99, // Non-existent category
         ERROR_EMODE_CATEGORY_NOT_FOUND,
     );
 
     let after = state
         .asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
-            EGLD_TOKEN.to_token_identifier(),
+            EGLD_TOKEN.to_esdt_token_identifier(),
         ))
         .into_iter()
         .collect::<Vec<_>>();
@@ -1115,7 +1053,7 @@ fn emode_remove_unsupported_asset_error() {
 
     let new_token = TestTokenIdentifier::new("NOASSET-123456");
     state.remove_asset_from_e_mode_category_error(
-        EgldOrEsdtTokenIdentifier::esdt(new_token.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(new_token.to_esdt_token_identifier()),
         1,
         ERROR_ASSET_NOT_SUPPORTED,
     );
@@ -1125,7 +1063,7 @@ fn emode_remove_unsupported_asset_error() {
         let (asset, _) = item.into_tuple();
         assert_ne!(
             asset,
-            EgldOrEsdtTokenIdentifier::esdt(new_token.to_token_identifier())
+            EgldOrEsdtTokenIdentifier::esdt(new_token.to_esdt_token_identifier())
         );
     }
 }
@@ -1142,19 +1080,19 @@ fn emode_remove_missing_asset_error() {
     // USDC not in category 1
     let before = state
         .asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
-            USDC_TOKEN.to_token_identifier(),
+            USDC_TOKEN.to_esdt_token_identifier(),
         ))
         .into_iter()
         .collect::<Vec<_>>();
     state.remove_asset_from_e_mode_category_error(
-        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_esdt_token_identifier()),
         1,
         ERROR_ASSET_NOT_SUPPORTED_IN_EMODE,
     );
 
     let after = state
         .asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
-            USDC_TOKEN.to_token_identifier(),
+            USDC_TOKEN.to_esdt_token_identifier(),
         ))
         .into_iter()
         .collect::<Vec<_>>();
@@ -1176,29 +1114,31 @@ fn asset_edit_config_success() {
     let mut state = LendingPoolTestState::new();
 
     state.edit_asset_config(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
-        &BigUint::from(7000u64), // 70% LTV
-        &BigUint::from(8000u64), // 80% liquidation threshold
-        &BigUint::from(500u64),  // 5% liquidation bonus
-        &BigUint::from(100u64),  // 1% liquidation fees
-        false,                   // not isolated
-        &BigUint::zero(),        // no debt ceiling
-        false,                   // not siloed
-        true,                    // flashloanable
-        &BigUint::from(10u64),   // 0.1% flash loan fee
-        true,                    // collateralizable
-        true,                    // borrowable
-        false,                   // isolation borrow not enabled
-        &BigUint::zero(),        // no borrow cap
-        &BigUint::zero(),        // no supply cap
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
+        EditAssetConfigParams {
+            loan_to_value: BigUint::from(7000u64),
+            liquidation_threshold: BigUint::from(8000u64),
+            liquidation_bonus: BigUint::from(500u64),
+            liquidation_fees: BigUint::from(100u64),
+            is_isolated_asset: false,
+            isolation_debt_ceiling_usd: BigUint::zero(),
+            is_siloed_borrowing: false,
+            is_flashloanable: true,
+            flashloan_fee: BigUint::from(10u64),
+            is_collateralizable: true,
+            is_borrowable: true,
+            isolation_borrow_enabled: false,
+            borrow_cap: BigUint::zero(),
+            supply_cap: BigUint::zero(),
+        },
         None,
     );
 
     // Verify config was updated
     let config = state.asset_config(EgldOrEsdtTokenIdentifier::esdt(
-        EGLD_TOKEN.to_token_identifier(),
+        EGLD_TOKEN.to_esdt_token_identifier(),
     ));
-    let ltv_value = config.loan_to_value_bps.into_raw_units().clone();
+    let ltv_value = config.loan_to_value_bps.as_raw_units().clone();
     assert_eq!(ltv_value, BigUint::from(7000u64));
 }
 
@@ -1213,21 +1153,23 @@ fn asset_edit_config_unsupported_asset_error() {
 
     let new_token = TestTokenIdentifier::new("NOASSET-123456");
     state.edit_asset_config(
-        EgldOrEsdtTokenIdentifier::esdt(new_token.to_token_identifier()),
-        &BigUint::from(7000u64),
-        &BigUint::from(8000u64),
-        &BigUint::from(500u64),
-        &BigUint::from(100u64),
-        false,
-        &BigUint::zero(),
-        false,
-        true,
-        &BigUint::from(10u64),
-        true,
-        true,
-        false,
-        &BigUint::zero(),
-        &BigUint::zero(),
+        EgldOrEsdtTokenIdentifier::esdt(new_token.to_esdt_token_identifier()),
+        EditAssetConfigParams {
+            loan_to_value: BigUint::from(7000u64),
+            liquidation_threshold: BigUint::from(8000u64),
+            liquidation_bonus: BigUint::from(500u64),
+            liquidation_fees: BigUint::from(100u64),
+            is_isolated_asset: false,
+            isolation_debt_ceiling_usd: BigUint::zero(),
+            is_siloed_borrowing: false,
+            is_flashloanable: true,
+            flashloan_fee: BigUint::from(10u64),
+            is_collateralizable: true,
+            is_borrowable: true,
+            isolation_borrow_enabled: false,
+            borrow_cap: BigUint::zero(),
+            supply_cap: BigUint::zero(),
+        },
         Some(ERROR_ASSET_NOT_SUPPORTED),
     );
 }
@@ -1242,21 +1184,23 @@ fn asset_edit_config_invalid_liquidation_threshold_error() {
     let mut state = LendingPoolTestState::new();
 
     state.edit_asset_config(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
-        &BigUint::from(8000u64), // 80% LTV
-        &BigUint::from(7000u64), // 70% liquidation threshold (invalid - less than LTV)
-        &BigUint::from(500u64),
-        &BigUint::from(100u64),
-        false,
-        &BigUint::zero(),
-        false,
-        true,
-        &BigUint::from(10u64),
-        true,
-        true,
-        false,
-        &BigUint::zero(),
-        &BigUint::zero(),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
+        EditAssetConfigParams {
+            loan_to_value: BigUint::from(8000u64),
+            liquidation_threshold: BigUint::from(7000u64),
+            liquidation_bonus: BigUint::from(500u64),
+            liquidation_fees: BigUint::from(100u64),
+            is_isolated_asset: false,
+            isolation_debt_ceiling_usd: BigUint::zero(),
+            is_siloed_borrowing: false,
+            is_flashloanable: true,
+            flashloan_fee: BigUint::from(10u64),
+            is_collateralizable: true,
+            is_borrowable: true,
+            isolation_borrow_enabled: false,
+            borrow_cap: BigUint::zero(),
+            supply_cap: BigUint::zero(),
+        },
         Some(ERROR_INVALID_LIQUIDATION_THRESHOLD),
     );
 }
@@ -1284,7 +1228,7 @@ fn emode_complete_lifecycle_scenario() {
 
     // 2. Add asset to category
     state.add_asset_to_e_mode_category(
-        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_esdt_token_identifier()),
         2,
         true,
         true,
@@ -1296,14 +1240,14 @@ fn emode_complete_lifecycle_scenario() {
         is_borrowable: false,
     };
     state.edit_asset_in_e_mode_category(
-        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_esdt_token_identifier()),
         2,
         config,
     );
 
     // 4. Remove asset from category
     state.remove_asset_from_e_mode_category(
-        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_esdt_token_identifier()),
         2,
     );
 
@@ -1340,21 +1284,21 @@ fn emode_remove_category_with_multiple_assets_scenario() {
 
     // 2. Add multiple assets
     state.add_asset_to_e_mode_category(
-        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(USDC_TOKEN.to_esdt_token_identifier()),
         2,
         true,
         true,
     );
 
     state.add_asset_to_e_mode_category(
-        EgldOrEsdtTokenIdentifier::esdt(ISOLATED_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(ISOLATED_TOKEN.to_esdt_token_identifier()),
         2,
         true,
         false,
     );
 
     state.add_asset_to_e_mode_category(
-        EgldOrEsdtTokenIdentifier::esdt(SILOED_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(SILOED_TOKEN.to_esdt_token_identifier()),
         2,
         false,
         true,
@@ -1362,13 +1306,13 @@ fn emode_remove_category_with_multiple_assets_scenario() {
 
     // Verify all assets were added
     let usdc_e_modes = state.asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
-        USDC_TOKEN.to_token_identifier(),
+        USDC_TOKEN.to_esdt_token_identifier(),
     ));
     let isolated_e_modes = state.asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
-        ISOLATED_TOKEN.to_token_identifier(),
+        ISOLATED_TOKEN.to_esdt_token_identifier(),
     ));
     let siloed_e_modes = state.asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
-        SILOED_TOKEN.to_token_identifier(),
+        SILOED_TOKEN.to_esdt_token_identifier(),
     ));
 
     assert!(usdc_e_modes.into_iter().any(|id| id == 2));
@@ -1390,13 +1334,13 @@ fn emode_remove_category_with_multiple_assets_scenario() {
 
     // Verify assets removed from category
     let usdc_e_modes_after = state.asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
-        USDC_TOKEN.to_token_identifier(),
+        USDC_TOKEN.to_esdt_token_identifier(),
     ));
     let isolated_e_modes_after = state.asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
-        ISOLATED_TOKEN.to_token_identifier(),
+        ISOLATED_TOKEN.to_esdt_token_identifier(),
     ));
     let siloed_e_modes_after = state.asset_e_modes(EgldOrEsdtTokenIdentifier::esdt(
-        SILOED_TOKEN.to_token_identifier(),
+        SILOED_TOKEN.to_esdt_token_identifier(),
     ));
 
     assert!(!usdc_e_modes_after.into_iter().any(|id| id == 2));
@@ -1420,27 +1364,29 @@ fn asset_edit_config_zero_caps_scenario() {
 
     // Set non-zero caps
     state.edit_asset_config(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
-        &BigUint::from(7500u64),
-        &BigUint::from(8000u64),
-        &BigUint::from(500u64),
-        &BigUint::from(100u64),
-        false,
-        &BigUint::zero(),
-        false,
-        true,
-        &BigUint::from(10u64),
-        true,
-        true,
-        false,
-        &BigUint::from(1000000u64), // 1M borrow cap
-        &BigUint::from(2000000u64), // 2M supply cap
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
+        EditAssetConfigParams {
+            loan_to_value: BigUint::from(7500u64),
+            liquidation_threshold: BigUint::from(8000u64),
+            liquidation_bonus: BigUint::from(500u64),
+            liquidation_fees: BigUint::from(100u64),
+            is_isolated_asset: false,
+            isolation_debt_ceiling_usd: BigUint::zero(),
+            is_siloed_borrowing: false,
+            is_flashloanable: true,
+            flashloan_fee: BigUint::from(10u64),
+            is_collateralizable: true,
+            is_borrowable: true,
+            isolation_borrow_enabled: false,
+            borrow_cap: BigUint::from(1000000u64),
+            supply_cap: BigUint::from(2000000u64),
+        },
         None,
     );
 
     // Verify caps were set
     let config = state.asset_config(EgldOrEsdtTokenIdentifier::esdt(
-        EGLD_TOKEN.to_token_identifier(),
+        EGLD_TOKEN.to_esdt_token_identifier(),
     ));
     assert!(config.borrow_cap_wad.is_some());
     assert!(config.supply_cap_wad.is_some());
@@ -1449,32 +1395,34 @@ fn asset_edit_config_zero_caps_scenario() {
 
     // Set caps to zero (removes caps)
     state.edit_asset_config(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
-        &BigUint::from(7500u64),
-        &BigUint::from(8000u64),
-        &BigUint::from(500u64),
-        &BigUint::from(100u64),
-        false,
-        &BigUint::zero(),
-        false,
-        true,
-        &BigUint::from(10u64),
-        true,
-        true,
-        false,
-        &BigUint::zero(), // Zero borrow cap
-        &BigUint::zero(), // Zero supply cap
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
+        EditAssetConfigParams {
+            loan_to_value: BigUint::from(7500u64),
+            liquidation_threshold: BigUint::from(8000u64),
+            liquidation_bonus: BigUint::from(500u64),
+            liquidation_fees: BigUint::from(100u64),
+            is_isolated_asset: false,
+            isolation_debt_ceiling_usd: BigUint::zero(),
+            is_siloed_borrowing: false,
+            is_flashloanable: true,
+            flashloan_fee: BigUint::from(10u64),
+            is_collateralizable: true,
+            is_borrowable: true,
+            isolation_borrow_enabled: false,
+            borrow_cap: BigUint::zero(),
+            supply_cap: BigUint::zero(),
+        },
         None,
     );
 
     // Verify caps removed
     let config_after = state.asset_config(EgldOrEsdtTokenIdentifier::esdt(
-        EGLD_TOKEN.to_token_identifier(),
+        EGLD_TOKEN.to_esdt_token_identifier(),
     ));
     assert!(config_after.borrow_cap_wad.is_none());
     assert!(config_after.supply_cap_wad.is_none());
 
     // Verify other values unchanged
-    let ltv_value = config_after.loan_to_value_bps.into_raw_units().clone();
+    let ltv_value = config_after.loan_to_value_bps.as_raw_units().clone();
     assert_eq!(ltv_value, BigUint::from(7500u64));
 }

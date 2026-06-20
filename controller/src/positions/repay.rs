@@ -190,7 +190,7 @@ pub trait PositionRepayModule:
             .to(pool_address)
             .typed(proxy_pool::LiquidityPoolProxy)
             .repay(caller, borrow_position.clone(), feed.price_wad.clone())
-            .egld_or_single_esdt(token_id, 0, repay_amount.into_raw_units())
+            .egld_or_single_esdt(token_id, 0, repay_amount.as_raw_units())
             .returns(ReturnsResult)
             .sync_call();
 

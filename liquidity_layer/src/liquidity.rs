@@ -410,7 +410,7 @@ pub trait LiquidityModule:
             .to(contract_address)
             .raw_call(endpoint)
             .arguments_raw(arguments)
-            .egld_or_single_esdt(&asset, 0, amount.into_raw_units())
+            .egld_or_single_esdt(&asset, 0, amount.as_raw_units())
             .returns(ReturnsBackTransfersReset)
             .sync_call();
 

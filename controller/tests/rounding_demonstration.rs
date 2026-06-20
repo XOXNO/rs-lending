@@ -20,12 +20,13 @@ fn dollar_and_raw_supply_share_consistent_rounding() {
     // Seed the market with $10,000 liquidity using the dollar-based helper.
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(10_000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(10_000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         1,
@@ -38,12 +39,13 @@ fn dollar_and_raw_supply_share_consistent_rounding() {
     let borrower_nonce = 2_u64;
     state.supply_asset(
         &borrower,
-        USDC_TOKEN,
-        BigUint::from(100u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.assert_collateral_raw_eq(
         borrower_nonce,
@@ -95,12 +97,13 @@ fn repeating_decimal_borrow_interest_within_bounds() {
 
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(1_000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(1_000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     let borrower_nonce = 2_u64;
@@ -149,10 +152,10 @@ fn repeating_decimal_borrow_interest_within_bounds() {
 
     let reserves = state.market_reserves(state.usdc_market.clone());
     let revenue = state.market_revenue(state.usdc_market.clone());
-    assert!(reserves.into_raw_units() >= &BigUint::zero());
-    assert!(revenue.into_raw_units() >= &BigUint::zero());
+    assert!(reserves.as_raw_units() >= &BigUint::zero());
+    assert!(revenue.as_raw_units() >= &BigUint::zero());
 
-    let outstanding_raw = debt_after.into_raw_units().clone();
+    let outstanding_raw = debt_after.as_raw_units().clone();
     state.repay_asset_deno(&borrower, &USDC_TOKEN, outstanding_raw, borrower_nonce);
     state.assert_no_borrow_entry(borrower_nonce, &USDC_TOKEN);
 }

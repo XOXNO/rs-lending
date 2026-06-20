@@ -43,7 +43,7 @@ fn investigate_interest_rate_calculation() {
     let total_supply = state.market_reserves(state.usdc_market.clone());
     let expected_initial_reserves = BigUint::from(1_000_000_000u64) + BigUint::from(1_000_001u64);
     assert_eq!(
-        total_supply.into_raw_units(),
+        total_supply.as_raw_units(),
         &expected_initial_reserves,
         "Market reserves should include supplier and borrower liquidity before borrow",
     );
@@ -62,11 +62,11 @@ fn investigate_interest_rate_calculation() {
     let total_borrows = state.market_borrowed(state.usdc_market.clone());
     let total_reserves = state.market_reserves(state.usdc_market.clone());
     assert!(
-        total_borrows.into_raw_units() >= initial_debt.into_raw_units(),
+        total_borrows.as_raw_units() >= initial_debt.as_raw_units(),
         "Market borrow index should be at least borrower debt",
     );
     assert!(
-        total_reserves.into_raw_units() < total_supply.into_raw_units(),
+        total_reserves.as_raw_units() < total_supply.as_raw_units(),
         "Reserves should shrink after borrowing",
     );
 
@@ -76,7 +76,7 @@ fn investigate_interest_rate_calculation() {
     let utilization_ray = state.market_utilization(state.usdc_market.clone());
 
     // Convert from RAY to percentage (RAY = 1e27, so divide by 1e25 to get percentage)
-    let utilization_pct = utilization_ray.into_raw_units() / &BigUint::from(10u64).pow(25);
+    let utilization_pct = utilization_ray.as_raw_units() / &BigUint::from(10u64).pow(25);
 
     // Assert: Verify utilization is correct (0.333333 / 1000.666668 ≈ 0.0333%)
     assert!(
@@ -98,7 +98,7 @@ fn investigate_interest_rate_calculation() {
     );
 
     let debt_after_1s = state.borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
-    let interest_1s = debt_after_1s.into_raw_units() - initial_debt.into_raw_units();
+    let interest_1s = debt_after_1s.as_raw_units() - initial_debt.as_raw_units();
 
     // Assert: No interest should accrue in just 1 second
     assert_eq!(
@@ -134,19 +134,19 @@ fn investigate_interest_rate_calculation() {
     );
 
     let debt_after_month = state.borrow_amount_for_token(borrower_nonce, USDC_TOKEN);
-    let interest_month = debt_after_month.into_raw_units() - &BigUint::from(333_333u64);
+    let interest_month = debt_after_month.as_raw_units() - &BigUint::from(333_333u64);
 
     // Assert: Interest should be approximately 279 units for 1% APR
     // 333,333 * 0.01 / 12 ≈ 277.78 units
     assert!(
-        interest_month >= 275u64 && interest_month <= 285u64,
+        (BigUint::from(275u64)..=BigUint::from(285u64)).contains(&interest_month),
         "Monthly interest should be approximately 279 units, got {interest_month:?}"
     );
 
     // Assert: Verify the interest rate is ~1% APR
     let monthly_rate_bps = (&interest_month * 10000u64 * 12u64) / 333_333u64;
     assert!(
-        monthly_rate_bps >= 95u64 && monthly_rate_bps <= 105u64,
+        (BigUint::from(95u64)..=BigUint::from(105u64)).contains(&monthly_rate_bps),
         "Interest rate should be approximately 100 bps (1%), got {monthly_rate_bps:?} bps"
     );
 
@@ -155,18 +155,18 @@ fn investigate_interest_rate_calculation() {
 
     // Assert: Collateral should be slightly more than initial due to supply interest
     assert!(
-        collateral.into_raw_units() >= &BigUint::from(1_000_001u64),
+        collateral.as_raw_units() >= &BigUint::from(1_000_001u64),
         "Collateral should be at least the initial supply"
     );
     assert!(
-        collateral.into_raw_units() <= &BigUint::from(1_000_100u64),
+        collateral.as_raw_units() <= &BigUint::from(1_000_100u64),
         "Collateral shouldn't have excessive interest"
     );
 
     // Assert: Debt calculation is correct
     let expected_debt = BigUint::from(333_333u64) + interest_month.clone();
     assert_eq!(
-        debt_after_month.into_raw_units(),
+        debt_after_month.as_raw_units(),
         &expected_debt,
         "Debt should equal principal + interest"
     );
@@ -177,13 +177,13 @@ fn investigate_interest_rate_calculation() {
 
     // Assert: Total borrows should match the debt
     assert!(
-        final_borrows.into_raw_units() >= debt_after_month.into_raw_units(),
+        final_borrows.as_raw_units() >= debt_after_month.as_raw_units(),
         "Market total borrows should include the debt"
     );
 
     // Assert: Reserves should be reduced by borrowed amount
     assert!(
-        final_reserves.into_raw_units() < &BigUint::from(1_001_000_001u64),
+        final_reserves.as_raw_units() < &BigUint::from(1_001_000_001u64),
         "Reserves should be less than initial deposits"
     );
 

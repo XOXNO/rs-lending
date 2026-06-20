@@ -24,23 +24,25 @@ fn siloed_borrow_as_only_debt_success() {
     // Borrower supplies regular collateral
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Supplier provides siloed token liquidity
     state.supply_asset(
         &supplier,
-        SILOED_TOKEN,
-        BigUint::from(100u64),
-        SILOED_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: SILOED_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: SILOED_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower takes siloed asset loan (allowed as only debt)
@@ -75,43 +77,47 @@ fn siloed_borrow_with_existing_debts_error() {
     // Borrower supplies collateral
     state.supply_asset(
         &borrower,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Supplier provides liquidity for multiple assets
     state.supply_asset(
         &supplier,
-        SILOED_TOKEN,
-        BigUint::from(100u64),
-        SILOED_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: SILOED_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: SILOED_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(100u64),
-        USDC_DECIMALS,
-        OptionalValue::Some(2),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::Some(2),
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(100u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower takes regular loan first
@@ -171,33 +177,36 @@ fn siloed_prevents_additional_borrows_error() {
     // Borrower supplies significant collateral
     state.supply_asset(
         &borrower,
-        USDC_TOKEN,
-        BigUint::from(1000u64),
-        USDC_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Supplier provides liquidity for multiple assets
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(100u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     state.supply_asset(
         &supplier,
-        SILOED_TOKEN,
-        BigUint::from(1000u64),
-        SILOED_DECIMALS,
-        OptionalValue::Some(2),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: SILOED_TOKEN,
+            amount: BigUint::from(1000u64),
+            asset_decimals: SILOED_DECIMALS,
+            account_nonce: OptionalValue::Some(2),
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower takes siloed loan first

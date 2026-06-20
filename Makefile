@@ -255,10 +255,19 @@ $(foreach network,$(NETWORKS),$(foreach action,$(SIMPLE_ACTIONS),$(network)-$(ac
 list-networks:
 	./configs/script.sh networks
 
-# Reproducible build target
+# Reproducible build target.
+# Uses sc-meta's host-side `reproducible-build build` (requires sc-meta >= 0.66.0),
+# which manages the pinned Docker container itself (mounts, platform, user).
+# Replaces `mxpy contract reproducible-build`, whose CLI predates the v12 builder
+# image's sc-meta interface. --project/--output default to the cwd and ./output-docker.
+# --no-docker-interactive/--no-docker-tty keep it working in CI / non-terminal shells.
+REPRODUCIBLE_BUILD_IMAGE = multiversx/sdk-rust-contract-builder:v12.0.0
 build:
-	rm -rf ./output-docker
-	mxpy contract reproducible-build --docker-image="multiversx/sdk-rust-contract-builder:v11.0.0"
+	sc-meta reproducible-build build \
+		--docker-image $(REPRODUCIBLE_BUILD_IMAGE) \
+		--overwrite \
+		--no-docker-interactive \
+		--no-docker-tty
 
 # Add new targets for E-Mode and asset configuration functions
 

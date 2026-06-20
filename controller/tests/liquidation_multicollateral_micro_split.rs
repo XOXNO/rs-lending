@@ -23,41 +23,45 @@ fn build_multicollateral_case() -> (
     // Debt liquidity (EGLD, USDC)
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(150u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(150u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(10_000u64),
-        USDC_DECIMALS,
-        OptionalValue::Some(1),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(10_000u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrower collateral across two assets (ensures multi-asset seizure during liquidation)
     state.supply_asset(
         &borrower,
-        XEGLD_TOKEN,
-        BigUint::from(20u64),
-        XEGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: XEGLD_TOKEN,
+            amount: BigUint::from(20u64),
+            asset_decimals: XEGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     state.supply_asset(
         &borrower,
-        SEGLD_TOKEN,
-        BigUint::from(80u64),
-        SEGLD_DECIMALS,
-        OptionalValue::Some(2),
-        OptionalValue::None,
-        false,
+        SupplyParams {
+            token_id: SEGLD_TOKEN,
+            amount: BigUint::from(80u64),
+            asset_decimals: SEGLD_DECIMALS,
+            account_nonce: OptionalValue::Some(2),
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     // Borrow EGLD
@@ -99,7 +103,7 @@ fn build_multicollateral_case() -> (
 
     let total_pay_deno = state
         .borrow_amount_for_token(borrower_nonce, EGLD_TOKEN)
-        .into_raw_units()
+        .as_raw_units()
         .clone()
         / 2u32; // repay ~50% of EGLD debt
 
@@ -116,7 +120,7 @@ fn liquidation_multicollateral_split_consistency_view() {
     // One-shot estimation
     let mut one = ManagedVec::new();
     one.push(multiversx_sc::types::EgldOrEsdtTokenPayment::new(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
         0,
         total_pay_deno.clone(),
     ));
@@ -127,12 +131,12 @@ fn liquidation_multicollateral_split_consistency_view() {
     let rest = total_pay_deno.clone() - half.clone();
     let mut two = ManagedVec::new();
     two.push(multiversx_sc::types::EgldOrEsdtTokenPayment::new(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
         0,
         half,
     ));
     two.push(multiversx_sc::types::EgldOrEsdtTokenPayment::new(
-        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_token_identifier()),
+        EgldOrEsdtTokenIdentifier::esdt(EGLD_TOKEN.to_esdt_token_identifier()),
         0,
         rest,
     ));

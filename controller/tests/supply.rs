@@ -33,12 +33,13 @@ fn supply_with_inactive_account_nonce_error() {
     // Attempt to supply with non-existent account nonce
     state.supply_asset_error(
         &supplier,
-        CAPPED_TOKEN,
-        BigUint::from(150u64),
-        CAPPED_DECIMALS,
-        OptionalValue::Some(1), // Non-existent account nonce
-        OptionalValue::None,
-        false, // is_vault = false
+        SupplyParams {
+            token_id: CAPPED_TOKEN,
+            amount: BigUint::from(150u64),
+            asset_decimals: CAPPED_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
         ERROR_ACCOUNT_NOT_IN_THE_MARKET,
     );
 
@@ -71,12 +72,13 @@ fn supply_exceeds_cap_error() {
     // First supply within cap succeeds
     state.supply_asset(
         &supplier,
-        CAPPED_TOKEN,
-        BigUint::from(1u64),
-        CAPPED_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false, // is_vault = false
+        SupplyParams {
+            token_id: CAPPED_TOKEN,
+            amount: BigUint::from(1u64),
+            asset_decimals: CAPPED_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
     let expected_collateral = scaled_amount(1, CAPPED_DECIMALS);
     state.assert_collateral_raw_eq(
@@ -97,12 +99,13 @@ fn supply_exceeds_cap_error() {
     // Second supply exceeds cap and fails
     state.supply_asset_error(
         &supplier,
-        CAPPED_TOKEN,
-        BigUint::from(150u64),
-        CAPPED_DECIMALS,
-        OptionalValue::Some(1), // Existing account
-        OptionalValue::None,
-        false, // is_vault = false
+        SupplyParams {
+            token_id: CAPPED_TOKEN,
+            amount: BigUint::from(150u64),
+            asset_decimals: CAPPED_DECIMALS,
+            account_nonce: OptionalValue::Some(1),
+            e_mode_category: OptionalValue::None,
+        },
         ERROR_SUPPLY_CAP,
     );
 
@@ -171,12 +174,13 @@ fn supply_account_nft_only_no_assets_error() {
     // Create initial position
     state.supply_asset(
         &supplier,
-        CAPPED_TOKEN,
-        BigUint::from(1u64),
-        CAPPED_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false, // is_vault = false
+        SupplyParams {
+            token_id: CAPPED_TOKEN,
+            amount: BigUint::from(1u64),
+            asset_decimals: CAPPED_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     let expected_collateral = scaled_amount(1, CAPPED_DECIMALS);
@@ -224,12 +228,12 @@ fn supply_bulk_isolated_asset_first_error() {
     // Prepare bulk supply with isolated asset first
     let mut assets = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
     assets.push(EsdtTokenPayment::new(
-        ISOLATED_TOKEN.to_token_identifier(),
+        ISOLATED_TOKEN.to_esdt_token_identifier(),
         0,
         BigUint::from(10u64).mul(BigUint::from(10u64).pow(ISOLATED_DECIMALS as u32)),
     ));
     assets.push(EsdtTokenPayment::new(
-        EGLD_TOKEN.to_token_identifier(),
+        EGLD_TOKEN.to_esdt_token_identifier(),
         0,
         BigUint::from(10u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32)),
     ));
@@ -272,12 +276,12 @@ fn supply_mix_isolated_with_regular_assets_error() {
     // Prepare bulk supply with regular asset first, then isolated
     let mut assets = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
     assets.push(EsdtTokenPayment::new(
-        EGLD_TOKEN.to_token_identifier(),
+        EGLD_TOKEN.to_esdt_token_identifier(),
         0,
         BigUint::from(10u64).mul(BigUint::from(10u64).pow(EGLD_DECIMALS as u32)),
     ));
     assets.push(EsdtTokenPayment::new(
-        ISOLATED_TOKEN.to_token_identifier(),
+        ISOLATED_TOKEN.to_esdt_token_identifier(),
         0,
         BigUint::from(10u64).mul(BigUint::from(10u64).pow(ISOLATED_DECIMALS as u32)),
     ));
@@ -320,12 +324,12 @@ fn supply_bulk_same_asset_exceeds_cap_error() {
     // Prepare bulk supply with same capped asset twice
     let mut assets = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
     assets.push(EsdtTokenPayment::new(
-        CAPPED_TOKEN.to_token_identifier(),
+        CAPPED_TOKEN.to_esdt_token_identifier(),
         0,
         BigUint::from(100u64).mul(BigUint::from(10u64).pow(CAPPED_DECIMALS as u32)),
     ));
     assets.push(EsdtTokenPayment::new(
-        CAPPED_TOKEN.to_token_identifier(),
+        CAPPED_TOKEN.to_esdt_token_identifier(),
         0,
         BigUint::from(51u64).mul(BigUint::from(10u64).pow(CAPPED_DECIMALS as u32)),
     ));
@@ -374,12 +378,13 @@ fn supply_exceeds_position_limit_error() {
     // Create account for supplier and supply first asset
     state.supply_asset(
         &supplier,
-        EGLD_TOKEN,
-        BigUint::from(10u64),
-        EGLD_DECIMALS,
-        OptionalValue::None,
-        OptionalValue::None,
-        false, // is_vault = false
+        SupplyParams {
+            token_id: EGLD_TOKEN,
+            amount: BigUint::from(10u64),
+            asset_decimals: EGLD_DECIMALS,
+            account_nonce: OptionalValue::None,
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     let expected_egld_collateral = scaled_amount(10, EGLD_DECIMALS);
@@ -395,12 +400,13 @@ fn supply_exceeds_position_limit_error() {
     // Supply second asset - should succeed (at limit)
     state.supply_asset(
         &supplier,
-        USDC_TOKEN,
-        BigUint::from(100u64),
-        USDC_DECIMALS,
-        OptionalValue::Some(account_nonce),
-        OptionalValue::None,
-        false, // is_vault = false
+        SupplyParams {
+            token_id: USDC_TOKEN,
+            amount: BigUint::from(100u64),
+            asset_decimals: USDC_DECIMALS,
+            account_nonce: OptionalValue::Some(account_nonce),
+            e_mode_category: OptionalValue::None,
+        },
     );
 
     let expected_usdc_collateral = scaled_amount(100, USDC_DECIMALS);
@@ -414,12 +420,13 @@ fn supply_exceeds_position_limit_error() {
     // Try to supply third asset - should fail due to position limit
     state.supply_asset_error(
         &supplier,
-        CAPPED_TOKEN,
-        BigUint::from(1u64),
-        CAPPED_DECIMALS,
-        OptionalValue::Some(account_nonce),
-        OptionalValue::None,
-        false, // is_vault = false
+        SupplyParams {
+            token_id: CAPPED_TOKEN,
+            amount: BigUint::from(1u64),
+            asset_decimals: CAPPED_DECIMALS,
+            account_nonce: OptionalValue::Some(account_nonce),
+            e_mode_category: OptionalValue::None,
+        },
         ERROR_POSITION_LIMIT_EXCEEDED,
     );
 
@@ -464,12 +471,12 @@ fn supply_bulk_exceeds_position_limit_error() {
     // This should fail because we're trying to create 2 positions when limit is 1
     let mut assets = ManagedVec::<StaticApi, EsdtTokenPayment<StaticApi>>::new();
     assets.push(EsdtTokenPayment::new(
-        EGLD_TOKEN.to_token_identifier(),
+        EGLD_TOKEN.to_esdt_token_identifier(),
         0,
         BigUint::from(10u64) * BigUint::from(10u64.pow(EGLD_DECIMALS as u32)),
     ));
     assets.push(EsdtTokenPayment::new(
-        USDC_TOKEN.to_token_identifier(),
+        USDC_TOKEN.to_esdt_token_identifier(),
         0,
         BigUint::from(100u64) * BigUint::from(10u64.pow(USDC_DECIMALS as u32)),
     ));

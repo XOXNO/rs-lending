@@ -21,7 +21,7 @@ fn test_rescale_half_up_examples() {
     );
     let result1 = tester.rescale_half_up(&value1, 4);
     println!("1.234567890123456789 -> {result1}");
-    assert_eq!(result1.into_raw_units(), &BigUint::from(12346u64)); // 1.2346
+    assert_eq!(result1.as_raw_units(), &BigUint::from(12346u64)); // 1.2346
 
     // Example 2: 0.123456... rounds to 0.1235
     let value2 = ManagedDecimal::<StaticApi, usize>::from_raw_units(
@@ -30,7 +30,7 @@ fn test_rescale_half_up_examples() {
     );
     let result2 = tester.rescale_half_up(&value2, 4);
     println!("0.123456789012345678 -> {result2}");
-    assert_eq!(result2.into_raw_units(), &BigUint::from(1235u64)); // 0.1235
+    assert_eq!(result2.as_raw_units(), &BigUint::from(1235u64)); // 0.1235
 
     // Example 3: 0.123449... rounds to 0.1234 (rounds down)
     let value3 = ManagedDecimal::<StaticApi, usize>::from_raw_units(
@@ -39,7 +39,7 @@ fn test_rescale_half_up_examples() {
     );
     let result3 = tester.rescale_half_up(&value3, 4);
     println!("0.123449999999999999 -> {result3}");
-    assert_eq!(result3.into_raw_units(), &BigUint::from(1234u64)); // 0.1234
+    assert_eq!(result3.as_raw_units(), &BigUint::from(1234u64)); // 0.1234
 
     // Example 4: 0.123450... rounds to 0.1235 (exactly half rounds up)
     let value4 = ManagedDecimal::<StaticApi, usize>::from_raw_units(
@@ -48,5 +48,5 @@ fn test_rescale_half_up_examples() {
     );
     let result4 = tester.rescale_half_up(&value4, 4);
     println!("0.123450000000000000 -> {result4}");
-    assert_eq!(result4.into_raw_units(), &BigUint::from(1235u64)); // 0.1235
+    assert_eq!(result4.as_raw_units(), &BigUint::from(1235u64)); // 0.1235
 }
